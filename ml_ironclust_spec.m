@@ -1,4 +1,4 @@
-function ml_slopefilter_spec
+function ml_ironclust_spec
 
 curpath=fileparts(mfilename('fullpath'));
 addpath([curpath,'/processors']);
