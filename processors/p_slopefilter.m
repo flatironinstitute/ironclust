@@ -1,4 +1,4 @@
-function ret=p_slopefilter(params)
+function ret=p_slopefilter(params) % params already passing string
 
 if (ischar(params))&&(strcmp(params,'spec'))
     ret=get_spec();
@@ -7,7 +7,7 @@ end;
 
 X_path=params.timeseries;
 Y_path=params.timeseries_out;
-nfilt=params.nfilt;
+nfilt = str2double(params.nfilt);
 
 disp('Reading...');
 X=readmda(X_path); % Later we will do things in chunks
