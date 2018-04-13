@@ -1,0 +1,91 @@
+
+{
+  "processors": [
+    {
+      "name": "ironclust.sort",
+      "version": "0.1",
+      "inputs": [
+        {
+          "name": "timeseries",
+          "optional": false,
+          "description": "The input raw timeseries in .mda format"
+        },
+        {
+          "name": "geom",
+          "optional": true,
+          "description": "Optional geometry file in .csv or .prm format"
+        },
+        {
+          "name": "prm",
+          "optional": true,
+          "description": "Optional parameter file in .prm format"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "firings_out",
+          "optional": false,
+          "description": "Output firings file in .mda format"
+        }
+      ],
+      "parameters": [
+        {
+          "name": "samplerate",
+          "description": "The sample rate of the input timeseries (Hz)",
+          "optional": false
+        },
+        {
+          "name": "detect_sign",
+          "description": "Indicates the sign of the spikes: -1, 0 or 1",
+          "optional": false
+        },
+        {
+          "name": "adjacency_radius",
+          "description": "Relates to the size of channel neighborhoods during sorting. Units should match with geom file.",
+          "optional": true
+        },
+        {
+          "name": "prm_template_name",
+          "description": "Name (string) representing a set of technical parameters. For example, 'tetrode'.",
+          "optional": true
+        },
+        {
+          "name": "freq_min",
+          "description": "",
+          "optional": true
+        },
+        {
+          "name": "freq_max",
+          "description": "",
+          "optional": true
+        },
+        {
+          "name": "mask_out_artifacts",
+          "description": "",
+          "optional": true
+        },
+        {
+          "name": "whiten",
+          "description": "",
+          "optional": true
+        },
+        {
+          "name": "curate",
+          "description": "",
+          "optional": true
+        },
+        {
+          "name": "detect_threshold",
+          "description": "",
+          "optional": true
+        },
+        {
+          "name": "use_slope_filter",
+          "description": "",
+          "optional": true
+        }        
+      ],
+      "exe_command": "[needs to be wrapped in matlab call syntax] p_ironclust_sort('$timeseries$','$geom$','$prb$','$firings_out$','$(argfile)');"
+    }
+  ]
+}
