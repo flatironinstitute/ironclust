@@ -3,7 +3,7 @@ function ml_ironclust_spec
 
 curpath = fileparts(mfilename('fullpath'));
 curpath = fullfile(curpath, filesep());
-addpath([curpath,'/jsonlab-1.5']);
+addpath([curpath,'jsonlab-1.5']);
 
 S_json = loadjson('ironclust_spec.json');
   

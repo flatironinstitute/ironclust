@@ -17,7 +17,7 @@ for ii=1:length(pfunctions)
     spec0=func('spec');
     spec0.exe_command=create_exe_command(func_name,spec0,curpath);
     processors{end+1}=spec0;
-end;
+end
 
 spec=struct('processors',{processors});
 
@@ -29,22 +29,22 @@ function exe_command=create_exe_command(func_name,spec0,curpath)
 pnames={};
 for ii=1:length(spec0.inputs)
     pnames{end+1}=spec0.inputs{ii}.name;
-end;
+end
 for ii=1:length(spec0.outputs)
     pnames{end+1}=spec0.outputs{ii}.name;
-end;
+end
 for ii=1:length(spec0.parameters)
     pnames{end+1}=spec0.parameters{ii}.name;
-end;
+end
 
 struct_string='';
 for ii=1:length(pnames)
     pname=pnames{ii};
     if (ii>1)
         struct_string=[struct_string,','];
-    end;
+    end
     struct_string=[struct_string,"'",pname,"','$",pname,"$'"];
-end;
+end
 
 str=sprintf("addpath('%s/processors'); %s(struct(%s));",curpath,func_name,struct_string);
 exe_command=sprintf('octave --eval "%s"',str);
