@@ -1,0 +1,6 @@
+nChans = 8;                         % change this number for n-trodes
+channels = 1:nChans;                      % 8 channels mapped to sites
+geometry = [zeros(nChans,1), (1:nChans)'];   % (8 x 2 matrix, fist col.: x pos (um), second col.: y pos (um)
+
+pad = [1 1];  % site pad dimension for visualization (w x h (um))
+um_per_pix = 1;   % grid spacing (for visualization)

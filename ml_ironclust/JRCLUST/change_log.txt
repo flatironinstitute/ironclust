@@ -2,6 +2,15 @@
 J. James Jun
 
 --------------------------------------------------------------------
+[2019/4/20: v3.2.8: mda support added (mountainlab)]
+Output directory option added to "makeprm" command
+  jrc makeprm myrecording.bin myprobe.prb mytemplate.prm myoutput_dir
+    provide myoutput_dir in the command below.
+    mytemplate.prm is "default.prm" by default.
+New command: "makeprm-mda" to create a prm file from mountainlab format
+  jrc makeprm-mda myrecording.mda geom.csv (params.txt) (myoutput_dir) (mytemplate.prm)   
+  arguments in () are optional.
+
 [2019/3/20: v3.2.7: rocketclust]
 default.cfg (default configuration file): Added "reset_path" = 1 by default. 
   Set to 0 to disable reset matlab path when running JRCLUST

@@ -2,7 +2,7 @@
 % JRCLUST v3
 % James Jun
  
-function varargout = jrc3(vcCmd, vcArg1, vcArg2, vcArg3, vcArg4, vcArg5)
+function varargout = jrc3(varargin)
 % Memory-efficient version 
 % P is static and loaded from file
 % Dynamic variables are set in S0=get(0,'UserData')
@@ -10,12 +10,16 @@ function varargout = jrc3(vcCmd, vcArg1, vcArg2, vcArg3, vcArg4, vcArg5)
 persistent vcFile_prm_ % remember the currently working prm file
 
 % input parse
-if nargin<2, vcArg1=''; end
-if nargin<3, vcArg2=''; end
-if nargin<4, vcArg3=''; end
-if nargin<5, vcArg4=''; end
-if nargin<6, vcArg5=''; end
-if nargin==0, vcCmd = 'help'; end
+if nargin<1, vcCmd = 'help'; else vcCmd = varargin{1}; end
+if nargin<2, vcArg1 = ''; else vcArg1 = varargin{2}; end
+if nargin<3, vcArg2 = ''; else vcArg2 = varargin{3}; end
+if nargin<4, vcArg3 = ''; else vcArg3 = varargin{4}; end
+if nargin<5, vcArg4 = ''; else vcArg4 = varargin{5}; end
+if nargin<6, vcArg5 = ''; else vcArg5 = varargin{6}; end
+if nargin<7, vcArg6 = ''; else vcArg6 = varargin{7}; end
+if nargin<8, vcArg7 = ''; else vcArg7 = varargin{8}; end
+if nargin<9, vcArg8 = ''; else vcArg8 = varargin{9}; end
+
 if read_cfg_('reset_path'), reset_path_(); end
 warning off;
 %-----
@@ -41,11 +45,15 @@ switch lower(vcCmd)
     case 'which', return;    
     case 'download', download_(vcArg1);
     case {'makeprm', 'createprm', 'makeprm-all'}
-        vcFile_prm_ = makeprm_(vcArg1, vcArg2, 1, vcArg3);
+%         makeprm_(vcFile_bin, vcFile_prb, fAsk, vcFile_template, vcDir_prm)
+        vcFile_prm_ = makeprm_(vcArg1, vcArg2, 1, vcArg3, vcArg4);
         if nargout>0, varargout{1} = vcFile_prm_; end
         if isempty(vcFile_prm_), return; end
         if strcmpi(vcCmd, 'makeprm-all'), jrc3('all', vcFile_prm_); end
-    case 'makeprm-f', makeprm_(vcArg1, vcArg2, 0, vcArg3);
+    case {'makeprm-mda', 'makeprm_mda'}
+        vcFile_prm_ = makeprm_mda_(vcArg1, vcArg2, vcArg3, vcArg4, vcArg5);
+        if nargout>0, varargout{1} = vcFile_prm_; end
+    case 'makeprm-f', makeprm_(vcArg1, vcArg2, 0, vcArg3, vcArg4);
     case 'import-tsf', import_tsf_(vcArg1);
     case 'import-h5', import_h5_(vcArg1);
     case 'import-jrc1', import_jrc1_(vcArg1);
@@ -63,9 +71,21 @@ switch lower(vcCmd)
     case 'compile', compile_cuda_(vcArg1); 
     case 'compile-ksort', compile_ksort_();
     case 'test', varargout{1} = test_(vcArg1, vcArg2, vcArg3, vcArg4, vcArg5);
-    case 'call', varargout{1} = call_(vcArg1, vcArg2, vcArg3);
+    case 'call'
+        if ~isempty(vcArg3)
+            varargout{1} = call_(vcArg1, vcArg2, vcArg3); 
+        else
+            switch nargout
+                case 0, call_(vcArg1, vcArg2);
+                case 1, varargout{1} = call_(vcArg1, vcArg2);
+                case 2, [varargout{1}, varargout{2}] = call_(vcArg1, vcArg2);
+                case 3, [varargout{1}, varargout{2}, varargout{3}] = call_(vcArg1, vcArg2);
+                case 4, [varargout{1}, varargout{2}, varargout{3}, varargout{4}] = call_(vcArg1, vcArg2);
+            end %switch
+        end
     case 'export', export_(vcArg1, vcArg2, vcArg3);    
     case {'dependencies', 'toolbox', 'toolboxes'}, disp_dependencies_();
+    case {'caim', '2p'}, caim_(vcArg1, vcArg2, vcArg3);
     otherwise, fExit = 0;
 end
 if fExit, return; end
@@ -164,7 +184,7 @@ switch lower(vcCmd)
     case {'export-car'}, export_car_(P, vcArg2); % export common average reference
     case {'export-spkwav-diff', 'spkwav-diff'}, export_spkwav_(P, vcArg2, 1); % export spike waveforms        
     case 'export-spkamp', export_spkamp_(P, vcArg2); %export microvolt unit
-    case {'export-csv', 'exportcsv'}, export_csv_(P);
+    case {'export-csv', 'exportcsv'}, varargout{1} = export_csv_(P);
     case {'export-quality', 'exportquality', 'quality'}, export_quality_(P);
     case {'export-csv-msort', 'exportcsv-msort'}, export_csv_msort_(P);
     case {'activity', 'plot-activity'}, plot_activity_(P);    
@@ -1969,8 +1989,13 @@ end %func
 %--------------------------------------------------------------------------
 % 9/26/17 JJJ: Created and tested
 function vcFile_new = subsDir_(vcFile, vcDir_new)
+% vcFile_new = subsDir_(vcFile, vcFile_copyfrom)
+% vcFile_new = subsDir_(vcFile, vcDir_copyfrom)
+
 % Substitute dir
-[vcDir_new,~,~] = fileparts(vcDir_new);
+if isempty(vcDir_new), vcFile_new = vcFile; return; end
+
+[vcDir_new,~,~] = fileparts(vcDir_new); % extrect directory part. danger if the last filesep() doesn't exist
 [vcDir, vcFile, vcExt] = fileparts(vcFile);
 vcFile_new = fullfile(vcDir_new, [vcFile, vcExt]);
 end % func
@@ -3797,6 +3822,7 @@ csCmd = {...
     'jrc3 probe sample.prb', ...
     'jrc3 makeprm sample_list.txt sample.prb', ...
     'jrc3 makeprm sample.bin sample.prb', ...        
+    'jrc3 makeprm sample.bin sample.prb default.prm c:/temp/', ...     
     'jrc3 probe sample_sample.prm', ...    
     'jrc3 import-lfp sample_sample.prm', ...    
     'jrc3 traces-lfp sample_sample.prm', ...    
@@ -4091,6 +4117,7 @@ uimenu(mh_proj, 'Label', 'ppca', 'Callback', @(h,e)proj_view_(h), ...
 mh_plot = uimenu(hFig,'Label','Plot'); 
 uimenu(mh_plot, 'Label', 'All unit firing rate vs. aux. input', 'Callback', @(h,e)plot_aux_rate_);
 uimenu(mh_plot, 'Label', 'Selected unit firing rate vs. aux. input', 'Callback', @(h,e)plot_aux_rate_(1));
+% uimenu(mh_plot, 'Label', 'All unit firing rate vs. aux. input (zsperry)', 'Callback', @(h,e)plot_aux_rate_zsperry_());
 
 mh_info = uimenu(hFig,'Label','','Tag', 'mh_info'); 
 uimenu(mh_info, 'Label', 'Annotate unit', 'Callback', @unit_annotate_);
@@ -6523,10 +6550,11 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function export_csv_(varargin)
+function vcFile_csv = export_csv_(varargin)
 % export_csv_(hObject, event)
 % if nargin<2, 
 fZeroIndex = 0; %zero-based index export (disable to export as matlab index starting from 1)
+vcFile_csv = '';
 
 % S0 = get(0, 'UserData');
 if nargin==2
@@ -7392,7 +7420,7 @@ else
     csText = arrayfun(@(i)sprintf('%d', i), 1:nSites, 'UniformOutput', 0);
 end
 hText = text(mrSiteXY(:,1), mrSiteXY(:,2), csText, ...
-    'VerticalAlignment', 'top', 'HorizontalAlignment', 'left');
+    'VerticalAlignment', 'bottom', 'HorizontalAlignment', 'left');
 axis_([min(mrPatchX(:)), max(mrPatchX(:)), min(mrPatchY(:)), max(mrPatchY(:))]);
 title('Site# / Chan# (zoom: wheel; pan: hold wheel & drag)');
 % vrPos = get(gcf, 'Position');
@@ -8846,59 +8874,59 @@ end
 end %func
 
 
-%--------------------------------------------------------------------------
-function P = file2struct_(vcFile_file2struct)
-% Run a text file as .m script and result saved to a struct P
-% _prm and _prb can now be called .prm and .prb files
-
-try 
-    P = file2struct__(vcFile_file2struct); % new version
-catch
-    P = file2struct_1_(vcFile_file2struct); % old version
-end
-% if isempty(P)
-%     copyfile(vcFile_file2struct, 'temp_eval.m', 'f');
-%     try
-%         eval('temp_eval.m');
-%     catch
-%         disp(lasterr());
-%     end
+% %--------------------------------------------------------------------------
+% function P = file2struct_(vcFile_file2struct)
+% % Run a text file as .m script and result saved to a struct P
+% % _prm and _prb can now be called .prm and .prb files
+% 
+% try 
+%     P = file2struct__(vcFile_file2struct); % new version
+% catch
+%     P = file2struct_1_(vcFile_file2struct); % old version
 % end
-end %func
+% % if isempty(P)
+% %     copyfile(vcFile_file2struct, 'temp_eval.m', 'f');
+% %     try
+% %         eval('temp_eval.m');
+% %     catch
+% %         disp(lasterr());
+% %     end
+% % end
+% end %func
 
 
 %--------------------------------------------------------------------------
-function P = file2struct_1_(vcFile_file2struct)
-if ~exist_file_(vcFile_file2struct)
-    fprintf(2, '%s does not exist.\n', vcFile_file2struct);
-    P = [];
-    return;
-end
-
-% load text file
-fid=fopen(vcFile_file2struct, 'r');
-csCmd = textscan(fid, '%s', 'Delimiter', '\n');
-fclose(fid);
-csCmd = csCmd{1};
-
-% parse command
-for iCmd=1:numel(csCmd)
-    try
-        vcLine1 = strtrim(csCmd{iCmd});
-        if isempty(vcLine1), continue; end
-        if find(vcLine1=='%', 1, 'first')==1, continue; end
-        iA = find(vcLine1=='=', 1, 'first');
-        if isempty(iA), continue; end            
-        iB = find(vcLine1=='(', 1, 'first');
-        if ~isempty(iB) && iB<iA, iA=iB; end
-        eval(vcLine1);
-        vcVar1 = strtrim(vcLine1(1:iA-1));
-        eval(sprintf('P.(vcVar1) = %s;', vcVar1));
-    catch
-        fprintf(2, lasterr);
-    end
-end %for
-end %func
+% function P = file2struct_1_(vcFile_file2struct)
+% if ~exist_file_(vcFile_file2struct)
+%     fprintf(2, '%s does not exist.\n', vcFile_file2struct);
+%     P = [];
+%     return;
+% end
+% 
+% % load text file
+% fid=fopen(vcFile_file2struct, 'r');
+% csCmd = textscan(fid, '%s', 'Delimiter', '\n');
+% fclose(fid);
+% csCmd = csCmd{1};
+% 
+% % parse command
+% for iCmd=1:numel(csCmd)
+%     try
+%         vcLine1 = strtrim(csCmd{iCmd});
+%         if isempty(vcLine1), continue; end
+%         if find(vcLine1=='%', 1, 'first')==1, continue; end
+%         iA = find(vcLine1=='=', 1, 'first');
+%         if isempty(iA), continue; end            
+%         iB = find(vcLine1=='(', 1, 'first');
+%         if ~isempty(iB) && iB<iA, iA=iB; end
+%         eval(vcLine1);
+%         vcVar1 = strtrim(vcLine1(1:iA-1));
+%         eval(sprintf('P.(vcVar1) = %s;', vcVar1));
+%     catch
+%         fprintf(2, lasterr);
+%     end
+% end %for
+% end %func
 
 
 %--------------------------------------------------------------------------
@@ -11207,8 +11235,8 @@ end %func
 %--------------------------------------------------------------------------
 function fCreatedDir = mkdir_(vcDir)
 % make only if it doesn't exist. provide full path for dir
-fCreatedDir = ~exist(vcDir, 'dir');
-if fCreatedDir
+fCreatedDir = exist_dir_(vcDir);
+if ~fCreatedDir
     try
         mkdir(vcDir); 
     catch
@@ -12907,7 +12935,11 @@ tlim_bin = P.tlim;
 
 % Open file
 fprintf('Opening %s\n', vcFile_bin);
-[fid_bin, nBytes_bin] = fopen_(vcFile_bin, 'r');
+[fid_bin, nBytes_bin, header_offset] = fopen_(vcFile_bin, 'r');
+if P.header_offset ~= header_offset && header_offset > 0
+    P.header_offset = header_offset;
+    set0_(P); % update header_offset for .ns5 format
+end
 if isempty(fid_bin), fprintf(2, '.bin file does not exist: %s\n', vcFile_bin); return; end
 nSamples_bin = floor(nBytes_bin / bytesPerSample_(P.vcDataType) / P.nChans);
 nLoad_bin = min(round(diff(tlim_bin) * P.sRateHz), nSamples_bin);
@@ -15666,16 +15698,19 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function P = file2struct__(vcFile_file2struct)
+function P = file2struct_(vcFile_file2struct)
 % James Jun 2017 May 23
 % Run a text file as .m script and result saved to a struct P
 % _prm and _prb can now be called .prm and .prb files
-
+P = []; 
+if ~exist_file_(vcFile_file2struct), return; end
+    
 % load text file. trim and line break. remove comments.  replace 
 csLines_file2struct = file2lines_(vcFile_file2struct);
 csLines_file2struct = strip_comments_(csLines_file2struct);
-if isempty(csLines_file2struct), P=[]; return; end
+if isempty(csLines_file2struct), return; end
 
+P = struct();
 try
     eval(cell2mat(csLines_file2struct'));
 
@@ -16109,10 +16144,13 @@ end %func
 % 7/31/17 JJJ: Handle wild-card in makeprm case
 % 7/25/17 Create a parameter file from a meta file
 % Probe file can be interpreted from SpikeGLX meta file.
-function [P, vcPrompt] = create_prm_file_(vcFile_bin, vcFile_prb, vcFile_template, fAsk)
+function [P, vcPrompt] = create_prm_file_(vcFile_bin, vcFile_prb, vcFile_template, fAsk, vcDir_prm)
+% vcDir_prm: location of .prm file to be created
 if nargin<2, vcFile_prb = ''; end
 if nargin<3, vcFile_template = ''; end
 if nargin<4, fAsk = 1; end
+if nargin<5, vcDir_prm = ''; end % use vcFile_bin file location
+vcDir_prm = format_dir_(vcDir_prm);
 
 [P, vcPrompt] = deal([]); 
 P0 = file2struct_(jrcpath_(read_cfg_('default_prm')));  %P = defaultParam();
@@ -16183,7 +16221,7 @@ end
 
 % Assign prm file name
 [~,vcPostfix,~] = fileparts(vcFile_prb);
-P.vcFile_prm = subsFileExt_(vcFile_bin, ['_', vcPostfix, '.prm']);
+P.vcFile_prm = subsDir_(subsFileExt_(vcFile_bin, ['_', vcPostfix, '.prm']), vcDir_prm);
 P.probe_file = vcFile_prb;
 try
     S_prb = file2struct_(find_prb_(vcFile_prb));
@@ -16212,18 +16250,34 @@ P = struct_merge_(P, P_meta);
 P = struct_merge_(P, file_info_(vcFile_bin));
 P.duration_file = P.nBytes_file / bytesPerSample_(P.vcDataType) / P.nChans / P.sRateHz; %assuming int16
 P.version = jrc_version_();
+
+% Write to prm file
 try
     copyfile(jrcpath_(read_cfg_('default_prm')), P.vcFile_prm, 'f');
 catch
     fprintf(2, 'Invalid path: %s\n', P.vcFile_prm);
     return;
 end
-
-% Write to prm file
 edit_prm_file_(P, P.vcFile_prm);
 vcPrompt = sprintf('Created a new parameter file\n\t%s', P.vcFile_prm);
 disp(vcPrompt);
 if fAsk, edit_(P.vcFile_prm); end % Show settings file
+end %func
+
+
+%--------------------------------------------------------------------------
+function vcDir = format_dir_(vcDir, fCreate_dir)
+% Append the filesep at the end of the directory
+% create a directory if it doesn't exist (default)
+
+if nargin<2, fCreate_dir = 1; end
+
+% apple vs PC directory format
+if isempty(vcDir), return; end
+if vcDir(end) ~= '\' && vcDir(end) ~= '/'
+    vcDir(end+1) = filesep();
+end
+if fCreate_dir, mkdir_(vcDir); end
 end %func
 
 
@@ -16295,9 +16349,26 @@ end %func
 
 
 %--------------------------------------------------------------------------
-% 10/11/17 JJJ: documentation and testing
-function S_out = call_(vcFunc, cell_Input, nOutput)
-S_out = test_(vcFunc, cell_Input, nOutput, 0, 0);
+% 4/17/18 JJJ: documentation and testing
+function varargout = call_(vcFunc, cell_Input, nOutput)
+% S_out = call_(vcFunc, cell_Input, nOutput)
+% varargout = call_(vcFunc, cell_Input)
+
+if vcFunc(end) ~= '_', vcFunc = [vcFunc, '_']; end
+if nargin<3, nOutput = []; end
+if ~isempty(nOutput)
+    varargout{1} = test_(vcFunc, cell_Input, nOutput, 0, 0);
+else
+    nOutput = nargout();
+    S_out = test_(vcFunc, cell_Input, nOutput, 0, 0);
+    if isempty(S_out), varargout{1} = []; return; end % error occured
+    switch nOutput
+        case 1, varargout{1} = S_out.out1;
+        case 2, [varargout{1}, varargout{2}] = deal(S_out.out1, S_out.out2);
+        case 3, [varargout{1}, varargout{2}, varargout{3}] = deal(S_out.out1, S_out.out2, S_out.out3);
+        case 4, [varargout{1}, varargout{2}, varargout{3}, varargout{4}] = deal(S_out.out1, S_out.out2, S_out.out3, S_out.out4);
+    end %switch
+end
 end %func
 
 
@@ -16411,14 +16482,18 @@ end %func
 %--------------------------------------------------------------------------
 % 9/14/17 JJJ: supports custom template.prm file
 % 8/2/17 JJJ: Testing and documentation
-function [vcFile_prm, vcPrompt] = makeprm_(vcFile_bin, vcFile_prb, fAsk, vcFile_template)
+function [vcFile_prm, vcPrompt] = makeprm_(vcFile_bin, vcFile_prb, fAsk, vcFile_template, vcDir_prm)
 % Make a paramter file
 % vcFile_prm = makeprm_(vcFile_bin, vcFile_prb, fAsk, vcFile_template)
 % vcFile_prm = makeprm_(vcFile_bin, vcFile_template, fAsk)
+% vcDir_prm: directory to write prm file. All the output files will be
+% placed there.
+
 global fDebug_ui
 if isempty(vcFile_prb), vcFile_prb = ''; end
 if nargin<3, fAsk = 1; end
 if nargin<4, vcFile_template = ''; end
+if nargin<5, vcDir_prm = ''; end
 fOverwrite = 0;
 
 if fDebug_ui==1, fAsk = 0; end
@@ -16432,13 +16507,12 @@ if regexpi(vcFile_bin, '.rhs$') % INTAN RHS format
         vcFile_bin = rhs2bin_(vcFile_rhs); % also write vcFile_meta
         if isempty(vcFile_bin), fprintf(2, '%s: invalid format\n', vcFile_rhs); return; end
     end
-elseif regexpi(vcFile_bin, '.mda$') % MDA format
-    vcFile_mda = vcFile_bin;
-    vcFile_meta = mda2meta_(vcFile_mda, sRateHz); % write meta file for .mda
-    if regexpi(vcFile_prb, '.csv$')
-        vcFile_prb = csv2prb_(vcFile_prb); % geom.csv file
-    end
-%     vcFile_prm = vcFile_template; % write meta file based on .mda
+elseif regexpi(vcFile_bin, '.mda$') % MDA format (mountainlab)
+    fprintf(2, 'Use "makeprm-mda" command for .mda files.\n');
+    fprintf(2, '\tUsage: "jrc makeprm-mda myrecording.mda myprobe.csv myarg.txt tempdir myparam.prm"\n');
+    return;
+else
+    ;
 end
 
 set(0, 'UserData', []); %clear memory
@@ -16453,7 +16527,7 @@ elseif ~exist_file_(find_prb_(vcFile_prb))
     fprintf(2, '%s does not exist\n', vcFile_prb); return;
 end
 
-[P, vcPrompt] = create_prm_file_(vcFile_bin, vcFile_prb, vcFile_template, fAsk);   
+[P, vcPrompt] = create_prm_file_(vcFile_bin, vcFile_prb, vcFile_template, fAsk, vcDir_prm);   
 if isempty(P)
     [vcFile_prm, vcPrompt] = deal('');
     return;
@@ -16492,14 +16566,57 @@ end %func
 
 %--------------------------------------------------------------------------
 % JJJ 2018/03/29
-function vcFile_meta = mda2meta_(vcFile_mda, sRateHz)
-if nargin<2, sRateHz = 30000; end
+function [vcFile_meta, vcFile_template] = mda2meta_(vcFile_mda, vcFile_txt)
+% vcFile_txt: mountain lab param format
 
-% read mda header
+[vcFile_meta, vcFile_template, S_txt] =  deal([]);
+if isempty(vcFile_txt)
+    S_txt = struct('samplerate', 30000, 'detect_sign', 1);
+else
+    if ~exist_file_(vcFile_txt)
+        disperr_('vcFile_prm does not exist: %s', vcFile_txt);
+        return;
+    end        
+end
+if ~isempty(regexpi(vcFile_txt, '.prm$')) % jrclust format
+    S_prm = file2struct_(vcFile_txt); % parse matlab file format
+    sRateHz = get_set_(S_prm, 'sRateHz', 30000);
+    vcFile_template = vcFile_txt; % already written
+else % mountainlab fromat
+    if ~isempty(S_txt), S_txt = text2struct_(vcFile_txt); end    
+    sRateHz = get_set_(S_txt, 'samplerate', 30000);     
+    csLines = {};
+    
+    fInverse_file = ifeq_(get_set_(S_txt, 'detect_sign', 1)>0, 1, 0);
+    csLines{end+1} = sprintf('fInverse_file = %0.0f;', fInverse_file);
+    
+    blank_thresh = get_set_(S_text, 'mask_out_artifacts', []);
+    if strcmpi(blank_thresh, 'true'), blank_thresh = 10; end
+    if strcmpi(blank_thresh, 'false'), blank_thresh = []; end
+    csLines{end+1} = sprintf('blank_thresh = %d;', blank_thresh);
+    
+    maxDist_site_spk_um = get_set_(S_txt, 'adjacency_radius', 75);
+    maxDist_site_um = maxDist_site_spk_um * 2/3;
+    maxDist_site_merge_um = maxDist_site_spk_um * 0.4667;
+    csLines{end+1} = sprintf('maxDist_site_spk_um = %f;', maxDist_site_spk_um);
+    csLines{end+1} = sprintf('maxDist_site_um = %f;', maxDist_site_um);
+    csLines{end+1} = sprintf('maxDist_site_merge_um = %f;', maxDist_site_merge_um);
+    
+    freq_min = get_set_(S_txt, 'freq_min', []);
+    freq_max = get_set_(S_txt, 'freq_max', []);
+    if ~isempty(freq_min) && ~isempty(freq_max)
+        csLines{end+1} = sprintf('freqLim = [%0.1f, %0.1f];', freq_min, freq_max);
+    end
+
+    % Write template file
+    vcFile_template = strrep(vcFile_mda, '.mda', '_template.prm');
+    cellstr2file_(vcFile_template, csLines);
+end
 S_mda = readmda_header_(vcFile_mda);
 nChans = S_mda.dimm(1);
 vcDataType = S_mda.vcDataType;
 
+% Write meta file
 vcFile_meta = strrep(vcFile_mda, '.mda', '.meta');
 csLines = {};
 csLines{end+1} = sprintf('sRateHz=%0.0f', sRateHz);
@@ -16507,6 +16624,7 @@ csLines{end+1} = sprintf('nChans=%d', nChans);
 csLines{end+1} = 'scale=0.195';
 csLines{end+1} = sprintf('vcDataType=%s', vcDataType);
 cellstr2file_(vcFile_meta, csLines);
+
 end %func
 
 
@@ -16700,15 +16818,16 @@ end %func
 
 %--------------------------------------------------------------------------
 % 8/2/17 JJJ: Documentation and test
-function S = text2struct_(vcFname)
+function S = text2struct_(vcFile)
 % Convert text file to struct
+S = struct();
+if ~exist_file_(vcFile), return; end
 
-fid = fopen(vcFname, 'r');
+fid = fopen(vcFile, 'r');
 mcFileMeta = textscan(fid, '%s%s', 'Delimiter', '=',  'ReturnOnError', false);
 fclose(fid);
 csName = mcFileMeta{1};
 csValue = mcFileMeta{2};
-S = struct();
 for i=1:numel(csName)
     vcName1 = csName{i};
     if vcName1(1) == '~', vcName1(1) = []; end
@@ -18341,8 +18460,30 @@ end
 
 
 %--------------------------------------------------------------------------
+% 4/10/18 JJJ: Using openNSx_jjj.m (Blackrock library)
+function [mnWav, P, S_nsx] = load_nsx_(vcFile_nsx)
+
+[S_nsx, fid] = openNSx_jjj(vcFile_nsx); % nChans, nSamples, header_offset
+
+nSamples = S_nsx.nSamples;
+nChans = S_nsx.nChans
+uV_per_bit = double(S_nsx.ElectrodesInfo(1).MaxAnalogValue) / ...
+    double(S_nsx.ElectrodesInfo(1).MaxDigiValue);
+P = struct('vcDataType', 'int16', 'nChans', nChans, ...
+    'uV_per_bit', uV_per_bit, 'sRateHz', S_nsx.MetaTags.SamplingFreq);
+
+fprintf('Loading %s...', vcFile_nsx); t_load = tic;
+mnWav = fread(fid, [nChans, nSamples], '*int16');  
+fclose(fid);
+fprintf('took %0.1fs\n', toc(t_load));
+
+if nargout==0, assignWorkspace_(mnWav, P, S_nsx); end
+end % func
+
+
+%--------------------------------------------------------------------------
 % 9/19/17 JJJ: Created for SPARC
-function [mnWav, hFile, P] = load_nsx_(vcFile_nsx)
+function [mnWav, hFile, P] = load_nsx__(vcFile_nsx)
 addpath('./neuroshare/');
 [ns_RESULT, hFile] = ns_OpenFile(vcFile_nsx);
 % [ns_RESULT, nsFileInfo] = ns_GetFileInfo(hFile);
@@ -18490,10 +18631,10 @@ if ~exist_file_(vcFile_aux), return; end
 switch lower(vcExt_aux)
     case '.ns2'
         iChan_aux = get_set_(P, 'iChan_aux', 1);
-        [mnWav_aux, hFile_aux, S_aux] = load_nsx_(vcFile_aux);
-        scale_aux = hFile_aux.Entity(iChan_aux).Scale * P.vrScale_aux;
-        vrWav_aux = single(mnWav_aux(iChan_aux,:)') * scale_aux;        
-        sRateHz_aux = S_aux.sRateHz;
+        [mnWav_aux, P_] = load_nsx_(vcFile_aux);
+%         scale_aux = hFile_aux.Entity(iChan_aux).Scale * P.vrScale_aux;
+        vrWav_aux = single(mnWav_aux(iChan_aux,:)') * P_.uV_per_bit;        
+        sRateHz_aux = P_.sRateHz;
     case '.mat'
         S_aux = load(vcFile_aux);
         csField_aux = fieldnames(S_aux);
@@ -18558,10 +18699,40 @@ end %func
 
 
 %--------------------------------------------------------------------------
-% 9/22/17 JJJ: Created for SPARC
+% 4/10/18 JJJ: Handle the new ns5 format
 function [fid, nBytes, header_offset] = fopen_nsx_(vcFile_nsx)
+% addpath('./neuroshare/');
+try
+    [S_nsx, fid] = openNSx_jjj(vcFile_nsx); % nChans, nSamples, header_offset
+catch
+    disperr_();
+end
+% [ns_RESULT, nsFileInfo] = ns_GetFileInfo(hFile);
+% vlAnalog_chan= strcmpi({hFile.Entity.EntityType}, 'Analog');
+% nSamples = hFile.TimeSpan / hFile.FileInfo.Period;
+% nChans = sum(vlAnalog_chan);
+nBytes = S_nsx.nSamples * S_nsx.nChans * 2;
+header_offset = ftell(fid);
+% fid = hFile.FileInfo.FileID;
+
+% if ismember(hFile.FileInfo.FileTypeID, {'NEURALCD', 'NEUCDFLT'})
+%     header_offset = hFile.FileInfo.BytesHeaders + 9;
+% else
+%     header_offset = hFile.FileInfo.BytesHeaders;
+% end
+% fseek(fid, header_offset, -1);
+end %func
+
+
+%--------------------------------------------------------------------------
+% 9/22/17 JJJ: Created for SPARC
+function [fid, nBytes, header_offset] = fopen_nsx__(vcFile_nsx)
 addpath('./neuroshare/');
-[ns_RESULT, hFile] = ns_OpenFile(vcFile_nsx);
+try
+    [ns_RESULT, hFile] = ns_OpenFile(vcFile_nsx);
+catch
+    disperr_();
+end
 % [ns_RESULT, nsFileInfo] = ns_GetFileInfo(hFile);
 vlAnalog_chan= strcmpi({hFile.Entity.EntityType}, 'Analog');
 nSamples = hFile.TimeSpan / hFile.FileInfo.Period;
@@ -18619,8 +18790,8 @@ end %func
 % 9/29/17 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcVer_used] = jrc_version_(vcFile_prm)
 if nargin<1, vcFile_prm = ''; end
-vcVer = 'v3.2.7';
-vcDate = '3/20/2018';
+vcVer = 'v3.2.8';
+vcDate = '4/20/2018';
 vcVer_used = '';
 if nargout==0
     fprintf('%s (%s) installed\n', vcVer, vcDate);
@@ -18710,7 +18881,11 @@ end %func
 %--------------------------------------------------------------------------
 % 11/5/17 JJJ: Created
 function flag = exist_dir_(vcDir)
-flag = exist(vcDir, 'dir') == 7;
+if isempty(vcDir)
+    flag = 0;
+else
+    flag = exist(vcDir, 'dir') == 7;
+end
 end %func
 
 
@@ -20091,6 +20266,245 @@ end
 cellstr2file_(vcFile, csLines);
 end %func
 
+
+%--------------------------------------------------------------------------
+function caim_(vcFile_prm, vcArg2, vcArg3)
+% calcium imaging
+% if isempty(vcFile_tif)
+%     vcFile_tif='D:\Dropbox\shepardlab\BISC\VGlut1Cre_Ai148_prism_goldDevice_20180305_008.tif';
+% end
+if regexpi(vcFile_prm, '.prm$')
+    P = file2struct_(vcFile_prm);
+    P.P_jrc = file2struct_(P.vcFile_prm);
+elseif regexpi(vcFile_prm, '.tif$')
+    P = struct();
+    P.vcFile_tif = vcFile_prm;
+end
+P.nSpatialBin = get_set_(P, 'nSpatialBin', 2);
+P.nTemporalBin = get_set_(P, 'nTemporalBin', 1);
+P.thresh_mad = get_set_(P, 'thresh_mad', 6);
+P.thresh_quantile = get_set_(P, 'thresh_quantile', .9);
+P.iChan_sync_rhs = get_set_(P, 'iChan_sync_rhs', 1);
+
+% movie processing
+trImg = read_tif(P.vcFile_tif);
+[trImg_21, mrImg_21] = mov_norm(trImg, P.nSpatialBin, P.nTemporalBin, 1, 1);
+mrImg_roi = mean(trImg_21 > P.thresh_mad, 3);
+thresh_roi = quantile(mrImg_roi(:), P.thresh_quantile);
+mlMask = mrImg_roi > thresh_roi;
+mlMask = imopen(mlMask, strel('disk',1));
+
+% ROI analysis
+[~, mrImg_20] = mov_norm(trImg, P.nSpatialBin, 0, 1, 1);
+[img_label, nClu] = bwlabel(mlMask, 4); % 4-connected components
+vS_region_clu = regionprops(img_label, 'Centroid');
+mrCentroid_clu = arrayfun(@(x)x.Centroid, vS_region_clu, 'UniformOutput', 0);
+nT = size(mrImg_20,1);
+mrV_clu = zeros(nT, nClu, 'like', mrImg_20);
+for iClu = 1:nClu
+    ml_ = img_label == iClu;
+    mrV_clu(:,iClu) = mean(mrImg_20(:,ml_(:)),2);
+end
+mrV_clu = gather_(mrV_clu);
+
+try
+    % Load rhs file
+    vcFile_rhs = strrep(P.P_jrc.vcFile, '.bin', '.rhs');
+    if ~exist_file_(vcFile_rhs)
+        vcFile_rhs = subsDir_(vcFile_rhs, vcFile_prm);
+    end
+    S_rhs = import_rhs(vcFile_rhs);
+
+    % Extract sync timing
+    vrSync_rhs = S_rhs.board_adc_data(P.iChan_sync_rhs,:);
+    thresh_sync = max(vrSync_rhs)/2 + min(vrSync_rhs)/2;
+    viSync_rhs = find(diff(vrSync_rhs > thresh_sync)>0); % rising edge
+
+    % Extract stim info from the file and save the stimulus time series
+    mrStim_rhs = S_rhs.stim_data;
+    vpp_stim_rhs = max(max(mrStim_rhs)) - min(min(mrStim_rhs));
+    vrVpp_time_stim_rhs = max(mrStim_rhs) - min(mrStim_rhs);
+    vrVpp_chan_stim_rhs = max(mrStim_rhs,[],2) - min(mrStim_rhs,[],2);
+    vcFile_stim_rhs = strrep(vcFile_rhs, '.rhs', '_stim.bin');
+    write_bin_(vcFile_stim_rhs, mrStim_rhs);
+    dimm_stim_rhs = size(mrStim_rhs);
+    S_rhs = rmfield(S_rhs, ...
+        {'amplifier_data', 'stim_data', 'board_dac_data', 't', 'board_adc_data'});
+catch
+    disperr_('.rhs process error');
+    [viSync_rhs, vcFile_stim_rhs, S_rhs] = deal([]);
+end
+
+% export image analysis to S_caim functional imaging (fim)
+S_caim = makeStruct_(mrV_clu, mrCentroid_clu, vS_region_clu, img_label, ...
+    viSync_rhs, vcFile_stim_rhs, dimm_stim_rhs, ...
+    vpp_stim_rhs, vrVpp_chan_stim_rhs, vrVpp_time_stim_rhs, S_rhs, P, vcFile_prm);
+write_struct_(strrep(vcFile_prm, '.prm', '_caim.mat'), S_caim);
+
+% show image and traces
+% plot_caim_(S_caim);
+
+end %func
+
+
+%--------------------------------------------------------------------------
+function plot_caim_(vcArg1)
+if isstruct(vcArg1)
+    S_caim = vcArg1;
+    vcFile_prm = S_caim.vcFile_prm;
+else
+    vcFile_prm = vcArg1;
+    vcFile_caim = strrep(vcFile_prm, '.prm', '_caim.mat');
+    S_caim = load_(vcFile_caim);
+end
+
+nClu = size(S_caim.mrV_clu,2);
+% sRateHz = S_caim.S_
+% fps = diff(S_caim.viSync_rhs([1,end])) / (numel(S_caim.viSync_rhs)-1) / sRateHz;
+figure; set(gcf, 'Name', vcFile_prm, 'Color','w');
+subplot(121); 
+imagesc(S_caim.img_label);
+
+axis square;
+for iClu = 1:nClu
+    ml_ = mi11 == iClu;
+    mrV_clu(:,iClu) = sum(S_caim.img_label(:,ml_(:)),2);
+    try
+        xy_ = S_region(iClu).Centroid;
+        text(xy_(1), xy_(2), sprintf('%d',iClu), 'Color', [1 0 1]);
+    end
+end
+
+subplot(122);
+multiplot([],10,[], S_caim.mrV_clu, 1:nClu);
+xlabel('Frame # (FPS=4.08)'); ylabel('Cell #'); grid on;
+ylim([0 nClu+1]);
+set(gca,'YTick', 1:nClu);
+axis square;
+% set(gcf,'Name',vcFile_tif);
+
+end %func
+
+
+%--------------------------------------------------------------------------
+function [mrRate_clu, sRateHz_rate] = firingrate_clu_(S0, viClu, nSamples, filter_sec_rate)
+if nargin<2, viClu = []; end
+if nargin<3, nSamples = []; end
+if nargin<4, filter_sec_rate = []; end
+[P, S_clu] = deal(S0.P, S0.S_clu);
+
+if isempty(viClu), viClu = 1:S_clu.nClu; end
+sRateHz_rate = get_set_(P, 'sRateHz_rate', 1000);
+filter_sec_rate = get_set_(P, 'filter_sec_rate', 1);
+nFilt = round(sRateHz_rate * filter_sec_rate / 2);   
+filter_shape_rate = lower(get_set_(P, 'filter_shape_rate', 'triangle'));
+switch filter_shape_rate
+    case 'triangle'
+        vrFilt = ([1:nFilt, nFilt-1:-1:1]'/nFilt*2/filter_sec_rate);
+    case 'rectangle'
+        vrFilt = (ones(nFilt*2, 1) / filter_sec_rate);
+%     case 'interval3'
+%         1/2 1/3 1/6. interval history
+end %switch
+vrFilt = single(vrFilt);
+
+if isempty(nSamples), nSamples = round(P.duration_file * sRateHz_rate); end
+mrRate_clu = zeros([nSamples, numel(viClu)], 'single');
+for iClu1 = 1:numel(viClu)
+    iClu = viClu(iClu1);
+    viSpk_clu = S_clu.cviSpk_clu{iClu};
+    viTime_clu = S0.viTime_spk(viSpk_clu);           
+    viTime_ = round(double(viTime_clu) / P.sRateHz * sRateHz_rate);
+    viTime_ = max(min(viTime_, nSamples), 1);
+    mrRate_clu(viTime_, iClu1) = 1;        
+    mrRate_clu(:,iClu1) = conv(mrRate_clu(:,iClu1), vrFilt, 'same');
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+function vcFile_prm = makeprm_mda_(vcFile_mda, vcFile_prb, vcArg_txt, vcDir_prm, vcFile_template)
+% vcFile_prm = makeprm_mda_() % test mode
+% vcFile_prm = makeprm_mda_(vcFile_mda, vcFile_prb)
+% vcFile_prm = makeprm_mda_(vcFile_mda, vcFile_prb, vcArg_txt, vcDir_prm, vcFile_template)
+% myrecording.mda myprobe.csv myarg.txt tempdir myparam.prm
+vcFile_prm = '';
+
+if strcmpi(vcFile_mda, 'test')
+    csTest = {...
+        'jrc makeprm-mda D:\mountainsort\K15\raw.mda tetrode.prb', ...
+        'jrc makeprm-mda D:\mountainsort\K15\raw.mda tetrode.prb D:\mountainsort\K15\params.txt', ...
+        'jrc makeprm-mda D:\mountainsort\K15\raw.mda tetrode.prb D:\mountainsort\K15\params.txt c:\temp\', ...
+        'jrc makeprm-mda D:\mountainsort\K15\raw.mda tetrode.prb D:\mountainsort\K15\params.txt c:\temp\ tetrode_template.prm'};
+    for iTest = 1:numel(csTest)
+        try
+            fprintf('\n----------------\nRunning test %d: %s\n', iTest, csTest{iTest});
+            eval(csTest{iTest});
+        catch
+            fprintf(2, '\ttest %d failed: %s\n', iTest, csTest{iTest});
+            disperr_(lasterr());
+        end
+    end
+    return;
+end
+
+if nargin<3, vcArg_txt = ''; end
+if nargin<4, vcDir_prm = ''; end
+if nargin<5, vcFile_template = ''; end
+
+% create .meta file
+% vcFile_meta = mda2meta_(vcFile_mda, vcArg_txt); % write meta file for .mda
+S_mda = readmda_header_(vcFile_mda);
+P = struct('nChans', S_mda.dimm(1), 'vcDataType', S_mda.vcDataType, ...
+    'header_offset', S_mda.nBytes_header, 'vcFile', vcFile_mda);
+
+S_txt = text2struct_(vcArg_txt);
+P.sRateHz = get_set_(S_txt, 'samplerate', 30000);     
+P.fInverse_file = ifeq_(get_set_(S_txt, 'detect_sign', 1)>0, 1, 0);
+mask_out_artifacts = get_set_(S_txt, 'mask_out_artifacts', []);
+if strcmpi(mask_out_artifacts, 'true')
+    P.blank_thresh = 10; 
+else
+    P.blank_thresh = []; 
+end    
+P.maxDist_site_spk_um = get_set_(S_txt, 'adjacency_radius', 75);
+P.maxDist_site_um = P.maxDist_site_spk_um * 2/3;
+P.maxDist_site_merge_um = P.maxDist_site_spk_um * 0.4667;    
+freq_min = get_set_(S_txt, 'freq_min', []);
+freq_max = get_set_(S_txt, 'freq_max', []);
+if ~isempty(freq_min) && ~isempty(freq_max)
+    P.freqLim = [freq_min, freq_max]; 
+end
+
+% create prb file from geom.csv file
+if regexpi(vcFile_prb, '.csv$'), vcFile_prb = csv2prb_(vcFile_prb); end
+P.probe_file = vcFile_prb;
+
+% create a parameter file name
+[~,vcPostfix,~] = fileparts(vcFile_prb);
+vcFile_prm = subsFileExt_(vcFile_mda, ['_', vcPostfix, '.prm']);
+vcFile_prm = subsDir_(vcFile_prm, format_dir_(vcDir_prm)); % write meta file based on .mda
+P.vcFile_prm = vcFile_prm;
+
+% Overload with template and default
+P0 = file2struct_(jrcpath_(read_cfg_('default_prm')));  %P = defaultParam();
+P0 = struct_merge_(P0, file2struct_(vcFile_template)); 
+P = struct_merge_(P0, P);
+P.duration_file = S_mda.dimm(2) / P.sRateHz; %assuming int16
+P.version = jrc_version_();
+
+% Write to prm file
+try
+    copyfile(jrcpath_(read_cfg_('default_prm')), P.vcFile_prm, 'f');
+catch
+    fprintf(2, 'Invalid path: %s\n', P.vcFile_prm);
+    return;
+end
+edit_prm_file_(P, P.vcFile_prm);
+disp(sprintf('Created a new parameter file\n\t%s', P.vcFile_prm));
+edit_(P.vcFile_prm);
+set0_(P);
+end %func
 
 %     case 'o' %overlap waveforms across sites
 %         hFig_temp = figure; hold on;
