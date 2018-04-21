@@ -1,0 +1,7 @@
+probe_file = 'rhs32.prb';
+blank_thresh = 10;
+vcFilter = 'bandpass';
+freqLim = [300 3000];
+fft_thresh = 10;
+maxDist_site_um = 60;
+maxDist_site_spk_um = 80;
