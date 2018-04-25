@@ -20460,8 +20460,13 @@ P = struct('nChans', S_mda.dimm(1), 'vcDataType', S_mda.vcDataType, ...
 
 S_txt = text2struct_(vcArg_txt);
 prm_template_name = get_set_(S_txt, 'prm_template_name', []);
-if isempty(vcFile_template) && ~isempty(prm_template_name)    
-    vcFile_template = jrcpath_(prm_template_name);
+if isempty(vcFile_template)
+    if ~isempty(prm_template_name)    
+        vcFile_template = jrcpath_(prm_template_name);
+        assert_(exist_file_(vcFile_template), 'template file does not exist.');
+    end
+else
+    assert_(exist_file_(vcFile_template), 'prm file does not exist.');
 end
 P.sRateHz = get_set_(S_txt, 'samplerate', 30000);     
 P.fInverse_file = ifeq_(get_set_(S_txt, 'detect_sign', 1)>0, 1, 0);
