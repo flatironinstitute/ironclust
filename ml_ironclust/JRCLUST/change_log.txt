@@ -2,6 +2,11 @@
 J. James Jun
 
 --------------------------------------------------------------------
+[2019/5/3: v3.2.9: Clustering using CPU]
+GPU is optional. Parallel computing toolbox is not necessary.
+Set fGpu=0 to disable GPU use. If GPU processing fails, CPU wlil be automatically used
+for clustering.
+
 [2019/4/20: v3.2.8: mda support added (mountainlab)]
 Output directory option added to "makeprm" command
   jrc makeprm myrecording.bin myprobe.prb mytemplate.prm myoutput_dir

@@ -2286,7 +2286,7 @@ vrDc2_site = zeros(nSites, 1, 'single');
 nTime_clu = get_set_(P, 'nTime_clu', 1);
 P.nTime_clu = nTime_clu;
 P.dc_subsample = 1000; 
-P.fGpu = 1;
+% P.fGpu = 1; % disabled 2018/04/30
 
 % clear memory
 cuda_rho_();
@@ -2308,8 +2308,10 @@ end
 fprintf('Calculating Rho\n\t'); t1=tic;
 for iSite = 1:nSites
     [mrFet12_, viSpk12_, n1_, n2_, viiSpk12_ord_] = fet12_site_(trFet_spk, S0, P, iSite, vlRedo_spk);    
-    if isempty(mrFet12_), continue; end        
-    [mrFet12_, viiSpk12_ord_] = multifun_(@gpuArray_, mrFet12_, viiSpk12_ord_);
+    if isempty(mrFet12_), continue; end 
+    if P.fGpu
+        [mrFet12_, viiSpk12_ord_] = multifun_(@gpuArray_, mrFet12_, viiSpk12_ord_);
+    end
     if isempty(dc2)
         dc2_ = compute_dc2_(mrFet12_, viiSpk12_ord_, n1_, n2_, P); % Compute DC in CPU
     else
@@ -2334,8 +2336,9 @@ for iSite = 1:nSites
     [mrFet12_, viSpk12_, n1_, n2_, viiSpk12_ord_] = fet12_site_(trFet_spk, S0, P, iSite, vlRedo_spk);
     if isempty(mrFet12_), continue; end    
     viiRho12_ord_ = rankorder_(vrRho(viSpk12_), 'descend');    
-    [mrFet12_, viiRho12_ord_, viiSpk12_ord_] = ...
-        multifun_(@gpuArray_, mrFet12_, viiRho12_ord_, viiSpk12_ord_);
+    if P.fGpu
+        [mrFet12_, viiRho12_ord_, viiSpk12_ord_] = multifun_(@gpuArray_, mrFet12_, viiRho12_ord_, viiSpk12_ord_);
+    end
     try
         [vrDelta_, viNneigh_] = cuda_delta_(mrFet12_, viiSpk12_ord_, viiRho12_ord_, n1_, n2_, vrDc2_site(iSite), P);
         [vrDelta_, viNneigh_] = gather_(vrDelta_, viNneigh_);
@@ -2418,14 +2421,17 @@ end
 viiSpk1_ord= viiSpk12_ord(1:n1)';
 mlKeep12_ = abs(bsxfun(@minus, viiSpk12_ord, viiSpk1_ord)) <= dn_max;
 if FLAG_FIXN == 0
-    vrRho1 = sum(eucl2_dist_(mrFet12, mrFet12(:,1:n1)) < dc2 & mlKeep12_) - 1; %do not include self    
+    vrRho1 = sum((eucl2_dist_(mrFet12, mrFet12(:,1:n1)) < dc2) & mlKeep12_); %do not include self    
     vrRho1 = single(vrRho1 ./ sum(mlKeep12_));
 else
     mlKeep12_(1:min(2*dn_max+1,n12), viiSpk1_ord <= min(dn_max,n1)) = 1;
     mlKeep12_(max(n12-2*dn_max,1):n12,  viiSpk1_ord >= max(n1-dn_max,1)) = 1;
-    vrRho1 = sum(eucl2_dist_(mrFet12, mrFet12(:,1:n1)) < dc2 & mlKeep12_) - 1; %do not include self    
+    vrRho1 = sum((eucl2_dist_(mrFet12, mrFet12(:,1:n1)) < dc2) & mlKeep12_) - 1; %do not include self    
     vrRho1 = single(vrRho1 ./ (2*dn_max));
 end
+% [vrRho1_cpu] = vrRho1;
+% vrRho1_gpu = feval(CK, vrRho1, gpuArray(mrFet12), gpuArray(viiSpk12_ord), vnConst, dc2);
+% [vrRho1_gpu] = gather(vrRho1_gpu);
 end
 
 
@@ -2438,6 +2444,8 @@ if isempty(nC_), nC_ = 0; end
 [nC, n12] = size(mrFet12); %nc is constant with the loop
 dn_max = int32(round((n1+n2) / P.nTime_clu));
 nC_max = get_set_(P, 'nC_max', 45);
+SINGLE_INF = 3.402E+38;
+
 if P.fGpu
     try
         if (nC_ ~= nC) % create cuda kernel
@@ -2458,12 +2466,18 @@ if P.fGpu
         nC_ = 0;
     end
 end
-
 mrDist12_ = eucl2_dist_(mrFet12, mrFet12(:,1:n1));  %not sqrt
 mlRemove12_ = bsxfun(@ge, viiRho12_ord, viiRho12_ord(1:n1)') ...
     | abs(bsxfun(@minus, viiSpk12_ord, viiSpk12_ord(1:n1)')) > dn_max;
 mrDist12_(mlRemove12_) = nan;
 [vrDelta1, viNneigh1] = min(mrDist12_);
+vrDelta1 = sqrt(vrDelta1 / dc2);
+viNan = find(isnan(vrDelta1));
+viNneigh1(viNan) = viNan;
+vrDelta1(viNan) = sqrt(SINGLE_INF/dc2);
+% [vrDelta1_cpu, viNneigh1_cpu] = deal(vrDelta1, uint32(viNneigh1));
+% [vrDelta1_gpu, viNneigh1_gpu] = feval(CK, vrDelta1, viNneigh1, gpuArray(mrFet12), gpuArray(viiSpk12_ord), gpuArray(viiRho12_ord), vnConst, dc2);
+% [vrDelta1_gpu, viNneigh1_gpu] = deal(gather(vrDelta1_gpu), gather(viNneigh1_gpu));
 end
     
     
@@ -4912,7 +4926,7 @@ S_clu.nClu = nClu;
 viSite_spk = get0_('viSite_spk');
 % if isfield(S_clu, 'viSpk_shank'), viSite_spk = viSite_spk(S_clu.viSpk_shank); end
 % gviClu = gpuArray_(S_clu.viClu);
-% S_clu.cviSpk_clu = arrayfun(@(iClu)gather(find(gviClu==iClu)), 1:nClu, 'UniformOutput', 0);
+% S_clu.cviSpk_clu = arrayfun(@(iClu)gather_(find(gviClu==iClu)), 1:nClu, 'UniformOutput', 0);
 S_clu.cviSpk_clu = arrayfun(@(iClu)find(S_clu.viClu==iClu), 1:nClu, 'UniformOutput', 0);
 S_clu.vnSpk_clu = cellfun(@numel, S_clu.cviSpk_clu); 
 S_clu.viSite_clu = double(arrayfun(@(iClu)mode(viSite_spk(S_clu.cviSpk_clu{iClu})), 1:nClu));
@@ -10429,7 +10443,7 @@ function [viSpk, vrSpk, viSite] = spike_refrac__(viSpk, vrSpk, viSite, nRefrac)
 nSkip_refrac = 8;
 % remove refractory period
 vlKeep = true(size(viSpk));
-% if isGpu_(viSpk), vlKeep = gpuArray(vlKeep); end
+% if isGpu_(viSpk), vlKeep = gpuArray_(vlKeep); end
 while (1)
     viKeep1 = find(vlKeep);
     viRefrac1 = find(diff(viSpk(viKeep1)) <= nRefrac);
@@ -12035,8 +12049,8 @@ tr = zeros([numel(viTime0), numel(viTime), nSites], 'int16');
 dimm_tr = size(tr);
 for iSite = 1:nSites
     if fGpu
-%         vr1 = gpuArray(mr(:,iSite));
-%         tr(:,:,iSite) = gather(vr1(miRange));
+%         vr1 = gpuArray_(mr(:,iSite));
+%         tr(:,:,iSite) = gather_(vr1(miRange));
         tr(:,:,iSite) = gather_(reshape(mr(miRange, iSite), dimm_tr(1:2)));
     else
         tr(:,:,iSite) = reshape(mr(miRange, iSite), dimm_tr(1:2));
@@ -12048,6 +12062,7 @@ end %func
 %--------------------------------------------------------------------------
 function [mr, fGpu] = gpuArray_(mr, fGpu)
 if nargin<2, fGpu = 1; end
+% fGpu = 0; %DEBUG disable GPU array
 if ~fGpu, return; end
 try
     mr = gpuArray(mr);
@@ -13348,7 +13363,7 @@ if ~isempty(vcFilter_feature)
     [mnWav2, nShift_post] = filter_detect_(mnWav1, P, vcFilter_feature); % pass raw trace
 end
 
-viSite_spk_ = gpuArray_(viSite_spk);
+viSite_spk_ = gpuArray_(viSite_spk, P.fGpu);
 [tnWav_spk_raw, tnWav_spk, viTime_spk] = mn2tn_wav_(mnWav1, mnWav2, viSite_spk_, viTime_spk, P); fprintf('.');
 if nFet_use >= 2
     viSite2_spk = find_site_spk23_(tnWav_spk, viSite_spk_, P);
@@ -16657,11 +16672,11 @@ for j=1:num_dims
 end
 
 if (code==-1)
-    vcDataType = 'single';
+    vcDataType = 'float';
 elseif (code==-2)
     vcDataType = 'uchar';
 elseif (code==-3)
-    vcDataType = 'single';
+    vcDataType = 'float';
 elseif (code==-4)
     vcDataType = 'int16';
 elseif (code==-5)
@@ -18790,8 +18805,8 @@ end %func
 % 9/29/17 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcVer_used] = jrc_version_(vcFile_prm)
 if nargin<1, vcFile_prm = ''; end
-vcVer = 'v3.2.8';
-vcDate = '4/20/2018';
+vcVer = 'v3.2.9';
+vcDate = '5/3/2018';
 vcVer_used = '';
 if nargout==0
     fprintf('%s (%s) installed\n', vcVer, vcDate);
@@ -19194,7 +19209,7 @@ function trFet_spk_ = nneigh_ave_(S_clu, P, trFet_spk)
 error('not done');
 nClu = S_clu.nClu;
 S0 = get(0, 'UserData');
-trFet_spk = gpuArray(trFet_spk);
+trFet_spk = gpuArray_(trFet_spk);
 trFet_spk_ = zeros(size(trFet_spk), 'like', trFet_spk);
 for iClu = 1:nClu
     viSpk1 = S_clu.cviSpk_clu{iClu};
@@ -19245,9 +19260,9 @@ try
             if isempty(viSpk1), continue; end
         end        
         trFet12 = permute(trFet_spk(:,:,viSpk1), [1,3,2]);
-        mrFet1 = gpuArray(trFet12(:,:,1));
-        mrFet2 = gpuArray(trFet12(:,:,2));
-        viiSpk1_ord = gpuArray(rankorder_(viSpk1, 'ascend'));
+        mrFet1 = gpuArray_(trFet12(:,:,1));
+        mrFet2 = gpuArray_(trFet12(:,:,2));
+        viiSpk1_ord = gpuArray_(rankorder_(viSpk1, 'ascend'));
         n1 = numel(viSpk1);
         dn_max = int32(round(n1 / P.nTime_clu));
         vrDelta1 = zeros([1, n1], 'single', 'gpuArray'); 
@@ -20102,10 +20117,10 @@ N = prod(S);
 
 switch code
     case -1
-        A = fread(F,N*2,'*single');
+        A = fread(F,N*2,'*float');
         A = A(1:2:end) + sqrt(-1) * A(2:2:end);
     case -2, A = fread(F,N,'*uchar');
-    case -3, A = fread(F,N,'*single');
+    case -3, A = fread(F,N,'*float');
     case -4, A = fread(F,N,'*int16');
     case -5, A = fread(F,N,'*int32');
     case -6, A = fread(F,N,'*uint16');
@@ -20459,15 +20474,6 @@ P = struct('nChans', S_mda.dimm(1), 'vcDataType', S_mda.vcDataType, ...
     'header_offset', S_mda.nBytes_header, 'vcFile', vcFile_mda);
 
 S_txt = text2struct_(vcArg_txt);
-prm_template_name = get_set_(S_txt, 'prm_template_name', []);
-if isempty(vcFile_template)
-    if ~isempty(prm_template_name)    
-        vcFile_template = jrcpath_(prm_template_name);
-        assert_(exist_file_(vcFile_template), 'template file does not exist.');
-    end
-else
-    assert_(exist_file_(vcFile_template), 'prm file does not exist.');
-end
 P.sRateHz = get_set_(S_txt, 'samplerate', 30000);     
 P.fInverse_file = ifeq_(get_set_(S_txt, 'detect_sign', 1)>0, 1, 0);
 mask_out_artifacts = get_set_(S_txt, 'mask_out_artifacts', []);
@@ -20514,6 +20520,7 @@ disp(sprintf('Created a new parameter file\n\t%s', P.vcFile_prm));
 edit_(P.vcFile_prm);
 set0_(P);
 end %func
+
 
 %     case 'o' %overlap waveforms across sites
 %         hFig_temp = figure; hold on;
