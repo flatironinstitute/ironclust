@@ -2382,6 +2382,7 @@ end %func
 
 
 %--------------------------------------------------------------------------
+% 2018/5/3: CPU-based clustering fixed
 function vrRho1 = cuda_rho_(mrFet12, viiSpk12_ord, n1, n2, dc2, P)
 % Ultimately use CUDA to do this distance computation
 % mrFet12_: already in GPU
@@ -2436,6 +2437,7 @@ end
 
 
 %--------------------------------------------------------------------------
+% 2018/5/3: CPU-based clustering fixed
 function [vrDelta1, viNneigh1] = cuda_delta_(mrFet12, viiSpk12_ord, viiRho12_ord, n1, n2, dc2, P)
 % Ultimately use CUDA to do this distance computation
 persistent CK nC_
@@ -18805,7 +18807,7 @@ end %func
 % 9/29/17 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcVer_used] = jrc_version_(vcFile_prm)
 if nargin<1, vcFile_prm = ''; end
-vcVer = 'v3.2.9';
+vcVer = 'v3.3.0';
 vcDate = '5/3/2018';
 vcVer_used = '';
 if nargout==0
@@ -20438,6 +20440,7 @@ end %func
 
 
 %--------------------------------------------------------------------------
+% 2018/05/03: Restored prm_template_name
 function vcFile_prm = makeprm_mda_(vcFile_mda, vcFile_prb, vcArg_txt, vcDir_prm, vcFile_template)
 % vcFile_prm = makeprm_mda_() % test mode
 % vcFile_prm = makeprm_mda_(vcFile_mda, vcFile_prb)
@@ -20474,6 +20477,15 @@ P = struct('nChans', S_mda.dimm(1), 'vcDataType', S_mda.vcDataType, ...
     'header_offset', S_mda.nBytes_header, 'vcFile', vcFile_mda);
 
 S_txt = text2struct_(vcArg_txt);
+prm_template_name = get_set_(S_txt, 'prm_template_name', []);
+if isempty(vcFile_template)
+    if ~isempty(prm_template_name)    
+        vcFile_template = jrcpath_(prm_template_name);
+        assert_(exist_file_(vcFile_template), 'template file does not exist.');
+    end
+else
+    assert_(exist_file_(vcFile_template), 'prm file does not exist.');
+end
 P.sRateHz = get_set_(S_txt, 'samplerate', 30000);     
 P.fInverse_file = ifeq_(get_set_(S_txt, 'detect_sign', 1)>0, 1, 0);
 mask_out_artifacts = get_set_(S_txt, 'mask_out_artifacts', []);
@@ -20520,6 +20532,7 @@ disp(sprintf('Created a new parameter file\n\t%s', P.vcFile_prm));
 edit_(P.vcFile_prm);
 set0_(P);
 end %func
+
 
 
 %     case 'o' %overlap waveforms across sites

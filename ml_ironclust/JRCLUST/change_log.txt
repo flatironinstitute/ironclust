@@ -2,6 +2,9 @@
 J. James Jun
 
 --------------------------------------------------------------------
+[2019/5/3: v3.3.0: Merge 3.2.9 with 3.2.8]
+Fixes mda integration error (-p prm_template_name).
+
 [2019/5/3: v3.2.9: Clustering using CPU]
 GPU is optional. Parallel computing toolbox is not necessary.
 Set fGpu=0 to disable GPU use. If GPU processing fails, CPU wlil be automatically used
