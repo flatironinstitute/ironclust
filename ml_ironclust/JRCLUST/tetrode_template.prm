@@ -7,3 +7,4 @@ vcCommonRef = 'none';  % common reference mode {'none', 'mean', 'median', 'white
 nPcPerChan = 2;        % Number of PC per chan. Default is 1 but tetrodes may need more temporal features due to limited number of channels per event group.
 maxWavCor = .99;         % Disable merging based on waveform similarity, four channels are too little to do this.
 fft_clean = 10;        % (Optional) if there is narrow-band noise in your recording (run `jrc preview` to check the power spectrum).
+% fGpu = 0;
