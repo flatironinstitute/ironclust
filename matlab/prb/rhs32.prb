@@ -1,0 +1,18 @@
+% Order of the probe sites in the recording file
+%channels = 1:32;
+channels = [27 4 3 2 26 5 28 29 25 6 30 1 24 7 31 0 8 23 15 16 9 22 14 17 10 21 12 13 11 20 19 18] + 1;
+
+% Site location in micrometers (x and y)
+[xx,yy] = meshgrid((1:4)*40,(1:8)*40);
+xx=xx';
+yy=yy';
+geometry = [xx(:), yy(:)];
+
+% Recording contact pad size in micrometers. Height x width
+pad = [12 12];
+
+% Default prm
+um_per_pix = 40;
+
+%shank = [     2     2     2     2     2     2     2     2     2     2     2     2     2 1     1     1     1     1     1     1     2     2     2     2     1     2 1     2     1     1     2     2];
+%shank = [2 2 2 2 2 2 2 2 2 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 ];

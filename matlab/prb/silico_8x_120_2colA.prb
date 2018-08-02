@@ -1,0 +1,15 @@
+% Order of the probe sites in the recording file
+% silico_8x_120_2colA.prb
+
+channels = [1:30; 61:90]; channels = channels(:);
+
+% Site location in micrometers (x and y)
+geometry = zeros(60, 2);
+viHalf = 0:29;
+geometry(1:2:end,2) = viHalf * 20;
+geometry(2:2:end,2) = geometry(1:2:end,2);
+geometry(1:2:end,1) = 0;    geometry(2:2:end,1) = 32; %Type A
+%geometry(1:2:end,1) = 16;    geometry(2:2:end,1) = 48; %Type B
+
+% Recording contact pad size in micrometers. Height x width
+pad = [12 12];

@@ -3,7 +3,7 @@ function ml_slopefilter_spec
 curpath=fileparts(mfilename('fullpath'));
 addpath([curpath,'/processors']);
 addpath([curpath,'/jsonlab-1.5']);
-addpath([curpath,'/ml_ironclust']);
+addpath([curpath,'/matlab']);
 
 processors={};
 
