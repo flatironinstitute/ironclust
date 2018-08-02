@@ -444,52 +444,6 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function update_(vcFile)
-% update_(vcFile) %update specific files
-% update_() %update files in default.cfg\sync_list
-fCompile_ksort = 0;
-
-S_cfg = read_cfg_();
-vcSource = S_cfg.path_dropbox;
-sprintf('copyfile ''%s\\%s'' .\\ f;', vcSource, 'default.cfg'); % copy default
-pause(.5); S_cfg = read_cfg_(); % reload default
-if strcmpi(pwd(), S_cfg.path_alpha), disp('cannot overwrite alpha'); return; end
-vcBackup = S_cfg.path_backup;
-mkdir_(vcBackup);
-
-t1 = tic;
-fprintf('Copying files to a backup location ''%s''...\n', vcBackup);
-copyfile_(fullfile('.', '*'), vcBackup); %backup
-
-fprintf('Updating from %s...\n', vcSource);
-copyfile_(S_cfg.sync_list, '.', vcSource);
-
-% Compile CUDA code
-fCompile = isempty(vcFile);
-try
-    if fCompile, compile_cuda_(); end
-catch
-    fprintf(2, 'CUDA code compilation error.\n');
-end
-
-% Copy kilosort and compile code
-if fCompile_ksort
-    try 
-        mkdir_('./kilosort');
-        try_eval_(sprintf('copyfile ''%s\\kilosort\\*'' .\\kilosort\\ f;', vcSource), 0);
-        if fCompile, compile_ksort_(); end
-    catch
-        disperr_();
-    end
-end
-
-fprintf('Updated, took %0.1fs.', toc(t1));
-fprintf('\tPrevious files backed up to %s\n', vcBackup);
-edit change_log.txt
-end %func
-
-
-%--------------------------------------------------------------------------
 function probe_(vcFile_prb)
 % if nargin<1, vcFile_prb='imec2.prb'; end
 
@@ -3878,6 +3832,7 @@ create_figure_('FigIsi', [.85 .5 .15 .25], ['Return map: ', P.vcFile_prm]);
 create_figure_('FigCorr', [.85 .25 .15 .25], ['Time correlation: ', P.vcFile_prm]);
 create_figure_('FigRD', [.85 0 .15 .25], ['Cluster rho-delta: ', P.vcFile_prm]);
 
+%drawnow;
 csFig = {'FigPos', 'FigMap', 'FigTime', 'FigWav', 'FigWavCor', 'FigProj', 'FigRD', 'FigCorr', 'FigIsi', 'FigHist'};
 cvrFigPos0 = cellfun(@(vc)get(get_fig_(vc), 'OuterPosition'), csFig, 'UniformOutput', 0);
 S0 = set0_(cvrFigPos0, csFig);
@@ -19018,7 +18973,7 @@ end %func
 % 9/29/17 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcVer_used] = version_(vcFile_prm)
 if nargin<1, vcFile_prm = ''; end
-vcVer = 'v4.0.0';
+vcVer = 'v4.0.1';
 vcDate = '8/2/2018';
 vcVer_used = '';
 if nargout==0
@@ -19196,7 +19151,7 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function S_clu = S_clu_reclust_(S_clu, S0, P);
+function S_clu = S_clu_reclust_(S_clu, S0, P)
 global trFet_spk
 vcMode_divide = 'amp';  % {'amp', 'density', 'fet'}
 
@@ -21569,6 +21524,8 @@ end %func
 function result = isUsingBuiltinEditor_()
 % g1609199 - Retrieve the preference value using the Settings API. 
 try
+    vcEditor = getenv('EDITOR');
+    if ~isempty(vcEditor), result = false; return; end
     s = matlab.settings.internal.settings;
     result = s.matlab.editor.UseMATLABEditor.ActiveValue;
 catch

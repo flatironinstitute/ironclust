@@ -2,6 +2,9 @@
 J. James Jun
 
 --------------------------------------------------------------------
+[2019/8/3: v4.0.1]
+Editor opening disabled in the cluster node.
+
 [2019/8/2: v4.0.0: New clustering algorithm]
 New density estimate using K-nearest neighbor distance (fast estimation).
 
