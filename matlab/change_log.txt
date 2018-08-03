@@ -2,6 +2,10 @@
 J. James Jun
 
 --------------------------------------------------------------------
+[2019/8/3: v4.0.3]
+fParfor flag controls parallel computation toolbox use.
+  fParfor=0 if invoked by mountainlab-js
+
 [2019/8/3: v4.0.2]
 Crash in the cluster prevented by setting fSavePlot_RD=0 when created by the mountainlab-ps
   called by p_ironclust.m
