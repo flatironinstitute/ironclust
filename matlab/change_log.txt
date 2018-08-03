@@ -2,12 +2,15 @@
 J. James Jun
 
 --------------------------------------------------------------------
+[2019/8/3: v4.0.2]
+Crash in the cluster prevented by setting fSavePlot_RD=0 when created by the mountainlab-ps
+  called by p_ironclust.m
+
 [2019/8/3: v4.0.1]
 Editor opening disabled in the cluster node.
 
 [2019/8/2: v4.0.0: New clustering algorithm]
 New density estimate using K-nearest neighbor distance (fast estimation).
-
 
 [2019/5/3: v3.3.0: Merge 3.2.9 with 3.2.8]
 Fixes mda integration error (-p prm_template_name).

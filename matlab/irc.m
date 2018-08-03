@@ -18973,8 +18973,8 @@ end %func
 % 9/29/17 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcVer_used] = version_(vcFile_prm)
 if nargin<1, vcFile_prm = ''; end
-vcVer = 'v4.0.1';
-vcDate = '8/2/2018';
+vcVer = 'v4.0.2';
+vcDate = '8/3/2018';
 vcVer_used = '';
 if nargout==0
     fprintf('%s (%s) installed\n', vcVer, vcDate);
@@ -20808,6 +20808,9 @@ P0 = struct_merge_(P0, file2struct_(vcFile_template));
 P = struct_merge_(P0, P);
 P.duration_file = S_mda.dimm(2) / P.sRateHz; %assuming int16
 P.version = version_();
+
+% disable plot output
+P.fSavePlot_RD = 0; % Setting this to 1 will crash cluster environment
 
 % Write to prm file
 try
