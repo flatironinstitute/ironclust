@@ -1,4 +1,3 @@
-addpath('./JRCLUST'); 
 addpath('./mdaio'); 
 try 
     if ispc()
