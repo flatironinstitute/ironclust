@@ -1,7 +1,12 @@
-[Rocketclust change log]    
-J. James Jun
+[IronClust change log]    
+J. James Jun, Flatiron Institute, Simons Foundation
 
 --------------------------------------------------------------------
+[2019/8/3: v4.0.4]
+tetrode_template.prm filter option changed to "fir1, [300, 6000] Hz"
+  It works even if the Signal Processing Toolbox is absent using "fir1_octave.m" function
+  Previously used bandpass elliptic filtfilt.  
+
 [2019/8/3: v4.0.3]
 fParfor flag controls parallel computation toolbox use.
   fParfor=0 if invoked by mountainlab-js

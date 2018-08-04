@@ -7,29 +7,6 @@ P = funcDefStr_(funcInStr_(varargin{:}), ...
 if isfield(P, 'fGpu')
     P.fGpu_filt = P.fGpu;
 end
-%----------------
-% build a filter chain
-
-% if P.nDiff_filt    
-% %     mr = diff_smooth(mr, P.nDiff_filt);    
-%     n0 = int32(P.nDiff_filt);    
-%     nT = int32(size(mr,1));    
-%     vrFiltA = single(ones(2*n0+1,1));
-%     vrFiltB = single(1);
-%     n0 = int32(n0); 
-%     nT = int32(nT); 
-%     if isa(mr, 'gpuArray')
-%         [n0, nT, vrFiltA, vrFiltB] = multifun(@gpuArray, n0,nT,vrFiltA,vrFiltB);
-%     end
-% %     f=@()filter((vrFiltA), (vrFiltB), mr); gputimeit(f)
-%     mr = filt_pad_('add', mr, P.nPad_filt); %slow
-%     mr = filter(vrFiltA, vrFiltB, mr);    
-%     mr = filt_pad_('remove', mr, P.nPad_filt); %slow           
-%     viB = min(max(n0+2:n0+nT+1, 1), nT);
-%     viA = min(max(n0:n0+nT-1, 1), nT);
-%     mr = mr(viB,:) - mr(viA,:);
-%     return;
-% end
 
 
 [cvrA, cvrB] = deal({});
@@ -181,3 +158,6 @@ for iField=1:numel(csNames)
     end
 end
 end %func
+
+
+
