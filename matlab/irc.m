@@ -3484,8 +3484,8 @@ switch lower(P.vcFilter)
             mnWav2(:,i) = conv(mnWav2(:,i), vnFilter_user, 'same'); 
         end
     case 'fir1'
-        n5ms = round(P.sRateHz / 1000 * 5);
-        vrFilter = single(fir1(n5ms, P.freqLim/P.sRateHz*2));
+        n5ms = round(P.sRateHz / 1000 * 5); % must be odd
+        vrFilter = single(fir1_(n5ms, P.freqLim/P.sRateHz*2));
         for i=1:size(mnWav2,2)
             mnWav2(:,i) = conv(mnWav2(:,i), vrFilter, 'same'); 
         end        
@@ -4106,6 +4106,18 @@ grid on;
 % nClu = numel(unique(S_clu.viClu(S_clu.viClu>0))); %numel(icl)
 title_(sprintf('rho-cut:%f, delta-cut:%f', P.rho_cut, P.delta1_cut));
 drawnow;
+end %func
+
+
+%--------------------------------------------------------------------------
+% 8/3/2018 JJJ: use custom fir1 if signal processing toolbox is not
+% installed
+function vrFilter = fir1_(n, w)
+try
+    vrFilter = fir1(n,w);
+catch
+    vrFilter = fir1_octave(n,w); % signal processing toolbox does not exist
+end
 end %func
 
 
@@ -13796,7 +13808,7 @@ switch lower(vcMode)
         mn1 = int16(mn1);  
     case 'fir1'
         n5ms = round(P.sRateHz / 1000 * 5);
-        vrFilter = single(fir1(n5ms, P.freqLim/P.sRateHz*2));
+        vrFilter = single(fir1_(n5ms, P.freqLim/P.sRateHz*2));
         for i=1:size(mn,2)
             mn(:,i) = conv(mn(:,i), vrFilter, 'same'); 
         end   
@@ -18813,7 +18825,7 @@ end %func
 % 9/29/17 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcVer_used] = version_(vcFile_prm)
 if nargin<1, vcFile_prm = ''; end
-vcVer = 'v4.0.3';
+vcVer = 'v4.0.4';
 vcDate = '8/3/2018';
 vcVer_used = '';
 if nargout==0
