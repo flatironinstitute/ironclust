@@ -67,7 +67,7 @@ switch lower(vcCmd)
     case 'load-bin'
         mnWav = load_bin_(vcArg1, vcArg2); 
         assignWorkspace_(mnWav);
-    case 'import-gt', import_gt_silico_(vcArg1);   
+    case 'import-gt', import_gt_silico_(vcArg1, vcArg2);   
     case 'unit-test', unit_test_(vcArg1, vcArg2, vcArg3);    
     case 'compile', compile_cuda_(vcArg1); 
     case 'compile-ksort', compile_ksort_();
@@ -376,7 +376,7 @@ csHelp = {...
     '  irc batch myparam.batch template.prm';
     '    Batch process list of .bin files using a template prm file';             
     '';
-    '[Import and export]';
+    '[Export]';
     '  irc export myparams.prm';
     '    Export the global struct (S0) to the workspace. This is also contained in _jrc.mat output file.';    
     '  irc export-csv myparams.prm';
@@ -403,6 +403,12 @@ csHelp = {...
     '    Export complete list of parameters to a new file.';
     '    If the second argument is omitted, the current parameter file is updated.';
     '    If some parameter values are missing, they will be copied from the default template file (default.prm).';
+    '';
+    '[Import]';
+    '  irc import-gt groundtruth_file myparam.prm';
+    '    Import a groundtruth_file and update myparam.prm file';
+    '    groundtruth_file can be firings_true.mda (MountainLab) format or numpy2matlab format (Catalin Mitelut)';
+    '    it creates a matlab file with two fields: viClu and viTime';
     '  irc import-intan intanrec*.dat myprobe.prb';
     '    Import from intan recordings, which saved each channel as -A###.dat file in int16 format.';        
     '    Combine .dat files to a single .bin file and saves to the directory above.';
@@ -494,14 +500,14 @@ function vcFile_full = ircpath_(vcFile, fConditional)
 if nargin<1, vcFile = ''; end
 if nargin<2, fConditional = 0; end
 
-jrcpath = fileparts(mfilename('fullpath'));
+ircpath = fileparts(mfilename('fullpath'));
 if fConditional
     if exist_file_(vcFile)
         vcFile_full = vcFile;
         return;
     end
 end
-vcFile_full = [jrcpath, filesep(), vcFile];
+vcFile_full = [ircpath, filesep(), vcFile];
 % if exist(vcFile_full, 'file') ~= 2
 %     vcFile_full = [];
 % end
@@ -783,18 +789,14 @@ else
     fprintf(2, 'Skipping unit test...\n');
 end
 
-% commit all
-% disp(['Commiting to ', S_cfg.path_dropbox]);
 delete_files_(find_empty_files_());
-% copyfile_(S_cfg.sync_list, S_cfg.path_dropbox); %destination root
-% copyfile_('./kilosort/*', [S_cfg.path_dropbox, filesep(), 'kilosort', filesep()]); %destination root
-% copyfile_(S_cfg.csFiles_sample, S_cfg.path_dropbox);
 
 % commit irc related files only
 try commit_irc_(S_cfg, path_github, 0); catch; disperr_(); end
 try commit_irc_(S_cfg, path_ironclust, 0); catch; disperr_(); end
 vcFile_mp = strrep(path_ironclust, 'IronClust', 'ml_ironclust.mp');
 try fileattrib(vcFile_mp, '+x'); fprintf('chmod +x %s\n',vcFile_mp); catch; disperr_(); end
+try movefile(fullfile(path_ironclust, 'p_ironclust.m'), strrep(path_ironclust, 'matlab', '')); catch; disperr_(); end
 
 edit_('change_log.txt');
 fprintf('Commited, took %0.1fs.\n', toc(t1));
@@ -2780,13 +2782,16 @@ write_struct_(strrep(P.vcFile_prm, '.prm', '_score.mat'), S_score);
 set0_(S_score);       
 assignWorkspace_(S_score); %put in workspace
 
-figure; set(gcf,'Name',P.vcFile_prm);
-subplot 121; plot_cdf_(S_score.S_score_clu.vrFp); hold on; plot_cdf_(S_score.S_score_clu.vrMiss); 
-legend({'False Positives', 'False Negatives'}); ylabel('CDF'); grid on; xlabel('Cluster count');
- 
-subplot 122; hold on;
-plot(S_score.vrSnr_min_gt, S_score.S_score_clu.vrFp, 'b.', S_score.vrSnr_min_gt, S_score.S_score_clu.vrMiss, 'r.');
-legend({'False Positives', 'False Negatives'}); ylabel('score'); grid on; xlabel('SNR (Vp/Vrms)');
+% plot if not running from the cluster
+if isUsingBuiltinEditor_()
+    figure; set(gcf,'Name',P.vcFile_prm);
+    subplot 121; plot_cdf_(S_score.S_score_clu.vrFp); hold on; plot_cdf_(S_score.S_score_clu.vrMiss); 
+    legend({'False Positives', 'False Negatives'}); ylabel('CDF'); grid on; xlabel('Cluster count');
+
+    subplot 122; hold on;
+    plot(S_score.vrSnr_min_gt, S_score.S_score_clu.vrFp, 'b.', S_score.vrSnr_min_gt, S_score.S_score_clu.vrMiss, 'r.');
+    legend({'False Positives', 'False Negatives'}); ylabel('score'); grid on; xlabel('SNR (Vp/Vrms)');
+end
 
 vnSpk_gt = cellfun(@numel, S_score.S_score_clu.cviSpk_gt_hit) + cellfun(@numel, S_score.S_score_clu.cviSpk_gt_miss);
 disp_score_(S_score.vrSnr_min_gt, S_score.S_score_clu.vrFp, S_score.S_score_clu.vrMiss, ...
@@ -3394,7 +3399,18 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function import_gt_silico_(vcFile_mat)
+% 8/14/2018 JJJ: Accepts two arguments
+function import_gt_silico_(vcFile_mat, vcFile_prm)
+% Usage
+%-----
+% import_gt_silico_(vcFile_mat)
+%   create a groundtruth file (ends with _gt.mat)
+% import_gt_silico_(vcFile_mat, vcFile_prm)
+%   Create a ground truth file where vcFile_prm exists using vcFile_prm
+%   prefix
+
+if nargin<2, vcFile_prm = ''; end
+
 if matchFileExt_(vcFile_mat, '.mat')
     % catalin's raster function
     S = load(vcFile_mat);    
@@ -3408,7 +3424,12 @@ elseif matchFileExt_(vcFile_mat, '.mda')
     viTime = int32(mr(:,2));
 end
 S_gt = makeStruct_(viClu, viTime);
-vcFile_gt = subsFileExt_(vcFile_mat, '_gt.mat');
+if isempty(vcFile_prm)
+    vcFile_gt = subsFileExt_(vcFile_mat, '_gt.mat');
+else
+    vcFile_gt = subsFileExt_(vcFile_prm, '_gt.mat');
+    edit_prm_file_(makeStruct_(vcFile_gt), vcFile_prm); % update groundtruth file field
+end
 write_struct_(vcFile_gt, S_gt);
 end %func
 
@@ -14259,7 +14280,12 @@ cmrWav_clu2 = cellfun(@(x)x(:,viSite2,iClu2), ctmrWav_clu, 'UniformOutput', 0);
 trWav_clu2 = cat(3, cmrWav_clu2{:});
 ctmrWav_clu1 = cellfun(@(x)x(:,viSite2,viClu1), ctmrWav_clu, 'UniformOutput', 0);
 
-vi0 = (P.spkLim(1):P.spkLim(2)) - P.spkLim_raw(1) + 1;
+if get_set_(P, 'fWavRaw_merge', 1)
+    vi0 = (P.spkLim(1):P.spkLim(2)) - P.spkLim_raw(1) + 1;
+else
+    nShift_max = round((diff(P.spkLim)+1) * .05);
+    vi0 = (P.spkLim(1)+nShift_max:P.spkLim(2)-nShift_max) - P.spkLim(1) + 1;
+end
 % [trWav_clu2, vi0, vrWavCor2] = multifun_(@gpuArray_, trWav_clu2, vi0, vrWavCor2);
 for iClu11 = 1:numel(viClu1)
     iClu1 = viClu1(iClu11);
@@ -16732,6 +16758,26 @@ end %func
 
 
 %--------------------------------------------------------------------------
+% 9/26/17 JJJ: Created and tested
+function vcFile_new = subs_dir_(vcFile, vcDir_new)
+% Substitute dir
+[vcDir_new,~,~] = fileparts(vcDir_new);
+[~, vcFile, vcExt] = fileparts(vcFile);
+vcFile_new = fullfile(vcDir_new, [vcFile, vcExt]);
+end % func
+
+
+%--------------------------------------------------------------------------
+% 8/14/18 JJJ: Created and tested
+function vcFile_full = subs_file_(vcFile, vcFile_new)
+% Substitute dir
+[vcDir_new,~,~] = fileparts(vcFile);
+[~, vcFile_new1, vcFile_new2] = fileparts(vcFile_new);
+vcFile_full = fullfile(vcDir_new, [vcFile_new1, vcFile_new2]);
+end % func
+
+
+%--------------------------------------------------------------------------
 % 8/2/17 JJJ: Documentation and test
 function P = read_meta_file_(vcFile_meta)
 % Parse meta file, ask user if meta file doesn't exist
@@ -18825,8 +18871,8 @@ end %func
 % 9/29/17 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcVer_used] = version_(vcFile_prm)
 if nargin<1, vcFile_prm = ''; end
-vcVer = 'v4.0.4';
-vcDate = '8/3/2018';
+vcVer = 'v4.0.5';
+vcDate = '8/14/2018';
 vcVer_used = '';
 if nargout==0
     fprintf('%s (%s) installed\n', vcVer, vcDate);
@@ -18852,13 +18898,11 @@ end %func
 %--------------------------------------------------------------------------
 % 9/26/17 JJJ: Created and tested
 function git_pull_(vcVersion, fOverwrite)
-% https://github.com/drbenvincent/github-sync-matlab
-% startDir = cd();
 if nargin<1, vcVersion = ''; end
 if nargin<2, fOverwrite = 1; end % remove changes done by user
 
-repoURL = 'https://github.com/jamesjun/ironclust';
-% repoName = 'ironclust';
+repoURL = read_cfg_('repoURL');
+
 try
     if isempty(vcVersion)
         if fOverwrite
@@ -18887,7 +18931,9 @@ end %func
 %--------------------------------------------------------------------------
 % 9/28/17 JJJ: Created and tested
 function wiki_download_()
-repoURL = 'https://github.com/jamesjun/ironclust.wiki.git';
+
+repoURL = read_cfg_('repoURL');
+
 repoName = 'wiki';
 if isempty(dir(repoName))
     vcEval = sprintf('git clone %s %s', repoURL, repoName);
@@ -18929,12 +18975,18 @@ end %func
 
 
 %--------------------------------------------------------------------------
-% 11/5/17 JJJ: Created
+% 8/7/2018 JJJ
 function flag = exist_dir_(vcDir)
 if isempty(vcDir)
     flag = 0;
 else
-    flag = exist(vcDir, 'dir') == 7;
+    S_dir = dir(vcDir);
+    if isempty(S_dir)
+        flag = 0;
+    else
+        flag = sum([S_dir.isdir]) > 0;
+    end
+%     flag = exist(vcDir, 'dir') == 7;
 end
 end %func
 
@@ -18965,10 +19017,13 @@ end %func
 % 9/27/17 JJJ: Created
 function wiki_(vcPage)
 if nargin<1, vcPage = ''; end
+
+repoURL = read_cfg_('repoURL');
+
 if isempty(vcPage)
-    web_('https://github.com/jamesjun/ironclust/wiki'); 
+    web_([repoURL, '/wiki/']); 
 else
-    web_(['https://github.com/jamesjun/ironclust/wiki/', vcPage]); 
+    web_([repoURL, '/wiki/', vcPage]); 
 end
 end
 
@@ -18976,9 +19031,10 @@ end
 %--------------------------------------------------------------------------
 % 9/27/17 JJJ: Created
 function issue_(vcMode)
+repoURL = read_cfg_('repoURL');
 switch lower(vcMode)
-    case 'post', web_('https://github.com/jamesjun/ironclust/issues/new')
-    case 'search', web_('https://github.com/jamesjun/ironclust/issues')
+    case 'post', web_([repoURL, '/issues/new'])
+    case 'search', web_([repoURL, '/issues'])
 end %switch
 end %func
 
@@ -20561,6 +20617,7 @@ if isempty(vcFile_template)
         assert_(exist_file_(vcFile_template), 'template file does not exist.');
     end
 else
+    vcFile_template = ircpath_(vcFile_template);
     assert_(exist_file_(vcFile_template), 'prm file does not exist.');
 end
 P.sRateHz = get_set_(S_txt, 'samplerate', 30000);     
@@ -20634,12 +20691,13 @@ if nargin<2, P = S0.P; end
 
 % [P, S_clu] = deal(S0.P, S0.S_clu);
 nTime_clu = get_set_(P, 'nTime_clu', 4);
-if nTime_clu == 1 % no drift correlation analysis
-    [miSort_drift, cviSpk_drift] = deal(1, {1:numel(S0.viSite_spk)});
+nTime_drift = get_set_(P, 'nTime_drift', nTime_clu * 4);
+if nTime_clu == 1 || nTime_drift == 1 % no drift correlation analysis
+    [miSort_drift, cviSpk_drift, nTime_drift] = deal(1, {1:numel(S0.viSite_spk)}, 1);
+    viDrift_spk = ones(1, numel(S0.viSite_spk), 'int32');
     return;
 end
 nQuantile_drift = get_set_(P, 'nQuantile_drift', 10);
-nTime_drift = get_set_(P, 'nTime_drift', nTime_clu * 4); % nTime_clu * oversampleFactor
 vrAmp_quantile = quantile(single(S0.vrAmp_spk), (0:nQuantile_drift)/nQuantile_drift);
 viSite_unique = unique(S0.viSite_spk);
 nSites = numel(viSite_unique);
@@ -21298,11 +21356,11 @@ if ~ischar(vcPage), return; end
 try
     % use system browser
     if ispc()
-        system(['explorer ', vcPage]);
+        system(['start ', vcPage]);
     elseif ismac()
         system(['open ', vcPage]);
     elseif isunix()
-        system(['gnome-open ', vcPage]);
+        system(['sensible-browser ', vcPage]);
     else
         web(vcPage);
     end

@@ -1,4 +1,4 @@
-% Default parameters for jrclust (default.prm)
+% Default parameters for ironclust (default.prm)
 
 % #Recording file format
 vcFile = '';                % Raw recording file path (leave empty if multiple files are sorted together)
@@ -16,7 +16,7 @@ fInverse_file = 0;          % Set to 1 to flip the polarity of the signal
 header_offset = 0;          % File header offset (set to 0 for files containing no header info (e.g. WHISPER format)
 
 % #Execution parameters
-version = 'v4.0.3';         % JRCLUST version. Updated on Jan 12, 2018
+version = 'v4.0.3';         % IronClust version
 fVerbose = 0;               % Verbose flag, set to 0 to suppress displaying extra information 
 fParfor = 0;                % Use Multiple CPU cores (if parallel processing toolbox is installed)
 fGpu = 1;                   % Use GPU if parallel processing toolbox is installed
@@ -161,7 +161,7 @@ duration_file = [];         % recording duration in seconds
 
 % Ground truth
 vcFile_gt = '';             % Ground truth file. Default: *_gt.mat. @TODO: Specify the format
-snr_thresh_gt = 8;         % SNR threshold for ground truth clusteres
+snr_thresh_gt = 6;         % SNR threshold for ground truth clusteres
 
 % Unit/dipole tracking
 um_per_pix = 20;

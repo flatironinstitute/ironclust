@@ -2,6 +2,10 @@
 J. James Jun, Flatiron Institute, Simons Foundation
 
 --------------------------------------------------------------------
+[2019/8/14: v4.0.5]
+tetrode_template.prm default changed to work with the new default clustering algorithm (vcCluster = "drift-knn")
+p_ironclust runs validation if "firings_true.mda" is present at the directory where the raw mda file (e.g. "raw.mda") exists.
+
 [2019/8/3: v4.0.4]
 tetrode_template.prm filter option changed to "fir1, [300, 6000] Hz"
   It works even if the Signal Processing Toolbox is absent using "fir1_octave.m" function
