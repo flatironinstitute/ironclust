@@ -1,0 +1,9 @@
+vcFilter = 'bandpass'; % Use bandpass filter instead of differentiator filter
+freqLim = [300, 3000]; % Bandpass frequency range
+maxSite=1.5;           % Total number of sites per spike event is 1+2*maxSite. For tetrode, 1+2*1.5=4
+nSites_ref = 0;        % no reference sites available for tetrodes
+vcSpkRef = 'none';     % turn off local CAR subtraction
+vcCommonRef = 'none';  % common reference mode {'none', 'mean', 'median', 'whiten'}
+nPcPerChan = 2;        % Number of PC per chan. Default is 1 but tetrodes may need more temporal features due to limited number of channels per event group.
+maxWavCor = .99;         % Disable merging based on waveform similarity, four channels are too little to do this.
+fft_clean = 10;        % (Optional) if there is narrow-band noise in your recording (run `jrc preview` to check the power spectrum).

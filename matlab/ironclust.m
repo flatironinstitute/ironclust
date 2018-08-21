@@ -1,6 +1,6 @@
 function ironclust(varargin)
-% calls jrclust
+% calls irc.m
+
 warning off;
-%jrclust(varargin{:});
 fprintf('Running ''%s%sirc.m''\n', fileparts(mfilename('fullpath')), filesep());
 irc(varargin{:});
