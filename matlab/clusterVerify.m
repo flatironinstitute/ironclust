@@ -26,8 +26,7 @@ fprintf('Validating cluster\n\t');
 t1 = tic;
 parfor iCluGt1=1:nCluGt
     viTimeGt1 = viTimeGt(viCluGt == viCluGt_unique(iCluGt1));
-    rGT1 = int32(single(viTimeGt1) / jitter);
-    rGT1 = unique(rGT1);
+    rGT1 = unique(int32(single(viTimeGt1) / jitter));
     cviTimeGt{iCluGt1} = rGT1;
     if isempty(rGT1), continue; end
     vnCluGt(iCluGt1) = numel(rGT1);
@@ -37,30 +36,26 @@ parfor iCluGt1=1:nCluGt
     [vrMiss_, vrFp_, vrAccuracy_] = deal(zeros(nClu, 1, 'single'));
     for iClu=1:nClu
         rComp1 = cviTime{iClu};
-        n3 = count_overlap_(rGT1, rComp1);
-        n2 = numel(rComp1);
-        n1 = numel(rGT1);
+        [n1, n2, n3] = deal(numel(rGT1), numel(rComp1), count_overlap_(rGT1, rComp1));
         vrMiss_(iClu) = (n1-n3)/n1;
-        vrFp_(iClu) = (n2-n3)/n2;   
+        vrFp_(iClu) = (n2-n3)/n2;  %it was /n2 before sep 1 2018 
         vrAccuracy_(iClu) = n3 / (n1+n2-n3);
     end
-    mrMiss(:,iCluGt1) = vrMiss_;
-    mrFp(:,iCluGt1) = vrFp_;    
-    mrAccuracy(:,iCluGt1) = vrAccuracy_;
-    fprintf('.');
+    [mrMiss(:,iCluGt1), mrFp(:,iCluGt1), mrAccuracy(:,iCluGt1)] = ...
+        deal(vrMiss_, vrFp_, vrAccuracy_);
+%     fprintf('.');
 end
 fprintf('\n\ttook %0.1fs.\n', toc(t1));
 [mrMiss, mrFp, vnDetected, vnCluGt] = multifun_(@gather, mrMiss, mrFp, vnDetected, vnCluGt);
 vrDetected = double(vnDetected) ./ double(vnCluGt);
-mrScore = 1-mrFp-mrMiss;
-% mrScore = mrAccuracy;
+% mrScore = 1-mrFp-mrMiss;
+mrScore = mrAccuracy;
 [vrScore, viCluMatch] = max(mrScore, [], 1);
 [~, miCluMatch] = sort(mrScore, 'descend');
-viFp = sub2ind(size(mrMiss), viCluMatch, 1:numel(viCluMatch));
-vrMiss = mrMiss(viFp);
-vrFp = mrFp(viFp);
-vrScore = 1-vrMiss-vrFp;
-vrScore(vrScore<0)=0;
+vi_match = sub2ind(size(mrMiss), viCluMatch, 1:numel(viCluMatch));
+[vrMiss, vrFp] = deal(mrMiss(vi_match), mrFp(vi_match));
+% vrScore = 1-vrMiss-vrFp; vrScore(vrScore<0)=0;
+
 for iCluGt=1:nCluGt
     viSpk_gt1 = find(viCluGt == viCluGt_unique(iCluGt));
     viTime_gt1 = viTimeGt(viSpk_gt1);    
@@ -76,11 +71,14 @@ for iCluGt=1:nCluGt
     cviSpk_gt_miss{iCluGt} = viSpk_gt1(~vlSpk_gt1);
     cviSpk_clu_hit{iCluGt} = viSpk_clu1(vlSpk_clu1);
     cviSpk_clu_miss{iCluGt} = viSpk_clu1(~vlSpk_clu1);  
+    cvlHit_gt{iCluGt} = vlSpk_gt1;
+    cvlHit_clu{iCluGt} = vlSpk_clu1;
 end
 [vrAccuracy, viCluMatch_accuracy] = max(mrAccuracy);
 S_score_clu = makeStruct_(vrScore, vrMiss, vrFp, viCluMatch, cviHit_gt, ...
     cviMiss_gt, cviHit_clu, cviMiss_clu, cviSpk_gt_hit, cviSpk_gt_miss, ...
-    cviSpk_clu_hit, cviSpk_clu_miss, vrAccuracy, viCluMatch_accuracy);
+    cviSpk_clu_hit, cviSpk_clu_miss, vrAccuracy, viCluMatch_accuracy, ...
+    cvlHit_gt, cvlHit_clu);
 % viCluMatch1 = viClu_unique(viCluMatch);
 % vrScore = 1-vrMiss-vrFp;
 func1=@(x)quantile(x, [.25,.5,.75])*100;
@@ -102,8 +100,8 @@ end %func
 
 %--------------------------------------------------------------------------
 function nOverlap = count_overlap_(viGt, viTest)
-nGt = numel(viGt);
-nOverlap = nGt - numel(setdiff(setdiff(setdiff(viGt, viTest), viTest+1), viTest-1));
+viGt_diff = setdiff(setdiff(setdiff(viGt, viTest), viTest+1), viTest-1);
+nOverlap = numel(viGt) - numel(viGt_diff);
 end %func
 
 

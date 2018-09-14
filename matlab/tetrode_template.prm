@@ -1,4 +1,5 @@
 vcFilter = 'bandpass'; % Use bandpass filter instead of differentiator filter
+nDiff_filt = 3;        % Differentiator filter order
 freqLim = [300, 6000]; % Bandpass frequency range
 maxSite=1.5;           % Total number of sites per spike event is 1+2*maxSite. For tetrode, 1+2*1.5=4
 nSites_ref = 0;        % no reference sites available for tetrodes
@@ -9,6 +10,4 @@ qqFactor = 4;
 fWavRaw_merge = 0;
 spkLim_ms = [-.5, 1.5];    % Time range to capture the filtered spike waveforms; spkLim = round(P.spkLim_ms/1000*P.sRateHz)
 nTime_clu = 1;			% number of time periods to perform separate clustering (later to be merged after clustering)
-
-%maxWavCor = .99;         % Disable merging based on waveform similarity, four channels are too little to do this.
-%fft_thresh = 0;        % (Optional) if there is narrow-band noise in your recording (run `jrc preview` to check the power spectrum).
+fPlot_gt = 0;           % Plot groundtruth 

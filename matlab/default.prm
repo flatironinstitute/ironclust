@@ -16,7 +16,7 @@ fInverse_file = 0;          % Set to 1 to flip the polarity of the signal
 header_offset = 0;          % File header offset (set to 0 for files containing no header info (e.g. WHISPER format)
 
 % #Execution parameters
-version = 'v4.0.3';         % IronClust version
+version = '';               % IronClust version
 fVerbose = 0;               % Verbose flag, set to 0 to suppress displaying extra information 
 fParfor = 1;                % Use Multiple CPU cores (if parallel processing toolbox is installed)
 fGpu = 1;                   % Use GPU if parallel processing toolbox is installed
@@ -51,7 +51,7 @@ fText = 1;                  % Show spike count per unit (*, press 'n' to toggle 
 % #Pre-processing (run "jrc spikesort" after change)
 tlim_load = [];             % Time range to load in sec (uses all time range if set to empty)
 vcFilter = 'ndiff';         % {'ndiff', 'sgdiff', 'bandpass', 'fir1', 'user', 'fftdiff', 'none'}
-nDiff_filt = 2;			    % Differentiation filter for vcFilter='sgdiff', ignored otherwise. Set to [] to disable. 2n+1 samples used for centered differentiation
+nDiff_filt = 3;			    % Differentiation filter for vcFilter='sgdiff', ignored otherwise. Set to [] to disable. 2n+1 samples used for centered differentiation
 freqLim = [300, 6000];      % Frequency cut-off limit for vcFilter='bandpass', ignored otherwise. 
 filtOrder = 3;              % Bandpass filter order
 fEllip = 1;                 % Use Elliptic filter. set to 0 for Butterworth filter. Only valid for vcFilter='bandpass'.
@@ -82,7 +82,7 @@ blank_thresh = [];          % reject spikes exceeding the channel mean after fil
 blank_period_ms = 5;        % (miliseconds) Duration of blanking when the common mean exceeds a threhold (blank_thresh)
 nneigh_min_detect = 0;      % Min. number of neighbors near the spike below threshold. choose between [0,1,2]
 maxDist_site_um = 50;       % Radius of spike event merging. Keep spikes that has most negative peaks within x um radius.
-maxDist_site_spk_um = 75;   % Max. radius for extracting waveforms. Used if maxSite=[] and nSites_ref=[]
+maxDist_site_spk_um = 100;   % Max. radius for extracting waveforms. Used if maxSite=[] and nSites_ref=[]
 fGroup_shank = 0;           % Group all sites in the same shank
 
 % #Feature extraction (run "jrc spikesort" after change)
@@ -100,7 +100,7 @@ nTime_drift = 16;           % divide to 16 drift time bins
 dc_percent = 2;             % used for distribution cutting
 fRepeat_clu = 0;            % Flag for whether to repeat clustering for the bottom half of the cluster amplitudes.
 nThreads = 128;             % number of GPU threads for clustering
-nC_max = 45;                % (read-only) Set by the CUDA code. Maximum number of dimensions per event
+nC_max = 36;                % (read-only) Set by the CUDA code. Maximum number of dimensions per event
 fSpatialMask_clu = 0;       % Apply spatial mask calculated from the distances between sites to the peak site (half-scale: P.maxDist_site_um). circa v3.1.10
 min_sites_mask = 5;         % Minimum number of sites to have to apply spatial mask. Used if fSpatialMask_clu==1. circa v3.1.10
 knn = 30;                    % K nearest neighbor clustering
@@ -108,7 +108,7 @@ knn = 30;                    % K nearest neighbor clustering
 % #Post-cluster auto-merging parameters (run "jrc auto" after change)
 delta1_cut = .6;            % RL cluster: delta cut-off. Increasing this will produce less clusters.
 rho_cut = -2.5;             % RL cluster: rho cut-off. Decreasing (more negative) this will produce more clusters.
-maxWavCor = .98;            % merge if waveform correlation is greater than maxWavCor.
+maxWavCor = .975;            % merge if waveform correlation is greater than maxWavCor.
 min_count = 30;             % Minimum cluster size (min_count will be set to 2*#features if lower).
 nRepeat_merge = 10;         % # of repeats for average unit raw waveform based merging
 vcDetrend_postclu = 'global'; % 'none', 'hidehiko', 'global', 'local', 'logz'
@@ -117,7 +117,9 @@ maxCluPerSite = 20;         % Maximum clusters per site allowed if local detrend
 fDrift_merge = 1;           % Compute multiple waveforms at three drift locations based on the spike position (CoM).
 nInterp_merge = 1;          % Interpolation factor for the mean unit waveforms, set to 1 to disable
 spkLim_factor_merge = 1;    % Waveform range for computing the correlation. spkLim_factor_merge <= spkLim_raw_factor_merge. circa v3.1.8
-fWavRaw_merge = 1;          % Use raw average unit waveforms for merge when set to 1, if not use filtered waveforms.
+fWavRaw_merge = 0;          % Use raw average unit waveforms for merge when set to 1, if not use filtered waveforms.
+frac_equal_knn = .5;        % Fraction of k-nearest neighbors from the same cluster. 
+frac_shift_merge = .1;      % Fraction of the waveform to shift to check for merging
 
 % #Trial (used for plotting PSTH for each unit after clustering)
 vcFile_trial = '';          % .mat or .csv file containing timestamp in seconds unit. use any variable name.
@@ -160,8 +162,9 @@ nBytes_file = [];           % file byte size
 duration_file = [];         % recording duration in seconds
 
 % Ground truth
-vcFile_gt = '';             % Ground truth file. Default: *_gt.mat. @TODO: Specify the format
-snr_thresh_gt = 6;         % SNR threshold for ground truth clusteres
+vcFile_gt = '';                 % Ground truth file. Default: *_gt.mat. @TODO: Specify the format
+fPlot_gt = 0;                   % Plot groundtruth 
+% snr_thresh_gt = 6;            % Refer to default.cfg
 
 % Unit/dipole tracking
 um_per_pix = 20;
@@ -264,7 +267,7 @@ thresh_merge_clu = 0;       % Pierre Yger's cluster merging criterial based on m
 thresh_automerge_pca = [];   % posthoc merge based on the eigvec similarity. recommends .998
 thresh_split_clu = 0;       % Split a cluster to two if separation distance > (x) after k-means clustering
 fDiscard_count = 1;         % Discard cluster under minimum count. set to zero to absorb to the nearest cluster
-vcCluWavMode = 'median';      % use median to compute average cluster waveform
+vcCluWavMode = 'mean';      % use median to compute average cluster waveform
 maxDist_site_merge_um = 35; % Max. distance separation of the peak sites to consider merging
 
 % Batch process parameters
