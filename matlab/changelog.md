@@ -3,6 +3,39 @@ IronClust, written by J. James Jun, Flatiron Institute, Simons Foundation
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [4.0.7] - 2018-09-14
+### Added
+- `frac_equal_knn` parameter is used to identify events whose fraction of 
+  their K-nearest neighbors having the same cluster membership.
+  - Events whose equal-knn fraction below the threshold (`frac_equal_knn=.5`) 
+    are reassigned using the median cluster value of their KNN.
+- `frac_shift_merge` parameter added: % of maximum time shift for waveform merge consideration
+- Preview GUI asks users to input the filter setting  
+  - Differentiator filter `vcFilter='ndiff'` asks for `nDiff_filt` parameter
+  - Band-pass filter `vcFilter='bandpass'` and fir1 filter asks for `freqLim` parameter
+- `verify` command adds interactive plots where users can click on the cluster to see 
+  more on how clustering failed
+- Bursting spike and overlapping spike metrics added to `verify` and `batch-verify` command
+  - `S_burst` and `S_overlap` struct is included in `_score.mat` output file. 
+
+### Changed
+- "fWavRaw_merge" default is now 0 (previously 1)
+  - Speed enhancement for auto-merging clusters when fWavRaw_merge=0
+  - Average raw waveforms are still computed at the end of merging instead
+  of at each merging step.
+- Mean cluster waveform is computed at three vertical depths when "fDrift_merge=1"
+  - Previously this was only done when fWavRaw_merge=1
+- `convert-h5-mda` tool now outputs the maximum channel index
+- CUDA compiled for NVIDIA GPU version SM3.5 for backward compatibility
+- Defaulg value changed: `maxWavCor = .975` (waveform merge criteria for post-clustering stage)
+- Default changed `nDiff_filt=3` (previously 2)
+- Deafult changed `maxDist_site_spk_um=100` (previously 75)
+
+### Fixed
+- viSiteZero (bad sites) is handled properly such that they are never included as neighboring channels
+- Fixed `makeprm` command ".bin file not found" error.
+
+
 ## [4.0.6] - 2018-08-21
 ### Added
 - Convertion tool from .h5 (Boyden lab) to .mda (Mountainlab)
@@ -35,6 +68,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - "fGpu" flag correctly controls whether CPU or GPU is used for clustering 
   when vcCluster = "drift-knn" is set.
 
+
 ## [4.0.5] -2018-08-14
 ### Added 
 - p_ironclust runs ground-truth validation if "firings_true.mda" is present 
@@ -43,24 +77,29 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - tetrode_template.prm default changed to work with the new default 
   clustering algorithm (vcCluster = "drift-knn")
 
+
 ## [4.0.4] - 2018-08-03
 ### Fixed
 - tetrode_template.prm filter option changed to "fir1, [300, 6000] Hz"
   It works even if the Signal Processing Toolbox is absent using 
   "fir1_octave.m" function. Previously used bandpass elliptic filtfilt.  
 
+
 ## [4.0.3] -2018-08-03
 ### Fixed
 1. fParfor flag correctly controls parallel computation toolbox use.
   fParfor=0 if invoked by mountainlab-js
+
 
 ## [4.0.2] -2018-08-03
 ### Fixed
 1. Crash in the cluster prevented by setting fSavePlot_RD=0 when created 
   by the mountainlab-ps called by p_ironclust.m
 
-## [4.0.4] -2019-08-03
+
+## [4.0.1] -2019-08-03
 - Editor opening disabled in the cluster node.
+
 
 ## [4.0.0] -2018-08-02
 ### Added

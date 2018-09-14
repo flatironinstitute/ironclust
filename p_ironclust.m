@@ -7,6 +7,7 @@ if exist(temp_path, 'dir') ~= 7
 end
     
 vcFile_prm = irc('makeprm_mda', raw_fname, geom_fname, arg_fname, temp_path, prm_fname);
+irc('clear', vcFile_prm); %init 
 irc('detectsort', vcFile_prm);
 vcFile_jrc_csv = irc('export-csv', vcFile_prm);
 

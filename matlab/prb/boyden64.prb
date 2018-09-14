@@ -1,0 +1,17 @@
+% Order of the probe sites in the recording file
+channels = 1:64;
+
+% Site location in micrometers (x and y)
+geometry = zeros(64, 2);
+geometry(:,1) = repmat((0:1)'*11, [32,1]);
+geometry(:,2) = reshape(repmat((0:31)*11, [2,1]), 64,1);
+
+% Recording contact pad size in micrometers. Height x width
+pad = [9 9];
+
+% Default prm
+% maxSite = 4.5;
+um_per_pix = 11;
+
+% Shanks
+% shank = ones(size(channels)); shank(geometry(:,1)>0)=2;

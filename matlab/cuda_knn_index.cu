@@ -7,21 +7,22 @@
 #include <cuda_runtime.h>
 #include <math.h>
 #define ABS(my_val) ((my_val) < 0) ? -(my_val) : (my_val)
-#define NC (2*18) //3pca x 18 channels max
-#define CHUNK 16
+#define NC (2*18) //2pca x 18 channels max
+#define CHUNK (8)
 #define SINGLE_INF (3.402E+38) // equipvalent to NAN. consider -1 value
-#define NTHREADS 256
+#define NTHREADS (256)
 #define SWAP(x, y, T) do { T SWAP = x; x = y; y = SWAP; } while (0)
 
 /** Main entry point.
  * Works out where the current thread should read/write to global memory
  * and calls doIterations to do the actual work.
  * K: K nearest neighbor
+ * I: Index (knn x nA)
  * F: Feature matrix (nC x *)
  * viB: Index B (nB x 1)
  * viA: Index A (nA x 1)
  */
-__global__ void cuda_knn(float *K, float const *B, float const *A, const int *vnConst){
+__global__ void cuda_knn_index(float *K, int *I, float const *B, float const *A, const int *vnConst){
     
     int nB = vnConst[0];
     int nA = vnConst[1];
@@ -35,7 +36,7 @@ __global__ void cuda_knn(float *K, float const *B, float const *A, const int *vn
 
     __shared__ float sA[NC][CHUNK];
     __shared__ float sD[NTHREADS][CHUNK];
-    //__shared__ int sI[NTHREADS][CHUNK];
+    __shared__ int sI[NTHREADS][CHUNK];
     
     // initialize
     if (tx < CHUNK){        
@@ -44,7 +45,7 @@ __global__ void cuda_knn(float *K, float const *B, float const *A, const int *vn
             for (int iC=0; iC<nC; ++iC) sA[iC][iA_] = A[iC + iA*nC]; // copy A->sA   
             for (int iT=0; iT<nThreads; ++iT){
                 sD[iT][iA_] = SINGLE_INF; // sD = inf
-                //sI[iT][iA_] = 0;
+                sI[iT][iA_] = 0;
             }
         }
     }
@@ -66,7 +67,7 @@ __global__ void cuda_knn(float *K, float const *B, float const *A, const int *vn
         for (int iA_=0; iA_<CHUNK; ++iA_){
             if (dist_[iA_] < sD[iB_][iA_]){
                 sD[iB_][iA_] = dist_[iA_];
-                //sI[iB_][iA_] = iB;
+                sI[iB_][iA_] = iB;
             }
         }
     } // while
@@ -88,16 +89,21 @@ __global__ void cuda_knn(float *K, float const *B, float const *A, const int *vn
                     }
                 }
                 SWAP(sD[imin_][iA_], sD[iK][iA_], float);
-                //SWAP(sI[imin_][iA_], sI[iK][iA_], int);
+                SWAP(sI[imin_][iA_], sI[iK][iA_], int);
                 /*sD[imin_][iA_] = sD[iK][iA_];
                 sD[iK][iA_] = dmin_;
                 sI[imin_][iA_] = sI[iK][iA_];
                 sI[iK][iA_] = imin_;*/
-            }            
+            }      
+            // average or take the last?
             K[iA] = sqrt(ABS(sD[knn-1][iA_]));
-            /*for (int iK=0; iK<knn; ++iK){
+            //float k_ave = 0.0;
+            for (int iK=0; iK<knn; ++iK){
                 I[iK + knn*iA] = sI[iK][iA_] + 1; // matlab 1 base
-            }*/
+                //k_ave += sD[iK][iA_];
+            }
+            //k_ave /= knn;
+            //K[iA] = sqrt(ABS(k_ave));
         }        
     } // if
 } // func
