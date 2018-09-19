@@ -120,6 +120,7 @@ spkLim_factor_merge = 1;    % Waveform range for computing the correlation. spkL
 fWavRaw_merge = 0;          % Use raw average unit waveforms for merge when set to 1, if not use filtered waveforms.
 frac_equal_knn = .5;        % Fraction of k-nearest neighbors from the same cluster. 
 frac_shift_merge = .1;      % Fraction of the waveform to shift to check for merging
+fRemove_duplicate = 1;      % Remove clusters whose detection site occurs far from the min waveform site (d>=maxDist_site_um)
 
 % #Trial (used for plotting PSTH for each unit after clustering)
 vcFile_trial = '';          % .mat or .csv file containing timestamp in seconds unit. use any variable name.
