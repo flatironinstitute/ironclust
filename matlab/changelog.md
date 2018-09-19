@@ -3,6 +3,15 @@ IronClust, written by J. James Jun, Flatiron Institute, Simons Foundation
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [4.0.9] - 2018-09-19
+### Added
+- mountainlab pipeline suppport added.
+  - `firings_true` input is accepted for ground-truth validation.
+
+### Fixed
+- `adjacency_radius=-1` is interpreted as using all the sites. 
+
+
 ## [4.0.8] - 2018-09-19
 ### Added
 - Auto-merging before the waveform merging using knn overlap.
