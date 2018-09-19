@@ -3,6 +3,22 @@ IronClust, written by J. James Jun, Flatiron Institute, Simons Foundation
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [4.0.8] - 2018-09-19
+### Added
+- Auto-merging before the waveform merging using knn overlap.
+
+### Changed
+- maxWavCor=.98 default value (waveform-based merging threshold
+  - Previously .975 was default
+- Spikes belonging to the clusters having less than min_count (default 30) are removed
+  - These spikes get assigned with "0" cluster value (noise cluster)
+- Average waveforms for pair-wise merging is calculated using half the waveforms
+  having smaller RMS errors compared to the median waveforms (trimmed-mean)
+
+### Fixed
+- Cluster merging error is resolved in manual GUI.
+
+
 ## [4.0.7] - 2018-09-14
 ### Added
 - `frac_equal_knn` parameter is used to identify events whose fraction of 
