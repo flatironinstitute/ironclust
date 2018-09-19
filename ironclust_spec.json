@@ -1,4 +1,3 @@
-
 {
   "processors": [
     {
@@ -19,6 +18,11 @@
           "name": "prm",
           "optional": true,
           "description": "Optional parameter file in .prm format"
+        },
+        {
+          "name": "firings_true",
+          "optional": true,
+          "description": "Optional mda file for ground-truth validation"
         }
       ],
       "outputs": [
@@ -65,27 +69,12 @@
           "optional": true
         },
         {
-          "name": "whiten",
-          "description": "",
-          "optional": true
-        },
-        {
-          "name": "curate",
-          "description": "",
-          "optional": true
-        },
-        {
           "name": "detect_threshold",
           "description": "",
           "optional": true
-        },
-        {
-          "name": "use_slope_filter",
-          "description": "",
-          "optional": true
-        }        
+        }
       ],
-      "exe_command": "[needs to be wrapped in matlab call syntax] p_ironclust_sort('$timeseries$','$geom$','$prb$','$firings_out$','$(argfile)');"
+      "exe_command": "[needs to be wrapped in matlab call syntax]"
     }
   ]
 }

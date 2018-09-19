@@ -54,7 +54,7 @@ switch lower(vcCmd)
         if nargout>0, varargout{1} = vcFile_prm_; end
         if isempty(vcFile_prm_), return; end
         if strcmpi(vcCmd, 'makeprm-all'), irc('all', vcFile_prm_); end
-    case {'makeprm-mda', 'makeprm_mda'}
+    case 'makeprm-mda'
         vcFile_prm_ = makeprm_mda_(vcArg1, vcArg2, vcArg3, vcArg4, vcArg5);
         if nargout>0, varargout{1} = vcFile_prm_; end        
     case 'makeprm-f', makeprm_(vcArg1, vcArg2, 0, vcArg3, vcArg4);
@@ -1542,7 +1542,7 @@ mnWav1 = fread_(fid_bin, dimm_wav, P.vcDataType);
 % [mnWav1, P.fGpu] = gpuArray_(mnWav1, P.fGpu);
 switch(P.vcDataType)
     case 'uint16', mnWav1 = int16(single(mnWav1)-2^15);
-    case {'single', 'double'}, mnWav1 = int16(mnWav1 / P.uV_per_bit);
+    case {'float', 'float32', 'float64', 'single', 'double'}, mnWav1 = int16(mnWav1 / P.uV_per_bit);
 end
 if get_(P, 'fInverse_file'), mnWav1 = -mnWav1; end %flip the polarity
 
@@ -3436,7 +3436,7 @@ tnWav_spk = get_spkwav_(P, 0); % use raw waveform
 [viSite_spk, mrPos_spk, dimm_fet, viTime_spk] = ...
     get0_('viSite_spk', 'mrPos_spk', 'dimm_fet', 'viTime_spk');
 viTime_spk = viTime_spk(:);
-nSites_fet = dimm_fet(1);
+% nSites_fet = dimm_fet(1) / P.nPcPerChan;;
 n_burst = round(read_cfg_('interval_ms_burst') * P.sRateHz / 1000);
 
 % assert no empty clusters
@@ -4549,6 +4549,12 @@ end %func
 %--------------------------------------------------------------------------
 function mnWav1 = fread_(fid_bin, dimm_wav, vcDataType)
 % Get around fread bug (matlab) where built-in fread resize doesn't work
+
+% defensive programming practice
+if strcmpi(vcDataType, 'float'), vcDataType = 'single'; end
+if strcmpi(vcDataType, 'float32'), vcDataType = 'single'; end
+if strcmpi(vcDataType, 'float64'), vcDataType = 'double'; end
+
 try
     if isempty(dimm_wav)
         mnWav1 = fread(fid_bin, inf, ['*', vcDataType]);
@@ -18125,67 +18131,6 @@ end %func
 
 
 %--------------------------------------------------------------------------
-% JJJ 2018/03/29
-function [vcFile_meta, vcFile_template] = mda2meta_(vcFile_mda, vcFile_txt)
-% vcFile_txt: mountain lab param format
-
-[vcFile_meta, vcFile_template, S_txt] =  deal([]);
-if isempty(vcFile_txt)
-    S_txt = struct('samplerate', 30000, 'detect_sign', 1);
-else
-    if ~exist_file_(vcFile_txt, 1), return; end        
-end
-if matchFileEnd_(vcFile_txt, '.prm') % jrclust format
-    S_prm = file2struct_(vcFile_txt); % parse matlab file format
-    sRateHz = get_set_(S_prm, 'sRateHz', 30000);
-    vcFile_template = vcFile_txt; % already written
-else % mountainlab fromat
-    if ~isempty(S_txt), S_txt = meta2struct_(vcFile_txt); end    
-    sRateHz = get_set_(S_txt, 'samplerate', 30000);     
-    csLines = {};
-    
-    fInverse_file = ifeq_(get_set_(S_txt, 'detect_sign', 1)>0, 1, 0);
-    csLines{end+1} = sprintf('fInverse_file = %0.0f;', fInverse_file);
-    
-    blank_thresh = get_set_(S_text, 'mask_out_artifacts', []);
-    if strcmpi(blank_thresh, 'true'), blank_thresh = 10; end
-    if strcmpi(blank_thresh, 'false'), blank_thresh = []; end
-    csLines{end+1} = sprintf('blank_thresh = %d;', blank_thresh);
-    
-    maxDist_site_spk_um = get_set_(S_txt, 'adjacency_radius', 75);
-    maxDist_site_um = maxDist_site_spk_um * 2/3;
-    maxDist_site_merge_um = maxDist_site_spk_um * 0.4667;
-    csLines{end+1} = sprintf('maxDist_site_spk_um = %f;', maxDist_site_spk_um);
-    csLines{end+1} = sprintf('maxDist_site_um = %f;', maxDist_site_um);
-    csLines{end+1} = sprintf('maxDist_site_merge_um = %f;', maxDist_site_merge_um);
-    
-    freq_min = get_set_(S_txt, 'freq_min', []);
-    freq_max = get_set_(S_txt, 'freq_max', []);
-    if ~isempty(freq_min) && ~isempty(freq_max)
-        csLines{end+1} = sprintf('freqLim = [%0.1f, %0.1f];', freq_min, freq_max);
-    end
-
-    % Write template file
-    vcFile_template = strrep(vcFile_mda, '.mda', '_template.prm');
-    cellstr2file_(vcFile_template, csLines);
-end
-S_mda = readmda_header_(vcFile_mda);
-nChans = S_mda.dimm(1);
-vcDataType = S_mda.vcDataType;
-
-% Write meta file
-vcFile_meta = strrep(vcFile_mda, '.mda', '.meta');
-csLines = {};
-csLines{end+1} = sprintf('sRateHz=%0.0f', sRateHz);
-csLines{end+1} = sprintf('nChans=%d', nChans);
-csLines{end+1} = 'scale=0.195';
-csLines{end+1} = sprintf('vcDataType=%s', vcDataType);
-cellstr2file_(vcFile_meta, csLines);
-
-end %func
-
-
-%--------------------------------------------------------------------------
 function [S_mda, fid_r] = readmda_header_(fname)
 fid_r = fopen(fname,'rb');
 
@@ -18214,11 +18159,11 @@ for j=1:num_dims
 end
 
 if (code==-1)
-    vcDataType = 'float';
+    vcDataType = 'single';
 elseif (code==-2)
     vcDataType = 'uchar';
 elseif (code==-3)
-    vcDataType = 'float';
+    vcDataType = 'single';
 elseif (code==-4)
     vcDataType = 'int16';
 elseif (code==-5)
@@ -20395,7 +20340,7 @@ end %func
 % 9/29/17 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcVer_used] = version_(vcFile_prm)
 if nargin<1, vcFile_prm = ''; end
-vcVer = 'v4.0.8';
+vcVer = 'v4.0.9';
 vcDate = '9/19/2018';
 vcVer_used = '';
 if nargout==0
@@ -21274,11 +21219,6 @@ for iFile = 1:numel(csFile_prm)
         fprintf(2, '\tInvalid format: %s\n', vcFile_prm_); 
         continue;
     end
-%         vcFile_bin_ = vcFile_prm_;
-%         S_template = file2struct_(vcFile_template);
-%         vcFile_prb = get_(S_template, 'probe_file');
-%         [vcFile_prm_, vcPrompt] = makeprm_(vcFile_bin_, vcFile_prb, 0, vcFile_template);
-%     end
     P_ = loadParam_(vcFile_prm_, 0);
     
     % create a folder by the prm name
@@ -22262,7 +22202,6 @@ if nargin<4, vcDir_prm = ''; end
 if nargin<5, vcFile_template = ''; end
 
 % create .meta file
-% vcFile_meta = mda2meta_(vcFile_mda, vcArg_txt); % write meta file for .mda
 S_mda = readmda_header_(vcFile_mda);
 P = struct('nChans', S_mda.dimm(1), 'vcDataType', S_mda.vcDataType, ...
     'header_offset', S_mda.nBytes_header, 'vcFile', vcFile_mda);
@@ -22287,6 +22226,7 @@ else
     P.blank_thresh = []; 
 end    
 P.maxDist_site_spk_um = get_set_(S_txt, 'adjacency_radius', 75);
+if P.maxDist_site_spk_um<=0, P.maxDist_site_spk_um = inf; end
 P.maxDist_site_um = P.maxDist_site_spk_um * 2/3;
 P.maxDist_site_merge_um = P.maxDist_site_spk_um * 0.4667;    
 freq_min = get_set_(S_txt, 'freq_min', []);
@@ -22294,6 +22234,8 @@ freq_max = get_set_(S_txt, 'freq_max', []);
 if ~isempty(freq_min) && ~isempty(freq_max)
     P.freqLim = [freq_min, freq_max]; 
 end
+qqFactor = get_(S_txt, 'detect_threshold');
+if ~isempty(qqFactor), P.qqFactor = qqFactor; end
 
 % create prb file from geom.csv file
 if matchFileEnd_(vcFile_prb, '.csv'), vcFile_prb = csv2prb_(vcFile_prb); end
@@ -22339,7 +22281,6 @@ function [miSort_drift, cviSpk_drift, nTime_drift, viDrift_spk] = drift_similari
 %   drift_similarity_()
 % return the spikes that are correlated
 
-fprintf('Calculating drift similarity...'); t1 = tic;
 
 if nargin==0
     S0 = get(0, 'UserData'); 
@@ -22355,6 +22296,8 @@ if nTime_clu == 1 || nTime_drift == 1 % no drift correlation analysis
     viDrift_spk = ones(1, numel(S0.viSite_spk), 'int32');
     return;
 end
+
+fprintf('Calculating drift similarity...'); t1 = tic;
 nQuantile_drift = get_set_(P, 'nQuantile_drift', 10);
 vrAmp_quantile = quantile(single(S0.vrAmp_spk), (0:nQuantile_drift)/nQuantile_drift);
 viSite_unique = unique(S0.viSite_spk);
@@ -24395,26 +24338,39 @@ end %func
 %--------------------------------------------------------------------------
 % only works for dimension of 1 for now
 function mrFet_full = trFet_full_(trFet_spk, S0, viSpk1)
+% trFet_spk: (nSite x nF_chan) x 2 x nSpk
+% return the first component
+
 if isempty(S0), S0 = get0_(); end
 [viSite_spk, viSite2_spk, P] = struct_get_(S0, 'viSite_spk', 'viSite2_spk', 'P');
 mrFet_spk1 = squeeze_(trFet_spk(:,1,viSpk1));
 mrFet2_spk1 = squeeze_(trFet_spk(:,2,viSpk1));
-nSites_fet = size(trFet_spk,1);
+nF_chan = P.nPcPerChan;
+nSites_fet = size(trFet_spk,1) / nF_chan;
 dimm_full = [size(P.miSites,2), numel(viSpk1)];
 mrFet_full = zeros(dimm_full, 'single');
+% nSites = size(P.miSites,2);
 
 [viSite2_uniq, ~, cviSpk1_uniq] = unique_count_(viSite2_spk(viSpk1));
 for iUniq=1:numel(cviSpk1_uniq)
     vi_ = cviSpk1_uniq{iUniq};
     viSite_ = P.miSites(1:nSites_fet, viSite2_uniq(iUniq));
-    mrFet_full(viSite_,vi_) = mrFet2_spk1(:,vi_);
+%     if nF_chan>1
+%         viSite_ = bsxfun(@plus, viSite_(:), (0:nF_chan-1)*nSites);
+%         viSite_ = viSite_(:);
+%     end
+    mrFet_full(viSite_,vi_) = mrFet2_spk1(1:nSites_fet,vi_);
 end
 
 [viSite1_uniq, ~, cviSpk1_uniq] = unique_count_(viSite_spk(viSpk1));
 for iUniq=1:numel(cviSpk1_uniq)
     vi_ = cviSpk1_uniq{iUniq};
     viSite_ = P.miSites(1:nSites_fet, viSite1_uniq(iUniq));
-    mrFet_full(viSite_,vi_) = mrFet_spk1(:,vi_);
+%     if nF_chan>1
+%         viSite_ = bsxfun(@plus, viSite_(:), (0:nF_chan-1)*nSites);
+%         viSite_ = viSite_(:);
+%     end    
+    mrFet_full(viSite_,vi_) = mrFet_spk1(1:nSites_fet,vi_);
 end
 end %func
 

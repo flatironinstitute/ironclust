@@ -11,3 +11,4 @@ fWavRaw_merge = 0;
 spkLim_ms = [-.5, 1.5];    % Time range to capture the filtered spike waveforms; spkLim = round(P.spkLim_ms/1000*P.sRateHz)
 nTime_clu = 1;			% number of time periods to perform separate clustering (later to be merged after clustering)
 fPlot_gt = 0;           % Plot groundtruth 
+fGpu = 0;

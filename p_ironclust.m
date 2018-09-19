@@ -1,4 +1,4 @@
-function p_ironclust(temp_path, raw_fname, geom_fname, prm_fname, firings_out_fname, arg_fname)
+function p_ironclust(temp_path, raw_fname, geom_fname, prm_fname, vcFile_gt_mda, firings_out_fname, arg_fname)
 % cmdstr2 = sprintf("p_ironclust('$(tempdir)','$timeseries$','$geom$','$firings_out$','$(argfile)');");
 
 % temp_path='/tmp/test_jrclust'
@@ -6,13 +6,12 @@ if exist(temp_path, 'dir') ~= 7
     mkdir(temp_path);
 end
     
-vcFile_prm = irc('makeprm_mda', raw_fname, geom_fname, arg_fname, temp_path, prm_fname);
+vcFile_prm = irc('makeprm-mda', raw_fname, geom_fname, arg_fname, temp_path, prm_fname);
 irc('clear', vcFile_prm); %init 
 irc('detectsort', vcFile_prm);
 vcFile_jrc_csv = irc('export-csv', vcFile_prm);
 
 % create a ground truth
-vcFile_gt_mda = subs_file_(raw_fname, 'firings_true.mda');
 if exist_file_(vcFile_gt_mda)
     irc('import-gt', vcFile_gt_mda, vcFile_prm); % assume that groundtruth file exists
     irc('validate', vcFile_prm); % assume that groundtruth file exists
