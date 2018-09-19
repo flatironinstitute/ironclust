@@ -3,6 +3,13 @@ IronClust, written by J. James Jun, Flatiron Institute, Simons Foundation
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [4.1.0] - 2018-09-19
+### Added
+- Mountainlab integration: exposed two new parameters
+  - `pc_per_chan` controls number of principal components per channel
+  - `merge_thresh` controls waveform-based cluster merging (0..1)
+
+
 ## [4.0.9] - 2018-09-19
 ### Added
 - mountainlab pipeline suppport added.

@@ -5,10 +5,11 @@ maxSite=1.5;           % Total number of sites per spike event is 1+2*maxSite. F
 nSites_ref = 0;        % no reference sites available for tetrodes
 vcSpkRef = 'none';     % turn off local CAR subtraction
 vcCommonRef = 'none';  % common reference mode {'none', 'mean', 'median', 'whiten'}
-nPcPerChan = 2;        % Number of PC per chan. Default is 1 but tetrodes may need more temporal features due to limited number of channels per event group.
 qqFactor = 4;
 fWavRaw_merge = 0;
 spkLim_ms = [-.5, 1.5];    % Time range to capture the filtered spike waveforms; spkLim = round(P.spkLim_ms/1000*P.sRateHz)
 nTime_clu = 1;			% number of time periods to perform separate clustering (later to be merged after clustering)
 fPlot_gt = 0;           % Plot groundtruth 
 fGpu = 0;
+nPcPerChan = 3;
+fRemove_duplicate = 0;

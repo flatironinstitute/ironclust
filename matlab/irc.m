@@ -3225,7 +3225,6 @@ S_clu.viClu_premerge = S_clu.viClu;
 
 % S_clu = fix_overlap_(S_clu, P); % halo detection (vlHalo)    
 % S_clu = S_clu_remove_count_(S_clu, P); %remove low-count clusters
-
 S_clu = post_merge_wav_(S_clu, nRepeat_merge, P);
 % S_clu = S_clu_cleanup_(S_clu, P);
 % S_clu = S_clu_remove_count_(S_clu, P); %remove low-count clusters
@@ -3246,19 +3245,21 @@ end %func
 
 %--------------------------------------------------------------------------
 function S_clu = post_merge_wav_(S_clu, nRepeat_merge, P)
-fRemove_duplicate = 1;
+fRemove_duplicate = get_set_(P, 'fRemove_duplicate', 1);
 S_clu = rmfield_(S_clu, 'trWav_raw_clu', 'tmrWav_raw_clu', 'mrWavCor');
 
 mrDist_site = pdist(P.mrSiteXY); 
 dist_merge = min(mrDist_site(mrDist_site>0));
 % dist_merge = get_set_(P, 'maxDist_site_merge_um', 35);
 
-if ~isempty(get_(P, 'maxWavCor'))
+maxWavCor = get_set_(P, 'maxWavCor', 1);
+if maxWavCor < 1 && maxWavCor > 0
 %    for merge_factor = [.1, 1]
     for merge_factor = [1]
         S_clu = post_merge_wav4_(S_clu, merge_factor*dist_merge, P);
     end
-end
+end %if
+
 % Old format compatibility
 S_clu = S_clu_wav_(S_clu);
 S_clu.mrWavCor = S_clu_wavcor_(S_clu, P);  
@@ -20768,6 +20769,13 @@ end %func
 function trWav_fet = get_spkfet_(P)
 persistent trWav_fet_ vcFile_prm_
 if ~strcmpi(P.vcFile_prm, vcFile_prm_) || isempty(trWav_fet_)
+    fLoad = 1;
+elseif ~all(size(trWav_fet_) == get0_('dimm_fet'))
+    fLoad = 1;
+else
+    fLoad = 0;
+end
+if fLoad
     vcFile_prm_ = P.vcFile_prm;
     trWav_fet_ = load_bin_(strrep(P.vcFile_prm, '.prm', '_spkfet.jrc'), 'single', get0_('dimm_fet'));
 end
@@ -22236,6 +22244,12 @@ if ~isempty(freq_min) && ~isempty(freq_max)
 end
 qqFactor = get_(S_txt, 'detect_threshold');
 if ~isempty(qqFactor), P.qqFactor = qqFactor; end
+
+nPcPerChan = get_(S_txt, 'pc_per_chan');
+if ~isempty(nPcPerChan), P.nPcPerChan = nPcPerChan; end
+
+maxWavCor = get_(S_txt, 'merge_thresh');
+if ~isempty(maxWavCor), P.maxWavCor = maxWavCor; end
 
 % create prb file from geom.csv file
 if matchFileEnd_(vcFile_prb, '.csv'), vcFile_prb = csv2prb_(vcFile_prb); end

@@ -72,6 +72,16 @@
           "name": "detect_threshold",
           "description": "",
           "optional": true
+        },
+        {
+          "name": "pc_per_chan",
+          "description": "Number of PC per channel to use",
+          "optional": true
+        },
+        {
+          "name": "merge_thresh",
+          "description": "cluster merging threshold based on the waveform similarity (0..1)",
+          "optional": true
         }
       ],
       "exe_command": "[needs to be wrapped in matlab call syntax]"
