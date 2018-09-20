@@ -3,6 +3,20 @@ IronClust, written by J. James Jun, Flatiron Institute, Simons Foundation
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [4.1.1] - 2018-09-20
+### Added
+- Tetrode-optimized clustering for small number of channels, smaller amplitudes
+  - `vcCluster = 'waveform'`
+  - This clustering will create nC*nC*nD features
+    - nC: number of channels
+    - nD: number of time delays (`nDelays_wavcov` parameter, default 4)
+  - Currently using CPU, GPU-version will follow (~40x speed-up expected)
+- Memory-optimized KNN using CPU when using `vcCluster='drift-knn'`
+
+### Fixed
+- "icl not found error" resolved when capturing the rho-delta plot
+
+
 ## [4.1.0] - 2018-09-19
 ### Added
 - Mountainlab integration: exposed two new parameters

@@ -28,7 +28,7 @@
 	.reg .b32 	%r<284>;
 	.reg .b64 	%rd<46>;
 	// demoted variable
-	.shared .align 4 .b8 _ZZ14cuda_knn_indexPfPiPKfS2_PKiE2sA[1152];
+	.shared .align 4 .b8 _ZZ14cuda_knn_indexPfPiPKfS2_PKiE2sA[1536];
 	// demoted variable
 	.shared .align 4 .b8 _ZZ14cuda_knn_indexPfPiPKfS2_PKiE2sD[8192];
 	// demoted variable

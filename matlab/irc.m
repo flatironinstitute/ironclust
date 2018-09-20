@@ -2344,7 +2344,9 @@ switch lower(vcCluster)
     case 'drift'
         S_clu = cluster_drift_(S0, P);     
     case {'drift-knn' ,'knn'}
-        S_clu = cluster_drift_knn_(S0, P);          
+        S_clu = cluster_drift_knn_(S0, P);        
+    case 'wavcov' % waveform-covariance based clustering
+        S_clu = cluster_wavcov_(S0, P);
     otherwise
         error('fet2clu_: unsupported vcCluster: %s', vcCluster);
 end
@@ -3216,7 +3218,7 @@ if nargin<3, fPostCluster=1; end
 nRepeat_merge = get_set_(P, 'nRepeat_merge', 10);
 % refresh clu, start with fundamentals
 S_clu = struct_copy_(S_clu, 'rho', 'delta', 'ordrho', 'nneigh', 'P', ...
-    't_runtime', 'halo', 'viiSpk', 'trFet_dim', 'vrDc2_site', 'miKnn', 'viClu');
+    't_runtime', 'halo', 'viiSpk', 'trFet_dim', 'vrDc2_site', 'miKnn', 'viClu', 'icl');
 
 if fPostCluster, S_clu = postCluster_(S_clu, P); end
 
@@ -8929,7 +8931,7 @@ end %func
 %--------------------------------------------------------------------------
 % 9/17/2018 JJJ: merge peaks based on their waveforms
 function viMap = S_clu_peak_merge_(S_clu, P) 
-knn_merge_thresh = 1;
+knn_merge_thresh = get_set_(P, 'knn_merge_thresh', 1);
 % viMap = (1:numel(S_clu.icl))'; return;
 % consider cluster count
 % remove centers if their knn overlaps
@@ -22668,11 +22670,34 @@ if fGpu
         end
     end
 end
-if ~fGpu
-    [mr12_, miKnn] = sort(eucl2_dist_(mrFet(:, vi2), mrFet(:, vi1)));
-    vrKnn = sqrt(abs(mr12_(knn,:)));
-    miKnn = vi2(miKnn(1:knn,:)); % keep knn
+if ~fGpu    
+%     [mr12_, miKnn] = sort(eucl2_dist_(mrFet(:, vi2), mrFet(:, vi1)));
+%     vrKnn = sqrt(abs(mr12_(knn,:)));
+%     miKnn = vi2(miKnn(1:knn,:)); % keep knn  
+    [vrKnn, miKnn] = knn_cpu_(mrFet, vi1, vi2, knn);
 end
+end %func
+
+
+%--------------------------------------------------------------------------
+% 9/20/2018 JJJ: Memory-optimized knn
+function [vrKnn, miKnn] = knn_cpu_(mrFet, vi1, vi2, knn)
+nStep = 1000;
+n1 = numel(vi1);
+miKnn = zeros([knn, n1], 'int32'); 
+vrKnn = zeros([n1, 1], 'single');
+mrFet2 = mrFet(:,vi2);
+mrFet1 = mrFet(:,vi1);
+fh_dist_ = @(y)bsxfun(@plus, sum(y.^2), bsxfun(@minus, sum(mrFet2.^2)', 2*mrFet2'*y));
+for i1 = 1:nStep:n1
+    vi1_ = i1:min(i1+nStep-1, n1);
+    mrD_ = fh_dist_(mrFet1(:,vi1_));
+    [mrSrt_, miSrt_] = sort(mrD_);
+    miKnn(:,vi1_) = miSrt_(1:knn,:);
+    vrKnn(vi1_) = mrSrt_(knn,:);
+end %for
+miKnn = vi2(miKnn);
+vrKnn = sqrt(abs(vrKnn));
 end %func
 
 
@@ -22793,13 +22818,36 @@ if fGpu
     end
 end
 if ~fGpu
-    mr12_ = eucl2_dist_(mrFet(:,vi2), mrFet(:,vi1));
-    [vrRho2, vrRho1] = deal(vrRho(vi2), vrRho(vi1));
-    mr12_(bsxfun(@le, vrRho2(:), vrRho1(:)')) = nan;  % ignore smaller density
-    [vrDelta1_, viNneigh1_] = min(mr12_);    
-    vrDelta1 = sqrt(abs(vrDelta1_));
-    viNneigh1 = uint32(vi2(viNneigh1_));
+    [vrDelta1, viNneigh1] = delta_knn_cpu_(mrFet, vrRho, vi1, vi2);    
+%     mr12_ = eucl2_dist_(mrFet(:,vi2), mrFet(:,vi1));
+%     [vrRho2, vrRho1] = deal(vrRho(vi2), vrRho(vi1));
+%     mr12_(bsxfun(@le, vrRho2(:), vrRho1(:)')) = nan;  % ignore smaller density
+%     [vrDelta1_, viNneigh1_] = min(mr12_);    
+%     vrDelta1 = sqrt(abs(vrDelta1_));
+%     viNneigh1 = uint32(vi2(viNneigh1_));
 end
+end %func
+
+
+%--------------------------------------------------------------------------
+% 9/20/2018 JJJ: Memory-optimized knn for computing delta (dpclus)
+function [vrDelta1, viNneigh1] = delta_knn_cpu_(mrFet, vrRho, vi1, vi2)
+nStep = 1000;
+n1 = numel(vi1);
+vrDelta1 = zeros([n1, 1], 'single');
+viNneigh1 = zeros([n1, 1], 'uint32');
+[mrFet2, mrFet1] = deal(mrFet(:,vi2), mrFet(:,vi1));
+[vrRho2, vrRho1] = deal(vrRho(vi2), vrRho(vi1));
+fh_dist_ = @(y)bsxfun(@plus, sum(y.^2), bsxfun(@minus, sum(mrFet2.^2)', 2*mrFet2'*y));
+
+for i1 = 1:nStep:n1
+    vi1_ = i1:min(i1+nStep-1, n1);
+    mrD_ = fh_dist_(mrFet1(:,vi1_));
+    mrD_(bsxfun(@le, vrRho2, vrRho1(vi1_)')) = inf;
+    [vrDelta1(vi1_), viNneigh1(vi1_)] = min(mrD_);
+end
+vrDelta1 = sqrt(abs(vrDelta1));
+viNneigh1 = uint32(vi2(viNneigh1));
 end %func
 
 
@@ -23386,6 +23434,7 @@ end %func
 %--------------------------------------------------------------------------
 function trWav_full = tnWav_full_(tnWav_spk, S0, viSpk1)
 if isempty(S0), S0 = get0_(); end
+if nargin<3, viSpk1 = 1:size(tnWav_spk,3); end
     
 [viSite_spk, P] = struct_get_(S0, 'viSite_spk', 'P');
 viSite_spk1 = viSite_spk(viSpk1);
@@ -24451,4 +24500,114 @@ else
 end
 grid on;
 close_(hMsg);
+end %func
+
+
+%--------------------------------------------------------------------------
+% 9/19/2018 JJJ: turn spike waveforms to cluster using dpclus
+% for tetrodes. not doing feature extraction but using all waveforms
+function S_clu = cluster_wavcov_(S0, P)
+nStep = 1000; % affects memory usage
+
+t_func = tic;
+tnWav_spk = get_spkwav_(P, 0);
+tnWav_spk = tnWav_full_(tnWav_spk, S0);
+dimm_ = size(tnWav_spk);
+[knn, nSpk, nChans] = deal(P.knn, dimm_(3), dimm_(2));
+t_fet = tic;
+% select features to use
+switch 7
+    case 1
+        mrFet_spk = reshape(single(tnWav_spk), [], nSpk);
+    case 2
+        mrFet_spk = zeros(size(tnWav_spk,2).^2, nSpk, 'single');
+        for iSpk = 1:nSpk
+            mr_ = single(tnWav_spk(:,:,iSpk));
+            mr_ = mr_' * mr_;
+            mrFet_spk(:,iSpk) = mr_(:);
+        end
+    case 7
+        nDelays = get_set_(P, 'nDelays_wavcov', 4);
+        mrFet_spk = zeros(nChans.^2 * nDelays, nSpk, 'single');
+        tr_ = zeros(nChans, nChans, nDelays ,'single');
+        vi_ = (nDelays:(dimm_(1) - nDelays + 1))';
+        miA = bsxfun(@plus, vi_, 0:nDelays-1);
+        miB = bsxfun(@minus, vi_, 0:nDelays-1);
+        for iSpk = 1:nSpk
+            mr_ = single(tnWav_spk(:,:,iSpk));    
+%             mr_ = bsxfun(@minus, mr_, mean(mr_)); %  mean subtraction
+            for iDelay = 1:nDelays
+                tr_(:,:,iDelay) = mr_(miA(:,iDelay),:)' * mr_(miB(:,iDelay),:);
+            end
+            mrFet_spk(:,iSpk) = tr_(:);            
+        end
+        % sqrt and pca
+%         [~,mnWav_spk,~]=pca(mnWav_spk', 'NumComponents', round(size(mnWav_spk,1)/4));
+%         mnWav_spk = mnWav_spk';
+
+    case 3
+        mrFet_spk = reshape(single(tnWav_spk), [], nSpk);
+        vrWeight = (std(mrFet_spk,1,2));
+        vrWeight = vrWeight - min(vrWeight);
+        mrFet_spk = bsxfun(@times, mrFet_spk, vrWeight);
+    case 4
+        mrFet_spk = reshape(single(tnWav_spk), size(tnWav_spk,1), []);
+        vrWeight = std(mrFet_spk,1,2);
+        vrWeight = vrWeight - min(vrWeight);
+        mrFet_spk = bsxfun(@times, mrFet_spk, vrWeight);
+        mrFet_spk = reshape(mrFet_spk, [], nSpk);
+    case 5
+        mrFet_spk = reshape(single(tnWav_spk), size(tnWav_spk,1), []);
+        mrFet_spk = bsxfun(@times, mrFet_spk, std(mrFet_spk,1,2));
+        tnWav_spk = reshape(mrFet_spk, dimm_);
+        mrFet_spk = zeros(size(tnWav_spk,2).^2, nSpk, 'single');        
+        for iSpk = 1:nSpk
+            mr_ = single(tnWav_spk(:,:,iSpk));
+            mr_ = mr_' * mr_;
+            mrFet_spk(:,iSpk) = mr_(:);
+        end    
+    case 6
+        mrFet_spk = reshape(single(tnWav_spk), [], nSpk);        
+end
+fprintf('\tFeature extraction took %0.1fs\n', toc(t_fet));
+
+
+miKnn = zeros(knn,nSpk, 'int32');
+[vrRho, vrDelta] = deal(zeros(nSpk, 1, 'single'));
+viNneigh = zeros(nSpk, 1, 'int32');
+% try skipping every 10 or 100 for speed enhancement
+
+fh_dist_ = @(y)bsxfun(@plus, sum(y.^2), bsxfun(@minus, sum(mrFet_spk.^2)', 2*mrFet_spk'*y));
+% fh_dist_ = @(vi_)bsxfun(@plus, sum(mrFet_spk(:,vi_).^2), bsxfun(@minus, sum(mrFet_spk.^2)', 2*mrFet_spk'*mrFet_spk(:,vi_)));
+
+% find rho
+t_rho = tic;
+for iSpk = 1:nStep:nSpk
+    viSpk_ = iSpk:min(iSpk+nStep-1, nSpk);
+    mrD_ = fh_dist_(mrFet_spk(:,viSpk_));
+    [mrSrt_, miSrt_] = sort(mrD_);
+    miKnn(:,viSpk_) = miSrt_(1:knn,:);
+    vrRho(viSpk_) = mrSrt_(knn,:);
+end
+vrRho = 1 ./ vrRho;
+fprintf('\tDensity calculation (rho) took %0.1fs\n', toc(t_rho));
+
+% find delta
+t_delta = tic;
+for iSpk = 1:nStep:nSpk
+    viSpk_ = iSpk:min(iSpk+nStep-1, nSpk);
+    mrD_ = fh_dist_(mrFet_spk(:,viSpk_));
+    mrD_(bsxfun(@le, vrRho, vrRho(viSpk_)')) = inf;
+    [vrDelta(viSpk_), viNneigh(viSpk_)] = min(mrD_);
+end
+vrDelta = vrDelta .* vrRho;
+fprintf('\tMin. distance calculation (delta) took %0.1fs\n', toc(t_delta));
+
+t_runtime = toc(t_func);
+trFet_dim = S0.dimm_fet;
+[~, ordrho] = sort(vrRho, 'descend');
+S_clu = struct('rho', vrRho, 'delta', vrDelta, 'ordrho', ordrho, 'nneigh', viNneigh, ...
+    'P', P, 't_runtime', t_runtime, 'halo', [], 'viiSpk', [], ...
+    'trFet_dim', trFet_dim, 'vrDc2_site', [], 'miKnn', miKnn);
+
 end %func
