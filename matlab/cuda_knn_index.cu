@@ -7,7 +7,7 @@
 #include <cuda_runtime.h>
 #include <math.h>
 #define ABS(my_val) ((my_val) < 0) ? -(my_val) : (my_val)
-#define NC (2*18) //2pca x 18 channels max
+#define NC (3*16) //2pca x 18 channels max
 #define CHUNK (8)
 #define SINGLE_INF (3.402E+38) // equipvalent to NAN. consider -1 value
 #define NTHREADS (256)

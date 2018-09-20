@@ -93,7 +93,7 @@ vcSpkRef = 'nmean';         % Subtract mean of the spiking event sites {'nmean',
 fInterp_fet = 1;            % Interpolate the waveforms for feature projection to find the optimal delay (2x interp). Set to 0 to disable
 
 % #Clustering (run "jrc sort" after change)
-vcCluster = 'drift-knn';        % cluster method: {'spacetime', 'drift', 'drift2', 'drift-knn'}, spacetime: spatiotemporal decentralized clustering that can handle slow drift; drift: fast drift clustering
+vcCluster = 'drift-knn';        % cluster method: {'spacetime', 'drift', 'drift2', 'drift-knn', 'wavcov'}, spacetime: spatiotemporal decentralized clustering that can handle slow drift; drift: fast drift clustering; wavcov: waveform covariance (creates nChans^2*nDelays_wavcov number of features)
 nQuantile_drift = 8;       % Valid if vcCluster = 'drift'; # of bins for amplitude histogram per site to find drift pairs
 nTime_clu = 4;              % number of time periods to perform separate clustering (later to be merged after clustering)
 nTime_drift = 16;           % divide to 16 drift time bins
@@ -103,7 +103,8 @@ nThreads = 128;             % number of GPU threads for clustering
 nC_max = 36;                % (read-only) Set by the CUDA code. Maximum number of dimensions per event
 fSpatialMask_clu = 0;       % Apply spatial mask calculated from the distances between sites to the peak site (half-scale: P.maxDist_site_um). circa v3.1.10
 min_sites_mask = 5;         % Minimum number of sites to have to apply spatial mask. Used if fSpatialMask_clu==1. circa v3.1.10
-knn = 30;                    % K nearest neighbor clustering
+knn = 30;                   % K nearest neighbor clustering
+nDelays_wavcov = 4;         % Used for vcCluster='wavcov'. Number of delays for channel-pair covariance 
 
 % #Post-cluster auto-merging parameters (run "jrc auto" after change)
 delta1_cut = .6;            % RL cluster: delta cut-off. Increasing this will produce less clusters.
