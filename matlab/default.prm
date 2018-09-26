@@ -65,6 +65,7 @@ gain_boost = 1;             % multiply the raw recording by this gain to boost u
 thresh_corr_bad_site = [];  % Automatically reject bad sites based on the max. correlation with neighboring sites using raw waveforms. Set to [] to disable
 
 % #Spike detection and grouping (run "jrc spikesort" after change)
+vcDetect = 'min';           % Spike detection method. {'min', 'xcov'}
 qqFactor = 5;               % Spike detection thresold (Threshold = qqFactor*S, S = med(x-med(x))/.6745). (RQ Quiroga'04).
 qqSample = 4;               % Median subsample factor (1 every n)
 spkThresh_uV = [];          % Manual threshold (applies to all channels)
@@ -104,7 +105,7 @@ nC_max = 36;                % (read-only) Set by the CUDA code. Maximum number o
 fSpatialMask_clu = 0;       % Apply spatial mask calculated from the distances between sites to the peak site (half-scale: P.maxDist_site_um). circa v3.1.10
 min_sites_mask = 5;         % Minimum number of sites to have to apply spatial mask. Used if fSpatialMask_clu==1. circa v3.1.10
 knn = 30;                   % K nearest neighbor clustering
-nDelays_wavcov = 4;         % Used for vcCluster='wavcov'. Number of delays for channel-pair covariance 
+nDelays_xcov = 4;           % Used for vcCluster='xcov'. Number of delays for channel-pair covariance 
 
 % #Post-cluster auto-merging parameters (run "jrc auto" after change)
 delta1_cut = .6;            % RL cluster: delta cut-off. Increasing this will produce less clusters.

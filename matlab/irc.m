@@ -149,6 +149,7 @@ P = loadParam_(vcFile_prm);
 if isempty(P), return; end    
 fError = 0;
 switch lower(vcCmd)    
+    case 'plot-clupairs', plot_clu_pairs_(P);
     case 'preview', preview_(P); 
     case 'preview-test', preview_(P, 1); gui_test_(P, 'Fig_preview');
     case 'traces', traces_(P, 0, vcArg2);
@@ -162,6 +163,8 @@ switch lower(vcCmd)
     case {'spikesort', 'detectsort', 'detect-sort', 'spikesort-verify', 'spikesort-validate', 'spikesort-manual', 'detectsort-manual'}
         fprintf('Performing "irc detect", "irc sort" operations.\n');
         detect_(P); sort_(P, 0); describe_(P.vcFile_prm);
+%     case {'xcovsort', 'xcov-sort'}
+%         xcov_sort_(P); describe_(P.vcFile_prm);
     case {'detect', 'spikedetect'}
         detect_(P); describe_(P.vcFile_prm);
     case {'sort', 'cluster', 'clust', 'sort-verify', 'sort-validate', 'sort-manual'}
@@ -181,6 +184,7 @@ switch lower(vcCmd)
             if P.fft_thresh>0, mnWav = fft_clean_(mnWav, P); end
             mnWav = filt_car_(mnWav, P);
         end
+        mnWav = gather_(mnWav);
         assignWorkspace_(mnWav);
         try
             S_prb = load_prb_(P.probe_file);
@@ -891,8 +895,13 @@ runtime_detect = tic;
 set(0, 'UserData', []);
 [tnWav_raw, tnWav_spk, trFet_spk] = deal([]);
 
-S0 = file2spk_(P);
-
+vcDetect = get_set_(P, 'vcDetect', 'min');
+switch lower(vcDetect)
+    case 'min'
+        S0 = file2spk_(P);
+    case 'xcov'
+        S0 = xcov_detect_(P);
+end
 if get_set_(P, 'fRamCache', 1)
     tnWav_raw = load_bin_(strrep(P.vcFile_prm, '.prm', '_spkraw.jrc'), 'int16', S0.dimm_raw);
     tnWav_spk = load_bin_(strrep(P.vcFile_prm, '.prm', '_spkwav.jrc'), 'int16', S0.dimm_spk); 
@@ -911,19 +920,27 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function mrPos_spk = spk_pos_(S0, trFet_spk)
+% 9/23/2018 JJJ: added a case when nSites_spk=inf (using alll sites)
+function mrPos_spk = spk_pos_(S0, trFet_spk, nSites_spk)
 if nargin<2, trFet_spk = get_spkfet_(S0.P); end
 P = S0.P;
-nSites_spk = 1 + P.maxSite*2 - P.nSites_ref;
+nSpk = size(trFet_spk,3);
+
+if nargin<3
+    nSites_spk = 1 + P.maxSite*2 - P.nSites_ref; 
+    miSites_spk = single(P.miSites(1:nSites_spk, S0.viSite_spk));
+elseif isinf(nSites_spk)
+    nSites_spk = size(P.mrSiteXY,1);
+    miSites_spk = repmat(int32(1:nSites_spk)', [1,nSpk]);
+end
 
 mrVp = squeeze_(trFet_spk(1:nSites_spk,1,:)) .^ 2;
 vrVp = sum(mrVp);
 
-miSites_spk = single(P.miSites(1:nSites_spk, S0.viSite_spk));
 mrX_spk = reshape(P.mrSiteXY(miSites_spk,1), size(miSites_spk));
 mrY_spk = reshape(P.mrSiteXY(miSites_spk,2), size(miSites_spk));
 
-mrPos_spk = zeros(numel(S0.viSite_spk), 2, 'single');
+mrPos_spk = zeros(nSpk, 2, 'single');
 mrPos_spk(:,1) = sum(mrVp .* mrX_spk) ./ vrVp;
 mrPos_spk(:,2) = sum(mrVp .* mrY_spk) ./ vrVp;
 end %func
@@ -2345,8 +2362,8 @@ switch lower(vcCluster)
         S_clu = cluster_drift_(S0, P);     
     case {'drift-knn' ,'knn'}
         S_clu = cluster_drift_knn_(S0, P);        
-    case 'wavcov' % waveform-covariance based clustering
-        S_clu = cluster_wavcov_(S0, P);
+    case 'xcov' % waveform-covariance based clustering
+        S_clu = cluster_xcov_(S0, P);
     otherwise
         error('fet2clu_: unsupported vcCluster: %s', vcCluster);
 end
@@ -3089,12 +3106,12 @@ for iClu=1:nClu
 end
 
 % Find center location and spike SNR
-mrVmin_clu = shiftdim(min(trWav_clu,[],1));
-[vrVmin_clu, viSite_clu] = min(mrVmin_clu,[],1); %center sites
+% mrVmin_clu = shiftdim(min(trWav_clu,[],1));
+% [vrVmin_clu, viSite_clu] = min(mrVmin_clu,[],1); %center sites
 
-% perform CAR after centering at the center site
 mrVmin_clu = squeeze_(min(trWav_clu,[],1));
-[vrVmin_clu, ~] = min(mrVmin_clu,[],1);
+[vrVmin_clu, viSite_clu] = min(mrVmin_clu,[],1);
+[vrVpp_clu, viSite_Vpp_clu] = max(squeeze_(max(trWav_clu) - min(trWav_clu)));
 
 % cluster specifications
 vrVmin_clu = abs(vrVmin_clu);
@@ -3108,7 +3125,10 @@ if strcmpi(S_cfg.vcSnr_gt, 'min')
 elseif strcmpi(S_cfg.vcSnr_gt, 'sd')
     vrSnr_clu = vrSnr_sd_clu;
 end
-S_ = makeStruct_(viSite_clu, vrVmin_clu, vrSnr_clu, vnSite_clu, vrSnr_sd_clu, vrSnr_min_clu, trWav_clu, trWav_raw_clu);
+S_ = makeStruct_(viSite_clu, vrVmin_clu, vrSnr_clu, vnSite_clu, ...
+    vrSnr_sd_clu, vrSnr_min_clu, trWav_clu, trWav_raw_clu, ...
+    vrVpp_clu, viSite_Vpp_clu);
+
 if ~isempty(snr_thresh)
     viClu_keep = find(abs(vrSnr_clu) > snr_thresh);    
     S_ = struct_select_dimm_(S_, viClu_keep, 1);
@@ -5706,8 +5726,8 @@ P.jitter_ms = jitter_ms;
 P.nLags_ms = nLags_ms;
 
 [hFig, S_fig] = get_fig_cache_('FigCorr'); 
-iClu1 = S0.iCluCopy;
-iClu2 = S0.iCluPaste;
+iClu1 = get_set_(S0, 'iCluCopy', 1);
+iClu2 = get_set_(S0, 'iCluPaste', 1);
 if isempty(iClu2), iClu2 = iClu1; end
 
 jitter = round(P.sRateHz / 1000 * P.jitter_ms); %0.5 ms
@@ -18119,7 +18139,7 @@ try
 %     csLines{end+1} = sprintf('nChans=%d', size(S_rhs.amplifier_data,1));
 %     csLines{end+1} = 'scale=0.195';
 %     csLines{end+1} = 'vcDataType=single';
-%     vcFile_meta = strrep(vcFile_rhs, '.rhs', '.meta');
+    vcFile_meta = strrep(vcFile_rhs, '.rhs', '.meta');
 %     cellstr2file_(vcFile_meta, csLines);
 
     S_meta = struct('uV_per_bit', .195, ...
@@ -20343,8 +20363,8 @@ end %func
 % 9/29/17 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcVer_used] = version_(vcFile_prm)
 if nargin<1, vcFile_prm = ''; end
-vcVer = 'v4.0.9';
-vcDate = '9/19/2018';
+vcVer = 'v4.1.2';
+vcDate = '9/25/2018';
 vcVer_used = '';
 if nargout==0
     fprintf('%s (%s) installed\n', vcVer, vcDate);
@@ -20707,9 +20727,10 @@ end %func
 % 10/11/17 JJJ: created and tested
 function write_spk_(varargin)
 % [Usage]
-% write_spk_() % close and clear
 % write_spk_(vcFile_prm) %open file
 % write_spk_(tnWav_raw, tnWav_spk, trFet_spk)
+% write_spk_() % close and clear
+
 persistent fid_raw fid_spk fid_fet
 
 switch nargin
@@ -22682,15 +22703,15 @@ end %func
 %--------------------------------------------------------------------------
 % 9/20/2018 JJJ: Memory-optimized knn
 function [vrKnn, miKnn] = knn_cpu_(mrFet, vi1, vi2, knn)
-nStep = 1000;
+nStep_knn = 1000;
 n1 = numel(vi1);
 miKnn = zeros([knn, n1], 'int32'); 
 vrKnn = zeros([n1, 1], 'single');
 mrFet2 = mrFet(:,vi2);
 mrFet1 = mrFet(:,vi1);
 fh_dist_ = @(y)bsxfun(@plus, sum(y.^2), bsxfun(@minus, sum(mrFet2.^2)', 2*mrFet2'*y));
-for i1 = 1:nStep:n1
-    vi1_ = i1:min(i1+nStep-1, n1);
+for i1 = 1:nStep_knn:n1
+    vi1_ = i1:min(i1+nStep_knn-1, n1);
     mrD_ = fh_dist_(mrFet1(:,vi1_));
     [mrSrt_, miSrt_] = sort(mrD_);
     miKnn(:,vi1_) = miSrt_(1:knn,:);
@@ -22832,7 +22853,7 @@ end %func
 %--------------------------------------------------------------------------
 % 9/20/2018 JJJ: Memory-optimized knn for computing delta (dpclus)
 function [vrDelta1, viNneigh1] = delta_knn_cpu_(mrFet, vrRho, vi1, vi2)
-nStep = 1000;
+nStep_knn = 1000;
 n1 = numel(vi1);
 vrDelta1 = zeros([n1, 1], 'single');
 viNneigh1 = zeros([n1, 1], 'uint32');
@@ -22840,8 +22861,8 @@ viNneigh1 = zeros([n1, 1], 'uint32');
 [vrRho2, vrRho1] = deal(vrRho(vi2), vrRho(vi1));
 fh_dist_ = @(y)bsxfun(@plus, sum(y.^2), bsxfun(@minus, sum(mrFet2.^2)', 2*mrFet2'*y));
 
-for i1 = 1:nStep:n1
-    vi1_ = i1:min(i1+nStep-1, n1);
+for i1 = 1:nStep_knn:n1
+    vi1_ = i1:min(i1+nStep_knn-1, n1);
     mrD_ = fh_dist_(mrFet1(:,vi1_));
     mrD_(bsxfun(@le, vrRho2, vrRho1(vi1_)')) = inf;
     [vrDelta1(vi1_), viNneigh1(vi1_)] = min(mrD_);
@@ -24504,30 +24525,207 @@ end %func
 
 
 %--------------------------------------------------------------------------
-% 9/19/2018 JJJ: turn spike waveforms to cluster using dpclus
+% 9/19/2018 JJJ: turn spike waveforms to cluster using dpclus. 
+% use global features, all channels such as tetrodes or low channel count
+% silicon probe
 % for tetrodes. not doing feature extraction but using all waveforms
-function S_clu = cluster_wavcov_(S0, P)
-nStep = 1000; % affects memory usage
+% in fact it is a cross covariance (xcov)
+function S_clu = cluster_xcov_(S0, P)
 
-t_func = tic;
 tnWav_spk = get_spkwav_(P, 0);
 tnWav_spk = tnWav_full_(tnWav_spk, S0);
 dimm_ = size(tnWav_spk);
-[knn, nSpk, nChans] = deal(P.knn, dimm_(3), dimm_(2));
+
 t_fet = tic;
-% select features to use
-switch 7
+nDelays = get_set_(P, 'nDelays_xcor', 4);
+mrFet_spk = xcov_fet_(tnWav_spk, nDelays);
+fprintf('\tFeature extraction took %0.1fs\n', toc(t_fet));
+
+S_clu = S_clu_from_fet_(mrFet_spk, P.knn);
+S_clu.P = P;
+S_clu.trFet_dim = get_set_(S0, 'dimm_fet', size(mrFet_spk));
+end %func
+
+
+%--------------------------------------------------------------------------
+function mrFet_pca = trWav2pca_(tnWav_spk, nPcPerChan)
+nChans = size(tnWav_spk,2);
+nSpk = size(tnWav_spk,3);
+trFet_pca = zeros(nPcPerChan, nSpk, nChans, 'single');
+switch 3
     case 1
-        mrFet_spk = reshape(single(tnWav_spk), [], nSpk);
+        tnWav_spk1 = permute(tnWav_spk, [1,3,2]);
+        for iChan = 1:nChans
+            mr_ = tnWav_spk1(:,:,iChan);
+            mr_ = abs(fft(meanSubt_(mr_)));
+            [a, mr_, c] = pca(mr_', 'NumComponents', nPcPerChan);
+            trFet_pca(:,:,iChan) = mr_';
+        end %for
+        mrFet_pca = reshape(permute(trFet_pca, [3,1,2]), [], nSpk);
+    
     case 2
-        mrFet_spk = zeros(size(tnWav_spk,2).^2, nSpk, 'single');
+        mrWav_ = reshape((single(tnWav_spk)),[],nSpk);
+        [a, mr_, c] = pca(mrWav_', 'NumComponents', nPcPerChan*nChans);
+        mrFet_pca = mr_';
+    case 1
+        tnWav_spk1 = permute(tnWav_spk, [1,3,2]);
+        for iChan = 1:nChans
+            [a, mr_, c] = pca(tnWav_spk1(:,:,iChan)', 'NumComponents', nPcPerChan);
+            trFet_pca(:,:,iChan) = mr_';
+        end %for
+        mrFet_pca = reshape(permute(trFet_pca, [3,1,2]), [], nSpk);
+end %switch
+end %func
+
+
+%--------------------------------------------------------------------------
+function S_clu = S_clu_from_fet_(mrFet_spk, knn)
+nStep_knn = 1000; % affects memory usage
+
+t_func = tic;
+
+nSpk = size(mrFet_spk,2);
+miKnn = zeros(knn,nSpk, 'int32');
+[vrRho, vrDelta] = deal(zeros(nSpk, 1, 'single'));
+viNneigh = zeros(nSpk, 1, 'int32');
+% try skipping every 10 or 100 for speed enhancement
+switch 1
+    case 2 %cosine distance
+        mrFet_spk = bsxfun(@rdivide, mrFet_spk, sqrt(sum(mrFet_spk.^2))); % normalize fectors
+        fh_dist_ = @(y)1 - mrFet_spk' * y;
+    case 1 %eucl dist         
+        fh_dist_ = @(y)bsxfun(@plus, sum(y.^2), bsxfun(@minus, sum(mrFet_spk.^2)', 2*mrFet_spk'*y));
+end
+% fh_dist_ = @(vi_)bsxfun(@plus, sum(mrFet_spk(:,vi_).^2), bsxfun(@minus, sum(mrFet_spk.^2)', 2*mrFet_spk'*mrFet_spk(:,vi_)));
+
+% find rho
+fprintf('Computing Rho...');
+t_rho = tic;
+for iSpk = 1:nStep_knn:nSpk
+    viSpk_ = iSpk:min(iSpk+nStep_knn-1, nSpk);
+    mrD_ = fh_dist_(mrFet_spk(:,viSpk_));
+    [mrSrt_, miSrt_] = sort(mrD_);
+    miKnn(:,viSpk_) = miSrt_(1:knn,:);
+    vrRho(viSpk_) = mrSrt_(knn,:);
+end
+vrRho = 1 ./ vrRho;
+fprintf('\tDensity calculation (rho) took %0.1fs\n', toc(t_rho));
+
+% find delta
+fprintf('Computing Delta...');
+t_delta = tic;
+for iSpk = 1:nStep_knn:nSpk
+    viSpk_ = iSpk:min(iSpk+nStep_knn-1, nSpk);
+    mrD_ = fh_dist_(mrFet_spk(:,viSpk_));
+    mrD_(bsxfun(@le, vrRho, vrRho(viSpk_)')) = inf;
+    [vrDelta(viSpk_), viNneigh(viSpk_)] = min(mrD_);
+end
+vrDelta = vrDelta .* vrRho;
+fprintf('\tMin. distance calculation (delta) took %0.1fs\n', toc(t_delta));
+
+t_runtime = toc(t_func);
+trFet_dim = size(mrFet_spk);
+[~, ordrho] = sort(vrRho, 'descend');
+P = struct('knn', knn);
+S_clu = struct('rho', vrRho, 'delta', vrDelta, 'ordrho', ordrho, 'nneigh', viNneigh, ...
+    'P', P, 't_runtime', t_runtime, 'halo', [], 'viiSpk', [], ...
+    'trFet_dim', trFet_dim, 'vrDc2_site', [], 'miKnn', miKnn);
+
+end %func
+
+
+%--------------------------------------------------------------------------
+function mrFet_spk = xcov_fet_(tnWav_spk, nDelays)
+dimm_ = size(tnWav_spk);
+nChans = dimm_(2);
+nSpk = dimm_(3);
+
+switch 12 %12(86.1%) 11 7
+    case 14 % tempral average
+        mrFet_spk = zeros(nDelays*2-1, nSpk, 'single');
+        tr_ = zeros(nChans, nChans, (nDelays-2), 'single');
+        vi_ = (nDelays:(dimm_(1) - nDelays + 1))';
+        miA = bsxfun(@plus, vi_, [0:nDelays-1, 0:nDelays-2]);
+        miB = bsxfun(@minus, vi_, [0:nDelays-1, 1:nDelays]);
+        nAve = size(miA,2);
         for iSpk = 1:nSpk
-            mr_ = single(tnWav_spk(:,:,iSpk));
-            mr_ = mr_' * mr_;
-            mrFet_spk(:,iSpk) = mr_(:);
+            mr_ = single(tnWav_spk(:,:,iSpk));    
+%             mr_ = bsxfun(@minus, mr_, mean(mr_)); %  don't do mean subtraction     
+            for iDelay = 1:nAve
+                mrX_ = mr_(miA(:,iDelay),:)' * mr_(miB(:,iDelay),:);
+                mrFet_spk(iDelay,iSpk) = mean(mrX_(:));
+            end
+        end    
+    case 13
+        mrFet_spk = zeros(nChans.^2, nSpk, 'single');
+        tr_ = zeros(nChans, nChans, (nDelays-2), 'single');
+        vi_ = (nDelays:(dimm_(1) - nDelays + 1))';
+        miA = bsxfun(@plus, vi_, [0:nDelays-1, 0:nDelays-2]);
+        miB = bsxfun(@minus, vi_, [0:nDelays-1, 1:nDelays]);
+        nAve = size(miA,2);
+        for iSpk = 1:nSpk
+            mr_ = single(tnWav_spk(:,:,iSpk));    
+%             mr_ = bsxfun(@minus, mr_, mean(mr_)); %  don't do mean subtraction     
+            mrX_ = zeros(nChans, nChans, 'single');            
+            for iDelay = 1:nAve
+                mrX_ = mrX_ + mr_(miA(:,iDelay),:)' * mr_(miB(:,iDelay),:);
+            end
+            mrFet_spk(:,iSpk) = mrX_(:) / nAve;            
+        end    
+    case 12
+        mrFet_spk = zeros(nChans.^2, nSpk, 'single');
+        vi_ = (nDelays:(dimm_(1) - nDelays + 1))';
+        miA = bsxfun(@plus, vi_, 0:nDelays-1);
+        miB = bsxfun(@minus, vi_, 0:nDelays-1);
+        nAve = size(miA,2);
+        for iSpk = 1:nSpk
+            mr_ = single(tnWav_spk(:,:,iSpk));    
+            mrX_ = zeros(nChans, nChans, 'single');            
+            for iDelay = 1:nAve
+                mrX_ = mrX_ + mr_(miA(:,iDelay),:)' * mr_(miB(:,iDelay),:);
+            end
+            mrFet_spk(:,iSpk) = mrX_(:) / nAve;            
         end
-    case 7
-        nDelays = get_set_(P, 'nDelays_wavcov', 4);
+    case 11        
+        mrFet_spk = zeros(nChans.^2 * (nDelays-2), nSpk, 'single');
+        tr_ = zeros(nChans, nChans, (nDelays-2) ,'single');
+        vi_ = (nDelays:(dimm_(1) - nDelays + 1))';
+        miA = bsxfun(@plus, vi_, 2:nDelays-1);
+        miB = bsxfun(@minus, vi_, 2:nDelays-1);
+        for iSpk = 1:nSpk
+            mr_ = single(tnWav_spk(:,:,iSpk));    
+            for iDelay = 1:size(miA,2)
+                tr_(:,:,iDelay) = mr_(miA(:,iDelay),:)' * mr_(miB(:,iDelay),:);
+            end
+            mrFet_spk(:,iSpk) = tr_(:);            
+        end
+        
+    case 10        
+        mrFet_spk = zeros(nChans*(nDelays-2), nSpk, 'single');
+        mrX_ = zeros(nChans, nDelays-2, 'single');
+        vi_ = (nDelays:(dimm_(1) - nDelays + 1))';
+        miA = bsxfun(@plus, vi_, 2:nDelays-1);
+        miB = bsxfun(@minus, vi_, 2:nDelays-1);        
+        for iSpk = 1:nSpk
+            mr_ = single(tnWav_spk(:,:,iSpk));    
+%             mr_ = bsxfun(@minus, mr_, mean(mr_)); %  don't do mean subtraction            
+            for iDelay = 1:size(miA,2)
+                mrX_(:,iDelay) = mean(mr_(miA(:,iDelay),:) .* mr_(miB(:,iDelay),:));
+            end
+            mrFet_spk(:,iSpk) = mrX_(:);                        
+        end
+        
+    case 9        
+        nDelays = 2; % override
+        mrFet_spk = zeros(nChans.^2, nSpk, 'single');
+        for iSpk = 1:nSpk
+            mr_ = single(tnWav_spk(:,:,iSpk));    
+%             mr_ = bsxfun(@minus, mr_, mean(mr_)); %  don't do mean subtraction
+            mrX_ = mr_(nDelays+1:end,:)' * mr_(1:end-nDelays,:);
+            mrFet_spk(:,iSpk) = mrX_(:);            
+        end
+        
+    case 8        
         mrFet_spk = zeros(nChans.^2 * nDelays, nSpk, 'single');
         tr_ = zeros(nChans, nChans, nDelays ,'single');
         vi_ = (nDelays:(dimm_(1) - nDelays + 1))';
@@ -24535,12 +24733,47 @@ switch 7
         miB = bsxfun(@minus, vi_, 0:nDelays-1);
         for iSpk = 1:nSpk
             mr_ = single(tnWav_spk(:,:,iSpk));    
-%             mr_ = bsxfun(@minus, mr_, mean(mr_)); %  mean subtraction
             for iDelay = 1:nDelays
+                mrA_ = mr_(miA(:,iDelay),:);
+                mrB_ = mr_(miB(:,iDelay),:);
+                mrA_ = bsxfun(@minus, mrA_, mean(mrA_));
+                mrB_ = bsxfun(@minus, mrB_, mean(mrB_));
+                tr_(:,:,iDelay) = mrA_' * mrB_;
+            end
+            mrFet_spk(:,iSpk) = tr_(:);            
+        end
+        
+    case 7        
+        mrFet_spk = zeros(nChans.^2 * nDelays, nSpk, 'single');
+        tr_ = zeros(nChans, nChans, nDelays ,'single');
+        vi_ = (nDelays:(dimm_(1) - nDelays + 1))';
+        miA = bsxfun(@plus, vi_, 0:nDelays-1);
+        miB = bsxfun(@minus, vi_, 0:nDelays-1);
+        for iSpk = 1:nSpk
+            mr_ = single(tnWav_spk(:,:,iSpk));    
+%             mr_ = bsxfun(@minus, mr_, mean(mr_)); %  don't do mean subtraction
+            for iDelay = 1:nDelays
+%                 mrA_ = mr_(miA(:,iDelay),:);
+%                 mrB_ = mr_(miB(:,iDelay),:);
+%                 mrA_ = bsxfun(@minus, mrA_, mean(mrA_));
+%                 mrB_ = bsxfun(@minus, mrB_, mean(mrB_));
+%                 tr_(:,:,iDelay) = mrA_' * mrB_;
                 tr_(:,:,iDelay) = mr_(miA(:,iDelay),:)' * mr_(miB(:,iDelay),:);
             end
             mrFet_spk(:,iSpk) = tr_(:);            
         end
+        
+    case 1
+        mrFet_spk = reshape(single(tnWav_spk), [], nSpk);
+        
+    case 2
+        mrFet_spk = zeros(size(tnWav_spk,2).^2, nSpk, 'single');
+        for iSpk = 1:nSpk
+            mr_ = single(tnWav_spk(:,:,iSpk));
+            mr_ = mr_' * mr_;
+            mrFet_spk(:,iSpk) = mr_(:);
+        end
+        
         % sqrt and pca
 %         [~,mnWav_spk,~]=pca(mnWav_spk', 'NumComponents', round(size(mnWav_spk,1)/4));
 %         mnWav_spk = mnWav_spk';
@@ -24550,12 +24783,14 @@ switch 7
         vrWeight = (std(mrFet_spk,1,2));
         vrWeight = vrWeight - min(vrWeight);
         mrFet_spk = bsxfun(@times, mrFet_spk, vrWeight);
+        
     case 4
         mrFet_spk = reshape(single(tnWav_spk), size(tnWav_spk,1), []);
         vrWeight = std(mrFet_spk,1,2);
         vrWeight = vrWeight - min(vrWeight);
         mrFet_spk = bsxfun(@times, mrFet_spk, vrWeight);
         mrFet_spk = reshape(mrFet_spk, [], nSpk);
+        
     case 5
         mrFet_spk = reshape(single(tnWav_spk), size(tnWav_spk,1), []);
         mrFet_spk = bsxfun(@times, mrFet_spk, std(mrFet_spk,1,2));
@@ -24566,48 +24801,424 @@ switch 7
             mr_ = mr_' * mr_;
             mrFet_spk(:,iSpk) = mr_(:);
         end    
+        
     case 6
         mrFet_spk = reshape(single(tnWav_spk), [], nSpk);        
 end
-fprintf('\tFeature extraction took %0.1fs\n', toc(t_fet));
+end %func
 
 
-miKnn = zeros(knn,nSpk, 'int32');
-[vrRho, vrDelta] = deal(zeros(nSpk, 1, 'single'));
-viNneigh = zeros(nSpk, 1, 'int32');
-% try skipping every 10 or 100 for speed enhancement
+%--------------------------------------------------------------------------
+% 9/22/2018 JJJ: compute short time covariance, average across all channel pairs
+function vrCov = cov_filt_(mr, nAve, fParfor)
+% mr: nT x nC
+if nargin<3, fParfor = 1; end
+[nT, nC] = size(mr);
+t1=tic;fprintf('cov_filt_ ...');
+% mean subtract
+% mr = single(mr);
+% hFilt = single(ones(nAve*2+1,1)/(nAve*2+1));
+% mr = cell2mat(arrayfun(@(i)mr(:,i) - conv(mr(:,i), hFilt, 'same'), 1:size(mr,2), 'UniformOutput', 0));
 
-fh_dist_ = @(y)bsxfun(@plus, sum(y.^2), bsxfun(@minus, sum(mrFet_spk.^2)', 2*mrFet_spk'*y));
-% fh_dist_ = @(vi_)bsxfun(@plus, sum(mrFet_spk(:,vi_).^2), bsxfun(@minus, sum(mrFet_spk.^2)', 2*mrFet_spk'*mrFet_spk(:,vi_)));
-
-% find rho
-t_rho = tic;
-for iSpk = 1:nStep:nSpk
-    viSpk_ = iSpk:min(iSpk+nStep-1, nSpk);
-    mrD_ = fh_dist_(mrFet_spk(:,viSpk_));
-    [mrSrt_, miSrt_] = sort(mrD_);
-    miKnn(:,viSpk_) = miSrt_(1:knn,:);
-    vrRho(viSpk_) = mrSrt_(knn,:);
+mr_T = mr'; %nC x nT
+% mr_T = bsxfun(@minus, mr_T, mean(mr_T)); % subtract channel ave
+vrCov = zeros(nT, 1, 'single');
+if fParfor
+    try
+        parfor iT = 1:nT
+            mr_ = single(mr_T(:, max(iT-nAve,1):min(iT+nAve,nT)));
+            mr_ = bsxfun(@minus, mr_, mean(mr_,2)); 
+            vrCov(iT) = mean(mr_ * mean(mr_)');
+        end       
+    catch
+        fParfor = 0;
+    end
 end
-vrRho = 1 ./ vrRho;
-fprintf('\tDensity calculation (rho) took %0.1fs\n', toc(t_rho));
-
-% find delta
-t_delta = tic;
-for iSpk = 1:nStep:nSpk
-    viSpk_ = iSpk:min(iSpk+nStep-1, nSpk);
-    mrD_ = fh_dist_(mrFet_spk(:,viSpk_));
-    mrD_(bsxfun(@le, vrRho, vrRho(viSpk_)')) = inf;
-    [vrDelta(viSpk_), viNneigh(viSpk_)] = min(mrD_);
+if ~fParfor
+    for iT = 1:nT
+        mr_ = single(mr_T(:, max(iT-nAve,1):min(iT+nAve,nT)));
+        mr_ = bsxfun(@minus, mr_, mean(mr_,2)); 
+        vrCov(iT) = mean(mr_ * mean(mr_)');
+    end  
 end
-vrDelta = vrDelta .* vrRho;
-fprintf('\tMin. distance calculation (delta) took %0.1fs\n', toc(t_delta));
+fprintf('\n\ttook %0.1fs\n', toc(t1));
+return;
 
-t_runtime = toc(t_func);
-trFet_dim = S0.dimm_fet;
-[~, ordrho] = sort(vrRho, 'descend');
-S_clu = struct('rho', vrRho, 'delta', vrDelta, 'ordrho', ordrho, 'nneigh', viNneigh, ...
-    'P', P, 't_runtime', t_runtime, 'halo', [], 'viiSpk', [], ...
-    'trFet_dim', trFet_dim, 'vrDc2_site', [], 'miKnn', miKnn);
+% middle
+switch 7
+    case 8
+        parfor iT = 1:nT
+            viT_ = min(max(iT + viT0,1), nT);
+            mr_ = mr_T(:, viT_);
+            mr_ = bsxfun(@minus, mr_, mean(mr_,2));
+            vrCov(iT) = mean(mr_ * mean(mr_)');
+        end       
+    case 7
+        for iT = nAve+1:nT-nAve
+            mr_ = mr_T(:, viT0 + iT);
+            mr_ = bsxfun(@minus, mr_, mean(mr_,2));
+            vrCov(iT) = mean(mr_ * mean(mr_)');
+        end
+        for iT = [1:nAve, nT-nAve+1:nT]
+            viT_ = min(max(iT + viT0,1), nT);
+            mr_ = mr_T(:, viT_);
+            mr_ = bsxfun(@minus, mr_, mean(mr_,2));
+            vrCov(iT) = mean(mr_ * mean(mr_)');
+        end    
+    case 6
+        for iT=1:nT
+            viT_ = min(max(iT + (-nAve:nAve),1), nT);
+            mr_ = mr_T(:, viT_);            
+            mr_ = bsxfun(@minus, mr_, mean(mr_,2));
+%             mrCov(:,iT) = mr_ * mean(mr_)';
+            vrCov(:,iT) = mean(mr_ * mean(mr_)');
+        end  
+    case 5
+        vr_mean = mean(mr_T)'; %nT x 1
+        parfor iT=1:nT
+            viT_ = min(max(iT + (-nAve:nAve),1), nT);
+            mr_ = mr_T(:, viT_);            
+            mr_ = bsxfun(@minus, mr_, mean(mr_,2));
+            vr_ = vr_mean(viT_);
+            vrCov(iT) = mean(mr_ * (vr_ - mean(vr_)));
+        end               
+    case 4 %same as 2
+        parfor iT=1:nT
+            viT_ = min(max(iT + (-nAve:nAve),1), nT);
+            mr_ = mr_T(:, viT_);
+            mr_ = bsxfun(@minus, mr_, mean(mr_,2));
+            vrCov(iT) = mean(mean(mr_) * mr_');
+        end    
+    case 1
+        for iT = nAve+1:nT-nAve
+            mr_ = mr_T(:, viT0 + iT);
+            mr_ = bsxfun(@minus, mr_, mean(mr_,2));
+            vrCov(iT) = mean(mean(mr_) * mr_');
+%             mrC_ = mr_ * mr_';
+%             vrCov(iT) = mean(mrC_(:));
+        end
+        % edge case
+        for iT = [1:nAve, nT-nAve+1:nT]
+            viT_ = min(max(iT + viT0,1), nT);
+            mr_ = bsxfun(@minus, mr_, mean(mr_,2));            
+            mr_ = mr_T(:, viT_);
+            vrCov(iT) = mean(mean(mr_) * mr_');
+%             mrC_ = mr_ * mr_';
+%             vrCov(iT) = mean(mrC_(:));
+        end
+    case 2
+        parfor iT=1:nT
+            viT_ = min(max(iT + (-nAve:nAve),1), nT);
+            mr_ = mr_T(:, viT_);
+            mr_ = bsxfun(@minus, mr_, mean(mr_,2));
+            mrC_ = mr_ * mr_';
+            vrCov(iT) = mean(mrC_(:));
+        end        
+    case 3
+        fh_ = @(x)mean(mean(x*x'));
+        vrCov(nAve+1:nT-nAve) = arrayfun(@(iT)fh_(mr_T(:,viT0+iT)), nAve+1:nT-nAve);
+end %switch
+end %func
 
+
+%--------------------------------------------------------------------------
+function vi = detect_clean_(vr, vi, nRefrac)
+% keep more negative peaks
+% [viiL,vii0,viiR] = deal(1:nSpk-2, 2:nSpk-1, 3:nSpk);
+nRepeat = 10;
+nT = numel(vr);
+for iRepeat = 1:nRepeat
+    nSpk = numel(vi);
+    if min(vi) == 1, vi(vi==1) = []; end
+    if max(vi) == nT, vi(vi==nT) = []; end
+    [viiL,vii0,viiR] = deal([1,1:nSpk-1], 1:nSpk, [2:nSpk,nSpk]);
+    [viL,vi0,viR] = deal(vi(viiL), vi(vii0), vi(viiR));
+    vl_remove = (vi0 - viL <= nRefrac & vr(vi0) > vr(viL)) | (viR - vi0 <= nRefrac & vr(vi0) > vr(viR));
+    if any(vl_remove)
+        vi(vl_remove) = [];
+    else
+        return;
+    end
+%     fprintf('.');
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+function S0 = xcov_sort_(P)
+[thresh_mad, nPc_xcov, knn, fPlot] = deal(6, 4, 30, 1);
+
+% run detection
+if ~is_detected_(P)
+    [S0, mrFet_spk] = xcov_detect_(P);
+else
+    [S0, P] = load_cached_(P); 
+    mrFet_spk = get_spkfet_(P);
+    mrFet_spk = squeeze_(mrFet_spk(:,1,:));
+end
+
+% cluster
+P.vcCluster = 'wavcov';
+% S_clu = S_clu_from_fet_(mrFet_spk, P.knn);
+% S_clu = postCluster_(S_clu, P);
+% S_clu = post_merge_wav_(S_clu, 1, P);
+
+S0 = sort_(P);
+
+end %func
+
+
+%--------------------------------------------------------------------------
+% 9/23/2018 JJJ: spike detection using local xcov
+function [S0, mrFet_spk] = xcov_detect_(P)
+
+global tnWav_raw tnWav_spk trFet_spk;
+% runtime_detect = tic;
+set(0, 'UserData', []);
+[tnWav_raw, tnWav_spk, trFet_spk] = deal([]);
+
+% Load waveform
+mnWav = load_file_(P.vcFile, [], P);
+if get_(P, 'fft_thresh')>0
+    mnWav = fft_clean_(mnWav, P); 
+end
+mnWav_raw = mnWav;
+% mnWav = filt_car_(mnWav, P); % do not filter it makes it worse
+
+% Detect
+[thresh_mad, n1ms] = deal(P.qqFactor/.6745, round(P.sRateHz/1000));
+switch 1 % 1
+    case 3
+        nAve_wav = round(diff(P.spkLim)/2);
+    case 2
+        nAve_wav = round(diff(P.spkLim)/8);
+    case 1
+        nAve_wav = round(.0005 * P.sRateHz);
+end
+switch 3
+    case 3
+        vrWav_detect = xcov_filt_(mnWav, nAve_wav, 2, P.fParfor);
+        vrWav_detect = median(vrWav_detect) - vrWav_detect;
+    case 2
+        vrWav_detect = -xcov_filt_(mnWav, nAve_wav, 2, P.fParfor);        
+    case 1
+        vrCov = cov_filt_(mnWav, nAve_wav, P.fParfor); % TODO: use GPU
+        vrWav_detect = -sqrt(abs(vrCov)) + sqrt(abs(median(vrCov)));
+end %switch
+
+switch 1
+    case 2
+        vrWav_mean = -conv(mean(mnWav.^2,2), ones(nAve_wav,1,'single'), 'same');
+    case 1
+        vrWav_mean = conv(mean(mnWav,2), ones(nAve_wav,1,'single'), 'same');
+end
+switch 1
+    case 2
+        thresh_detect = median(abs(vrWav_mean))*thresh_mad;
+        viTime_spk = find_peak_(vrWav_mean, thresh_detect, 0);        
+    case 1
+        thresh_detect = median(abs(vrWav_detect))*thresh_mad;
+        viTime_spk = find_peak_(vrWav_detect, thresh_detect, 0);
+        viTime_spk(vrWav_mean(viTime_spk)>0) = []; % remove spikes that are positives
+end
+viTime_spk = detect_clean_(vrWav_detect, viTime_spk, round(.001 * P.sRateHz)); % refractory period
+nT = size(mnWav,1);
+switch 2
+    case 2
+        for iRepeat = 1:nAve_wav % find local min
+            if min(viTime_spk) == 1, viTime_spk(viTime_spk==1) = []; end
+            if max(viTime_spk) == nT, viTime_spk(viTime_spk==nT) = []; end
+            vi_R = find(vrWav_mean(viTime_spk+1) < vrWav_mean(viTime_spk));
+            vi_L = find(vrWav_mean(viTime_spk-1) < vrWav_mean(viTime_spk));
+            viTime_spk(vi_R) = viTime_spk(vi_R) + 1;
+            viTime_spk(vi_L) = viTime_spk(vi_L) - 1;    
+        end
+    case 1 % no resettling using vrWav_mean
+        ;
+end
+vrAmp_spk = vrWav_detect(viTime_spk);
+viSite_spk = repmat(1, size(viTime_spk)); % assume all spikes are detected at site 1
+%     myfig; plot(vrWav_detect);plot(viTime_spk,vrWav_detect(viTime_spk),'r.'); title(sprintf('#spikes: %d\n', numel(viTime_spk)));
+
+% Waveform extraction
+tnWav_spk = permute(mr2tr3_(mnWav, P.spkLim, viTime_spk), [1,3,2]); % danger of offset
+tnWav_raw = permute(mr2tr3_(mnWav_raw, P.spkLim_raw, viTime_spk), [1,3,2]);
+
+% Feature extraction: compare single-chan vs multi-chan pca
+nSites = size(P.mrSiteXY,1);
+nPc_xcov = nSites * P.nPcPerChan;
+mrFet_spk = reshape(meanSubt_(single(tnWav_spk)), [], numel(viTime_spk));
+[~, mrFet_spk, vrLat_pca] = pca(mrFet_spk', 'NumComponents', nPc_xcov);
+mrFet_spk = mrFet_spk';
+
+% Export and save features
+trFet_spk = permute(repmat(mrFet_spk, [1,1,2]), [1,3,2]); % create two centers
+[dimm_spk, dimm_raw, dimm_fet] = deal(size(tnWav_spk), size(tnWav_raw), size(trFet_spk));
+viSite2_spk = viSite_spk;
+[cviSpk_site, cviSpk2_site] = deal({viSite_spk});
+[cviSpk3_site, mrPv_global, vrFilt_spk, vrD_global] = deal([]);
+[nLoads, viT_offset_file] = deal(1, 0);
+vrThresh_site = repmat(thresh_detect, [nSites, 1]);
+S0 = makeStruct(viTime_spk, vrAmp_spk, P, ...
+    dimm_spk, dimm_raw, dimm_fet, vrThresh_site, ...
+    viSite_spk, viSite2_spk, cviSpk_site, cviSpk2_site, cviSpk3_site, ...
+    mrPv_global, vrFilt_spk, vrD_global, nLoads, viT_offset_file);
+% S0.mrPos_spk = spk_pos_(S0, trFet_spk, inf);
+
+% File output
+write_spk_(P.vcFile_prm); %open file
+write_spk_(tnWav_raw, tnWav_spk, trFet_spk);
+write_spk_(); % close and clear
+
+% measure time
+% S0.runtime_detect = toc(runtime_detect);
+% fprintf('Detection took %0.1fs for %s\n', S0.runtime_detect, P.vcFile_prm);
+
+% Save S0
+% set(0, 'UserData', S0);
+% save0_(strrep(P.vcFile_prm, '.prm', '_jrc.mat'));
+% delete_(strrep(P.vcFile_prm, '.prm', '_log.mat')); %delete log file when detecting
+
+end %func
+
+
+%--------------------------------------------------------------------------
+% 9/22/2018 JJJ: compute short time covariance, average across all channel pairs
+function vrXcov = xcov_filt_(mr, nAve, nDelays, fParfor)
+% mr: nT x nC
+if nargin<3, nDelays = 2; end
+if nargin<4, fParfor = 1; end
+[nT, nC] = size(mr);
+
+fprintf('xcov_filt_ ...'); t1=tic;
+mr_T = mr'; %nC x nT
+% mr_T = bsxfun(@minus, mr_T, mean(mr_T)); % subtract channel ave
+nLen = 2*nAve+1;
+vi_ = (nDelays:(nLen - nDelays + 1))';
+miA = bsxfun(@plus, vi_, 0:nDelays-1);
+miB = bsxfun(@minus, vi_, 0:nDelays-1);    
+vrXcov = zeros(nT,1,'single');
+
+if fParfor
+    try
+        parfor iT = (nAve+1):(nT-nAve)
+            mr_ = single(mr_T(:, (iT-nAve):(iT+nAve)));
+            mrX_ = mr_(:,nDelays+1:end) * mr_(:,1:end-nDelays)';
+            vrXcov(iT) = mean(mrX_(:));
+        end 
+    catch
+        fParfor = 0;
+    end
+end
+if ~fParfor
+    for iT = (nAve+1):(nT-nAve)
+        mr_ = single(mr_T(:, (iT-nAve):(iT+nAve)));
+        mrX_ = mr_(:,nDelays+1:end) * mr_(:,1:end-nDelays)';
+        vrXcov(iT) = mean(mrX_(:));
+    end   
+end
+fprintf('\n\ttook %0.1fs\n', toc(t1));
+
+% switch 2 % 2
+%     case 3
+%         parfor iT = (nAve+1):(nT-nAve)
+%             mr_ = single(mr_T(:, (iT-nAve):(iT+nAve)));
+% %             mr_ = bsxfun(@minus, mr_, mean(mr_,2));  % mean subt
+%             mrX_ = zeros(nC, 'single');
+%             for iDelay = 2:nDelays+2
+%                 mrX_ = mrX_ + mr_(:,iDelay+1:end) * mr_(:,1:end-iDelay)';
+%             end
+%             vrXcov(iT) = mean(mrX_(:) / (nDelays+1));
+%         end  
+%     case 2        
+%         parfor iT = (nAve+1):(nT-nAve)
+%             mr_ = single(mr_T(:, (iT-nAve):(iT+nAve)));
+%             mrX_ = mr_(:,nDelays+1:end) * mr_(:,1:end-nDelays)';
+%             vrXcov(iT) = mean(mrX_(:));
+%         end  
+%     case 1
+%         mrXcov = zeros(nC, nT, 'single');
+%         for iT = (nAve+1):(nT-nAve)/100
+%             mr_ = single(mr_T(:, (iT-nAve):(iT+nAve)));
+% %             mr_ = bsxfun(@minus, mr_, mean(mr_,2));  % mean subt
+%             for iC = 1:nC
+%                 vr_ = mr_(iC,:);
+%                 mrX_ = vr_(miA) .* vr_(miB);
+%                 mrXcov(iC,iT) = mean(mrX_(:));
+%             end
+%         end  
+% end %switch
+end %func
+
+
+%--------------------------------------------------------------------------
+% visualize cluster pairs sorted by the feature space distance (centorid)
+function plot_clu_pairs_(P)
+if ~is_sorted_(P), fprintf(2,'must be sorted\n'); end
+vcFile_prm = P.vcFile_prm;
+S0 = get0_();
+[S_clu, viTime_spk] = struct_get_(S0, 'S_clu', 'viTime_spk');
+trWav_spk = tnWav_full_(get_spkwav_(P, 0), S0);
+% mrFet_spk = get_spkfet_(P); % assume sites are sorted
+
+if 0 % clean waveforms    
+    nPc = 3;
+    [mrPv, mrPc, c] = pca(reshape(trWav_spk, size(trWav_spk,1), [])', 'NumComponents', nPc);
+    trWav_spk = reshape(mrPv * mrPc', size(trWav_spk));
+end
+cmrWav_clu = cellfun(@(vi)meanSubt(mean(trWav_spk(:,:,vi),3)), S_clu.cviSpk_clu, 'UniformOutput', 0);
+
+
+% calculate cluster centroids and sort by cluster proximities
+nPc = 3;
+mrFet_spk = reshape(trWav_spk, [], numel(viTime_spk));
+[a,mrFet_spk,c] = pca(mrFet_spk', 'NumComponents', nPc);
+mrFet_spk = mrFet_spk';
+
+mrFet_clu = cell2mat(cellfun(@(x)median(mrFet_spk(:,x),2), S_clu.cviSpk_clu, 'UniformOutput', 0));
+mrDist_fet_clu = squareform(pdist(mrFet_clu'));
+mrDist_fet_clu(mrDist_fet_clu==0) = nan;
+[~,miDist] = sort(mrDist_fet_clu);
+[~,viClu1_sort] = sort(min(mrDist_fet_clu));
+
+[nPlot1, nPlot2] = deal(min(S_clu.nClu, 8), min(S_clu.nClu,6));
+figure; set(gcf, 'Name', vcFile_prm);
+for iPlot1=1:nPlot1
+    iClu1 = viClu1_sort(iPlot1);
+    viSpk1 = S_clu.cviSpk_clu{iClu1};
+    vh_ = [];    
+    for iPlot2=1:nPlot2
+        iPair = (iPlot1-1)*nPlot2+iPlot2;        
+        iClu2 = miDist(iPlot2+1, iClu1);
+        viSpk2 = S_clu.cviSpk_clu{iClu2};
+        
+        vh_(end+1) = subplot(nPlot1, nPlot2,iPair); grid on; hold on;       
+        plot3(mrFet_spk(1,viSpk1), mrFet_spk(2,viSpk1), mrFet_spk(3,viSpk1), '.k');
+        plot3(mrFet_spk(1,viSpk2), mrFet_spk(2,viSpk2), mrFet_spk(3,viSpk2), '.r');
+%         xlabel('Fet1'); ylabel('Fet2'); zlabel('Fet3');
+        title(sprintf('Clu%d(b) vs %d(k)', iClu1, iClu2));
+    end
+    linkaxes(vh_, 'xy');    
+end
+
+figure; set(gcf, 'Name', vcFile_prm);
+for iPlot1=1:nPlot1
+    iClu1 = viClu1_sort(iPlot1);
+    viSpk1 = S_clu.cviSpk_clu{iClu1};
+    mrWav_clu1 = cmrWav_clu{iClu1};
+    vh_ = [];
+    for iPlot2=1:nPlot2
+        iPair = (iPlot1-1)*nPlot2+iPlot2;                
+        iClu2 = miDist(iPlot2+1, iClu1);
+        viSpk2 = S_clu.cviSpk_clu{iClu2};
+        mrWav_clu2 = cmrWav_clu{iClu2};
+        
+        vh_(end+1) = subplot(nPlot1, nPlot2,iPair); grid on; hold on;
+        plot(toCol_(mrWav_clu1(:,1:4)), 'k');
+        plot(toCol_(mrWav_clu2(:,1:4)), 'r');
+%         xlabel('Fet1'); ylabel('Fet2'); zlabel('Fet3');
+        title(sprintf('Clu%d(b) vs %d(k)', iClu1, iClu2));
+    end
+    linkaxes(vh_, 'xy');
+end % for
 end %func

@@ -1,0 +1,23 @@
+% Order of the probe sites in the recording file
+channels = [1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45 46 47 48 49 50 51 52 53 54 55 56 57 58 59 60 61 62 63 64];
+
+% Site location in micrometers (x and y)
+geometry = zeros(64, 2);
+geometry(1:end,2) = 0;
+geometry(1:end,2) = 70*(0:63);
+
+% Reference sites are being excluded
+ref_sites = [];
+%channels(ref_sites) = []; 
+%geometry(ref_sites,:) = []; 
+
+% Recording contact pad size in micrometers. Height x width
+pad = [30 30];
+
+% Shanks
+shank = ones(size(channels));    % Leave it empty if single shank
+
+% Default prm
+%maxSite = 6.5;              % Number of neighboring sites in each direction to extract spike waveforms
+%nSites_ref = 4;             % Total number of reference sites to exclude for feature extraction
+um_per_pix = 70;            % Micrometers per center-to-center vertical site spacing
