@@ -963,6 +963,18 @@ S_clu = fet2clu_(S0, P);
 if get_set_(P, 'fCorrect_overlap', 0) % correct waveforms and features after correcting clusters
     S_clu = sort_overlap_(S0, S_clu, P); 
 end
+
+% switch P.vcCluster
+%     case 'xcov'
+%         % reassign membership based on cluster
+%         mrFet_spk = get0_('mrFet_spk');
+%         mrFet_clu = cell2mat_(cellfun(@(x)mean(mrFet_spk(:,x),2), S_clu.cviSpk_clu, 'UniformOutput', 0));
+%         [~, viClu_spk] = min(eucl2_dist_(mrFet_clu, mrFet_spk));
+%         viClu_spk = int32(viClu_spk(:));
+%         frac_reassign = mean(S_clu.viClu ~= viClu_spk);
+%         fprintf('sort-xcov: %0.1f%% spikes reassigned by template matching.\n', frac_reassign*100);
+%         S_clu.viClu = viClu_spk;
+% end
 [S_clu, S0] = S_clu_commit_(S_clu, 'sort_');
 % S0 = set0_(P); %, dimm_fet, cvrTime_site, cvrVpp_site, cmrFet_site, P);
 
@@ -20363,8 +20375,8 @@ end %func
 % 9/29/17 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcVer_used] = version_(vcFile_prm)
 if nargin<1, vcFile_prm = ''; end
-vcVer = 'v4.1.2';
-vcDate = '9/25/2018';
+vcVer = 'v4.1.3';
+vcDate = '9/26/2018';
 vcVer_used = '';
 if nargout==0
     fprintf('%s (%s) installed\n', vcVer, vcDate);
@@ -24542,6 +24554,7 @@ mrFet_spk = xcov_fet_(tnWav_spk, nDelays);
 fprintf('\tFeature extraction took %0.1fs\n', toc(t_fet));
 
 S_clu = S_clu_from_fet_(mrFet_spk, P.knn);
+set0_(mrFet_spk); 
 S_clu.P = P;
 S_clu.trFet_dim = get_set_(S0, 'dimm_fet', size(mrFet_spk));
 end %func
@@ -24641,6 +24654,56 @@ nChans = dimm_(2);
 nSpk = dimm_(3);
 
 switch 12 %12(86.1%) 11 7
+    case 17
+        mrFet_spk = zeros(nChans*nDelays, nSpk, 'single');
+        vi_ = (nDelays:(dimm_(1) - nDelays + 1))';
+        miA = bsxfun(@plus, vi_, 0:nDelays-1);
+        miB = bsxfun(@minus, vi_, 0:nDelays-1);
+        for iSpk = 1:nSpk
+            mr_ = single(tnWav_spk(:,:,iSpk));    
+            mrX_ = zeros(nChans, 'single');            
+            for iDelay = 1:nAve
+                mrX_(:,iDelay) = mean(mr_(miA(:,iDelay),:) .* mr_(miB(:,iDelay),:))';
+            end
+            mrFet_spk(:,iSpk) = mrX_(:) / nAve;            
+        end
+    case 16 %time resersal feature
+        mrFet_spk = zeros(nChans.^2*2, nSpk, 'single');
+        vi_ = (nDelays:(dimm_(1) - nDelays + 1))';
+        miA = bsxfun(@plus, vi_, 0:nDelays-1);
+        miB = bsxfun(@minus, vi_, 0:nDelays-1);
+        miC = bsxfun(@plus, flipud(vi_), 0:nDelays-1);
+        nAve = size(miA,2);
+        for iSpk = 1:nSpk
+            mr_ = single(tnWav_spk(:,:,iSpk));    
+            [mrX_, mrY_] = deal(zeros(nChans, nChans, 'single'));
+            mr0_ = mr_(vi_,:);
+            for iDelay = 1:nAve
+                mrX_ = mrX_ + mr_(miA(:,iDelay),:)' * mr0_;
+                mrY_ = mrY_ + mr_(miB(:,iDelay),:)' * mr0_;                
+            end
+            mrFet_spk(:,iSpk) = [mrX_(:); mrY_(:)] / nAve;        
+        end     
+    case 15 %time resersal feature
+        mrFet_spk = zeros(nChans.^2 * 3, nSpk, 'single');
+        vi_ = (nDelays:(dimm_(1) - nDelays + 1))';
+        miA = bsxfun(@plus, vi_, 0:nDelays-1);
+        miB = bsxfun(@minus, vi_, 0:nDelays-1);
+        miC = bsxfun(@plus, flipud(vi_), 0:nDelays-1);
+        nAve = size(miA,2);
+        for iSpk = 1:nSpk
+            mr_ = single(tnWav_spk(:,:,iSpk));    
+            [mrX_, mrY_, mrZ_] = deal(zeros(nChans, nChans, 'single'));
+            mr0_ = mr_(flip(vi_),:);
+            for iDelay = 1:nAve
+                mrAT_= mr_(miA(:,iDelay),:)';
+                mrB_ = mr_(miB(:,iDelay),:);
+                mrX_ = mrX_ + mrAT_ * mrB_;
+                mrY_ = mrY_ + mrAT_ * mr0_;
+                mrZ_ = mrZ_ + mrB_' * mr0_;
+            end
+            mrFet_spk(:,iSpk) = [mrX_(:); mrY_(:); mrZ_(:)] / nAve;            
+        end    
     case 14 % tempral average
         mrFet_spk = zeros(nDelays*2-1, nSpk, 'single');
         tr_ = zeros(nChans, nChans, (nDelays-2), 'single');
@@ -24958,7 +25021,7 @@ else
 end
 
 % cluster
-P.vcCluster = 'wavcov';
+P.vcCluster = 'xcov';
 % S_clu = S_clu_from_fet_(mrFet_spk, P.knn);
 % S_clu = postCluster_(S_clu, P);
 % S_clu = post_merge_wav_(S_clu, 1, P);
@@ -24983,7 +25046,18 @@ if get_(P, 'fft_thresh')>0
     mnWav = fft_clean_(mnWav, P); 
 end
 mnWav_raw = mnWav;
-% mnWav = filt_car_(mnWav, P); % do not filter it makes it worse
+switch 1
+    case 3
+        n_200ms = round(.2*P.sRateHz);
+        hFilt = ones(n_200ms, 1, 'single')/n_200ms;
+        mnWav = single(mnWav);
+        mnWav1 = cell2mat(arrayfun(@(x)conv(mnWav(:,x), hFilt, 'same'), 1:size(mnWav,2), 'UniformOutput', 0));
+        mnWav = mnWav - mnWav1;
+    case 2
+        mnWav = filt_car_(mnWav, P); % do not filter it makes it worse        
+    case 1
+%         mnWav = single(mnWav);
+end
 
 % Detect
 [thresh_mad, n1ms] = deal(P.qqFactor/.6745, round(P.sRateHz/1000));
@@ -25041,6 +25115,7 @@ viSite_spk = repmat(1, size(viTime_spk)); % assume all spikes are detected at si
 %     myfig; plot(vrWav_detect);plot(viTime_spk,vrWav_detect(viTime_spk),'r.'); title(sprintf('#spikes: %d\n', numel(viTime_spk)));
 
 % Waveform extraction
+mnWav = int16(mnWav);
 tnWav_spk = permute(mr2tr3_(mnWav, P.spkLim, viTime_spk), [1,3,2]); % danger of offset
 tnWav_raw = permute(mr2tr3_(mnWav_raw, P.spkLim_raw, viTime_spk), [1,3,2]);
 
@@ -25091,34 +25166,71 @@ if nargin<4, fParfor = 1; end
 [nT, nC] = size(mr);
 
 fprintf('xcov_filt_ ...'); t1=tic;
-mr_T = mr'; %nC x nT
 % mr_T = bsxfun(@minus, mr_T, mean(mr_T)); % subtract channel ave
-nLen = 2*nAve+1;
-vi_ = (nDelays:(nLen - nDelays + 1))';
-miA = bsxfun(@plus, vi_, 0:nDelays-1);
-miB = bsxfun(@minus, vi_, 0:nDelays-1);    
 vrXcov = zeros(nT,1,'single');
-
-if fParfor
-    try
+switch 4 %4(85.8%, 1.1s), 1(86.1%, 133.2s)
+    case 5
+        mr_T = single(mr');
+        nA = round(nDelays/2);
+        nB = nDelays-nA;
+        vrXcov(nA+1:end-nB) = mean(mr_T(:,nDelays+1:end) .* mr_T(:,1:end-nDelays));
+        
+        nDelays1 = nDelays * 100;
+        nA = round(nDelays1/2);
+        nB = nDelays1-nA;
+        vrXcov(nA+1:end-nB) = vrXcov(nA+1:end-nB) - (mean(mr_T(:,nDelays1+1:end) .* mr_T(:,1:end-nDelays1)))';
+        
+        vrXcov = conv(vrXcov, ones(nAve,1,'single'), 'same'); 
+    case 4
+        mr_T = single(mr');
+        nA = round(nDelays/2);
+        nB = nDelays-nA;
+        vrXcov(nA+1:end-nB) = mean(mr_T(:,nDelays+1:end) .* mr_T(:,1:end-nDelays));
+        vrXcov = conv(vrXcov, ones(nAve,1,'single'), 'same');
+    case 3 % lower detection performance
+        mr_T = mr'; %nC x nT
+        nT_ = 2*nAve+1;
+        viA = [nDelays+1:nT_, nDelays+2:nT_];
+        viB = [1:nT_-nDelays, 1:nT_-nDelays-1];
         parfor iT = (nAve+1):(nT-nAve)
             mr_ = single(mr_T(:, (iT-nAve):(iT+nAve)));
-            mrX_ = mr_(:,nDelays+1:end) * mr_(:,1:end-nDelays)';
+            mrX_ = mr_(:,viA) .* mr_(:,viB);
+            vrXcov(iT) = mean(mrX_(:));
+        end     
+    case 2 % lower detection performance
+        mr_T = mr'; %nC x nT
+        parfor iT = (nAve+1):(nT-nAve)
+            mr_ = single(mr_T(:, (iT-nAve):(iT+nAve)));
+            mrX_ = mr_(:,nDelays+1:end) .* mr_(:,1:end-nDelays);
             vrXcov(iT) = mean(mrX_(:));
         end 
-    catch
-        fParfor = 0;
-    end
-end
-if ~fParfor
-    for iT = (nAve+1):(nT-nAve)
-        mr_ = single(mr_T(:, (iT-nAve):(iT+nAve)));
-        mrX_ = mr_(:,nDelays+1:end) * mr_(:,1:end-nDelays)';
-        vrXcov(iT) = mean(mrX_(:));
-    end   
+    case 1
+        mr_T = mr'; %nC x nT
+        if fParfor
+            try
+                parfor iT = (nAve+1):(nT-nAve)
+                    mr_ = single(mr_T(:, (iT-nAve):(iT+nAve)));
+                    mrX_ = mr_(:,nDelays+1:end) * mr_(:,1:end-nDelays)';
+                    vrXcov(iT) = mean(mrX_(:));
+                end 
+            catch
+                fParfor = 0;
+            end
+        end
+        if ~fParfor
+            for iT = (nAve+1):(nT-nAve)
+                mr_ = single(mr_T(:, (iT-nAve):(iT+nAve)));
+                mrX_ = mr_(:,nDelays+1:end) * mr_(:,1:end-nDelays)';
+                vrXcov(iT) = mean(mrX_(:));
+            end   
+        end
 end
 fprintf('\n\ttook %0.1fs\n', toc(t1));
 
+% nLen = 2*nAve+1;
+% vi_ = (nDelays:(nLen - nDelays + 1))';
+% miA = bsxfun(@plus, vi_, 0:nDelays-1);
+% miB = bsxfun(@minus, vi_, 0:nDelays-1);    
 % switch 2 % 2
 %     case 3
 %         parfor iT = (nAve+1):(nT-nAve)

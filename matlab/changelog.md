@@ -3,6 +3,10 @@ IronClust, written by J. James Jun, Flatiron Institute, Simons Foundation
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [4.1.3] - 2018-09-26
+### Changed
+- xcov based detection is now 100x faster
+
 ## [4.1.2] - 2018-09-25
 ### Added
 - Cross-covariance (xcov) based detection method is added
