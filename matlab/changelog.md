@@ -3,6 +3,16 @@ IronClust, written by J. James Jun, Flatiron Institute, Simons Foundation
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [4.1.2] - 2018-09-25
+### Added
+- Cross-covariance (xcov) based detection method is added
+  - set `vcDetect='xcov';` to enable this feature
+  - This is significantly more sensitive to detecting low SNR spikes
+  - This currently runs much slower than the minimum peak detection method (`vcDetect='min'`)
+- xcov based feature extraction and clustering method
+  - set `vcCluster='xcov';` to use cluster using this method
+  - Currently supporting small number of channels to be clustered together
+
 ## [4.1.1] - 2018-09-20
 ### Added
 - Tetrode-optimized clustering for small number of channels, smaller amplitudes
