@@ -110,7 +110,7 @@ nDelays_xcov = 4;           % Used for vcCluster='xcov'. Number of delays for ch
 % #Post-cluster auto-merging parameters (run "jrc auto" after change)
 delta1_cut = .6;            % RL cluster: delta cut-off. Increasing this will produce less clusters.
 rho_cut = -2.5;             % RL cluster: rho cut-off. Decreasing (more negative) this will produce more clusters.
-maxWavCor = .98;            % merge if waveform correlation is greater than maxWavCor.
+maxWavCor = .97;            % merge if waveform correlation is greater than maxWavCor.
 min_count = 30;             % Minimum cluster size (min_count will be set to 2*#features if lower).
 nRepeat_merge = 10;         % # of repeats for average unit raw waveform based merging
 vcDetrend_postclu = 'global'; % 'none', 'hidehiko', 'global', 'local', 'logz'
@@ -123,6 +123,8 @@ fWavRaw_merge = 0;          % Use raw average unit waveforms for merge when set 
 frac_equal_knn = .5;        % Fraction of k-nearest neighbors from the same cluster. 
 frac_shift_merge = .1;      % Fraction of the waveform to shift to check for merging
 fRemove_duplicate = 1;      % Remove clusters whose detection site occurs far from the min waveform site (d>=maxDist_site_um)
+nTemplates_clu = 100;       % Number of template waveforms per cluster to perform post-hoc merging and cluster assignment on the outer edge of clusters
+thresh_core_knn = .75;      % Fraction of KNN from the same cluster to be considered as the core member of a cluster
 
 % #Trial (used for plotting PSTH for each unit after clustering)
 vcFile_trial = '';          % .mat or .csv file containing timestamp in seconds unit. use any variable name.
@@ -234,7 +236,7 @@ fLoad_lfp = 0;              % Load LFP file [D?]
 S_imec3 = [];               % imec3 struct [D]
 fMeanSite = 1;              % Subtract background noise (mean across sites, nSite=4*maxSite); [D]
 fMeanSite_drift = 0;        % Average nearest vertical neighbors (top and down) [D]
-vcFilter_detect = '';       % Filter choice to run spike detection {'matched', 'corr'}; [D?]
+vcFilter_detect = '';       % Filter choice to run spike detection {'matched', 'corr', 'xcov'}; [D?]
 fCheckSites = 0;            % Automatically reject bad sites if set to 1
 maxLfpSdZ = 4.500000;       % site rejection threshold (valid if fCheckSites=1)
 

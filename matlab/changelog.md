@@ -3,6 +3,27 @@ IronClust, written by J. James Jun, Flatiron Institute, Simons Foundation
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [4.1.4] - 2018-10-03
+### Changed
+- Default value changed: `maxWavCor = .97;`
+  - Previously `maxWavCor = .98;`
+- Waveform merge is now done by comparing `nTemplates_clu` (default:100) 
+  representative waveforms per cluster between cluster pairs centered at
+  the same site.
+
+### Added
+- Post-cluster correction is performed on the outer part of clusters using template matching
+  - This operation is performed if `fTemplateMatch_post=1` (default is 1)
+  - Templates are chosen using events in the core part of the cluster
+  - Core vs. outter part of the cluster is separeated using 
+- `makeprm-mda` can now import a list of raw.mda files in a .txt file
+  - `irc makeprm-mda mylist.txt mytemplate.prm` creates mylist.batch file
+    where .txt file is located
+  - irc locates "geom.csv", "params.json" files listed under the same folder 
+    as in "raw.mda"
+  - irc locates "firings_true.mda" file for the ground-truth comparison if available
+
+
 ## [4.1.3] - 2018-09-26
 ### Changed
 - xcov based detection is now 100x faster
