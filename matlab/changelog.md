@@ -3,6 +3,16 @@ IronClust, written by J. James Jun, Flatiron Institute, Simons Foundation
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [4.1.5] - 2018-10-10
+### Changed
+- Default values changed to optimize out-of-box performance
+  - `vcSpkRef='none';` which performs local referencing
+  - `maxDist_site_spk_um=100;` (previously 75) which uses more number of channels for waveform features
+  - `thresh_core_knn=.9;` (previously .75) which is used for post-hoc template match operation
+
+### Fixed
+- Blackrock format (.ns5) compatibility issues resolved
+
 ## [4.1.4] - 2018-10-03
 ### Changed
 - Default value changed: `maxWavCor = .97;`
