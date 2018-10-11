@@ -1,7 +1,6 @@
 function p_ironclust(temp_path, raw_fname, geom_fname, prm_fname, vcFile_gt_mda, firings_out_fname, arg_fname)
 % cmdstr2 = sprintf("p_ironclust('$(tempdir)','$timeseries$','$geom$','$firings_out$','$(argfile)');");
 
-% temp_path='/tmp/test_jrclust'
 if exist(temp_path, 'dir') ~= 7
     mkdir(temp_path);
 end
@@ -9,7 +8,7 @@ end
 vcFile_prm = irc('makeprm-mda', raw_fname, geom_fname, arg_fname, temp_path, prm_fname);
 irc('clear', vcFile_prm); %init 
 irc('detectsort', vcFile_prm);
-vcFile_jrc_csv = irc('export-csv', vcFile_prm);
+irc('export-mda', vcFile_prm, firings_out_fname);
 
 % create a ground truth
 if exist_file_(vcFile_gt_mda)
@@ -17,19 +16,6 @@ if exist_file_(vcFile_gt_mda)
     irc('validate', vcFile_prm); % assume that groundtruth file exists
 end
 
-disp('======================================================================');
-
-firings = csvread(vcFile_jrc_csv);
-
-disp('======================================================================');
-disp('Shape of firings:');
-disp(size(firings));
-
-firings = firings(:,[3,1,2])';
-P = irc('call', 'file2struct_', vcFile_prm);
-firings(2,:)=firings(2,:) * P.sRateHz;
-
-writemda(firings, firings_out_fname);
 fprintf('Clustering result wrote to %s\n', firings_out_fname);
 
 end %func
