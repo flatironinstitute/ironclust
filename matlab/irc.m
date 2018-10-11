@@ -34,7 +34,10 @@ switch lower(vcCmd)
     case 'about', about_();
 
     % one argument
-    case 'version', [varargout{1}, varargout{2}] = version_(vcArg1);
+    case 'version'
+        if nargout==0, version_(vcArg1);
+        else [varargout{1}, varargout{2}] = version_(vcArg1);
+        end
     case 'clear', clear_(vcArg1);
     case 'doc', doc_('IronClust manual.pdf');
     case 'doc-edit', doc_('IronClust manual.docx');
@@ -62,7 +65,8 @@ switch lower(vcCmd)
     case 'import-h5', import_h5_(vcArg1);
     case 'import-jrc1', import_jrc1_(vcArg1);
     case 'export-jrc1', export_jrc1_(vcArg1);
-    case 'export-mda', export_mda_(vcArg1);
+    case 'convert-mda', convert_mda_(vcArg1);
+    case 'export-mda', export_mda_(vcArg1, vcArg2);
     case 'import-intan', vcFile_prm_ = import_intan_(vcArg1, vcArg2, vcArg3); return;
     case {'import-nsx', 'import-ns5'}, vcFile_prm_ = import_nsx_(vcArg1, vcArg2, vcArg3); return;
     case 'convert-h5-mda', convert_h5_mda_(vcArg1, vcArg2); return;
@@ -21099,8 +21103,8 @@ end %func
 % 9/29/17 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcVer_used] = version_(vcFile_prm)
 if nargin<1, vcFile_prm = ''; end
-vcVer = 'v4.1.5';
-vcDate = '10/10/2018';
+vcVer = 'v4.1.6';
+vcDate = '10/11/2018';
 vcVer_used = '';
 if nargout==0
     fprintf('%s (%s) installed\n', vcVer, vcDate);
@@ -21959,7 +21963,7 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function export_mda_(vcFile_in)
+function convert_mda_(vcFile_in)
 % Usage
 % -----
 % export_mda_(myfile.prm)
@@ -22034,6 +22038,51 @@ for iFile = 1:numel(csFile_prm)
     struct2json_(S_json_, fullfile(vcDir1, 'params.json'));
     
     fprintf('\n');
+end %for
+end %func
+
+
+%--------------------------------------------------------------------------
+function export_mda_(vcFile_in, vcFile_out)
+% Usage
+% -----
+% export_mda_(myfile.prm)
+% export_mda_(myfile.batch)
+% export_mda_(myfile.prm, firings.mda)
+% mda file exported to where .prm files exist
+
+fOverwrite_raw_mda = 1;
+% if nargin<2, vcDir_out = ''; end
+if nargin<2, vcFile_out = ''; end
+
+vcFile_template = '';
+if matchFileEnd_(vcFile_in, '.batch')
+    csFile_prm = load_batch_(vcFile_in);
+elseif matchFileEnd_(vcFile_in, '.prm')
+    csFile_prm = {vcFile_in};
+else
+    fprintf(2, 'Incorrect format\n');
+    return;
+end
+
+for iFile = 1:numel(csFile_prm)
+    vcFile_prm1 = csFile_prm{iFile};
+    if ~matchFileExt_(vcFile_prm1, '.prm')
+        fprintf(2, '\tInvalid format: %s\n', vcFile_prm1); 
+        continue;
+    end    
+    try
+        S1 = load(strrep(vcFile_prm1, '.prm', '_jrc.mat'));        
+        S_gt1 = struct('viTime', S1.viTime_spk, 'viSite', S1.viSite_spk, 'viClu', S1.S_clu.viClu);
+        [vcDir1, ~] = fileparts(vcFile_prm1);
+        if isempty(vcFile_out)
+            gt2mda_(S_gt1, fullfile(vcDir1, 'firings.mda'));
+        else
+            gt2mda_(S_gt1, vcFile_out);
+        end
+    catch
+        fprintf(2, 'Error exporting %s\n', vcFile_prm1);
+    end
 end %for
 end %func
 
@@ -22122,7 +22171,7 @@ if isempty(vcFile_firings)
     vcFile_firings = strrep(vcFile_gt, '.mat', '_firings.mda');
 end
 
-writemda(mr', vcFile_firings, 'float64'); % must be transposed
+writemda_(double(mr'), vcFile_firings); % must be transposed
 fprintf('Output to %s\n', vcFile_firings);
 end %func
 
@@ -23005,6 +23054,7 @@ if nargin<4, vcDir_prm = ''; end
 if nargin<5, vcFile_template = ''; end
 
 % create .meta file
+assert(exist_file_(vcFile_mda), sprintf('File does not exist: %s', vcFile_mda));
 S_mda = readmda_header_(vcFile_mda);
 P = struct('nChans', S_mda.dimm(1), 'vcDataType', S_mda.vcDataType, ...
     'header_offset', S_mda.nBytes_header, 'vcFile', vcFile_mda);

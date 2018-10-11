@@ -3,6 +3,12 @@ IronClust, written by J. James Jun, Flatiron Institute, Simons Foundation
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [4.1.6] - 2018-10-11
+### Changed
+- `irc export-mda` command updated
+  - `irc export-mda myparam.prm myoutput.mda` option created
+  - `myoutput.mda`: output file fullpath
+
 ## [4.1.5] - 2018-10-10
 ### Changed
 - Default values changed to optimize out-of-box performance
