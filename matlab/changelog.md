@@ -3,6 +3,10 @@ IronClust, written by J. James Jun, Flatiron Institute, Simons Foundation
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [4.1.7] - 2018-10-12
+### Bugfix
+- 'makeStruct not found error' fixed
+
 ## [4.1.6] - 2018-10-11
 ### Changed
 - `irc export-mda` command updated
