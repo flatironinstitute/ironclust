@@ -3,6 +3,10 @@ IronClust, written by J. James Jun, Flatiron Institute, Simons Foundation
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [4.1.9] - 2018-10-12
+### Added
+- npy-matlab added: https://github.com/kwikteam/npy-matlab
+
 ## [4.1.8] - 2018-10-12
 ### Changed
 - Removed 'sample.bin' and 'sample.meta' under ./prb folder

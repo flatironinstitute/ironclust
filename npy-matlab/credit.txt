@@ -1,0 +1,8 @@
+Cloned from https://github.com/kwikteam/npy-matlab (master branch)
+Developed by Nick Steinemtz et al
+Commit#: a99e00f (Apr 30, 2018) 
+
+Removed the following items to save space
+- .ipyb_checkpoints (folder)
+- data (folder)  
+- npy.ipynb
