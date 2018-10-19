@@ -149,10 +149,11 @@ if fExit, return; end
 % Command type C: Requires P structure (loaded from .prm)
 if ~matchFileExt_(vcFile_prm, '.prm'), fprintf(2, 'Must provide .prm file\n'); return ;end
 if ~exist_file_(vcFile_prm, 1), return; end
-P = loadParam_(vcFile_prm); 
+P = loadParam_(vcFile_prm, 0); 
 if isempty(P), return; end    
 fError = 0;
 switch lower(vcCmd)    
+    case 'manual-gt', manual_(P, 'groundtruth'); return;
     case 'plot-clupairs', plot_clu_pairs_(P);
     case 'preview', preview_(P); 
     case 'preview-test', preview_(P, 1); gui_test_(P, 'Fig_preview');
@@ -167,8 +168,16 @@ switch lower(vcCmd)
     case {'spikesort', 'detectsort', 'detect-sort', 'spikesort-verify', 'spikesort-validate', 'spikesort-manual', 'detectsort-manual'}
         fprintf('Performing "irc detect", "irc sort" operations.\n');
         detect_(P); sort_(P, 0); describe_(P.vcFile_prm);
-%     case {'xcovsort', 'xcov-sort'}
-%         xcov_sort_(P); describe_(P.vcFile_prm);
+    case 'gtsort'
+        fprintf('Performing "irc detect" using groundtruth, and "irc sort" operations.\n');
+        S_gt = load_gt_(P.vcFile_gt);
+        if isempty(S_gt)
+            fprintf(2, 'Error loading groundtruth: %s\n', P.vcFile_gt);
+            return; 
+        end
+        detect_(P, S_gt.viTime, S_gt.viSite); sort_(P, 0); describe_(P.vcFile_prm);
+    case {'show-gt', 'showgt'}
+        show_gt_(P);
     case {'detect', 'spikedetect'}
         detect_(P); describe_(P.vcFile_prm);
     case {'sort', 'cluster', 'clust', 'sort-verify', 'sort-validate', 'sort-manual'}
@@ -892,7 +901,10 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function detect_(P)
+function S0 = detect_(P, viTime_spk0, viSite_spk0)
+if nargin<2, viTime_spk0 = []; end
+if nargin<3, viSite_spk0 = []; end
+
 global tnWav_raw tnWav_spk trFet_spk;
 runtime_detect = tic;
 % Clear memory (S0 is cleared)
@@ -902,9 +914,9 @@ set(0, 'UserData', []);
 vcDetect = get_set_(P, 'vcDetect', 'min');
 switch lower(vcDetect)
     case 'min'
-        S0 = file2spk_(P);
+        S0 = file2spk_(P, viTime_spk0, viSite_spk0);
     case 'xcov'
-        S0 = xcov_detect_(P);
+        S0 = detect_xcov_(P, viTime_spk0, viSite_spk0);
 end
 if get_set_(P, 'fRamCache', 1)
     tnWav_raw = load_bin_(strrep(P.vcFile_prm, '.prm', '_spkraw.jrc'), 'int16', S0.dimm_raw);
@@ -1326,7 +1338,7 @@ end %func
 function [trWav2, mrWav_ref] = spkwav_car_(trWav2, P, nSites_spk, viSite2_spk)
 %function [trWav2, mrWav_ref] = trWav_car_sort_(trWav2, P)
 %  trWav2: nT x nSpk x nSites, single
-fMeanSubt = 1;
+fMeanSubt = 0;
 if nargin<3, nSites_spk = []; end
 if nargin<4, viSite2_spk = []; end
 vcSpkRef = get_set_(P, 'vcSpkRef', 'nmean');
@@ -1385,7 +1397,7 @@ if ismatrix(trWav2), dimm2(end+1) = 1; end
 if ~isempty(mrWav_ref)
     trWav2 = reshape(bsxfun(@minus, reshape(trWav2,[],dimm2(3)), mrWav_ref(:)), dimm2);
 end
-if fMeanSubt, trWav2 = meanSubt_(trWav2); end
+if fMeanSubt, trWav2 = meanSubt_spk_(trWav2); end
 end %func
 
 
@@ -1624,7 +1636,7 @@ end %func
 function [P, vcFile_prm] = loadParam_(vcFile_prm, fEditFile)
 % Load prm file
 
-if nargin<2, fEditFile = 1; end
+if nargin<2, fEditFile = 0; end
 assert(exist_file_(vcFile_prm), sprintf('.prm file does not exist: %s\n', vcFile_prm));
 P0 = file2struct_(ircpath_(read_cfg_('default_prm', 0)));  %P = defaultParam();
 P = file2struct_(vcFile_prm);
@@ -1743,8 +1755,8 @@ end %func
 % 10/25/17 JJJ: Created and tested
 function P = calc_maxSite_(P)
 % Auto determine maxSite from the radius and site ifno
-
-P.maxSite = get_(P, 'maxSite');   
+nSites = numel(P.viSite2Chan);
+P.maxSite = min(get_(P, 'maxSite'), (nSites-1)/2);   
 P.nSites_ref = get_(P, 'nSites_ref');
 if ~isempty(P.maxSite) && ~isempty(P.nSites_ref), return; end
 mrDist_site = pdist2(P.mrSiteXY, P.mrSiteXY);
@@ -2939,36 +2951,38 @@ disp_score_(makeStruct_(vrSnr, vrFp, vrFn, vrAccuracy, vnSite, vnSpk, fVerbose, 
 if isempty(fPlot_gt), fPlot_gt = get_(S_cfg, 'fPlot_gt'); end
 if isUsingBuiltinEditor_()
     try
-        vrAccuracy = S_score.S_score_clu.vrAccuracy;
-        
+        vrAccuracy = S_score.S_score_clu.vrAccuracy;        
         switch fPlot_gt
             case 5 % variance ratio
                 figure;
                 set(gcf,'Color','w', 'Name', P.vcFile_prm);
                 RMS_var = S_gt.vrSnr_sd_clu.^2;
                 plot_gt_2by2_(RMS_var, vrAccuracy, vrFp, vrFn);
-                set(gcf,'UserData', makeStruct_(P, S_score));            
             case 4
                 figure;
                 set(gcf,'Color','w', 'Name', P.vcFile_prm);
                 RMS_min = vrSnr;
                 plot_gt_2by2_(RMS_min, vrAccuracy, vrFp, vrFn);
-                set(gcf,'UserData', makeStruct_(P, S_score));
             case 3
                 figure;
                 set(gcf,'Color','w', 'Name', P.vcFile_prm);
                 vrVmin = abs(S_score.Sgt.vrVmin_clu);
                 plot_gt_2by2_(vrVmin, vrAccuracy, vrFp, vrFn);
-                set(gcf,'UserData', makeStruct_(P, S_score));
             case 2
                 vrVpp = S_score.Sgt.vrVpp_clu;
                 figure;
                 set(gcf,'Color','w', 'Name', P.vcFile_prm);
                 plot_gt_2by2_(vrVpp, vrAccuracy, vrFp, vrFn);   
-                set(gcf,'UserData', makeStruct_(P, S_score));                
             case 1
                 plot_gt_(S_score, P);
+                return;
+            otherwise
+                return;
         end
+        csCode = file2cellstr_([mfilename(), '.m']);
+        set(gcf,'UserData', makeStruct_(P, S_score, csCode));   
+        vcFile_fig = filename_timestamp_(strrep(P.vcFile_prm, '.prm', '_gt.fig'));
+        save_fig_(vcFile_fig, gcf);
     catch
         disperr_();
     end
@@ -3085,6 +3099,9 @@ end
 if max(S_gt.viClu) > numel(viClu_unique)
     S_gt.viClu = viClu;
 end
+if isfield(S_gt, 'viSite')
+    if min(S_gt.viSite) == 0, S_gt.viSite = S_gt.viSite + 1; end
+end
 end %func
 
 
@@ -3111,7 +3128,7 @@ nSites = numel(P.viSite2Chan);
 S_cfg = read_cfg_();
 [vcFilter_gt, freqLim_gt, nDiff_filt_gt, spkLim_ms_gt] = ...
     struct_get_(S_cfg, 'vcFilter_gt', 'freqLim_gt', 'nDiff_filt_gt', 'spkLim_ms_gt');
-P1 = struct('vcCommonRef', 'none', 'vcSpkRef', 'none', 'fGpu', 0, ...
+P1 = struct('vcCommonRef', 'none', 'vcSpkRef', 'none', ... %'fGpu', 0,
     'vcFilter', vcFilter_gt, 'freqLim', freqLim_gt, ...
     'nDiff_filt', nDiff_filt_gt, 'spkLim_ms', spkLim_ms_gt);
 P1 = struct_merge_(P, P1);
@@ -3175,9 +3192,10 @@ if strcmpi(S_cfg.vcSnr_gt, 'min')
 elseif strcmpi(S_cfg.vcSnr_gt, 'sd')
     vrSnr_clu = vrSnr_sd_clu;
 end
+vnSpk_clu = cellfun(@numel, cviSpk_clu);
 S_ = makeStruct_(viSite_clu, vrVmin_clu, vrSnr_clu, vnSite_clu, ...
     vrSnr_sd_clu, vrSnr_min_clu, trWav_clu, trWav_raw_clu, ...
-    vrVpp_clu, viSite_Vpp_clu);
+    vrVpp_clu, viSite_Vpp_clu, vnSpk_clu);
 
 if ~isempty(snr_thresh)
     viClu_keep = find(abs(vrSnr_clu) > snr_thresh);    
@@ -3355,11 +3373,14 @@ end
 fh_car = @(tr)tr - repmat(mean(tr,2), [1,size(tr,2),1]);
 fh_wav = @(vi)single(tnWav_spk(:,:,vi));
 switch 1
+    case 3 % knn smoothed waveform returned
+        fh_trimmean = @(vi)tr2mr_trimmean_(fh_wav(vi));
+        fh_mr = @(vi)tr2mr_mean_knn_(tnWav_spk, miKnn, viSite_spk, vi); 
     case 2 % spatial ref
         fh_trimmean = @(vi)tr2mr_trimmean_(fh_car(fh_wav(vi)));
         fh_mr = @(vi)reshape(fh_car(fh_wav(vi)), [], numel(vi));        
     case 1 
-        fh_trimmean = @(vi)tr2mr_trimmean_(single(tnWav_spk(:,:,vi)));
+        fh_trimmean = @(vi)tr2mr_trimmean_(fh_wav(vi));
         fh_mr = @(vi)single(reshape(tnWav_spk(:,:,vi), [], numel(vi)));
 end
 fh_med = @(vi)single(median(tnWav_spk(:,:,vi),3));
@@ -3368,7 +3389,7 @@ fh_pv1 = @(vi)tr_pv1_(single(tnWav_spk(:,:,vi)));
 fh_meanalign = @(vi)tr_mean_align_(single(tnWav_spk(:,:,vi)));
 fh_denoise = @(vi)tr2mr_denoise_(single(tnWav_spk(:,:,vi)));
 nSites = max(viSite_spk);
-
+vlCore_spk = false(size(viSite_spk));
 fprintf('\tComputing template\n\t'); t_template = tic;
 for iClu = 1:S_clu.nClu
     % identify spikes to recluster by segregating into core-set and outer-set     
@@ -3378,6 +3399,7 @@ for iClu = 1:S_clu.nClu
     miKnn_clu1 = miKnn(:,viSpk1);
     vrFracSame_spk1 = mean(viClu(miKnn_clu1) == iClu);
     vlCore1 = vrFracSame_spk1 >= frac_thresh;
+    vlCore_spk(viSpk1) = vlCore1;
     viSpk_clu1 = viSpk1(vlCore1);
     cviSpk_in_clu{iClu} = viSpk_clu1;
     cviSpk_out_clu{iClu} = viSpk1(~vlCore1);
@@ -3388,19 +3410,23 @@ for iClu = 1:S_clu.nClu
     trWav11 = zeros(size(tnWav_spk,1), size(tnWav_spk,2), numel(viiSpk1), 'single');
     viSite11 = viSite_spk(viSpk1(viiSpk1));
     miKnn11 = miKnn_clu1(:,viiSpk1);
+    vlKeep11 = true(size(viiSpk1));
     for ii1 = 1:numel(viiSpk1)
         iSite11 = viSite11(ii1);
         viSpk11 = miKnn11(:,ii1);   
-        viSpk11 = viSpk11(viSite_spk(viSpk11) == iSite11);
         if isempty(viSpk11), continue; end
-        if numel(viSpk11) < 4
-            trWav11(:,:,ii1) = fh_trimmean(viSpk11);
+        switch 1
+            case 2
+                viSpk11 = miKnn(:, viSpk11);
+            case 1
+                viSpk11 = miKnn(1:4, viSpk11);
+        end
+        viSpk11 = viSpk11(:);
+        viSpk11 = viSpk11(viSite_spk(viSpk11) == iSite11);
+        if numel(viSpk11) < P.knn
+            vlKeep11(ii1) = 0;
             continue;
-        end
-        if 1
-            viSpk11 = miKnn(1:4, viSpk11);
-            viSpk11 = viSpk11(viSite_spk(viSpk11(:)) == iSite11);
-        end
+        end        
 %         trWav11(:,:,ii1) = fh_denoise(viSpk11);
         trWav11(:,:,ii1) = fh_trimmean(viSpk11);
 %         trWav11(:,:,ii1) = fh_meanalign(viSpk11(viSite11(ii1) == viSite_spk(viSpk11)));
@@ -3408,8 +3434,8 @@ for iClu = 1:S_clu.nClu
 %         trWav11(:,:,ii1) = fh_pv1(viSpk11);
 %         trWav11(:,:,ii1) = fh_mean(viSpk11);
     end
-    ctrWav_in_clu{iClu} = trWav11;
-    cviSite_in_clu{iClu} = viSite11;
+    ctrWav_in_clu{iClu} = trWav11(:,:,vlKeep11);
+    cviSite_in_clu{iClu} = viSite11(vlKeep11);
     fprintf('.');
 end
 fprintf('\n\ttook %0.1fs\n', toc(t_template));
@@ -3437,31 +3463,65 @@ end
 
 % template matching step
 fprintf('\tReassigning spikes\n\t');
-for iSite = 1:nSites
-    [vii_spkout1, trWav_in1, viClu_in1] = ...
-        deal(cviiSpk_out_site{iSite}, ctrWav_in_site{iSite}, cviClu_in_site{iSite});
-    if isempty(viClu_in1), continue; end
-    if isempty(vii_spkout1), continue; end
-    mrWav_spkout1 = fh_mr(viSpk_out(vii_spkout1))';
-    nClu_site1 = size(trWav_in1,3);
-    trWav_in1 = gpuArray_(trWav_in1, P.fGpu);
-    mrWav_spkout1 = gpuArray_(mrWav_spkout1, P.fGpu);
-    mrDist1 = inf(numel(vii_spkout1), numel(viShift), 'like', mrWav_spkout1);
-    miiClu_min1 = zeros(numel(vii_spkout1), numel(viShift), 'int32');
-    for iShift = 1:numel(viShift)
-        mrTemplate11 = shift_tr2mr_(trWav_in1, viShift(iShift))';
-        [mrDist1(:,iShift), vii_] = ...
-            min(pdist2(mrTemplate11, mrWav_spkout1),[],1);  
-        miiClu_min1(:,iShift) = gather_(vii_);
-    end
-    [~, viMin1] = min(mrDist1, [], 2);
-    vi_ = sub2ind(size(mrDist1), (1:size(mrDist1,1))', viMin1);
-    viClu_spkout(vii_spkout1) = viClu_in1(miiClu_min1(vi_));
-    fprintf('.');
-end
-S_clu.viClu_prematch = S_clu.viClu;
-S_clu.viClu(viSpk_out) = viClu_spkout;
-frac_changed = mean(S_clu.viClu_prematch ~= S_clu.viClu);
+switch 1
+    case 2 % find the nearest point in the core set
+        viSpk_out = find(~vlCore_spk);
+        for ii1 = 1:numel(viSpk_out) 
+            iSpk_out1 = viSpk_out(ii1);
+            viSpk1 = miKnn(:,iSpk_out1);
+            vii_in1 = find(vlCore_spk(viSpk1));
+            while isempty(vii_in1)
+                viSpk1 = miKnn(1:4,viSpk1);
+                viSpk1 = viSpk1(:);
+                vii_in1 = find(vlCore_spk(viSpk1));
+            end
+            viSpk_in1 = viSpk1(vii_in1);
+            viClu(iSpk_out1) = mode(viClu(viSpk_in1));
+        end
+        S_clu.viClu_prematch = S_clu.viClu;
+        S_clu.viClu = viClu;
+        frac_changed = mean(S_clu.viClu_prematch ~= S_clu.viClu);
+
+    case 1
+        for iSite = 1:nSites
+            [vii_spkout1, trWav_in1, viClu_in1] = ...
+                deal(cviiSpk_out_site{iSite}, ctrWav_in_site{iSite}, cviClu_in_site{iSite});
+            if isempty(viClu_in1), continue; end
+            if isempty(vii_spkout1), continue; end
+            mrWav_spkout1 = fh_mr(viSpk_out(vii_spkout1))';
+            nClu_site1 = size(trWav_in1,3);
+            trWav_in1 = gpuArray_(trWav_in1, P.fGpu);
+            mrWav_spkout1 = gpuArray_(mrWav_spkout1, P.fGpu);
+            mrDist1 = inf(numel(vii_spkout1), numel(viShift), 'like', mrWav_spkout1);
+            miiClu_min1 = zeros(numel(vii_spkout1), numel(viShift), 'int32');
+            vrWin11 = std(mrWav_spkout1);
+            for iShift = 1:numel(viShift)
+                mrTemplate11 = shift_tr2mr_(trWav_in1, viShift(iShift))';
+                switch 1
+                    case 5
+%                         vrWin11 = std(mrTemplate11);
+%                         vrWin11 = hanning(size(mrTemplate11,2))';
+                        [mrDist1(:,iShift), vii_] = pdist2(mrTemplate11.*vrWin11, mrWav_spkout1.*vrWin11, 'euclidean', 'smallest', 1);            
+                    case 4
+                        [mrDist1(:,iShift), vii_] = pdist2(mrTemplate11, mrWav_spkout1, 'euclidean', 'smallest', 1);
+                    case 3
+                        [mrDist1(:,iShift), vii_] = min(pdist2(mrTemplate11, mrWav_spkout1, 'cityblock'),[],1);              
+                    case 2
+                        [mrDist1(:,iShift), vii_] = min(maddist2_(mrTemplate11, mrWav_spkout1),[],1);                  
+                    case 1
+                        [mrDist1(:,iShift), vii_] = min(pdist2(mrTemplate11, mrWav_spkout1),[],1);  
+                end
+                miiClu_min1(:,iShift) = gather_(vii_);
+            end
+            [~, viMin1] = min(mrDist1, [], 2);
+            vi_ = sub2ind(size(mrDist1), (1:size(mrDist1,1))', viMin1);
+            viClu_spkout(vii_spkout1) = viClu_in1(miiClu_min1(vi_));
+            fprintf('.');
+        end
+    S_clu.viClu_prematch = S_clu.viClu;
+    S_clu.viClu(viSpk_out) = viClu_spkout;
+    frac_changed = mean(S_clu.viClu_prematch ~= S_clu.viClu);
+end %switch
 fprintf('\n\tReassigned %0.1f%% spikes, took %0.1fs\n', frac_changed*100, toc(t1));
 
 % merge the templates
@@ -3469,7 +3529,10 @@ if 1
     nClu = S_clu.nClu;
     fprintf('Merging templates\n\t'); t_merge=tic;
     fh_norm = @(x)bsxfun(@rdivide, x, std(x,1)*sqrt(size(x,1)));
-    fh_norm_tr = @(x)fh_norm(reshape(meanSubt_(x), [], size(x,3)));
+    switch 2
+        case 2, fh_norm_tr = @(x)fh_norm(reshape(x, [], size(x,3)));
+        case 1, fh_norm_tr = @(x)fh_norm(reshape(meanSubt_(x), [], size(x,3)));
+    end
     mrDist_clu = nan(S_clu.nClu, 'single');
     for iClu1 = 1:S_clu.nClu
         viSite1 = cviSite_in_clu{iClu1};
@@ -3500,6 +3563,45 @@ if 1
     nClu_post = S_clu.nClu;
     nClu_pre = nClu;
     fprintf('\nMerged %d waveforms (%d->%d), took %0.1fs\n', nClu-nClu_post, nClu, nClu_post, toc(t_merge));
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+function mrD12 = maddist2_(mr1, mr2)
+% [mr1, mr2] = deal(mr1', mr2');
+mr1 = gather_(mr1');
+mr2 = gather_(mr2');
+mrD12 = zeros(size(mr1,2), size(mr2,2), 'single');
+try
+    parfor i2=1:size(mr2,2)
+        mrD12(:,i2) = median_(abs(mr1 - mr2(:,i2)));
+    end
+catch
+    for i2=1:size(mr2,2)
+        mrD12(:,i2) = median_(abs(mr1 - mr2(:,i2)));
+    end
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+function vr = median_(mr)
+vr = sort(mr);
+imid = ceil(size(mr,1)/2);
+vr = vr(imid,:);
+end %func
+
+
+%--------------------------------------------------------------------------
+function mrWav_spk1 = tr2mr_mean_knn_(tnWav_spk, miKnn, viSite_spk, viSpk1)
+mrWav_spk1 = zeros(size(tnWav_spk,1)*size(tnWav_spk,2), numel(viSpk1), 'single');
+viSite_spk1 = viSite_spk(viSpk1);
+for ii1 = 1:numel(viSpk1)
+    vi1 = miKnn(:,viSpk1(ii1));
+    vi1 = vi1(viSite_spk(vi1) == viSite_spk1(ii1));
+    mr1 = mean(single(tnWav_spk(:,:,vi1)), 3);
+    mrWav_spk1(:,ii1) = mr1(:);
 end
 end %func
 
@@ -4478,11 +4580,11 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function S_clu = S_clu_update_wav_(S_clu, P)
+function S_clu = S_clu_update_wav_(S_clu, P, S0)
 if nargin<2, P = get0_('P'); end
-% if nargin<2, S0 = get(0, 'UserData'); end
+if nargin<3, S0 = get(0, 'UserData'); end
 
-S_clu = S_clu_wav_(S_clu);
+S_clu = S_clu_wav_(S_clu, [], [], S0);
 
 % compute raw waveform if not done yet
 if isempty(get_(S_clu, 'tmrWav_raw_clu'))
@@ -4680,7 +4782,7 @@ if ~strcmpi(vcCommand, 'skip')
             irc('clear');
             irc(vcCommand, vcFile_prm1);
             if isempty(strfind(vcCommand, 'verify'))
-                validate_(loadParam_(vcFile_prm1), 0); % try silent verify and collect result
+                validate_(loadParam_(vcFile_prm1,0), 0); % try silent verify and collect result
             end
         catch
             disperr_(lasterr());
@@ -4719,6 +4821,7 @@ end
 disp('All files pooled:');
 fVerbose = 0;
 disp_score_(makeStruct_(vrSnr, vrFp, vrFn, vrAccuracy, vnSite, vnSpk, fVerbose, S_burst, S_overlap));
+S_score = makeStruct_(vrSnr, vrFp, vrFn, vrAccuracy, vnSite, vnSpk, vrVpp, vrVmin, S_burst, S_overlap);
 
 % Plot
 fPlot_gt = read_cfg_('fPlot_gt');
@@ -4774,7 +4877,20 @@ switch fPlot_gt
         set(gcf,'Color','w');
         set(gca, 'YLim', [0 15], 'YTick', 0:3:15);
         linkaxes(ax,'x'); xlim_([5, 25]); 
+        return;
 end %switch
+csCode = file2cellstr_([mfilename(), '.m']);
+set(gcf,'UserData', makeStruct_(P, S_score, csCode));
+vcFile_fig = strrep(vcFile_batch, '.batch', '_gt.fig');
+save_fig_(filename_timestamp_(vcFile_fig), gcf);
+end %func
+
+
+%--------------------------------------------------------------------------
+function vcFile1 = filename_timestamp_(vcFile)
+vcDatestr = datestr(now, 'YYMMDD-hhmmss');
+[vcDir, vcFile, vcExt] = fileparts(vcFile);
+vcFile1 = [vcDir, filesep(), vcFile, '_', vcDatestr, vcExt];
 end %func
 
 
@@ -5086,13 +5202,14 @@ switch lower(P.vcFilter)
     case {'sgdiff', 'sgfilt'}
         mnWav2 = sgfilt_(mnWav2, P.nDiff_filt);
     case 'bandpass'
-        try
-            mnWav2 = filtfilt_chain(single(gather_(mnWav2)), setfield(P, 'fGpu', 0));
-        catch
-            fprintf('GPU filtering failed. Trying CPU filtering.\n');
-            mnWav2 = filtfilt_chain(single(mnWav2), setfield(P, 'fGpu', 0));
-        end
-        mnWav2 = int16(mnWav2);
+        mnWav2 = ms_bandpass_filter_(mnWav2, P);
+%         try
+% %             mnWav2 = filtfilt_chain(single(gather_(mnWav2)), setfield(P, 'fGpu', 0));
+%         catch
+%             fprintf('GPU filtering failed. Trying CPU filtering.\n');
+%             mnWav2 = filtfilt_chain(single(mnWav2), setfield(P, 'fGpu', 0));
+%         end
+%         mnWav2 = int16(mnWav2);
     case {'none', 'skip'} % no filter is applied
         ;
     case 'ndist'
@@ -5342,24 +5459,32 @@ end %func
 %--------------------------------------------------------------------------
 function manual_(P, vcMode)
 % display manual sorting interface
+% vcMode: %{'normal', 'debug', 'groundtruth'}
+
 global fDebug_ui trFet_spk
 
-if nargin<2, vcMode = 'normal'; end %{'normal', 'debug'}
+if nargin<2, vcMode = 'normal'; end 
 
 % Load info
-if ~is_sorted_(P)
-    fprintf(2, 'File must to be sorted first (run "irc spikesort %s")\n', P.vcFile_prm); 
-    return; 
-end
-[S0, P] = load_cached_(P);
-if ~isfield(S0, 'mrPos_spk')
-    S0.mrPos_spk = spk_pos_(S0, trFet_spk);
-    set(0, 'UserData', S0);
+if strcmpi(vcMode, 'groundtruth')
+    S0 = gt2S0_(P);
+else
+    if ~is_sorted_(P)
+        fprintf(2, 'File must to be sorted first (run "irc spikesort %s")\n', P.vcFile_prm); 
+        return; 
+    end
+    [S0, P] = load_cached_(P);
+    if ~isfield(S0, 'mrPos_spk')
+        S0.mrPos_spk = spk_pos_(S0, trFet_spk);
+        set(0, 'UserData', S0);
+    end
 end
 fDebug_ui = 0;
 P.fGpu = 0; %do not use GPU for manual use
 set0_(fDebug_ui, P);
 switch lower(vcMode)
+    case 'groundtruth'
+        ;
     case 'normal'
         if ~isempty(get_set_(S0, 'cS_log', {}))
             switch lower(questdlg_('Load last saved?', 'Confirmation'))
@@ -5394,8 +5519,11 @@ S0 = struct_merge_(S0, ...
 set(0, 'UserData', S0);
 
 % hFigRD
-S0.S_clu = plot_FigRD_(S0.S_clu, P); % ask user before doing so
-
+try
+    S0.S_clu = plot_FigRD_(S0.S_clu, P); % ask user before doing so
+catch
+    ;
+end
 % Set initial amplitudes
 set(0, 'UserData', S0);
 plot_FigWavCor_(S0);  % hFigWavCor
@@ -6638,12 +6766,12 @@ end
 
 
 %--------------------------------------------------------------------------
-function [S_clu, vlKeep_clu] = S_clu_refresh_(S_clu, fRemoveEmpty)
+function [S_clu, vlKeep_clu] = S_clu_refresh_(S_clu, fRemoveEmpty, viSite_spk)
 
 if nargin<2, fRemoveEmpty=1; end
 nClu = double(max(S_clu.viClu));
 S_clu.nClu = nClu;
-viSite_spk = get0_('viSite_spk');
+if nargin<3, viSite_spk = get0_('viSite_spk'); end
 % if isfield(S_clu, 'viSpk_shank'), viSite_spk = viSite_spk(S_clu.viSpk_shank); end
 % gviClu = gpuArray_(S_clu.viClu);
 % S_clu.cviSpk_clu = arrayfun(@(iClu)gather_(find(gviClu==iClu)), 1:nClu, 'UniformOutput', 0);
@@ -6721,7 +6849,10 @@ trWav2_spk = spkwav_car_(trWav2_spk, P, nSites_spk, viSite2_spk);
 
 switch lower(P.vcFet) %{'xcor', 'amp', 'slope', 'pca', 'energy', 'vpp', 'diff248', 'spacetime'}       
     case 'xcov'
-        [mrFet1, mrFet2, mrFet3] = trWav2xcov_(trWav2_spk, P);
+        nChans_xcov = min(size(trWav2_spk,3), 6); % generates n^2 features
+        trWav3_spk = permute(gather_(trWav2_spk(:,:,1:nChans_xcov)),[1,3,2]);
+        mrFet1 = xcov_fet_(trWav3_spk, P.nDelays_xcov);
+%         [mrFet1, mrFet2, mrFet3] = trWav2xcov_(trWav2_spk, P);
         
     case {'spacetime', 'cov', 'cov2'}
         mrFet1 = trWav2fet_cov_(trWav2_spk, P);
@@ -7939,6 +8070,10 @@ else
         end
     end
 end
+if 1 %10/19/2018 JJJ
+    tnWav_spk = meanSubt_spk_(tnWav_spk);
+    tnWav_raw = meanSubt_spk_(tnWav_raw);
+end
 end %func
 
 
@@ -8300,7 +8435,8 @@ else
     viSites1 = iSite1;
 end
 % mrSpkWav1 = tnWav2uV_(tnWav_sites_(tnWav_spk, S_clu.cviSpk_clu{iClu1}, viSites1));
-mrSpkWav1 = tnWav2uV_(tnWav_spk_sites_(S_clu.cviSpk_clu{iClu1}, viSites1, S0), P);
+mrSpkWav1 = tnWav2uV_(tnWav_spk_sites_(S_clu.cviSpk_clu{iClu1}, viSites1, S0), P, 0);
+% mrSpkWav1 = tnWav2uV_(tnWav_spk_sites_(find(S_clu.viClu==iClu1), viSites1, S0), P);
 mrSpkWav1 = reshape(mrSpkWav1, [], size(mrSpkWav1,3));
 [vlSpkIn, mrFet_split, vhAx, hFigTemp] = auto_split_wav_(mrSpkWav1, [], 2);
 hPoly = [];
@@ -9498,6 +9634,26 @@ if get_set_(P, 'f_assign_site_clu', 0)
 end
 
 switch 4
+    case 5
+        nClu_pre = numel(S_clu.icl);
+        [S_clu.viClu, S_clu.icl] = assignCluster_(S_clu.viClu, S_clu.ordrho, S_clu.nneigh, S_clu.icl);
+        [S_clu.viClu, S_clu.icl] = dpclus_remove_count_(S_clu.viClu, S_clu.icl, P.min_count);
+%         viMap = S_clu_peak_merge_(S_clu, P); % merge peaks based on their waveforms
+%         S_clu.viClu = map_index_(viMap, S_clu.viClu, 0);
+%         S_clu = S_clu_remove_count_(S_clu, P);
+        S_clu = S_clu_refresh_(S_clu); % reassign cluster number?
+        nClu_rm = nClu_pre - S_clu.nClu;        
+    
+    case 4
+        nClu_pre = numel(S_clu.icl);
+        [S_clu.viClu, S_clu.icl] = assignCluster_(S_clu.viClu, S_clu.ordrho, S_clu.nneigh, S_clu.icl);
+        [S_clu.viClu, S_clu.icl] = dpclus_remove_count_(S_clu.viClu, S_clu.icl, P.min_count);
+        viMap = S_clu_peak_merge_(S_clu, P); % merge peaks based on their waveforms
+        S_clu.viClu = map_index_(viMap, S_clu.viClu, 0);
+%         S_clu = S_clu_remove_count_(S_clu, P);
+        S_clu = S_clu_refresh_(S_clu); % reassign cluster number?
+        nClu_rm = nClu_pre - S_clu.nClu;        
+    
     case 1 % don't use small clusters
         vlKill_spk = false(size(S_clu.ordrho));
         for iRepeat=1:nRepeat_max % repeat 1000 times max  
@@ -9542,15 +9698,6 @@ switch 4
         S_clu = S_clu_remove_count_(S_clu, P);
         nClu_rm = nClu_pre - S_clu.nClu;
         
-    case 4
-        nClu_pre = numel(S_clu.icl);
-        [S_clu.viClu, S_clu.icl] = assignCluster_(S_clu.viClu, S_clu.ordrho, S_clu.nneigh, S_clu.icl);
-        [S_clu.viClu, S_clu.icl] = dpclus_remove_count_(S_clu.viClu, S_clu.icl, P.min_count);
-        viMap = S_clu_peak_merge_(S_clu, P); % merge peaks based on their waveforms
-        S_clu.viClu = map_index_(viMap, S_clu.viClu, 0);
-%         S_clu = S_clu_remove_count_(S_clu, P);
-        S_clu = S_clu_refresh_(S_clu); % reassign cluster number?
-        nClu_rm = nClu_pre - S_clu.nClu;        
 end
 fprintf('\n\ttook %0.1fs. Removed %d clusters having <%d spikes: %d->%d\n', ...
     toc(t1), nClu_rm, P.min_count, nClu_pre, S_clu.nClu);
@@ -9610,7 +9757,8 @@ end
 % S_clu.icl = S_clu.icl(viUniq_);
 viMap = viMap(:);
 
-fprintf('S_clu_peak_merge_: %d->%d cluster centers\n', nClu, numel(viUniq_));
+fprintf('S_clu_peak_merge_: %d->%d cluster centers (knn_merge_thresh=%d)\n', ...
+    nClu, numel(viUniq_), knn_merge_thresh);
 
 % tnWav_spk = get_spkwav_(P);
 % S0 = get0_();
@@ -9694,14 +9842,13 @@ end %func
 
 %--------------------------------------------------------------------------
 % 10/10/17 JJJ: moved tnWav_spk and tnWav_raw internally
-function S_clu = S_clu_wav_(S_clu, viClu_update, fSkipRaw)
+function S_clu = S_clu_wav_(S_clu, viClu_update, fSkipRaw, S0)
 % average cluster waveforms and determine the center
 % only use the centered spikes 
 % viClu_copy: waveforms not changing
 if nargin<2, viClu_update = []; end
 if nargin<3, fSkipRaw = []; end
-
-S0 = get(0, 'UserData');
+if nargin<4, S0 = get(0, 'UserData'); end
 P = S0.P;
 %if isempty(fSkipRaw), fSkipRaw = ~get_set_(P, 'fWavRaw_merge', 1); end
 if isempty(fSkipRaw), fSkipRaw = 0; end
@@ -9960,6 +10107,7 @@ end %func
 
 
 %--------------------------------------------------------------------------
+% 10/18/2018 JJJ: Cluster order fixed
 function S_clu = S_clu_sort_(S_clu, vcField_sort)
 % sort clusters by the centroid position
 % vcField_sort: {'', 'vrPosY_clu + vrPosX_clu'}
@@ -9975,12 +10123,9 @@ switch vcField_sort
     otherwise
         [~, viCluSort] = sort(S_clu.(vcField_sort), 'ascend');
 end
-S_clu.viClu = mapIndex_(S_clu.viClu, viCluSort);
+S_clu.viClu = mapIndex_(S_clu.viClu, viCluSort); % fixed
 S_clu = struct_reorder_(S_clu, viCluSort, ...
     'cviSpk_clu', 'vrPosX_clu', 'vrPosY_clu', 'vnSpk_clu', 'viSite_clu', 'cviTime_clu', 'csNote_clu');
-% if isfield(S_clu, 'tmrWav_clu')
-%     S_clu.tmrWav_clu = S_clu.tmrWav_clu(:, :, viCluSort);
-% end
 S_clu = S_clu_refresh_(S_clu);
 end %func
 
@@ -12095,7 +12240,8 @@ vlIn_spk = false(nSpks,1);
 vlIn_spk(1:end/2) = true;
 
 if isempty(mrFet)    
-    [~,mrFet,vrD] = pca(double(mrSpkWav'), 'Centered', 1, 'NumComponents', 3);
+%     [~,mrFet,vrD] = pca(double(mrSpkWav'), 'Centered', 1, 'NumComponents', 3);
+    [mrFet,~,vrD] = pca(double(mrSpkWav), 'NumComponents', 3);
 end
 % nSplit = preview_split_(mrSpkWav1);
 % if isnan(nSplit), return; end
@@ -12204,11 +12350,12 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function [vi, nClu, viA] = mapIndex_(vi, viA, viB)
+function [vi, nClu, viA, viAB] = mapIndex_(vi, viA, viB)
 % change the index of vi according to the map (viA)
 
 if nargin<2, viA = setdiff(unique(vi), 0); end %excl zero
 if nargin<3, viB = 1:numel(viA); end
+if isempty(viA), viA = 1:max(vi); end
 nClu = viB(end);
 viAB(viA) = viB; %create a translation table A->B
 vl = vi>0;
@@ -12616,8 +12763,8 @@ else
     S_clu = struct_merge_(S_clu, arg1);
 end
 S_clu.viClu = int32(S_clu.viClu);
-S_clu = S_clu_refresh_(S_clu);
-S_clu = S_clu_update_wav_(S_clu, S0.P);
+S_clu = S_clu_refresh_(S_clu, 1, S0.viSite_spk);
+S_clu = S_clu_update_wav_(S_clu, S0.P, S0);
 S_clu = S_clu_position_(S_clu);
 if ~isfield(S_clu, 'csNote_clu')
     S_clu.csNote_clu = cell(S_clu.nClu, 1);  %reset note
@@ -13113,13 +13260,13 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function vr = tnWav2uV_(vn, P)
+function vr = tnWav2uV_(vn, P, fMeanSubt)
 % Integrate the waveform
-
+if nargin<3, fMeanSubt=1; end
 if nargin<2, P = get0_('P'); end
 vr = bit2uV_(vn, P);
 % if P.nDiff_filt>0, 
-vr = meanSubt_(vr); 
+if fMeanSubt, vr = meanSubt_(vr); end
 % end
 end %func
 
@@ -13899,16 +14046,16 @@ write_bin_(P1.vcFile, mnWav2);
 end %func
 
 
-%--------------------------------------------------------------------------
-function vr = toRow_(mr)
-vr = mr(:)';
-end
-
-
-%--------------------------------------------------------------------------
-function vr = toCol_(mr)
-vr = mr(:);
-end
+% %--------------------------------------------------------------------------
+% function vr = toRow_(mr)
+% vr = mr(:)';
+% end
+% 
+% 
+% %--------------------------------------------------------------------------
+% function vr = toCol_(mr)
+% vr = mr(:);
+% end
 
 
 %--------------------------------------------------------------------------
@@ -15870,14 +16017,15 @@ switch lower(vcMode)
 %         % use nearest neighbors to compute local xcov
 %         mn1 = xcov_filt_local_(mn, P);
     case 'bandpass'
-        try
-            mn = gather_(mn);
-            mn1 = filtfilt_chain(single(mn), P);
-        catch
-            fprintf('GPU filtering failed. Trying CPU filtering.\n');
-            mn1 = filtfilt_chain(single(mn), setfield(P, 'fGpu', 0));
-        end
-        mn1 = int16(mn1);  
+        mn1 = ms_bandpass_filter_(mn, P);
+%         try
+%             mn = gather_(mn);
+%             mn1 = filtfilt_chain(single(mn), P);
+%         catch
+%             fprintf('GPU filtering failed. Trying CPU filtering.\n');
+%             mn1 = filtfilt_chain(single(mn), setfield(P, 'fGpu', 0));
+%         end
+%         mn1 = int16(mn1);  
     case 'fir1'
         n5ms = round(P.sRateHz / 1000 * 5);
         vrFilter = single(fir1_(n5ms, P.freqLim/P.sRateHz*2));
@@ -17527,7 +17675,7 @@ try
     hMsg = msgbox_('Saving figure... (this closes automaticall)');
     drawnow;
     saveas(hFig, vcFile_png);
-    fprintf('Saved figure to %s.\n', vcFile_png);
+    fprintf('Saved figure to %s\n', vcFile_png);
     if fClose, close_(hFig); end
     close_(hMsg);
 catch
@@ -19248,12 +19396,15 @@ end %func
 % 8/2/17 JJJ: Documentation and test
 function csLines = file2cellstr_(vcFile)
 % read text file to a cell string
-
-fid = fopen(vcFile, 'r');
-csLines = {};
-while ~feof(fid), csLines{end+1} = fgetl(fid); end
-fclose(fid);
-csLines = csLines';
+try
+    fid = fopen(vcFile, 'r');
+    csLines = {};
+    while ~feof(fid), csLines{end+1} = fgetl(fid); end
+    fclose(fid);
+    csLines = csLines';
+catch
+    csLines = {};
+end
 end %func
 
 
@@ -21103,8 +21254,8 @@ end %func
 % 9/29/17 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcVer_used] = version_(vcFile_prm)
 if nargin<1, vcFile_prm = ''; end
-vcVer = 'v4.1.6';
-vcDate = '10/11/2018';
+vcVer = 'v4.2.0';
+vcDate = '10/16/2018';
 vcVer_used = '';
 if nargout==0
     fprintf('%s (%s) installed\n', vcVer, vcDate);
@@ -21113,12 +21264,12 @@ try
     if isempty(vcFile_prm)
         P = get0_('P');
         if ~isempty(P)
-            fprintf('\t%s used in %s\n', P.version, P.vcFile_prm);
+%             fprintf('\t%s used in %s\n', P.version, P.vcFile_prm);
             vcVer_used = P.version;
         end
     elseif exist_file_(vcFile_prm)
         P = loadParam_(vcFile_prm);
-        fprintf('\t%s used in %s\n', P.version, vcFile_prm);
+%         fprintf('\t%s used in %s\n', P.version, vcFile_prm);
         vcVer_used = P.version;
     end
 catch
@@ -23548,24 +23699,41 @@ end %func
 
 
 %--------------------------------------------------------------------------
+% 10/16/2018 JJJ: Using native function in matlab (pdist2 function)
 % 9/20/2018 JJJ: Memory-optimized knn
 function [vrKnn, miKnn] = knn_cpu_(mrFet, vi1, vi2, knn)
-nStep_knn = 1000;
-n1 = numel(vi1);
-miKnn = zeros([knn, n1], 'int32'); 
-vrKnn = zeros([n1, 1], 'single');
-mrFet2 = mrFet(:,vi2);
-mrFet1 = mrFet(:,vi1);
-fh_dist_ = @(y)bsxfun(@plus, sum(y.^2), bsxfun(@minus, sum(mrFet2.^2)', 2*mrFet2'*y));
-for i1 = 1:nStep_knn:n1
-    vi1_ = i1:min(i1+nStep_knn-1, n1);
-    mrD_ = fh_dist_(mrFet1(:,vi1_));
-    [mrSrt_, miSrt_] = sort(mrD_);
-    miKnn(:,vi1_) = miSrt_(1:knn,:);
-    vrKnn(vi1_) = mrSrt_(knn,:);
-end %for
-miKnn = vi2(miKnn);
-vrKnn = sqrt(abs(vrKnn));
+% if isempty(vi1), vi1 = 1:size(mrFet,2); end
+% if isempty(vi2), vi2 = 1:size(mrFet,2); end
+switch 2
+    case 2
+        if isempty(vi1) && isempty(vi2)
+            mrFet_T = mrFet';
+            [mrKnn, miKnn] = pdist2(mrFet_T, mrFet_T, 'euclidean', 'smallest', knn);
+        else
+            [mrKnn, miKnn] = pdist2(mrFet(:,vi2)', mrFet(:,vi1)', 'euclidean', 'smallest', knn);             
+            miKnn = vi2(miKnn);
+        end
+        miKnn = int32(miKnn);
+        vrKnn = mrKnn(end,:)';
+    case 1
+        nStep_knn = 1000;
+        n1 = numel(vi1);
+        miKnn = zeros([knn, n1], 'int32'); 
+        vrKnn = zeros([n1, 1], 'single');
+        mrFet2 = mrFet(:,vi2);
+        mrFet1 = mrFet(:,vi1);
+
+        fh_dist_ = @(y)bsxfun(@plus, sum(y.^2), bsxfun(@minus, sum(mrFet2.^2)', 2*mrFet2'*y));
+        for i1 = 1:nStep_knn:n1
+            vi1_ = i1:min(i1+nStep_knn-1, n1);
+            mrD_ = fh_dist_(mrFet1(:,vi1_));
+            [mrSrt_, miSrt_] = sort(mrD_);
+            miKnn(:,vi1_) = miSrt_(1:knn,:);
+            vrKnn(vi1_) = mrSrt_(knn,:);
+        end %for
+        miKnn = vi2(miKnn);
+        vrKnn = sqrt(abs(vrKnn));
+end
 end %func
 
 
@@ -25390,10 +25558,12 @@ dimm_ = size(tnWav_spk);
 t_fet = tic;
 nDelays = get_set_(P, 'nDelays_xcov', 4);
 switch 6 % 6: 84%, integrator %86%
+    case 8
+        mrFet_spk = trWav2fet_(tnWav_spk, P);
     case 7 % cross power
         mrFet_spk = crossPower_(meanSubt_(tnWav_spk));
     case 6
-        mrFet_spk = xcov_fet_(meanSubt_(tnWav_spk), nDelays);
+        mrFet_spk = xcov_fet_(tnWav_spk, nDelays);
     case 5
         mrFet_spk = reshape(meanSubt_(sort(cumtrapz(single(tnWav_spk)))), [], size(tnWav_spk,3));
     case 4
@@ -25480,35 +25650,42 @@ end
 % fh_dist_ = @(vi_)bsxfun(@plus, sum(mrFet_spk(:,vi_).^2), bsxfun(@minus, sum(mrFet_spk.^2)', 2*mrFet_spk'*mrFet_spk(:,vi_)));
 
 % find rho
-if 1
-    [mrFet_spk, miKnn, vrRho, vrDelta, viNneigh] = ...
-        gpuArray_deal_(mrFet_spk, miKnn, vrRho, vrDelta, viNneigh);
-end
-fprintf('Computing Rho...');
+[mrFet_spk, miKnn, vrRho, vrDelta, viNneigh] = ...
+    gpuArray_deal_(mrFet_spk, miKnn, vrRho, vrDelta, viNneigh);
+fGpu = isGpu_(mrFet_spk);
+fprintf('Computing Rho\n');
 t_rho = tic;
-for iSpk = 1:nStep_knn:nSpk
-    viSpk_ = iSpk:min(iSpk+nStep_knn-1, nSpk);
-    mrD_ = fh_dist_(mrFet_spk(:,viSpk_));
-    [mrSrt_, miSrt_] = sort(mrD_);
-    miKnn(:,viSpk_) = miSrt_(1:knn,:);
-    vrRho(viSpk_) = mrSrt_(knn,:);
-    fprintf('.');
-end
+switch 2
+    case 2
+        [vrRho, miKnn] = knn_cpu_(mrFet_spk, [], [], knn);
+    case 1
+        for iSpk = 1:nStep_knn:nSpk
+            viSpk_ = iSpk:min(iSpk+nStep_knn-1, nSpk);
+            mrD_ = fh_dist_(mrFet_spk(:,viSpk_));
+            [mrSrt_, miSrt_] = sort(mrD_);
+            miKnn(:,viSpk_) = miSrt_(1:knn,:);
+            vrRho(viSpk_) = mrSrt_(knn,:);
+            fprintf('.');
+        end
+        vrRho = sqrt(abs(vrRho));
+end %switch
 vrRho = 1 ./ vrRho;
-fprintf('\tDensity calculation (rho) took %0.1fs\n', toc(t_rho));
+fprintf('\tDensity calculation (rho) took %0.1fs (fGpu=%d)\n', toc(t_rho), fGpu);
 
 % find delta
-fprintf('Computing Delta...');
+fprintf('Computing Delta\n\t');
 t_delta = tic;
 for iSpk = 1:nStep_knn:nSpk
     viSpk_ = iSpk:min(iSpk+nStep_knn-1, nSpk);
     mrD_ = fh_dist_(mrFet_spk(:,viSpk_));
     mrD_(bsxfun(@le, vrRho, vrRho(viSpk_)')) = inf;
     [vrDelta(viSpk_), viNneigh(viSpk_)] = min(mrD_);
+    fprintf('.');
 end
+vrDelta = sqrt(abs(vrDelta));
 vrDelta = vrDelta .* vrRho;
 [vrRho, vrDelta, miKnn, viNneigh] = gather_(vrRho, vrDelta, miKnn, viNneigh);
-fprintf('\tMin. distance calculation (delta) took %0.1fs\n', toc(t_delta));
+fprintf('\n\tMin. distance calculation (delta) took %0.1fs (fGpu=%d)\n', toc(t_delta), fGpu);
 
 t_runtime = toc(t_func);
 trFet_dim = size(mrFet_spk);
@@ -25603,6 +25780,20 @@ nChans = dimm_(2);
 nSpk = dimm_(3);
 
 switch 12 %12(86.1%) 11 7
+    case 20
+        mrFet_spk = zeros(nChans.^2, nSpk, 'single');
+        vi_ = (nDelays+1:(dimm_(1) - nDelays))';
+        miA = bsxfun(@plus, vi_, 1:nDelays);
+        miB = bsxfun(@minus, vi_, 1:nDelays);
+        nAve = size(miA,2);
+        for iSpk = 1:nSpk
+            mr_ = single(tnWav_spk(:,:,iSpk));    
+            mrX_ = zeros(nChans, nChans, 'single');            
+            for iDelay = 1:nAve
+                mrX_ = mrX_ + mr_(miA(:,iDelay),:)' * mr_(miB(:,iDelay),:);
+            end
+            mrFet_spk(:,iSpk) = mrX_(:) / nAve;            
+        end    
     case 19
         mrFet_spk = zeros(nChans.^2*2, nSpk, 'single');
         viA = 1:2:dimm_(1)-1;
@@ -25716,6 +25907,7 @@ switch 12 %12(86.1%) 11 7
         nAve = size(miA,2);
         for iSpk = 1:nSpk
             mr_ = single(tnWav_spk(:,:,iSpk));    
+%             mr_ = meanSubt_(mr_); %subtract mean, already done
             mrX_ = zeros(nChans, nChans, 'single');            
             for iDelay = 1:nAve
                 mrX_ = mrX_ + mr_(miA(:,iDelay),:)' * mr_(miB(:,iDelay),:);
@@ -25986,7 +26178,7 @@ function S0 = xcov_sort_(P)
 
 % run detection
 if ~is_detected_(P)
-    [S0, mrFet_spk] = xcov_detect_(P);
+    [S0, mrFet_spk] = detect_xcov_(P);
 else
     [S0, P] = load_cached_(P); 
     mrFet_spk = get_spkfet_(P);
@@ -26006,7 +26198,9 @@ end %func
 
 %--------------------------------------------------------------------------
 % 9/23/2018 JJJ: spike detection using local xcov
-function [S0, mrFet_spk] = xcov_detect_(P)
+function [S0, mrFet_spk] = detect_xcov_(P, viTime_spk0, viSite_spk0)
+if nargin<2, viTime_spk0 = []; end
+if nargin<3, viSite_spk0 = []; end
 
 global tnWav_raw tnWav_spk trFet_spk;
 % runtime_detect = tic;
@@ -26014,99 +26208,59 @@ set(0, 'UserData', []);
 [tnWav_raw, tnWav_spk, trFet_spk] = deal([]);
 
 % Load waveform
-mnWav = load_file_(P.vcFile, [], P);
-if get_(P, 'fft_thresh')>0
-    mnWav = fft_clean_(mnWav, P); 
-end
-mnWav_raw = mnWav;
+mnWav_raw = load_file_(P.vcFile, [], P);
+if get_(P, 'fft_thresh')>0, mnWav_raw = fft_clean_(mnWav_raw, P); end
+mnWav_filt = ms_bandpass_filter_(mnWav_raw, P);
+nSites = size(P.mrSiteXY,1);
+nShanks = max(P.viShank_site);
 switch 1
-    case 4 % leaky integrator filter
-        % https://www.mathworks.com/help/signal/examples/practical-introduction-to-digital-filtering.html
-        for iC=1:size(mnWav,2)
-            mnWav(:,iC) = filter(1, [1, -.5], double(mnWav(:,iC)));
-        end
-%         vrSum = double(sum(mnWav,2));
-%         myfig; plot(madscore(vrSum(1:10000))); plot(madscore(vrLeakyInt(1:10000)));
-
-    case 3
-        n_200ms = round(.2*P.sRateHz);
-        hFilt = ones(n_200ms, 1, 'single')/n_200ms;
-        mnWav = single(mnWav);
-        mnWav1 = cell2mat(arrayfun(@(x)conv(mnWav(:,x), hFilt, 'same'), 1:size(mnWav,2), 'UniformOutput', 0));
-        mnWav = mnWav - mnWav1;
-    case 2
-        mnWav = filt_car_(mnWav, P); % do not filter it makes it worse        
-    case 1
-%         mnWav = single(mnWav);
+    case 2, mnWav_detect = mnWav_raw;
+    case 1, mnWav_detect = mnWav_filt;
 end
-
 % Detect
-[thresh_mad, n1ms] = deal(P.qqFactor/.6745, round(P.sRateHz/1000));
-switch 1 % 1
-    case 3
-        nAve_wav = round(diff(P.spkLim)/2);
-    case 2
-        nAve_wav = round(diff(P.spkLim)/8);
-    case 1
-        nAve_wav = round(.0005 * P.sRateHz);
+if isempty(viTime_spk0) && isempty(viSite_spk0)
+    if nShanks == 1
+        [viTime_spk, vrAmp_spk, thresh_detect] = detect_xcov_local_(mnWav_detect, P);
+        vrThresh_site = repmat(thresh_detect, [nSites, 1]);
+        viSite_spk = repmat(int32(1), size(viTime_spk));
+    else
+        [cviTime_spk, cvrAmp_spk, cviSite_spk] = deal(cell(nShanks, 1));
+        for iShank = 1:nShanks
+            viSite1 = find(P.viShank_site == iShank);
+            mnWav_filt1 = mnWav_detect(:,viSite1);
+            [viTime_spk1, cvrAmp_spk{iShank}, thresh_detect1] = detect_xcov_local_(mnWav_filt1, P);
+            nSpk1 = numel(viTime_spk1);
+            vrThresh_site(viSite1) = thresh_detect1;
+            cviTime_spk{iShank} = int32(viTime_spk1);
+            cviSite_spk{iShank} = repmat(int32(min(viSite1)), nSpk1, 1);
+        end
+        % combine time from differnt shank groups
+        [viTime_spk, vrAmp_spk, viSite_spk] = ...
+            deal(cell2mat_(cviTime_spk), cell2mat_(cvrAmp_spk), cell2mat_(cviSite_spk));
+        [viTime_spk, vi_srt_] = sort(viTime_spk);
+        [vrAmp_spk, viSite_spk] = deal(vrAmp_spk(vi_srt_), viSite_spk(vi_srt_));
+    end
+else
+    viTime_spk = viTime_spk0;
+    viSite_spk = viSite_spk0;
+    vrAmp_spk = [];
+    vrThresh_site = mr2rms_(mnWav_filt, 1e6) * P.qqFactor;
 end
-switch 3
-    case 3
-        vrWav_detect = xcov_filt_(mnWav, nAve_wav, 2, P.fParfor);
-        vrWav_detect = median(vrWav_detect) - vrWav_detect;
-    case 2
-        vrWav_detect = -xcov_filt_(mnWav, nAve_wav, 2, P.fParfor);        
-    case 1
-        vrCov = cov_filt_(mnWav, nAve_wav, P.fParfor); % TODO: use GPU
-        vrWav_detect = -sqrt(abs(vrCov)) + sqrt(abs(median(vrCov)));
-end %switch
-
-switch 1
-    case 2
-        vrWav_mean = -conv(mean(mnWav.^2,2), ones(nAve_wav,1,'single'), 'same');
-    case 1
-        vrWav_mean = conv(mean(mnWav,2), ones(nAve_wav,1,'single'), 'same');
-end
-switch 1
-    case 2
-        thresh_detect = median(abs(vrWav_mean))*thresh_mad;
-        viTime_spk = find_peak_(vrWav_mean, thresh_detect, 0);        
-    case 1
-        thresh_detect = median(abs(vrWav_detect))*thresh_mad;
-        viTime_spk = find_peak_(vrWav_detect, thresh_detect, 0);
-        viTime_spk(vrWav_mean(viTime_spk)>0) = []; % remove spikes that are positives
-end
-viTime_spk = detect_clean_(vrWav_detect, viTime_spk, round(.001 * P.sRateHz)); % refractory period
-nT = size(mnWav,1);
 switch 2
-    case 2
-        for iRepeat = 1:nAve_wav % find local min
-            if min(viTime_spk) == 1, viTime_spk(viTime_spk==1) = []; end
-            if max(viTime_spk) == nT, viTime_spk(viTime_spk==nT) = []; end
-            vi_R = find(vrWav_mean(viTime_spk+1) < vrWav_mean(viTime_spk));
-            vi_L = find(vrWav_mean(viTime_spk-1) < vrWav_mean(viTime_spk));
-            viTime_spk(vi_R) = viTime_spk(vi_R) + 1;
-            viTime_spk(vi_L) = viTime_spk(vi_L) - 1;    
-        end
-    case 1 % no resettling using vrWav_mean
-        ;
-end
-vrAmp_spk = vrWav_detect(viTime_spk);
-viSite_spk = repmat(1, size(viTime_spk)); % assume all spikes are detected at site 1
-%     myfig; plot(vrWav_detect);plot(viTime_spk,vrWav_detect(viTime_spk),'r.'); title(sprintf('#spikes: %d\n', numel(viTime_spk)));
-
-% Waveform extraction
-switch 1
     case 3
-        mnWav_filt = mnWav;
-        for iC=1:size(mnWav,2)
-            mnWav_filt(:,iC) = filter(1, [1 -.5], double(mnWav(:,iC)));
-        end
-    case 2, mnWav_filt = int16(ndiff_(mnWav,3));
-    case 1, mnWav_filt = int16(mnWav);
+        P_ = setfield(P, 'freqLim', [P.freqLim(1), nan]);
+        mnWav_fet = ms_bandpass_filter_(mnWav_raw, P_);
+    case 2, mnWav_fet = mnWav_raw;            
+    case 1, mnWav_fet = mnWav_filt;
 end
-tnWav_spk = permute(mr2tr3_(mnWav_filt, P.spkLim, viTime_spk), [1,3,2]); % danger of offset
+tnWav_spk = permute(mr2tr3_(mnWav_fet, P.spkLim, viTime_spk), [1,3,2]); % danger of offset
 tnWav_raw = permute(mr2tr3_(mnWav_raw, P.spkLim_raw, viTime_spk), [1,3,2]);
+[tnWav_spk, tnWav_raw] = deal(meanSubt_spk_(tnWav_spk), meanSubt_spk_(tnWav_raw));
+
+if isempty(vrAmp_spk)
+    vrAmp_spk = min(reshape(tnWav_spk, [], size(tnWav_spk,3)));
+    vrAmp_spk = vrAmp_spk(:);
+end
 
 switch 0
     case 2 % softthresh tnWav_spk
@@ -26122,7 +26276,6 @@ switch 0
 end
 
 % Feature extraction: compare single-chan vs multi-chan pca
-nSites = size(P.mrSiteXY,1);
 nPc_xcov = nSites * P.nPcPerChan;
 mrFet_spk = reshape(meanSubt_(single(tnWav_spk)), [], numel(viTime_spk));
 [~, mrFet_spk, vrLat_pca] = pca(mrFet_spk', 'NumComponents', nPc_xcov);
@@ -26135,37 +26288,163 @@ viSite2_spk = viSite_spk;
 [cviSpk_site, cviSpk2_site] = deal({viSite_spk});
 [cviSpk3_site, mrPv_global, vrFilt_spk, vrD_global] = deal([]);
 [nLoads, viT_offset_file] = deal(1, 0);
-vrThresh_site = repmat(thresh_detect, [nSites, 1]);
 S0 = makeStruct_(viTime_spk, vrAmp_spk, P, ...
     dimm_spk, dimm_raw, dimm_fet, vrThresh_site, ...
     viSite_spk, viSite2_spk, cviSpk_site, cviSpk2_site, cviSpk3_site, ...
     mrPv_global, vrFilt_spk, vrD_global, nLoads, viT_offset_file);
-% S0.mrPos_spk = spk_pos_(S0, trFet_spk, inf);
 
 % File output
 write_spk_(P.vcFile_prm); %open file
 write_spk_(tnWav_raw, tnWav_spk, trFet_spk);
 write_spk_(); % close and clear
+end %func
 
-% measure time
-% S0.runtime_detect = toc(runtime_detect);
-% fprintf('Detection took %0.1fs for %s\n', S0.runtime_detect, P.vcFile_prm);
 
-% Save S0
-% set(0, 'UserData', S0);
-% save0_(strrep(P.vcFile_prm, '.prm', '_jrc.mat'));
-% delete_(strrep(P.vcFile_prm, '.prm', '_log.mat')); %delete log file when detecting
+%--------------------------------------------------------------------------
+% subtract spike mean (different from channel mean)
+function tnWav_spk = meanSubt_spk_(tnWav_spk)
+dimm = size(tnWav_spk);
+tnWav_spk = reshape(tnWav_spk,[],dimm(3));
+vnMean_spk = cast(mean(tnWav_spk), 'like', tnWav_spk);
+tnWav_spk = bsxfun(@minus, tnWav_spk, vnMean_spk);
+tnWav_spk = reshape(tnWav_spk, dimm);
+end %func
 
+
+%--------------------------------------------------------------------------
+% 10/17/2018 JJJ: todo: multishank extension
+function [viTime_spk, vrAmp_spk, thresh_detect] = detect_xcov_local_(mnWav_filt, P)
+[thresh_mad, nAve_wav] = deal(P.qqFactor/.6745, round(P.sRateHz*.0005));
+
+switch 3
+    case 3
+        [vrWav_detect, mrWav_detect] = xcov_filt_(mnWav_filt, nAve_wav, 2, P.fParfor);
+        vrWav_detect = median(vrWav_detect) - vrWav_detect;  % negative polarity detection
+    case 2
+        vrWav_detect = -xcov_filt_(mnWav_filt, nAve_wav, 2, P.fParfor);        
+    case 1
+        vrCov = cov_filt_(mnWav_filt, nAve_wav, P.fParfor); % TODO: use GPU
+        vrWav_detect = -sqrt(abs(vrCov)) + sqrt(abs(median(vrCov)));
+end %switch
+
+switch 1
+    case 2
+        vrWav_mean = -conv(mean(mnWav_filt.^2,2), ones(nAve_wav,1,'single'), 'same');
+    case 1
+        vrWav_mean = conv(mean(mnWav_filt,2), ones(nAve_wav,1,'single'), 'same');
+end
+switch 1
+    case 2
+        thresh_detect = median(abs(vrWav_mean))*thresh_mad;
+        viTime_spk = find_peak_(vrWav_mean, thresh_detect, 0);        
+    case 1
+        thresh_detect = median(abs(vrWav_detect))*thresh_mad;
+        viTime_spk = find_peak_(vrWav_detect, thresh_detect, 0);
+        viTime_spk(vrWav_mean(viTime_spk)>0) = []; % remove spikes that are positives
+end
+
+% apply refractory period
+viTime_spk = detect_clean_(vrWav_detect, viTime_spk, nAve_wav); 
+
+% time centering at the local min
+nT = size(mnWav_filt,1);
+switch 1 %best: 1
+    case 5        
+        trWav_spk = mr2tr3_(mrWav_detect, [-nAve_wav,nAve_wav], viTime_spk);
+        viT_min_spk = tr_find_peak_(trWav_spk, 1);
+        viTime_spk = viTime_spk + (viT_min_spk - nAve_wav - 1);
+        viTime_spk(viTime_spk<1 | viTime_spk>nT) = [];
+    case 4
+        trWav_spk = mr2tr3_(mnWav_filt, [-nAve_wav,nAve_wav], viTime_spk);
+        viT_min_spk = tr_find_peak_(trWav_spk, -1);
+        viTime_spk = viTime_spk + (viT_min_spk - nAve_wav - 1);
+        viTime_spk(viTime_spk<1 | viTime_spk>nT) = [];
+        
+    case 3 % seek minimum across all channels
+        for iRepeat = 1:nAve_wav % find local min
+            if min(viTime_spk) == 1, viTime_spk(viTime_spk==1) = []; end
+            if max(viTime_spk) == nT, viTime_spk(viTime_spk==nT) = []; end   
+            vrC_ = min(mnWav_filt(viTime_spk,:),[],2);
+            vrL_ = min(mnWav_filt(viTime_spk-1,:),[],2);
+            vrR_ = min(mnWav_filt(viTime_spk+1,:),[],2);
+            viL_ = find(vrL_ < vrC_);
+            viR_ = find(vrR_ < vrC_);
+            viTime_spk(viR_) = viTime_spk(viR_) + 1;
+            viTime_spk(viL_) = viTime_spk(viL_) - 1;    
+        end
+    case 2 % seek minmum of the channel average (vrWav_mean)
+        for iRepeat = 1:nAve_wav % find local min
+            if min(viTime_spk) == 1, viTime_spk(viTime_spk==1) = []; end
+            if max(viTime_spk) == nT, viTime_spk(viTime_spk==nT) = []; end
+            viR_ = find(vrWav_mean(viTime_spk+1) < vrWav_mean(viTime_spk));
+            viL_ = find(vrWav_mean(viTime_spk-1) < vrWav_mean(viTime_spk));
+            viTime_spk(viR_) = viTime_spk(viR_) + 1;
+            viTime_spk(viL_) = viTime_spk(viL_) - 1;    
+        end
+    case 1 % no resettling using vrWav_mean
+        ;
+end
+vrAmp_spk = vrWav_detect(viTime_spk);
+[viTime_spk, vrAmp_spk] = deal(viTime_spk(:), vrAmp_spk(:));
+end %func
+
+
+%--------------------------------------------------------------------------
+% 10/18/2018 JJJ: Find minimum time and channel
+function [viT_min_spk, viC_min_spk, vrV_min_spk] = tr_find_peak_(trWav_spk, fSign)
+% trWav_spk: nT x nSpk x nC
+if fSign<0
+    [mrWav_min, miT_min_] = min(trWav_spk);
+else
+    [mrWav_min, miT_min_] = max(trWav_spk);
+end
+miT_min_ = squeeze_(miT_min_)';
+if fSign<0
+    [vrV_min_spk, viC_min_spk] = min(mrWav_min,[],3);
+else
+    [vrV_min_spk, viC_min_spk] = max(mrWav_min,[],3);
+end
+viT_min_spk = miT_min_(sub2ind(size(miT_min_), viC_min_spk, 1:size(miT_min_,2)));
+[viT_min_spk, viC_min_spk, vrV_min_spk] = toRow_(viT_min_spk, viC_min_spk, vrV_min_spk);
+end %func
+
+
+%--------------------------------------------------------------------------
+% 10/18/2018 JJJ: allow toCol_ to accept multiple input/output
+function varargout = toCol_(varargin)
+for iArg = 1:nargin
+    try
+        v_ = varargin{iArg};
+        varargout{iArg} = v_(:);
+    catch
+        ;
+    end
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+% 10/18/2018 JJJ: allow toRow_ to accept multiple input/output
+function varargout = toRow_(varargin)
+for iArg = 1:nargin
+    try
+        v_ = varargin{iArg};
+        varargout{iArg} = v_(:)';
+    catch
+        ;
+    end
+end
 end %func
 
 
 %--------------------------------------------------------------------------
 % 9/22/2018 JJJ: compute short time covariance, average across all channel pairs
-function vrXcov = xcov_filt_(mr, nAve, nDelays, fParfor)
+function [vrXcov, mrXcov] = xcov_filt_(mr, nAve, nDelays, fParfor)
 % mr: nT x nC
 if nargin<3, nDelays = 2; end
 if nargin<4, fParfor = 1; end
 [nT, nC] = size(mr);
+mrXcov = [];
 
 fprintf('xcov_filt_ ...'); t1=tic;
 % mr_T = bsxfun(@minus, mr_T, mean(mr_T)); % subtract channel ave
@@ -26187,8 +26466,12 @@ switch 4 %4(85.8%, 1.1s), 1(86.1%, 133.2s)
         mr_T = single(mr');
         nA = round(nDelays/2);
         nB = nDelays-nA;
-        vrXcov(nA+1:end-nB) = mean(mr_T(:,nDelays+1:end) .* mr_T(:,1:end-nDelays));
+        mrXcov = zeros(nC, nT, 'single');
+        mrXcov(:,nA+1:end-nB) = mr_T(:,nDelays+1:end) .* mr_T(:,1:end-nDelays);
+        vrXcov = mean(mrXcov);
+%         vrXcov(nA+1:end-nB) = mean(mr_T(:,nDelays+1:end) .* mr_T(:,1:end-nDelays));
         vrXcov = conv(vrXcov, ones(nAve,1,'single'), 'same');
+        mrXcov = mrXcov';
     case 3 % lower detection performance
         mr_T = mr'; %nC x nT
         nT_ = 2*nAve+1;
@@ -26463,3 +26746,107 @@ for iPlot1=1:nPlot1
     linkaxes(vh_, 'xy');
 end % for
 end %func
+
+
+%--------------------------------------------------------------------------
+% 10/15/2018 JJJ: Modified from ms_bandpass_filter (MountainLab) for
+% memory-access efficiency
+% https://github.com/magland/mountainlab
+function mrWav_filt = ms_bandpass_filter_(mrWav, P)
+NSKIP_MAX = 2^19; % fft work length
+nPad = 300;
+[nT, nC] = size(mrWav);
+nSkip = min(nT, NSKIP_MAX);
+[sRateHz, freqLim, freqLim_width, fGpu] = ...
+    struct_get_(P, 'sRateHz', 'freqLim', 'freqLim_width', 'fGpu');
+if fGpu
+    try mrWav_filt = zeros(size(mrWav), class_(mrWav), 'gpuArray');
+    catch, fGpu = 0;
+    end
+end
+if ~fGpu, mrWav_filt = zeros(size(mrWav), 'like', mrWav); end
+fh_filt = @(x,f)real(ifft(bsxfun(@times, fft(single(x)), f)));
+n_prev = nan;
+fprintf('Running ms_bandpass_filter\n\t'); t1=tic;
+for iStart = 1:nSkip:nT
+    iEnd = min(iStart+nSkip-1, nT);
+    iStart1 = iStart - nPad;
+    iEnd1 = iEnd + nPad;
+    vi1 = iStart1:iEnd1;
+    if iStart1 < 1 % wrap the filter (reflect boundary)
+        vl_ = vi1 < 1;
+        vi1(vl_) = 2 - vi1(vl_);
+    end
+    if iEnd1 > nT % wrap the filter (reflect boundary)
+        vl_ = vi1 > nT;
+        vi1(vl_) = 2*nT - vi1(vl_);
+    end
+    [mrWav1, fGpu] = gpuArray_(mrWav(vi1,:), fGpu);
+    n1 = size(mrWav1,1);
+    if n1 ~= n_prev
+        vrFilt1 = bandpass_fft_(n1, freqLim, freqLim_width, sRateHz);
+        vrFilt1 = gpuArray_(vrFilt1, fGpu);
+        n_prev = n1;
+    end    
+    mrWav1 = fh_filt(mrWav1, vrFilt1);
+    mrWav_filt(iStart:iEnd,:) = mrWav1(nPad+1:end-nPad,:);
+    fprintf('.');
+end
+mrWav_filt = gather_(mrWav_filt);
+fprintf('\n\ttook %0.1fs (fGpu=%d)\n', toc(t1), fGpu);
+end %func
+
+
+%--------------------------------------------------------------------------
+% 10/15/2018 JJJ: Modified from ms_bandpass_filter (MountainLab) 
+function filt = bandpass_fft_(N, freqLim, freqLim_width, sRateHz)
+% Usage
+% [Y, filt] = bandpass_fft_(X, freqLim, freqLim_width, sRateHz)
+% [filt] = 
+% sRateHz: sampling rate
+% freqLim: frequency limit, [f_lo, f_hi]
+% freqLim_width: frequency transition width, [f_width_lo, f_width_hi]
+[flo, fhi] = deal(freqLim(1), freqLim(2));
+[fwid_lo, fwid_hi] = deal(freqLim_width(1), freqLim_width(2));
+
+df = sRateHz/N;
+if mod(N,2)==0
+    f = df * [0:N/2, -N/2+1:-1]';
+else
+    f = df * [0:(N-1)/2, -(N-1)/2:-1]'; 
+end
+% if isa_(X, 'single'), f = single(f); end
+% if isGpu_(X), f = gpuArray_(f); end
+
+if ~isnan(flo) && ~isnan(fhi)
+    filt = sqrt((1+erf((abs(f)-flo)/fwid_lo)) .* (1-erf((abs(f)-fhi)/fwid_hi)))/2;
+elseif ~isnan(flo)
+    filt = sqrt((1+erf((abs(f)-flo)/fwid_lo))/2);
+elseif ~isnan(fhi)
+    filt = sqrt((1-erf((abs(f)-fhi)/fwid_hi))/2);
+else
+    filt = [];
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+function S0 = gt2S0_(P)
+% show manual interface based on GT
+S_gt = load_gt_(P.vcFile_gt, P);
+S0 = detect_(P, S_gt.viTime, S_gt.viSite);
+S0.S_clu = S_clu_new_(S_gt.viClu, S0);
+
+end %func
+
+
+%--------------------------------------------------------------------------
+function show_gt_(P)
+% plot gt waveforms ordered by cluster number
+S_gt0 = load_gt_(P.vcFile_gt, P);
+if isempty(S_gt0), fprintf(2, 'Groundtruth does not exist. Run "irc import" to create a groundtruth file.\n'); return; end
+[S_gt, tnWav_spk, tnWav_raw] = gt2spk_(S_gt0, P, 0);
+figure; set(gcf,'Color','w','Name',P.vcFile_prm);
+multiplot([], P.maxAmp, [], S_gt.trWav_clu);
+grid on;
+end

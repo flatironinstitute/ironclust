@@ -3,13 +3,28 @@ IronClust, written by J. James Jun, Flatiron Institute, Simons Foundation
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
-<<<<<<< HEAD
+## [4.2.0] - 2018-10-19
+### Changed
+- vcFilter='bandpass' now uses fft-based bandpass filter 
+  - copied from `ms_bandpass_filter.m` from www.github.com/magland/mountainsort/old
+  - this function utilizes GPU if available
+  - signal processing toolbox is not required to use the `bandpass` filter.
+- Spike waveform is subtracted by the average across all channels 
+  - It uses 'meanSubt_spk_' function
+  - Previously spike waveforms were subtracted by each channel's time-averages
+  - Less false positives since average of each channel is not forced to zero
+
+### Added
+- `irc verify` command displays and saves a figure that embedes the code (irc.m), parameters, and scores
+- Faster KNN computation 
+- `irc gtsort` command uses spike timing from the ground-truth file (vcFile_gt)
+- `irc showgt` command plots clusters based on the ground-truth file (vcFile_gt)
+
+
 ## [4.1.9] - 2018-10-12
 ### Added
 - npy-matlab added: https://github.com/kwikteam/npy-matlab
 
-=======
->>>>>>> 0993265294971fd95dd8186a5aef725de935a7bb
 ## [4.1.8] - 2018-10-12
 ### Changed
 - Removed 'sample.bin' and 'sample.meta' under ./prb folder
