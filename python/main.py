@@ -1,18 +1,12 @@
 import sys
 
-def helloworld():
-    print("hello world")
+def helloworld(n1=1):
+    print("hello world: %d"%(n1))
 
 
 def main():
-    #print("hello world!")
-    #helloworld()
-    print("hello %f" % count(sys.argv)
-
-    if (sys.argv.len() > 0)
-        print("hello %s" % sys.argv[1])
-    else:
-        print("hello")
+    print("hello world!")
+    helloworld(3)
 
 if __name__ == '__main__':
     main()

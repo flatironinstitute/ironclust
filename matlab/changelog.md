@@ -3,6 +3,20 @@ IronClust, written by J. James Jun, Flatiron Institute, Simons Foundation
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [4.2.1] - 2018-10-23
+### Changed
+- vcDetect='xcov' uses improved detection method based on time-smoothed xcov
+
+### Added
+- `irc mda-cut mylist.txt` command added
+  - It copies a folder containing raw.mda files after taking half the time-series
+  - It outputs to new folders ending with `_half`
+
+### Fixed
+- Validation figure names are set correctly
+  - `filename_timestamp_` function adds 'yymmdd-HHMMSS` before the file extension
+
+
 ## [4.2.0] - 2018-10-19
 ### Changed
 - vcFilter='bandpass' now uses fft-based bandpass filter 

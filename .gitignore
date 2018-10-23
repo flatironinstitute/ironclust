@@ -3,3 +3,4 @@ octave-workspace
 *.asv
 *.mat
 *.bin
+*.json

@@ -39,6 +39,7 @@ switch lower(vcCmd)
         else [varargout{1}, varargout{2}] = version_(vcArg1);
         end
     case 'clear', clear_(vcArg1);
+    case 'mda-cut', mda_cut_(vcArg1);
     case 'doc', doc_('IronClust manual.pdf');
     case 'doc-edit', doc_('IronClust manual.docx');
     case 'update', git_pull_(vcArg1);
@@ -4888,7 +4889,7 @@ end %func
 
 %--------------------------------------------------------------------------
 function vcFile1 = filename_timestamp_(vcFile)
-vcDatestr = datestr(now, 'YYMMDD-hhmmss');
+vcDatestr = datestr(now, 'yymmdd-HHMMSS');
 [vcDir, vcFile, vcExt] = fileparts(vcFile);
 vcFile1 = [vcDir, filesep(), vcFile, '_', vcDatestr, vcExt];
 end %func
@@ -10833,7 +10834,9 @@ fMerge_spk = get_set_(P, 'fMerge_spk', 1);
 
 [n1, nSites, ~] = size(mnWav3);
 [cviSpk_site, cvrSpk_site] = deal(cell(nSites,1));
-
+if isempty(vnThresh_site)
+    vnThresh_site = int16(mr2rms_(gather_(mnWav3), 1e5) * P.qqFactor);
+end
 fprintf('\tDetecting spikes from each channel.\n\t\t'); t1=tic;
 % parfor iSite = 1:nSites   
 for iSite = 1:nSites   
@@ -15649,7 +15652,6 @@ else
     vnAmp_spk = mnWav3(sub2ind(size(mnWav3), viTime_spk, viSite_spk)); % @TODO read spikes at the site and time
 end
 vnAmp_spk = gather_(vnAmp_spk);
-% if nShift_post~=0, viTime_spk = viTime_spk + nShift_post; end % apply possible shift due to filtering
 
 % reject spikes within the overlap region
 if ~isempty(mnWav1_pre) || ~isempty(mnWav1_post)    
@@ -15670,10 +15672,6 @@ if ~isempty(vcFilter_feature)
 end
 
 viSite_spk_ = gpuArray_(viSite_spk, P.fGpu);
-% if strcmpi(P.vcFet, 'gpca')
-%     mnWav2 = mnWav1;
-%     mnWav2 = highpass_(mnWav1, round(P.sRateHz*.01));
-% end
 [tnWav_spk_raw, tnWav_spk, viTime_spk] = mn2tn_wav_(mnWav1, mnWav2, viSite_spk_, viTime_spk, P); fprintf('.');
 if nFet_use >= 2
     viSite2_spk = find_site_spk23_(tnWav_spk, viSite_spk_, P);
@@ -15685,11 +15683,9 @@ end
 if 0
     tnWav_spk = tr_denoise_site_(tnWav_spk, viSite_spk, P);
     tnWav_spk2 = tr_denoise_site_(tnWav_spk2, viSite2_spk, P);
-%     tnWav_spk_raw = tr_denoise_site_(tnWav_spk_raw, viSite2_spk, P);
 end
 
 %-----
-% Cancel overlap
 if get_set_(P, 'fCancel_overlap', 0)
     try
         [tnWav_spk, tnWav_spk2] = cancel_overlap_spk_(tnWav_spk, tnWav_spk2, viTime_spk, viSite_spk, viSite2_spk, vnThresh_site, P); 
@@ -19484,14 +19480,17 @@ end %func
 
 %--------------------------------------------------------------------------
 % 8/2/17 JJJ: Test and documentation
-function cellstr2file_(vcFile, csLines)
+function cellstr2file_(vcFile, csLines, fVerbose)
 % Write a cellstring to a text file
-
+if nargin<3, fVerbose = 0; end
 fid = fopen(vcFile, 'w');
 for i=1:numel(csLines)
     fprintf(fid, '%s\n', csLines{i});
 end
 fclose(fid);
+if fVerbose
+    fprintf('Wrote to %s\n', vcFile);
+end
 end %func
 
 
@@ -21254,8 +21253,8 @@ end %func
 % 9/29/17 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcVer_used] = version_(vcFile_prm)
 if nargin<1, vcFile_prm = ''; end
-vcVer = 'v4.2.0';
-vcDate = '10/16/2018';
+vcVer = 'v4.2.1';
+vcDate = '10/23/2018';
 vcVer_used = '';
 if nargout==0
     fprintf('%s (%s) installed\n', vcVer, vcDate);
@@ -26218,6 +26217,10 @@ switch 1
     case 1, mnWav_detect = mnWav_filt;
 end
 % Detect
+if 0
+    [viTime_spk0, ~, ~] = detect_spikes_(mnWav_detect, [], [], P);
+    viSite_spk0 = repmat(int32(1), size(viTime_spk0));
+end
 if isempty(viTime_spk0) && isempty(viSite_spk0)
     if nShanks == 1
         [viTime_spk, vrAmp_spk, thresh_detect] = detect_xcov_local_(mnWav_detect, P);
@@ -26316,7 +26319,9 @@ end %func
 function [viTime_spk, vrAmp_spk, thresh_detect] = detect_xcov_local_(mnWav_filt, P)
 [thresh_mad, nAve_wav] = deal(P.qqFactor/.6745, round(P.sRateHz*.0005));
 
-switch 3
+switch 3 % best: 3
+    case 4
+        vrWav_detect = sum(mnWav_filt');
     case 3
         [vrWav_detect, mrWav_detect] = xcov_filt_(mnWav_filt, nAve_wav, 2, P.fParfor);
         vrWav_detect = median(vrWav_detect) - vrWav_detect;  % negative polarity detection
@@ -26449,7 +26454,20 @@ mrXcov = [];
 fprintf('xcov_filt_ ...'); t1=tic;
 % mr_T = bsxfun(@minus, mr_T, mean(mr_T)); % subtract channel ave
 vrXcov = zeros(nT,1,'single');
-switch 4 %4(85.8%, 1.1s), 1(86.1%, 133.2s)
+switch 7 %best: 7
+    case 7
+        mr = single(mr);
+        mr1 = conv2_(mr, ones(nAve,1,'single') / nAve);
+        mrXcov = (mr .* mr1)';
+        vrXcov = mean(mrXcov);
+        vrXcov = conv(vrXcov, ones(nAve,1,'single')/nAve, 'same');
+
+    case 6
+        mr_T = single(mr');
+        mrXcov = acov_mr_(mr_T, 2) + acov_mr_(mr_T, 4);
+        vrXcov = mean(mrXcov);
+        vrXcov = conv(vrXcov, ones(nAve,1,'single')/nAve, 'same');
+
     case 5 % high pass version
         mr_T = single(mr');
         nA = round(nDelays/2);
@@ -26469,8 +26487,7 @@ switch 4 %4(85.8%, 1.1s), 1(86.1%, 133.2s)
         mrXcov = zeros(nC, nT, 'single');
         mrXcov(:,nA+1:end-nB) = mr_T(:,nDelays+1:end) .* mr_T(:,1:end-nDelays);
         vrXcov = mean(mrXcov);
-%         vrXcov(nA+1:end-nB) = mean(mr_T(:,nDelays+1:end) .* mr_T(:,1:end-nDelays));
-        vrXcov = conv(vrXcov, ones(nAve,1,'single'), 'same');
+        vrXcov = conv(vrXcov, ones(nAve,1,'single')/nAve, 'same');
         mrXcov = mrXcov';
     case 3 % lower detection performance
         mr_T = mr'; %nC x nT
@@ -26511,40 +26528,17 @@ switch 4 %4(85.8%, 1.1s), 1(86.1%, 133.2s)
         end
 end
 fprintf('\n\ttook %0.1fs\n', toc(t1));
+end %func
 
-% nLen = 2*nAve+1;
-% vi_ = (nDelays:(nLen - nDelays + 1))';
-% miA = bsxfun(@plus, vi_, 0:nDelays-1);
-% miB = bsxfun(@minus, vi_, 0:nDelays-1);    
-% switch 2 % 2
-%     case 3
-%         parfor iT = (nAve+1):(nT-nAve)
-%             mr_ = single(mr_T(:, (iT-nAve):(iT+nAve)));
-% %             mr_ = bsxfun(@minus, mr_, mean(mr_,2));  % mean subt
-%             mrX_ = zeros(nC, 'single');
-%             for iDelay = 2:nDelays+2
-%                 mrX_ = mrX_ + mr_(:,iDelay+1:end) * mr_(:,1:end-iDelay)';
-%             end
-%             vrXcov(iT) = mean(mrX_(:) / (nDelays+1));
-%         end  
-%     case 2        
-%         parfor iT = (nAve+1):(nT-nAve)
-%             mr_ = single(mr_T(:, (iT-nAve):(iT+nAve)));
-%             mrX_ = mr_(:,nDelays+1:end) * mr_(:,1:end-nDelays)';
-%             vrXcov(iT) = mean(mrX_(:));
-%         end  
-%     case 1
-%         mrXcov = zeros(nC, nT, 'single');
-%         for iT = (nAve+1):(nT-nAve)/100
-%             mr_ = single(mr_T(:, (iT-nAve):(iT+nAve)));
-% %             mr_ = bsxfun(@minus, mr_, mean(mr_,2));  % mean subt
-%             for iC = 1:nC
-%                 vr_ = mr_(iC,:);
-%                 mrX_ = vr_(miA) .* vr_(miB);
-%                 mrXcov(iC,iT) = mean(mrX_(:));
-%             end
-%         end  
-% end %switch
+
+%--------------------------------------------------------------------------
+% 10/21/2018 JJJ: autocovariance
+function mrXcov = acov_mr_(mr_T, nDelays)
+nA = round(nDelays/2);
+nB = nDelays-nA;
+[nC, nT] = size(mr_T);
+mrXcov = zeros(nC, nT, 'single');
+mrXcov(:,nA+1:end-nB) = mr_T(:,nDelays+1:end) .* mr_T(:,1:end-nDelays);
 end %func
 
 
@@ -26614,19 +26608,21 @@ end %func
 
 
 %--------------------------------------------------------------------------
+% 10/21/2018 JJJ: TODO
 function [viTime_spk, vrAmp_spk, viSite_spk] = detect_spikes_xcov_(mnWav1, vlKeep_ref, P)
 % fMerge_spk = 1;
 fMerge_spk = get_set_(P, 'fMerge_spk', 1);
 
 [n1, nSites, ~] = size(mnWav1);
-[mnXcov, mnAve] = xcov_filt_local_(mnWav1, P); % filter using xcov
+% [mnXcov, mnAve] = xcov_filt_local_(mnWav1, P); % filter using xcov
 [cviSpk_site, cvrSpk_site] = deal(cell(nSites,1));
+% vnThresh_site = zeros(nSites, 1, 'int16'); 
 
 fprintf('\tDetecting spikes from each channel.\n\t\t'); t1=tic;
 % parfor iSite = 1:nSites   
 for iSite = 1:nSites   
-    % Find spikes
-    [viSpk11, vrSpk11] = spikeDetectSingle_xcov_(mnWav3(:,iSite), mnWav1(:,iSite), P);
+    [viSpk11, vrSpk11] = detect_xcov_local_(mnWav1(:,iSite), P)    
+%     [viSpk11, vrSpk11] = spikeDetectSingle_xcov_(mnWav3(:,iSite), mnWav1(:,iSite), P);
 %     [viSpk11, vrSpk11] = spikeDetectSingle_fast_(mnWav1(:,iSite), P, vnThresh_site(iSite));
     fprintf('.');
     
@@ -26638,7 +26634,7 @@ for iSite = 1:nSites
         [cviSpk_site{iSite}, cvrSpk_site{iSite}] = select_vr_(viSpk11, vrSpk11, find(vlKeep_ref(viSpk11)));
     end
 end
-vnThresh_site = gather_(vnThresh_site);
+% vnThresh_site = gather_(vnThresh_site);
 nSpks1 = sum(cellfun(@numel, cviSpk_site));
 fprintf('\n\t\tDetected %d spikes from %d sites; took %0.1fs.\n', nSpks1, nSites, toc(t1));
 
@@ -26759,6 +26755,8 @@ nPad = 300;
 nSkip = min(nT, NSKIP_MAX);
 [sRateHz, freqLim, freqLim_width, fGpu] = ...
     struct_get_(P, 'sRateHz', 'freqLim', 'freqLim_width', 'fGpu');
+if isempty(freqLim), mrWav_filt = mrWav; return; end
+
 if fGpu
     try mrWav_filt = zeros(size(mrWav), class_(mrWav), 'gpuArray');
     catch, fGpu = 0;
@@ -26849,4 +26847,45 @@ if isempty(S_gt0), fprintf(2, 'Groundtruth does not exist. Run "irc import" to c
 figure; set(gcf,'Color','w','Name',P.vcFile_prm);
 multiplot([], P.maxAmp, [], S_gt.trWav_clu);
 grid on;
-end
+end %func
+
+
+%--------------------------------------------------------------------------
+% 10/21/2018 JJJ: cut mda file in half and save to the output dir
+function mda_cut_(vcFile_txt)
+keep_frac = .5; % keep half
+fOverwrite = 0;
+csFiles_copy = {'raw.mda', 'geom.csv', 'firings_true.mda', 'params.json'};
+
+if ~exist_file_(vcFile_txt, 1), return; end
+csFiles_mda = load_batch_(vcFile_txt);
+csFiles_mda_out = cell(size(csFiles_mda));
+for iFile = 1:numel(csFiles_mda)
+    vcFile_mda1 = csFiles_mda{iFile};
+    try    
+        [vcDir_in1,~,~] = fileparts(vcFile_mda1);
+        vcDir_out1 = strrep(vcDir_in1, '_synth', '_synth_half');
+        mkdir_(vcDir_out1);
+
+        % cut raw file
+        mr_ = readmda_(vcFile_mda1);
+        nT_keep = round(size(mr_,2) * keep_frac);
+        mr_ = mr_(:, 1:nT_keep);    
+        vcFile_mda_out1 = fullfile(vcDir_out1, 'raw.mda');
+        writemda_(mr_, vcFile_mda_out1, fOverwrite);
+        csFiles_mda_out{iFile} = vcFile_mda_out1;
+        
+        % cut gt file
+        mr_ = readmda_(fullfile(vcDir_in1, 'firings_true.mda'));
+        mr_ = mr_(:, mr_(2,:) < nT_keep);
+        writemda_(mr_, fullfile(vcDir_out1, 'firings_true.mda'), fOverwrite);
+        
+        % copy geom.csv and params.json
+        copyfile_(fullfile(vcDir_in1, 'params.json'), vcDir_out1);
+        copyfile_(fullfile(vcDir_in1, 'geom.csv'), vcDir_out1);
+    catch
+        fprintf(2, '\tError cutting %s\n', vcFile_mda1);
+    end
+end %for
+cellstr2file_(strrep(vcFile_txt, '.txt', '_half.txt'), csFiles_mda_out, 1);
+end %func
