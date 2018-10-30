@@ -4,3 +4,4 @@ octave-workspace
 *.mat
 *.bin
 *.json
+docker/run_irc
