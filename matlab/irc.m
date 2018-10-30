@@ -4897,32 +4897,36 @@ end %func
 
 %--------------------------------------------------------------------------
 function plot_gt_2by2_(vrVmin, vrAccuracy, vrFp, vrFn)
-markerSize = 10;
-fh_text = @(label,vr)sprintf('%s: %0.2f/%0.2f(%d)<%0.2f-%0.2f>', ...
-    label, nanmean(vr), nanstd(vr), sum(~isnan(vr)), quantile(vr,.25), quantile(vr,.75));
+try
+    markerSize = 10;
+    fh_text = @(label,vr)sprintf('%s: %0.2f/%0.2f(%d)<%0.2f-%0.2f>', ...
+        label, nanmean(vr), nanstd(vr), sum(~isnan(vr)), quantile(vr,.25), quantile(vr,.75));
 
-vcXlabel = sprintf('Amplitude (%s)', inputname(1));
-for iPlot = 1:4
-    subplot(2,2,iPlot);
-    switch iPlot
-        case 1
-            plot(vrVmin, vrAccuracy, '.', 'MarkerSize', markerSize); 
-            xylabel_(gca, vcXlabel, 'Accuracy', fh_text('Accuracy', vrAccuracy));
-        case 2
-            plot(vrVmin, vrFp, '.', 'MarkerSize', markerSize); 
-            xylabel_(gca, vcXlabel, '');
-            xylabel_(gca, vcXlabel, 'False Positive', fh_text('False Positive', vrFp));
-        case 3
-            plot(vrVmin, vrFn, '.', 'MarkerSize', markerSize); 
-            xylabel_(gca, vcXlabel, 'False Negative', fh_text('False Negative', vrFn));
-        case 4
-            plot(vrFp, vrFn, '.', 'MarkerSize', markerSize); 
-            xylabel_(gca, 'False Positive', 'False Negative');   
-            set(gca,'XLim', [-.05, 1.05], 'XTick', 0:.2:1); 
-    end %switch
-    grid on;
-    set(gca,'YLim', [-.05, 1.05], 'YTick', 0:.2:1);   
-end %for
+    vcXlabel = sprintf('Amplitude (%s)', inputname(1));
+    for iPlot = 1:4
+        subplot(2,2,iPlot);
+        switch iPlot
+            case 1
+                plot(vrVmin, vrAccuracy, '.', 'MarkerSize', markerSize); 
+                xylabel_(gca, vcXlabel, 'Accuracy', fh_text('Accuracy', vrAccuracy));
+            case 2
+                plot(vrVmin, vrFp, '.', 'MarkerSize', markerSize); 
+                xylabel_(gca, vcXlabel, '');
+                xylabel_(gca, vcXlabel, 'False Positive', fh_text('False Positive', vrFp));
+            case 3
+                plot(vrVmin, vrFn, '.', 'MarkerSize', markerSize); 
+                xylabel_(gca, vcXlabel, 'False Negative', fh_text('False Negative', vrFn));
+            case 4
+                plot(vrFp, vrFn, '.', 'MarkerSize', markerSize); 
+                xylabel_(gca, 'False Positive', 'False Negative');   
+                set(gca,'XLim', [-.05, 1.05], 'XTick', 0:.2:1); 
+        end %switch
+        grid on;
+        set(gca,'YLim', [-.05, 1.05], 'YTick', 0:.2:1);   
+    end %for
+catch
+    disperr_('plot_gt_2by2_');
+end
 end %func
 
 %--------------------------------------------------------------------------
@@ -17393,7 +17397,7 @@ restoredefaultpath;
 disp('Matlab path is temporarily reset to the factory default for this session.');
 
 [vcPath_jrc, ~, ~] = fileparts(mfilename('fullpath')); % get current directory
-addpath(vcPath_jrc);
+addpath_(vcPath_jrc);
 fPathSet = 1;
 end
 
@@ -20947,7 +20951,7 @@ end % func
 %--------------------------------------------------------------------------
 % 9/19/17 JJJ: Created for SPARC
 function [mnWav, hFile, P] = load_nsx__(vcFile_nsx)
-addpath('./neuroshare/');
+addpath_('./neuroshare/');
 [ns_RESULT, hFile] = ns_OpenFile(vcFile_nsx);
 % [ns_RESULT, nsFileInfo] = ns_GetFileInfo(hFile);
 vlAnalog_chan= strcmpi({hFile.Entity.EntityType}, 'Analog');
@@ -21124,7 +21128,7 @@ function [P, nSamples, vcFile_bin] = nsx2bin_(vcFile_nsx, fInvert)
 if nargin<2, fInvert = 0; end
 
 nBuffer = 1e8; % in bytes
-addpath('./neuroshare/');
+addpath_('./neuroshare/');
 vcFile_bin = subsFileExt_(vcFile_nsx, '.bin');
 [ns_RESULT, hFile] = ns_OpenFile(vcFile_nsx);
 % [ns_RESULT, nsFileInfo] = ns_GetFileInfo(hFile);
@@ -21164,7 +21168,7 @@ end %func
 %--------------------------------------------------------------------------
 % 4/10/18 JJJ: Handle the new ns5 format
 function [fid, nBytes, header_offset] = fopen_nsx_(vcFile_nsx)
-% addpath('./neuroshare/');
+% addpath_('./neuroshare/');
 try
     [S_nsx, fid] = openNSx_jjj(vcFile_nsx); % nChans, nSamples, header_offset
 catch
@@ -21190,7 +21194,7 @@ end %func
 %--------------------------------------------------------------------------
 % 9/22/17 JJJ: Created for SPARC
 function [fid, nBytes, header_offset] = fopen_nsx__(vcFile_nsx)
-addpath('./neuroshare/');
+addpath_('./neuroshare/');
 try
     [ns_RESULT, hFile] = ns_OpenFile(vcFile_nsx);
 catch
@@ -21215,7 +21219,7 @@ end %func
 %--------------------------------------------------------------------------
 % 9/22/17 JJJ: Created for SPARC
 function [P, nSamples, hFile] = nsx_info_(vcFile_nsx)
-addpath('./neuroshare/');
+addpath_('./neuroshare/');
 [ns_RESULT, hFile] = ns_OpenFile(vcFile_nsx);
 vlAnalog_chan= strcmpi({hFile.Entity.EntityType}, 'Analog');
 nSamples = hFile.TimeSpan / hFile.FileInfo.Period;
@@ -21253,8 +21257,8 @@ end %func
 % 9/29/17 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcVer_used] = version_(vcFile_prm)
 if nargin<1, vcFile_prm = ''; end
-vcVer = 'v4.2.1';
-vcDate = '10/23/2018';
+vcVer = 'v4.2.2';
+vcDate = '10/29/2018';
 vcVer_used = '';
 if nargout==0
     fprintf('%s (%s) installed\n', vcVer, vcDate);
@@ -23214,7 +23218,7 @@ if exist_file_(vcArg_txt)
         case '.txt'
             S_txt = meta2struct_(vcArg_txt);
         case '.json'
-            addpath('./jsonlab-1.5');
+            addpath_('./jsonlab-1.5');
             S_txt = loadjson(vcArg_txt);
     end % switch
 else
@@ -25576,7 +25580,7 @@ switch 6 % 6: 84%, integrator %86%
 end
 fprintf('\tFeature extraction took %0.1fs\n', toc(t_fet));
 
-S_clu = S_clu_from_fet_(mrFet_spk, P.knn);
+S_clu = S_clu_from_fet_(mrFet_spk, P);
 set0_(mrFet_spk); 
 S_clu.P = P;
 S_clu.trFet_dim = get_set_(S0, 'dimm_fet', size(mrFet_spk));
@@ -25627,8 +25631,9 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function S_clu = S_clu_from_fet_(mrFet_spk, knn)
+function S_clu = S_clu_from_fet_(mrFet_spk, P)
 nStep_knn = 1000; % affects memory usage
+[knn, fGpu] = struct_get_(P, 'knn', 'fGpu');
 
 t_func = tic;
 
@@ -25649,8 +25654,10 @@ end
 % fh_dist_ = @(vi_)bsxfun(@plus, sum(mrFet_spk(:,vi_).^2), bsxfun(@minus, sum(mrFet_spk.^2)', 2*mrFet_spk'*mrFet_spk(:,vi_)));
 
 % find rho
-[mrFet_spk, miKnn, vrRho, vrDelta, viNneigh] = ...
-    gpuArray_deal_(mrFet_spk, miKnn, vrRho, vrDelta, viNneigh);
+if fGpu
+    [mrFet_spk, miKnn, vrRho, vrDelta, viNneigh] = ...
+        gpuArray_deal_(mrFet_spk, miKnn, vrRho, vrDelta, viNneigh);
+end
 fGpu = isGpu_(mrFet_spk);
 fprintf('Computing Rho\n');
 t_rho = tic;
@@ -26888,4 +26895,11 @@ for iFile = 1:numel(csFiles_mda)
     end
 end %for
 cellstr2file_(strrep(vcFile_txt, '.txt', '_half.txt'), csFiles_mda_out, 1);
+end %func
+
+%--------------------------------------------------------------------------
+function addpath_(vc)
+if ~isdeployed() && ~ismcc()
+    addpath(vc);
+end
 end %func

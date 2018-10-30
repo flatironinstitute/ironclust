@@ -3,6 +3,14 @@ IronClust, written by J. James Jun, Flatiron Institute, Simons Foundation
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [4.2.2] - 2018-10-29
+### Fixed
+- mcc output is supported (matlab compiler)
+  - addpath is protected 
+- `validate` plot and parfor errors captured during compute-cluster mode
+- fGpu flag is correctly applied for clustering
+
+
 ## [4.2.1] - 2018-10-23
 ### Changed
 - vcDetect='xcov' uses improved detection method based on time-smoothed xcov

@@ -24,7 +24,7 @@ cviTime = arrayfun(@(iClu)unique(int32(viTime(viClu==iClu)/jitter)), 1:nClu, 'Un
 viTime0 = (int32(viTime/jitter));
 fprintf('Validating cluster\n\t');
 t1 = tic;
-parfor iCluGt1=1:nCluGt
+for iCluGt1=1:nCluGt
     viTimeGt1 = viTimeGt(viCluGt == viCluGt_unique(iCluGt1));
     rGT1 = unique(int32(single(viTimeGt1) / jitter));
     cviTimeGt{iCluGt1} = rGT1;
