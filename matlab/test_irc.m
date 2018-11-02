@@ -1,12 +1,7 @@
-
-
-
 % srun matlab -nosplash -nodisplay -r "addpath('/mnt/home/magland/src/ironclust/'); 
 if ~isdeployed()
     try
-        addpath('./matlab');
-        addpath('./mdaio');
-        addpath('./jsonlab-1.5');
+        addpath(genpath('.'));
     catch
         ;
     end
@@ -20,13 +15,15 @@ if ispc()
         'D:\mountainsort\firings_true.mda', ...
         'D:\mountainsort\firings_out.mda', ...
         'D:\mountainsort\argfile.txt'); 
-else % clsuter 
-    vcDir = '/mnt/ceph/users/jjun/groundtruth/magland_synth/datasets_noise10_K10/001_synth';
-    p_ironclust('~/irc_out', ...
+else % linux 
+    vcDir = '~/ceph/groundtruth/magland_synth/datasets_noise10_K10_C4/001_synth';
+    vcDir_out = '~/irc_out';
+    
+    p_ironclust(vcDir_out, ...
     [vcDir, '/raw.mda'], ...
     [vcDir, '/geom.csv'], ...
     'tetrode_template.prm', ...
     [vcDir, '/firings_true.mda'], ...
-    [vcDir, '/firings_out.mda'], ...
+    [vcDir_out, '/firings_out.mda'], ...
     [vcDir, '/params.json']);
 end

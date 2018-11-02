@@ -28,6 +28,9 @@ warning off;
 fExit = 1;
 switch lower(vcCmd)
     % No arguments
+    case 'copyto-voms', copyto_('/home/jamesjun/voms/src/ironclust/matlab/'); return; 
+    case 'copyto', copyto_(vcArg1); return; %copy source code to destination
+    case 'mcc', mcc_(); return; %matlab compiler
     case {'setprm' 'set', 'set-prm'}, vcFile_prm_ = vcArg1; return;
     case 'changelog', edit_('changelog.md'); web_('changelog.md'); return;
     case {'help', '-h', '?', '--help'}, help_(vcArg1); about_();
@@ -72,7 +75,7 @@ switch lower(vcCmd)
     case {'import-nsx', 'import-ns5'}, vcFile_prm_ = import_nsx_(vcArg1, vcArg2, vcArg3); return;
     case 'convert-h5-mda', convert_h5_mda_(vcArg1, vcArg2); return;
     case 'export-gt', export_gt_(vcArg1, vcArg2); return;
-        
+    
     case 'nsx-info', [~, ~, S_file] = nsx_info_(vcArg1); assignWorkspace_(S_file); return;
     case 'load-nsx', load_nsx_(vcArg1); return;
     case 'load-bin'
@@ -125,6 +128,7 @@ switch lower(vcCmd)
 %     case 'batch-makeprm' batch_makeprm_(vcArg1, vcArg2);
     case {'batch-verify', 'batch-validate'}, batch_verify_(vcArg1, vcArg2); 
     case {'batch-plot', 'batch-activity'}, batch_plot_(vcArg1, vcArg2); 
+    case 'batch-mda', batch_mda_(vcArg1, vcArg2, vcArg3);
         
     case 'describe', describe_(vcFile_prm); 
     case 'import-silico', import_silico_(vcFile_prm, 0);     
@@ -822,11 +826,11 @@ end
 delete_files_(find_empty_files_());
 
 % commit irc related files only
-try commit_irc_(S_cfg, path_github, 0); catch; disperr_(); end
+%try commit_irc_(S_cfg, path_github, 0); catch; disperr_(); end
 try commit_irc_(S_cfg, path_ironclust, 0); catch; disperr_(); end
-vcFile_mp = strrep(path_ironclust, 'IronClust', 'ml_ironclust.mp');
-try fileattrib(vcFile_mp, '+x'); fprintf('chmod +x %s\n',vcFile_mp); catch; end
-try movefile(fullfile(path_ironclust, 'p_ironclust.m'), strrep(path_ironclust, 'matlab', '')); catch; disperr_(); end
+%vcFile_mp = strrep(path_ironclust, 'IronClust', 'ml_ironclust.mp');
+%try fileattrib(vcFile_mp, '+x'); fprintf('chmod +x %s\n',vcFile_mp); catch; end
+%try movefile(fullfile(path_ironclust, 'p_ironclust.m'), strrep(path_ironclust, 'matlab', '')); catch; disperr_(); end
 
 edit_('changelog.md');
 fprintf('Commited, took %0.1fs.\n', toc(t1));
@@ -13450,30 +13454,32 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function commit_irc_(S_cfg, vcDir, fZipFile)
+function commit_irc_(S_cfg, vcDir_out, fZipFile)
 global fDebug_ui
 
-if nargin<1, S_cfg = read_cfg_(); end 
-if nargin<2, vcDir = []; end
+if nargin<1, S_cfg = []; end 
+if nargin<2, vcDir_out = []; end
 if nargin<3, fZipFile = 0; end
+
+if isempty(S_cfg), S_cfg = read_cfg_(); end
 
 fDebug_ui = 0;
 set0_(fDebug_ui);
 
-vcDir = fullfile(vcDir, filesep());
-disp(['Commiting to ', vcDir]);
+vcDir_out = fullfile(vcDir_out, filesep());
+disp(['Commiting to ', vcDir_out]);
 
-copyfile_(S_cfg.sync_list, vcDir); %destination root
-copyfile_(S_cfg.csFiles_cuda, vcDir); %destination root
+copyfile_(S_cfg.sync_list, vcDir_out); %destination root
+copyfile_(S_cfg.csFiles_cuda, vcDir_out); %destination root
 csFiles_ptx = strrep(S_cfg.csFiles_cuda, '.cu', '.ptx');
-copyfile_(csFiles_ptx, vcDir); %destination root
+copyfile_(csFiles_ptx, vcDir_out); %destination root
 
 % Zip 
 if fZipFile
-    hMsg = msgbox_(sprintf('Archiving to %s', [vcDir, 'irc.zip']));
+    hMsg = msgbox_(sprintf('Archiving to %s', [vcDir_out, 'irc.zip']));
     t1 = tic;
-    [csFiles_irc_full, csFiles_irc] = dir_([vcDir, '*'], 'irc.zip');
-    zip([vcDir, 'irc.zip'], csFiles_irc, vcDir);
+    [csFiles_irc_full, csFiles_irc] = dir_([vcDir_out, '*'], 'irc.zip');
+    zip([vcDir_out, 'irc.zip'], csFiles_irc, vcDir_out);
     fprintf('Zip file creation took %0.1f\n', toc(t1));
     close_(hMsg);    
     msgbox_('Update the Dropbox link for www.ironclust.org');
@@ -18797,7 +18803,7 @@ clear functions % clear function memory 10/15/17 JJJ
 
 set(0, 'UserData', []);   
 try gpuDevice(1); catch, fprintf(2, 'GPU reset error.\n'); end
-disp('Memory cleared on CPU and GPU');
+fprintf('Memory cleared on CPU and GPU\n');
 fDebug_ui = [];
 
 if isempty(vcFile_prm), return; end
@@ -21257,8 +21263,8 @@ end %func
 % 9/29/17 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcVer_used] = version_(vcFile_prm)
 if nargin<1, vcFile_prm = ''; end
-vcVer = 'v4.2.2';
-vcDate = '10/29/2018';
+vcVer = 'v4.2.3';
+vcDate = '11/2/2018';
 vcVer_used = '';
 if nargout==0
     fprintf('%s (%s) installed\n', vcVer, vcDate);
@@ -22117,6 +22123,7 @@ end %func
 
 
 %--------------------------------------------------------------------------
+% Convert existing format to mda format and put in the directory
 function convert_mda_(vcFile_in)
 % Usage
 % -----
@@ -22176,9 +22183,12 @@ for iFile = 1:numel(csFile_prm)
     S_gt_ = load_(get_(P_, 'vcFile_gt'));
     if ~isempty(S_gt_)
         if ~isfield(S_gt_, 'viSite')
+            iSite_gt = [];
             if isfield(P_, 'iSite_gt'), iSite_gt = get_(P_, 'iSite_gt'); end
-            if isfield(P_, 'iChan_gt'), iSite_gt = chan2site_prb_(P_.iChan_gt, P_.probe_file); end            
-            S_gt_.viSite = repmat(int32(iSite_gt), size(S_gt_.viTime));
+            if isfield(P_, 'iChan_gt'), iSite_gt = chan2site_prb_(P_.iChan_gt, P_.probe_file); end   
+            if ~isempty(iSite_gt)
+                S_gt_.viSite = repmat(int32(iSite_gt), size(S_gt_.viTime));
+            end
         end
         gt2mda_(S_gt_, fullfile(vcDir1, 'firings_true.mda'));        
     end
@@ -22197,6 +22207,7 @@ end %func
 
 
 %--------------------------------------------------------------------------
+% Export sorting result to .mda file (firings.mda)
 function export_mda_(vcFile_in, vcFile_out)
 % Usage
 % -----
@@ -26897,9 +26908,74 @@ end %for
 cellstr2file_(strrep(vcFile_txt, '.txt', '_half.txt'), csFiles_mda_out, 1);
 end %func
 
+
 %--------------------------------------------------------------------------
 function addpath_(vc)
 if ~isdeployed() && ~ismcc()
     addpath(vc);
 end
 end %func
+
+
+%--------------------------------------------------------------------------
+function vcDir_abs = path_abs_(vc)
+vcDir_abs = '';
+S_dir = dir(vc);
+if isempty(S_dir), return; end
+try
+    vcDir_abs = S_dir(1).folder;
+catch
+    ;
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+% add sbatch option
+function batch_mda_(vcDir_in, vcDir_out, vcFile_template)
+
+% Find inputdir and outputdir
+vcDir_in = path_abs_(vcDir_in);
+vcDir_out = path_abs_(vcDir_out);
+vS_dir_raw = dir([vcDir_in, filesep(), '**', filesep(), 'raw.mda']);
+csFile_raw = arrayfun(@(x)fullfile(x.folder, x.name), vS_dir_raw, 'UniformOutput', 0);
+csDir_in = {vS_dir_raw.folder};
+csDir_out = arrayfun(@(x)strrep(x.folder, vcDir_in, vcDir_out), vS_dir_raw, 'UniformOutput', 0);
+
+for iFile = 1:numel(csDir_in)
+    vcFile_raw1 = csFile_raw{iFile};
+    try
+        [vcDir_in1, vcDir_out1] = deal(csDir_in{iFile}, csDir_out{iFile});        
+        [geom_csv1, params_json1] = deal(fullfile(vcDir_in1, 'geom.csv'), fullfile(vcDir_in1, 'params.json'));
+        firings_out_fname1 = fullfile(vcDir_out1, 'firings_out.mda');
+        vcFile_prm1 = irc('makeprm-mda', vcFile_raw1, geom_csv1, params_json1, vcDir_out1, vcFile_template);
+        irc('clear', vcFile_prm1); %init 
+        irc('detectsort', vcFile_prm1);
+        irc('export-mda', vcFile_prm1, firings_out_fname1);
+        
+        vcFile_gt_mda1 = fullfile(vcDir_in1, 'firings_true.mda');
+        if exist_file_(vcFile_gt_mda1) && read_cfg_('fSkip_gt') ~= 1
+            irc('import-gt', vcFile_gt_mda1, vcFile_prm1); % assume that groundtruth file exists
+            irc('validate', vcFile_prm1); % assume that groundtruth file exists
+        end
+        fprintf('\n\n');
+    catch
+        fprintf(2, 'Error processing %s\n', vcFile_raw1);
+    end
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+% 11/2/2018 JJJ: matlab compiler, generates run_irc
+function mcc_()
+eval("mcc -m -v -a './mdaio/' -a './jsonlab-1.5/' -a 'npy-matlab' -R '-nodesktop, -nosplash -singleCompThread -nojvm' run_irc.m");
+disp('run_irc.m is compiled');
+end %fucn
+
+
+%--------------------------------------------------------------------------
+% 11/2/2018 JJJ: copy the source code to the destination directory
+function copyto_(vcDir_out)
+commit_irc_([], vcDir_out);
+end %fucn

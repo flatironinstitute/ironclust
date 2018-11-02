@@ -2,5 +2,5 @@
 
 cd `dirname "$0"`
 
-octave -q --eval "ml_ironclust_spec"
-#matlab -nodisplay -nosplash -r "ml_ironclust_spec; quit();"
+octave -q --eval "matlab/ml_ironclust_spec"
+#matlab -nodisplay -nosplash -r "matlab/ml_ironclust_spec; quit();"
