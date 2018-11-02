@@ -5,7 +5,7 @@ function run_irc(vcDir_in, vcDir_out, vcFile_template)
 % vcDir_out: output directory
 % vcFile_template: template file (optional)
 
-if nargin<3, vcFile_template = 'tetrode_template.prm'; end
+if nargin<3, vcFile_template = ''; end
 
 if ~isdeployed() , addpath(genpath('./matlab')); end
 
@@ -19,6 +19,10 @@ p_ironclust(vcDir_out, ...
   [vcDir_out, cSep, 'firings_out.mda'], ...
   [vcDir_in, cSep, 'params.json']);
 
-exit();
+try
+    if isdeployed() || ismcc(), exit(); end
+catch
+    ;
+end
 
 end %func

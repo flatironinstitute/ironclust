@@ -129,7 +129,8 @@ switch lower(vcCmd)
     case {'batch-verify', 'batch-validate'}, batch_verify_(vcArg1, vcArg2); 
     case {'batch-plot', 'batch-activity'}, batch_plot_(vcArg1, vcArg2); 
     case 'batch-mda', batch_mda_(vcArg1, vcArg2, vcArg3);
-        
+    case 'sbatch-mda', sbatch_mda_(vcArg1, vcArg2, vcArg3);
+            
     case 'describe', describe_(vcFile_prm); 
     case 'import-silico', import_silico_(vcFile_prm, 0);     
     case 'import-silico-sort', import_silico_(vcFile_prm, 1); 
@@ -772,7 +773,7 @@ else
     try
         val = S_cfg.(vcName);
     catch
-        disperr_('read_cfg_');
+        disperr_(['read_cfg_: error reading ', ircpath_('default.cfg')]);
         switch lower(vcName)
             case 'default_prm'
                 val = 'default.prm';
@@ -2864,11 +2865,19 @@ end %func
 
 %--------------------------------------------------------------------------
 function validate_(P, fPlot_gt) 
+% Usage
+% ------
+% validate(P);
+% validate(vcFile_prm);
+% validate(P, fPlot_gt);
+% validate(vcFile_prm, fPlot_gt);
+
 % persistent S_gt vcFile_prm_ % tnWav_spk tnWav_gt
 % S0 = load_cached_(P, 0);
 fMergeCheck = 0; %kilosort-style validation
 fShowTable = 1;
 if nargin<2, fPlot_gt = []; end
+if ischar(P), P = loadParam_(P); end
 
 if ~is_detected_(P), detect_(P); end
 if ~is_sorted_(P), sort_(P); end    
@@ -4773,9 +4782,10 @@ function batch_verify_(vcFile_batch, vcCommand)
 %       just does the verification plot for all files in .batch file
 
 fShowTable = 0; % show unit SNR table
-
+    
 if ~exist_file_(vcFile_batch, 1), return; end
-edit_(vcFile_batch); %show script
+
+% edit_(vcFile_batch); %show script
 if nargin<2, vcCommand=[]; end
 if isempty(vcCommand), vcCommand='spikesort'; end
 csFiles_prm = load_batch_(vcFile_batch);
@@ -21263,7 +21273,7 @@ end %func
 % 9/29/17 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcVer_used] = version_(vcFile_prm)
 if nargin<1, vcFile_prm = ''; end
-vcVer = 'v4.2.3';
+vcVer = 'v4.2.4';
 vcDate = '11/2/2018';
 vcVer_used = '';
 if nargout==0
@@ -22246,7 +22256,7 @@ for iFile = 1:numel(csFile_prm)
             gt2mda_(S_gt1, vcFile_out);
         end
     catch
-        fprintf(2, 'Error exporting %s\n', vcFile_prm1);
+        disperr_(['export_mda_: error exporting: ', vcFile_prm1]);
     end
 end %for
 end %func
@@ -22286,6 +22296,7 @@ if ~fOverwrite
     if exist_file_(vcFile_mda), return; end
 end
 t1=tic;
+addpath_('./mdaio/');
 writemda(mnWav, vcFile_mda, cDataType_(class(mnWav)));
 fprintf('Writing to %s took %0.1fs\n', vcFile_mda, toc(t1));
 end %func
@@ -23229,7 +23240,7 @@ if exist_file_(vcArg_txt)
         case '.txt'
             S_txt = meta2struct_(vcArg_txt);
         case '.json'
-            addpath_('./jsonlab-1.5');
+            addpath_('./jsonlab-1.5/');
             S_txt = loadjson(vcArg_txt);
     end % switch
 else
@@ -26910,8 +26921,13 @@ end %func
 
 
 %--------------------------------------------------------------------------
+% 11/1/2018 JJJ: mcc-safe addpath, compatible without mcc
 function addpath_(vc)
-if ~isdeployed() && ~ismcc()
+try
+    if ~isdeployed() && ~ismcc()
+        addpath(vc);
+    end
+catch
     addpath(vc);
 end
 end %func
@@ -26931,16 +26947,18 @@ end %func
 
 
 %--------------------------------------------------------------------------
-% add sbatch option
+% 11/2/2018 JJJ: batch-mda
 function batch_mda_(vcDir_in, vcDir_out, vcFile_template)
+if nargin<3, vcFile_template = ''; end
+
+fprintf('Running batch on %s\n', vcDir_in); t1=tic;
 
 % Find inputdir and outputdir
 vcDir_in = path_abs_(vcDir_in);
 vcDir_out = path_abs_(vcDir_out);
-vS_dir_raw = dir([vcDir_in, filesep(), '**', filesep(), 'raw.mda']);
-csFile_raw = arrayfun(@(x)fullfile(x.folder, x.name), vS_dir_raw, 'UniformOutput', 0);
-csDir_in = {vS_dir_raw.folder};
-csDir_out = arrayfun(@(x)strrep(x.folder, vcDir_in, vcDir_out), vS_dir_raw, 'UniformOutput', 0);
+[csFile_raw, csDir_in] = find_files_(vcDir_in, 'raw.mda');
+csDir_out = cellfun(@(x)strrep(x, vcDir_in, vcDir_out), csDir_in, 'UniformOutput', 0);
+csFile_prm = cell(size(csDir_in));
 
 for iFile = 1:numel(csDir_in)
     vcFile_raw1 = csFile_raw{iFile};
@@ -26956,21 +26974,29 @@ for iFile = 1:numel(csDir_in)
         vcFile_gt_mda1 = fullfile(vcDir_in1, 'firings_true.mda');
         if exist_file_(vcFile_gt_mda1) && read_cfg_('fSkip_gt') ~= 1
             irc('import-gt', vcFile_gt_mda1, vcFile_prm1); % assume that groundtruth file exists
-            irc('validate', vcFile_prm1); % assume that groundtruth file exists
+            irc('validate', vcFile_prm1, 0);
         end
+        
+        csFile_prm{iFile} = vcFile_prm1;
         fprintf('\n\n');
     catch
         fprintf(2, 'Error processing %s\n', vcFile_raw1);
     end
 end
+
+% create a batch file and run the batch-verify skip script
+vcFile_batch = fullfile(vcDir_out, sprintf('irc_%s.batch', version_()));
+cellstr2file_(vcFile_batch, csFile_prm, 1);
+batch_verify_(vcFile_batch, 'skip');
+fprintf('\n\tRunning %s took %0.1fs\n\n', vcFile_batch, toc(t1));
 end %func
 
 
 %--------------------------------------------------------------------------
 % 11/2/2018 JJJ: matlab compiler, generates run_irc
 function mcc_()
-eval("mcc -m -v -a './mdaio/' -a './jsonlab-1.5/' -a 'npy-matlab' -R '-nodesktop, -nosplash -singleCompThread -nojvm' run_irc.m");
-disp('run_irc.m is compiled');
+eval("mcc -m -v -a './mdaio/*' -a './jsonlab-1.5/*' -a './npy-matlab/*' -a 'default.*' -a './prb/*' -a '*_template.prm' -R '-nodesktop, -nosplash -singleCompThread -nojvm' run_irc.m");
+disp('run_irc.m is compiled by mcc');
 end %fucn
 
 
@@ -26979,3 +27005,80 @@ end %fucn
 function copyto_(vcDir_out)
 commit_irc_([], vcDir_out);
 end %fucn
+
+
+%--------------------------------------------------------------------------
+% 11/2/2018 JJJ: use disbatch.py on cluster
+function sbatch_mda_(vcDir_in, vcDir_out, vcFile_template)
+if nargin<3, vcFile_template = ''; end
+
+fprintf('Running batch on %s\n', vcDir_in); t1=tic;
+
+% Find inputdir and outputdir
+vcDir_in = path_abs_(vcDir_in);
+vcDir_out = path_abs_(vcDir_out);
+[csFile_raw, csDir_in] = find_files_(vcDir_in, 'raw.mda');
+csDir_out = cellfun(@(x)strrep(x, vcDir_in, vcDir_out), csDir_in, 'UniformOutput', 0);
+
+% create task.disbatch
+vcFile_disbatch = fullfile(vcDir_out, sprintf('irc_%s.disbatch', version_()));
+csLine_disbatch = cellfun(@(x,y)sprintf('run_irc %s %s %s', x, y, vcFile_template), csDir_in, csDir_out, 'UniformOutput', 0);
+
+% Add start and stop
+[vcFile_start, vcFile_end] = deal(fullfile(vcDir_out, 'disbatch_start.out'), fullfile(vcDir_out, 'disbatch_end.out'));
+delete_(vcFile_start);
+delete_(vcFile_end);    
+vcCmd_start = ['date ''+%Y-%m-%d %H:%M:%S'' > ', vcFile_start];
+vcCmd_end = ['date ''+%Y-%m-%d %H:%M:%S'' > ', vcFile_end];
+vcCmd_barrier = '#DISBATCH BARRIER';
+csLine_disbatch = {vcCmd_start, vcCmd_barrier, csLine_disbatch{:}, vcCmd_barrier, vcCmd_end};
+
+% Write to file and launch 
+cellstr2file_(vcFile_disbatch, csLine_disbatch, 1);
+vcCmd = ['sbatch -n 16 -p ccb --ntasks-per-node 5 --exclusive --wrap "disBatch.py ', vcFile_disbatch, '"'];
+fprintf('Running %s\n', vcCmd);
+system(vcCmd);
+fDone = waitfor_file_(vcFile_end, 3600, 1); %wait for a file writing up to an hour, throw an error if file not written
+if ~fDone
+    fprintf(2, 'Task timeout\n');
+    return;
+end
+
+% create a batch file and run the batch-verify skip script
+csFile_prm = find_files_(vcDir_out, 'raw_geom.prm');
+vcFile_batch = fullfile(vcDir_out, sprintf('irc_%s.batch', version_()));
+cellstr2file_(vcFile_batch, csFile_prm, 1);
+batch_verify_(vcFile_batch, 'skip');
+fprintf('\n\tRunning %s took %0.1fs\n\n', vcFile_batch, toc(t1));
+end %func
+
+
+%--------------------------------------------------------------------------
+% 11/2/2018 JJJ: wait for a file to be written
+% modified from http://www.radiativetransfer.org/misc/atmlabdoc/atmlab/handy/wait_for_existence.m
+function fExist = waitfor_file_(vcFile, timeout, timestep)
+% timestep: in sec
+
+if nargin<3, timestep = 1; end
+t_start = tic();
+fExist = true;
+% t=0;
+while ~exist_file_(vcFile)
+% while ~exist(vcFile, 'file')
+%     t = t + timestep;
+    if toc(t_start) >=timeout
+        fExist = false;
+        break;
+    end
+    pause(timestep);
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+% Find file in a folder recursively
+function [csFile, csDir, vS_dir] = find_files_(vcDir, vcFile)
+vS_dir = dir([vcDir, filesep(), '**', filesep(), vcFile]);
+csFile = arrayfun(@(x)fullfile(x.folder, x.name), vS_dir, 'UniformOutput', 0);
+csDir = {vS_dir.folder};
+end %func
