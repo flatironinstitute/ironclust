@@ -3,6 +3,12 @@ IronClust, written by J. James Jun, Flatiron Institute, Simons Foundation
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [4.2.5] - 2018-11-02
+### Added
+- `irc sbatch-mda` can run in non-blocking mode to launch multiple sbatch script
+  - see `sbatch_magland_synth.m` as an example
+
+
 ## [4.2.4] - 2018-11-02
 ### Added
 - `irc sbatch-mda` uses Flatiron compute-cluster (sbatch + disBatch)

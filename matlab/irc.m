@@ -28,8 +28,7 @@ warning off;
 fExit = 1;
 switch lower(vcCmd)
     % No arguments
-    case 'copyto-voms', copyto_('/home/jamesjun/voms/src/ironclust/matlab/'); return; 
-    case 'copyto', copyto_(vcArg1); return; %copy source code to destination
+    case 'copyto-voms', copyto_voms_(); return; 
     case 'mcc', mcc_(); return; %matlab compiler
     case {'setprm' 'set', 'set-prm'}, vcFile_prm_ = vcArg1; return;
     case 'changelog', edit_('changelog.md'); web_('changelog.md'); return;
@@ -37,6 +36,8 @@ switch lower(vcCmd)
     case 'about', about_();
 
     % one argument
+    case 'waitfor', waitfor_file_(vcArg1, vcArg2);
+    case 'copyto', copyto_(vcArg1); return; %copy source code to destination    
     case 'version'
         if nargout==0, version_(vcArg1);
         else [varargout{1}, varargout{2}] = version_(vcArg1);
@@ -128,8 +129,8 @@ switch lower(vcCmd)
 %     case 'batch-makeprm' batch_makeprm_(vcArg1, vcArg2);
     case {'batch-verify', 'batch-validate'}, batch_verify_(vcArg1, vcArg2); 
     case {'batch-plot', 'batch-activity'}, batch_plot_(vcArg1, vcArg2); 
-    case 'batch-mda', batch_mda_(vcArg1, vcArg2, vcArg3);
-    case 'sbatch-mda', sbatch_mda_(vcArg1, vcArg2, vcArg3);
+    case 'batch-mda', varargout{1} = batch_mda_(vcArg1, vcArg2, vcArg3);
+    case 'sbatch-mda', [varargout{1}, varargout{2}] = sbatch_mda_(vcArg1, vcArg2, vcArg3, vcArg4);
             
     case 'describe', describe_(vcFile_prm); 
     case 'import-silico', import_silico_(vcFile_prm, 0);     
@@ -4902,10 +4903,15 @@ end %func
 
 
 %--------------------------------------------------------------------------
+% 11/2/2018 JJJ: Fixed the dir absolute path problem
 function vcFile1 = filename_timestamp_(vcFile)
 vcDatestr = datestr(now, 'yymmdd-HHMMSS');
-[vcDir, vcFile, vcExt] = fileparts(vcFile);
-vcFile1 = [vcDir, filesep(), vcFile, '_', vcDatestr, vcExt];
+[~, ~, vcExt] = fileparts(vcFile);
+if isempty(vcExt)
+    vcFile1 = [vcFile1, '_', vcDatestr];
+else
+    vcFile1 = strrep(vcFile, vcExt, ['_', vcDatestr, vcExt]);
+end
 end %func
 
 
@@ -21273,7 +21279,7 @@ end %func
 % 9/29/17 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcVer_used] = version_(vcFile_prm)
 if nargin<1, vcFile_prm = ''; end
-vcVer = 'v4.2.4';
+vcVer = 'v4.2.5';
 vcDate = '11/2/2018';
 vcVer_used = '';
 if nargout==0
@@ -26948,13 +26954,14 @@ end %func
 
 %--------------------------------------------------------------------------
 % 11/2/2018 JJJ: batch-mda
-function batch_mda_(vcDir_in, vcDir_out, vcFile_template)
+function vcFile_batch = batch_mda_(vcDir_in, vcDir_out, vcFile_template)
 if nargin<3, vcFile_template = ''; end
 
 fprintf('Running batch on %s\n', vcDir_in); t1=tic;
 
 % Find inputdir and outputdir
 vcDir_in = path_abs_(vcDir_in);
+mkdir_(vcDir_out);
 vcDir_out = path_abs_(vcDir_out);
 [csFile_raw, csDir_in] = find_files_(vcDir_in, 'raw.mda');
 csDir_out = cellfun(@(x)strrep(x, vcDir_in, vcDir_out), csDir_in, 'UniformOutput', 0);
@@ -27009,13 +27016,17 @@ end %fucn
 
 %--------------------------------------------------------------------------
 % 11/2/2018 JJJ: use disbatch.py on cluster
-function sbatch_mda_(vcDir_in, vcDir_out, vcFile_template)
+function [vcFile_batch, vcFile_end] = sbatch_mda_(vcDir_in, vcDir_out, vcFile_template, fWait)
 if nargin<3, vcFile_template = ''; end
+if nargin<4, fWait = 1; end
+
+if ischar(fWait), fWait = str2num(fWait); end
 
 fprintf('Running batch on %s\n', vcDir_in); t1=tic;
 
 % Find inputdir and outputdir
 vcDir_in = path_abs_(vcDir_in);
+mkdir_(vcDir_out);
 vcDir_out = path_abs_(vcDir_out);
 [csFile_raw, csDir_in] = find_files_(vcDir_in, 'raw.mda');
 csDir_out = cellfun(@(x)strrep(x, vcDir_in, vcDir_out), csDir_in, 'UniformOutput', 0);
@@ -27038,16 +27049,19 @@ cellstr2file_(vcFile_disbatch, csLine_disbatch, 1);
 vcCmd = ['sbatch -n 16 -p ccb --ntasks-per-node 5 --exclusive --wrap "disBatch.py ', vcFile_disbatch, '"'];
 fprintf('Running %s\n', vcCmd);
 system(vcCmd);
+vcFile_batch = fullfile(vcDir_out, sprintf('irc_%s.batch', version_()));
+csFile_prm = cellfun(@(x)fullfile(x, 'raw_geom.prm'), csDir_out, 'UniformOutput', 0);
+cellstr2file_(vcFile_batch, csFile_prm, 1);
+if ~fWait
+    fprintf('Job scheduled: \n\t%s\n\n', vcFile_batch);
+    return;     
+end
+
 fDone = waitfor_file_(vcFile_end, 3600, 1); %wait for a file writing up to an hour, throw an error if file not written
 if ~fDone
     fprintf(2, 'Task timeout\n');
     return;
 end
-
-% create a batch file and run the batch-verify skip script
-csFile_prm = find_files_(vcDir_out, 'raw_geom.prm');
-vcFile_batch = fullfile(vcDir_out, sprintf('irc_%s.batch', version_()));
-cellstr2file_(vcFile_batch, csFile_prm, 1);
 batch_verify_(vcFile_batch, 'skip');
 fprintf('\n\tRunning %s took %0.1fs\n\n', vcFile_batch, toc(t1));
 end %func
@@ -27057,21 +27071,34 @@ end %func
 % 11/2/2018 JJJ: wait for a file to be written
 % modified from http://www.radiativetransfer.org/misc/atmlabdoc/atmlab/handy/wait_for_existence.m
 function fExist = waitfor_file_(vcFile, timeout, timestep)
+% Usage: 
 % timestep: in sec
+% fExist = waitfor_file_(vcFile, timeout, timestep) : wait for some files
+% fExist = waitfor_file_(csFiles, timeout, timestep) : wait for all files
 
 if nargin<3, timestep = 1; end
 t_start = tic();
 fExist = true;
 % t=0;
-while ~exist_file_(vcFile)
+
+fprintf('Waiting for file(s):\n');
+if iscell(vcFile)
+    disp(toCol_(vcFile));
+else
+    disp(vcFile);
+end
+
+while ~all(exist_file_(vcFile))
 % while ~exist(vcFile, 'file')
 %     t = t + timestep;
     if toc(t_start) >=timeout
         fExist = false;
+        fprintf('\n\tNot finished: waited for %0.1fs\n', toc(t_start));
         break;
     end
     pause(timestep);
 end
+fprintf('\n\tFinished: waited for %0.1fs\n', toc(t_start));
 end %func
 
 
@@ -27081,4 +27108,21 @@ function [csFile, csDir, vS_dir] = find_files_(vcDir, vcFile)
 vS_dir = dir([vcDir, filesep(), '**', filesep(), vcFile]);
 csFile = arrayfun(@(x)fullfile(x.folder, x.name), vS_dir, 'UniformOutput', 0);
 csDir = {vS_dir.folder};
+end %func
+
+
+%--------------------------------------------------------------------------
+% copy from alpha to voms
+function copyto_voms_()
+S_cfg = read_cfg_();
+if ispc()
+    [path_alpha, path_github, path_ironclust] = ...
+        deal(S_cfg.path_alpha, S_cfg.path_github, S_cfg.path_ironclust);
+elseif isunix()
+    [path_alpha, path_github, path_ironclust] = ...
+        deal(S_cfg.path_alpha_linux, S_cfg.path_github_linux, S_cfg.path_ironclust_linux);
+end
+
+if ~strcmpi(pwd(), path_alpha), disp('must commit from alpha'); return; end
+copyto_(S_cfg.path_voms);
 end %func
