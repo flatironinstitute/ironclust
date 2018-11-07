@@ -1,0 +1,45 @@
+% template_drift.prm
+% James Jun, 2017 Mar 30
+
+
+% Recording file format
+
+nChans = 120; % # channels stored
+vcDataType = 'int16'; % raw data format
+sRateHz = 20000; % sampling rate
+vcFilter = 'ndiff';
+nDiff_filt = 3; % 4 saturates for int16
+
+
+uV_per_bit = .1; % uV per bit resolution
+fTranspose_bin = 0;     % catalin's format
+vcFile_gt = 'D:\bionet\drift_gt.mat';
+spkLim_raw_factor = 2;      % if spkLim_raw_ms==[] then spkLim_raw = spkLim * spkLim_raw_factor
+spkLim_factor_merge = 1;
+
+vcCommonRef = 'none';
+
+vcCluster = 'drift-knn'; % drift, spacetime, drift-knn
+nQuantile_drift = 8;       % Valid if vcCluster = 'drift'; # of bins for amplitude histogram per site to find drift pairs
+nTime_clu = 4;
+nTime_drift = 100;           % divide to 16 drift time bins
+
+% Knn experimental 
+knn = 30;
+fWavRaw_merge = 0;          % Use raw average unit waveforms for merge when set to 1, if not use filtered waveforms.
+fSavePlot_RD = 0;           % Save the Rho-Delta plot as .png file (prefix: '_RD.png' at the end of the .prm file name)
+frac_equal_knn = .5;       % Fraction of k-nearest neighbors from the same cluster. 
+frac_shift_merge = .1;      % Fraction of the waveform to shift to check for merging
+
+fInterp_fet = 0;
+fClean_fet = 0;
+
+maxDist_site_spk_um = 100;
+maxDist_site_um = 50;
+vcSpkRef = 'none';
+
+maxWavCor = .98;            % merge if waveform correlation is greater than maxWavCor.
+thresh_core_knn = 1-1/8;
+
+%fRaw_feature = 1; vcFilter = 'ndiff'; vcFet='gpca';
+fRaw_feature = 1; vcFilter = 'bandpass'; vcFet='xcov'; freqLim = [300 3000];

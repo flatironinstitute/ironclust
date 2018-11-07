@@ -32,6 +32,7 @@ offset_sec_preview = 0;     % Time offset (sec) to apply to the preview
 fCacheRam = 1;              % Cache spikew aveform information in RAM. Uses more RAM but faster
 fRamCache = 1;              % Cache both raw and filtered spike waveforms in RAM (greater memory demand)
 fSavePlot_RD = 1;           % Save the Rho-Delta plot as .png file (prefix: '_RD.png' at the end of the .prm file name)
+vcAlgorithm = 'ironclust';  % Number of supported algorithms: {'ironclust', 'kilosort', 'yass', 'mountainsort', 'spykingcircus'} 
 
 % #Display parameters (Affects display only, (*):Can be modified in the manual GUI)
 tlim = [0, .2];             % Time range to display 
@@ -88,11 +89,12 @@ maxDist_site_spk_um = 100;  % Max. radius for extracting waveforms. Used if maxS
 fGroup_shank = 0;           % Group all sites in the same shank
 
 % #Feature extraction (run "jrc spikesort" after change)
-vcFet = 'gpca';             % Feature list: {'gpca', 'cov', 'vpp', 'vmin', 'vminmax', 'energy', 'pca'}
+vcFet = 'gpca';             % Feature list: {'gpca', 'cov', 'vpp', 'vmin', 'vminmax', 'energy', 'pca', 'xcov'}
 nPcPerChan = 1;             % number of principal components per chan.
 nSites_ref = [];            % set to 0 for global referencing (move to feature section) @TODO: diagram
 vcSpkRef = 'none';         % Subtract mean of the spiking event sites {'nmean', 'none'}
 fInterp_fet = 1;            % Interpolate the waveforms for feature projection to find the optimal delay (2x interp). Set to 0 to disable
+fRaw_feature = 0;           % Use raw waveform for feature extraction
 
 % #Clustering (run "jrc sort" after change)
 vcCluster = 'drift-knn';        % cluster method: {'spacetime', 'drift', 'drift2', 'drift-knn', 'wavcov'}, spacetime: spatiotemporal decentralized clustering that can handle slow drift; drift: fast drift clustering; wavcov: waveform covariance (creates nChans^2*nDelays_wavcov number of features)
@@ -111,7 +113,7 @@ nDelays_xcov = 4;           % Used for vcCluster='xcov'. Number of delays for ch
 % #Post-cluster auto-merging parameters (run "jrc auto" after change)
 delta1_cut = .6;            % RL cluster: delta cut-off. Increasing this will produce less clusters.
 rho_cut = -2.5;             % RL cluster: rho cut-off. Decreasing (more negative) this will produce more clusters.
-maxWavCor = .97;            % merge if waveform correlation is greater than maxWavCor.
+maxWavCor = .98;            % merge if waveform correlation is greater than maxWavCor.
 min_count = 30;             % Minimum cluster size (min_count will be set to 2*#features if lower).
 nRepeat_merge = 10;         % # of repeats for average unit raw waveform based merging
 vcDetrend_postclu = 'global'; % 'none', 'hidehiko', 'global', 'local', 'logz'

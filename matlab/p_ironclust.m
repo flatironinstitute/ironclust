@@ -7,7 +7,7 @@ end
     
 vcFile_prm = irc('makeprm-mda', raw_fname, geom_fname, arg_fname, temp_path, prm_fname);
 irc('clear', vcFile_prm); %init 
-irc('detectsort', vcFile_prm);
+irc('run', vcFile_prm);
 irc('export-mda', vcFile_prm, firings_out_fname);
 
 % create a ground truth

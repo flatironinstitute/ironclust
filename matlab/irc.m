@@ -10,7 +10,7 @@ function varargout = irc(varargin)
 persistent vcFile_prm_ % remember the currently working prm file
 
 % input parse
-if nargin<1, vcCmd = 'help'; else vcCmd = varargin{1}; end
+if nargin<1, vcCmd = 'version'; else vcCmd = varargin{1}; end
 if nargin<2, vcArg1 = ''; else vcArg1 = varargin{2}; end
 if nargin<3, vcArg2 = ''; else vcArg2 = varargin{3}; end
 if nargin<4, vcArg3 = ''; else vcArg3 = varargin{4}; end
@@ -27,8 +27,9 @@ warning off;
 % Command type A: supporting functions
 fExit = 1;
 switch lower(vcCmd)
-    % No arguments
-    case 'copyto-voms', copyto_voms_(); return; 
+    % No arguments        
+    case 'hash', varargout{1} = file2hash_(); return; 
+    case 'addpath', addpath_(); return; %add path of current irc
     case 'mcc', mcc_(); return; %matlab compiler
     case {'setprm' 'set', 'set-prm'}, vcFile_prm_ = vcArg1; return;
     case 'changelog', edit_('changelog.md'); web_('changelog.md'); return;
@@ -36,6 +37,8 @@ switch lower(vcCmd)
     case 'about', about_();
 
     % one argument
+    case 'copyto-voms', copyto_voms_(vcArg1); return;     
+    case 'copyfrom-voms', copyfrom_voms_(vcArg1); return;     
     case 'waitfor', waitfor_file_(vcArg1, vcArg2);
     case 'copyto', copyto_(vcArg1); return; %copy source code to destination    
     case 'version'
@@ -168,13 +171,14 @@ switch lower(vcCmd)
     case 'traces-lfp', traces_lfp_(P)
     case 'dir', dir_files_(P.csFile_merge);
     case 'traces-test'
-        traces_(P, 1); traces_test_(P);           
+        traces_(P, 1); traces_test_(P);
+    case {'run', 'run-algorithm'}
+        run_algorithm_(P);
     case {'full', 'all'}
         fprintf('Performing "irc detect", "irc sort", "irc manual" operations.\n');
         detect_(P); sort_(P, 0); describe_(P.vcFile_prm); manual_(P); return;      
     case {'spikesort', 'detectsort', 'detect-sort', 'spikesort-verify', 'spikesort-validate', 'spikesort-manual', 'detectsort-manual'}
-        fprintf('Performing "irc detect", "irc sort" operations.\n');
-        detect_(P); sort_(P, 0); describe_(P.vcFile_prm);
+        run_irc_(P);
     case 'gtsort'
         fprintf('Performing "irc detect" using groundtruth, and "irc sort" operations.\n');
         S_gt = load_gt_(P.vcFile_gt);
@@ -760,7 +764,6 @@ function val = read_cfg_(vcName, fVerbose)
 if nargin<2, fVerbose = 0; end
 
 S_cfg = file2struct_(ircpath_('default.cfg'));
-% end
 if exist_file_(ircpath_('user.cfg'))
     S_cfg1 = file2struct_(ircpath_('user.cfg')); %override
     S_cfg = struct_merge_(S_cfg, S_cfg1, {'path_dropbox', 'path_backup', 'default_prm'});
@@ -768,8 +771,19 @@ if exist_file_(ircpath_('user.cfg'))
 else
     if fVerbose, fprintf('Configuration loaded from default.cfg.\n'); end
 end
+
+% set path
+if ispc()
+    [path_alpha, path_github, path_ironclust] = ...
+        deal(S_cfg.path_alpha, S_cfg.path_github, S_cfg.path_ironclust);
+elseif isunix()
+    [path_alpha, path_github, path_ironclust] = ...
+        deal(S_cfg.path_alpha_linux, S_cfg.path_github_linux, S_cfg.path_ironclust_linux);
+end
+S_cfg = struct_add_(S_cfg, path_alpha, path_github, path_ironclust);
+
 if nargin==0
-    val = S_cfg; 
+    val = S_cfg;
 else
     try
         val = S_cfg.(vcName);
@@ -799,19 +813,13 @@ function commit_(vcArg1)
 if nargin<1, vcArg1=''; end
 t1 = tic;
 S_cfg = read_cfg_();
-if ispc()
-    [path_alpha, path_github, path_ironclust] = ...
-        deal(S_cfg.path_alpha, S_cfg.path_github, S_cfg.path_ironclust);
-elseif isunix()
-    [path_alpha, path_github, path_ironclust] = ...
-        deal(S_cfg.path_alpha_linux, S_cfg.path_github_linux, S_cfg.path_ironclust_linux);
-end
-if ~strcmpi(pwd(), path_alpha), disp('must commit from alpha'); return; end
+
+if ~strcmpi(pwd(), S_cfg.path_alpha), disp('must commit from alpha'); return; end
 
 % just update the log
 if strcmpi(vcArg1, 'log')
 %     sprintf('copyfile changelog.md ''%s'' f;', S_cfg.path_dropbox);
-    copyfile_('changelog.md', path_github, path_ironclust);
+    copyfile_('changelog.md', S_cfg.path_github, S_cfg.path_ironclust);
     disp('Commited changelog.md');
     return;
 elseif ~strcmpi(vcArg1, 'skip')
@@ -829,7 +837,7 @@ delete_files_(find_empty_files_());
 
 % commit irc related files only
 %try commit_irc_(S_cfg, path_github, 0); catch; disperr_(); end
-try commit_irc_(S_cfg, path_ironclust, 0); catch; disperr_(); end
+try commit_irc_(S_cfg, S_cfg.path_ironclust, 0); catch; disperr_(); end
 %vcFile_mp = strrep(path_ironclust, 'IronClust', 'ml_ironclust.mp');
 %try fileattrib(vcFile_mp, '+x'); fprintf('chmod +x %s\n',vcFile_mp); catch; end
 %try movefile(fullfile(path_ironclust, 'p_ironclust.m'), strrep(path_ironclust, 'matlab', '')); catch; disperr_(); end
@@ -3140,7 +3148,7 @@ viTime_spk = int32(S_gt.viTime);
 nSites = numel(P.viSite2Chan);
 
 % Overload with default.cfg setting for GT units
-S_cfg = read_cfg_();
+
 [vcFilter_gt, freqLim_gt, nDiff_filt_gt, spkLim_ms_gt] = ...
     struct_get_(S_cfg, 'vcFilter_gt', 'freqLim_gt', 'nDiff_filt_gt', 'spkLim_ms_gt');
 P1 = struct('vcCommonRef', 'none', 'vcSpkRef', 'none', ... %'fGpu', 0,
@@ -4637,11 +4645,11 @@ function batch_(vcFile_batch, vcCommand)
 % batch_(vcFile_batch, vcFile_prb): batch contains .bin files
 
 if nargin<2, vcCommand=[]; end
-if isempty(vcCommand), vcCommand = 'spikesort'; end
+if isempty(vcCommand), vcCommand = 'run'; end
 
 if matchFileExt_(vcCommand, {'.prm', '.prb'})
     vcFile_template = vcCommand;
-    vcCommand = 'spikesort';
+    vcCommand = 'run';
     fMakePrm = 1;
 else
     vcFile_template = ircpath_(read_cfg_('default_prm'));
@@ -4783,12 +4791,13 @@ function batch_verify_(vcFile_batch, vcCommand)
 %       just does the verification plot for all files in .batch file
 
 fShowTable = 0; % show unit SNR table
-    
+fVerbose = 0;
+
 if ~exist_file_(vcFile_batch, 1), return; end
 
 % edit_(vcFile_batch); %show script
 if nargin<2, vcCommand=[]; end
-if isempty(vcCommand), vcCommand='spikesort'; end
+if isempty(vcCommand), vcCommand='run'; end
 csFiles_prm = load_batch_(vcFile_batch);
 
 if ~strcmpi(vcCommand, 'skip')
@@ -4797,7 +4806,7 @@ if ~strcmpi(vcCommand, 'skip')
             vcFile_prm1 = csFiles_prm{iFile};
             irc('clear');
             irc(vcCommand, vcFile_prm1);
-            if isempty(strfind(vcCommand, 'verify'))
+            if ~contains_(vcCommand, 'verify')
                 validate_(loadParam_(vcFile_prm1,0), 0); % try silent verify and collect result
             end
         catch
@@ -4834,8 +4843,12 @@ end
 
 [vrSnr, vrFp, vrFn, vrAccuracy, vnSite, vnSpk, vrVpp, vrVmin] = ...
     multifun_(@(x)cell2mat_(x'), cvrSnr, cvrFp, cvrFn, cvrAccuracy, cvnSite, cvnSpk, cvrVpp, cvrVmin);
+
+[vrSnr, vrFp, vrFn, vrAccuracy, vnSite, vnSpk, vrVpp, vrVmin] = ...
+    select_vr_(vrSnr, vrFp, vrFn, vrAccuracy, vnSite, vnSpk, vrVpp, vrVmin, ...
+        find(vrSnr >= read_cfg_('snr_thresh_gt'))); % filter by SNR, @TODO: burst and overlap
+
 disp('All files pooled:');
-fVerbose = 0;
 disp_score_(makeStruct_(vrSnr, vrFp, vrFn, vrAccuracy, vnSite, vnSpk, fVerbose, S_burst, S_overlap));
 S_score = makeStruct_(vrSnr, vrFp, vrFn, vrAccuracy, vnSite, vnSpk, vrVpp, vrVmin, S_burst, S_overlap);
 
@@ -4948,6 +4961,7 @@ catch
     disperr_('plot_gt_2by2_');
 end
 end %func
+
 
 %--------------------------------------------------------------------------
 function S = struct_append_(S, S1, iDimm)
@@ -18108,7 +18122,7 @@ try
 
     S_ws = whos(); 
     csVars = {S_ws.name};
-    csVars = setdiff(csVars, {'csLines_file2struct', 'vcFile_file2struct'});
+    csVars = setdiff(csVars, {'csLines_file2struct', 'vcFile_file2struct', 'P'});
     for i=1:numel(csVars)
         eval(sprintf('a = %s;', csVars{i}));
         P.(csVars{i}) = a;
@@ -18356,6 +18370,9 @@ if ispc()
     vcPath_nvcc = sprintf('"C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v%0.1f\\bin\\nvcc"', vrVer(imin));
 else
     vcPath_nvcc = '/usr/local/cuda/bin/nvcc';
+end
+if ~exist_file_(vcPath_nvcc)
+    vcPath_nvcc = read_cfg_('nvcc_path');
 end
 end %func
 
@@ -21276,26 +21293,26 @@ end %func
 
 
 %--------------------------------------------------------------------------
-% 9/29/17 JJJ: Displaying the version number of the program and what's used. #Tested
-function [vcVer, vcDate, vcVer_used] = version_(vcFile_prm)
+% 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
+function [vcVer, vcDate, vcHash] = version_(vcFile_prm)
 if nargin<1, vcFile_prm = ''; end
-vcVer = 'v4.2.5';
-vcDate = '11/2/2018';
-vcVer_used = '';
+vcVer = 'v4.2.6';
+vcDate = '11/7/2018';
+vcHash = file2hash_();
+
 if nargout==0
-    fprintf('%s (%s) installed\n', vcVer, vcDate);
+    fprintf('%s (%s) installed, MD5: %s\n', vcVer, vcDate, vcHash);
+    return;
 end
 try 
     if isempty(vcFile_prm)
         P = get0_('P');
         if ~isempty(P)
-%             fprintf('\t%s used in %s\n', P.version, P.vcFile_prm);
-            vcVer_used = P.version;
+            vcVer = P.version;
         end
     elseif exist_file_(vcFile_prm)
         P = loadParam_(vcFile_prm);
-%         fprintf('\t%s used in %s\n', P.version, vcFile_prm);
-        vcVer_used = P.version;
+        vcVer = P.version;
     end
 catch
     ;
@@ -23259,7 +23276,7 @@ if isempty(vcFile_template)
         assert_(exist_file_(vcFile_template), 'template file does not exist.');
     end
 else
-    vcFile_template = ircpath_(vcFile_template);
+%     vcFile_template = ircpath_(vcFile_template);
     assert_(exist_file_(vcFile_template), 'prm file does not exist.');
 end
 P.sRateHz = get_set_(S_txt, 'samplerate', 30000);
@@ -23313,6 +23330,9 @@ P0 = struct_merge_(P0, file2struct_(vcFile_template));
 P = struct_merge_(P0, P);
 P.duration_file = S_mda.dimm(2) / P.sRateHz; %assuming int16
 P.version = version_();
+
+% Force .mda format
+P.fTranspose_bin = 1;
 
 
 % Write to prm file
@@ -26928,14 +26948,23 @@ end %func
 
 %--------------------------------------------------------------------------
 % 11/1/2018 JJJ: mcc-safe addpath, compatible without mcc
-function addpath_(vc)
+function addpath_(vcPath)
+if nargin<1, vcPath=''; end
+if isempty(vcPath)
+    % add self to path
+    ircpath = fileparts(mfilename('fullpath'));
+    vcPath = genpath(ircpath);
+end
 try
     if ~isdeployed() && ~ismcc()
-        addpath(vc);
+        addpath(vcPath);
+    else
+        return;
     end
 catch
-    addpath(vc);
+    addpath(vcPath);
 end
+fprintf('Added path to %s\n', vcPath);
 end %func
 
 
@@ -26949,6 +26978,14 @@ try
 catch
     ;
 end
+end %func
+
+
+%--------------------------------------------------------------------------
+% 11/5/2018 JJJ: Return the version of compiled run_irc
+function vcVersion = mcc_version_()
+[status, cmdout] = system('run_irc version'); % must be found in the system path
+vcVersion = strtrim(cmdout);
 end %func
 
 
@@ -26975,7 +27012,7 @@ for iFile = 1:numel(csDir_in)
         firings_out_fname1 = fullfile(vcDir_out1, 'firings_out.mda');
         vcFile_prm1 = irc('makeprm-mda', vcFile_raw1, geom_csv1, params_json1, vcDir_out1, vcFile_template);
         irc('clear', vcFile_prm1); %init 
-        irc('detectsort', vcFile_prm1);
+        irc('run', vcFile_prm1);
         irc('export-mda', vcFile_prm1, firings_out_fname1);
         
         vcFile_gt_mda1 = fullfile(vcDir_in1, 'firings_true.mda');
@@ -27001,9 +27038,13 @@ end %func
 
 %--------------------------------------------------------------------------
 % 11/2/2018 JJJ: matlab compiler, generates run_irc
+% @TODO: get the dependency list from sync_list
 function mcc_()
-eval("mcc -m -v -a './mdaio/*' -a './jsonlab-1.5/*' -a './npy-matlab/*' -a 'default.*' -a './prb/*' -a '*_template.prm' -R '-nodesktop, -nosplash -singleCompThread -nojvm' run_irc.m");
-disp('run_irc.m is compiled by mcc');
+fprintf('Compiling run_irc.m\n'); t1=tic;
+vcEval = ["mcc -m -v -a '*.ptx' -a '*.cu' -a './mdaio/*' -a './jsonlab-1.5/*' -a './npy-matlab/*' -a 'default.*' -a './prb/*' -a '*_template.prm' -R '-nodesktop, -nosplash -singleCompThread -nojvm' run_irc.m"];
+disp(vcEval);
+eval(vcEval);
+fprintf('\n\trun_irc.m is compiled by mcc, took %0.1fs\n', toc(t1));
 end %fucn
 
 
@@ -27015,14 +27056,17 @@ end %fucn
 
 
 %--------------------------------------------------------------------------
-% 11/2/2018 JJJ: use disbatch.py on cluster
+% 11/3/2018 JJJ: use disbatch.py on cluster
 function [vcFile_batch, vcFile_end] = sbatch_mda_(vcDir_in, vcDir_out, vcFile_template, fWait)
 if nargin<3, vcFile_template = ''; end
 if nargin<4, fWait = 1; end
+fGpu = 0; % gpu script currently not working
 
 if ischar(fWait), fWait = str2num(fWait); end
-
+% compile if the version mismatches
+if ~strcmpi(version_(), mcc_version_()), mcc_(); end 
 fprintf('Running batch on %s\n', vcDir_in); t1=tic;
+S_cfg = read_cfg_();
 
 % Find inputdir and outputdir
 vcDir_in = path_abs_(vcDir_in);
@@ -27039,6 +27083,9 @@ csLine_disbatch = cellfun(@(x,y)sprintf('run_irc %s %s %s', x, y, vcFile_templat
 [vcFile_start, vcFile_end] = deal(fullfile(vcDir_out, 'disbatch_start.out'), fullfile(vcDir_out, 'disbatch_end.out'));
 delete_(vcFile_start);
 delete_(vcFile_end);    
+% vcCmd_cd = ['cd ', vcDir_out]; % switch to the output directory to write log files there
+addpath_(); % add current irc to the path
+cd(vcDir_out); % move to the output directory
 vcCmd_start = ['date ''+%Y-%m-%d %H:%M:%S'' > ', vcFile_start];
 vcCmd_end = ['date ''+%Y-%m-%d %H:%M:%S'' > ', vcFile_end];
 vcCmd_barrier = '#DISBATCH BARRIER';
@@ -27046,9 +27093,15 @@ csLine_disbatch = {vcCmd_start, vcCmd_barrier, csLine_disbatch{:}, vcCmd_barrier
 
 % Write to file and launch 
 cellstr2file_(vcFile_disbatch, csLine_disbatch, 1);
-vcCmd = ['sbatch -n 16 -p ccb --ntasks-per-node 5 --exclusive --wrap "disBatch.py ', vcFile_disbatch, '"'];
+if fGpu
+    vcCmd = S_cfg.sbatch_gpu;
+else
+    vcCmd = S_cfg.sbatch;
+end
+vcCmd = strrep_(vcCmd, '$taskfile', vcFile_disbatch, '$n', S_cfg.sbatch_nnodes, '$t', S_cfg.sbatch_ntasks_per_node, '$c', S_cfg.sbatch_ncpu_per_task);     
 fprintf('Running %s\n', vcCmd);
 system(vcCmd);
+
 vcFile_batch = fullfile(vcDir_out, sprintf('irc_%s.batch', version_()));
 csFile_prm = cellfun(@(x)fullfile(x, 'raw_geom.prm'), csDir_out, 'UniformOutput', 0);
 cellstr2file_(vcFile_batch, csFile_prm, 1);
@@ -27064,6 +27117,18 @@ if ~fDone
 end
 batch_verify_(vcFile_batch, 'skip');
 fprintf('\n\tRunning %s took %0.1fs\n\n', vcFile_batch, toc(t1));
+end %func
+
+
+%--------------------------------------------------------------------------
+% 11/2/2018 JJJ: wait for a file to be written
+function vcStr = strrep_(varargin)
+vcStr = varargin{1};
+for iArg = 2:2:nargin()
+    val = varargin{iArg+1};
+    if isnumeric(val), val = num2str(val); end
+    vcStr = strrep(vcStr, varargin{iArg}, val);
+end
 end %func
 
 
@@ -27112,17 +27177,81 @@ end %func
 
 
 %--------------------------------------------------------------------------
-% copy from alpha to voms
-function copyto_voms_()
+% 11/5/2018 JJJ: copy from alpha to voms
+function copyto_voms_(vcDir_voms)
+% Usages
+% -----
+% copyto_voms_()
+% copyto_voms_(vcDir_voms)
 S_cfg = read_cfg_();
-if ispc()
-    [path_alpha, path_github, path_ironclust] = ...
-        deal(S_cfg.path_alpha, S_cfg.path_github, S_cfg.path_ironclust);
-elseif isunix()
-    [path_alpha, path_github, path_ironclust] = ...
-        deal(S_cfg.path_alpha_linux, S_cfg.path_github_linux, S_cfg.path_ironclust_linux);
-end
 
-if ~strcmpi(pwd(), path_alpha), disp('must commit from alpha'); return; end
-copyto_(S_cfg.path_voms);
+if nargin<1, vcDir_voms = ''; end
+if isempty(vcDir_voms), vcDir_voms = get_(S_cfg, 'path_voms'); end
+
+if ~strcmpi(pwd(), S_cfg.path_alpha), disp('must commit from alpha'); return; end
+copyto_(vcDir_voms);
+end %func
+
+
+%--------------------------------------------------------------------------
+% 11/5/2018 JJJ: copy from voms to alpha
+function copyfrom_voms_(vcDir_voms)
+% Usages
+% -----
+% copyfrom_voms_()
+% copyfrom_voms_(vcDir_voms)
+if nargin<1, vcDir_voms = ''; end
+if isempty(vcDir_voms), vcDir_voms = read_cfg_('path_voms'); end
+vcDir_this = fileparts(mfilename('fullpath'));
+if ~exist_dir_(vcDir_voms), fprintf(2, 'Directory does not exist: %s\n', vcDir_voms); return; end
+copyfile_(read_cfg_('copyfrom_voms'), vcDir_this, vcDir_voms);
+end %func
+
+
+%--------------------------------------------------------------------------
+% 11/6/2018 JJJ: compute hash
+% uses DataHash.m
+% https://www.mathworks.com/matlabcentral/fileexchange/31272-datahash
+function [vcHash, csHash] = file2hash_(csFiles)
+% Usage
+% ----
+% file2hash_(vcFile)
+% file2hash_(csFiles)
+if nargin<1, csFiles = []; end
+if isempty(csFiles)
+    csFiles = [mfilename('fullpath'), '.m'];
+end
+if ischar(csFiles), csFiles = {csFiles}; end
+csHash = cell(size(csFiles));
+for iFile = 1:numel(csFiles)
+    csHash{iFile} = DataHash(csFiles{iFile}, struct('Method', 'MD5', 'Input', 'file', 'Format', 'hex'));
+    if iFile == 1
+        vcHash = csHash{iFile};
+    else
+        vcHash = bitxor(vcHash, csHash{iFile});
+    end
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+% 11/7/2018 JJJ: run multiple algorithms
+function run_algorithm_(P)
+vcAlgorithm = get_set_(P, 'vcAlgorithm', 'ironclust');
+switch vcAlgorithm
+    case 'ironclust', run_irc_(P);
+    case 'mountainsort', run_ms4_(P);
+    case 'kilosort', run_ksort_(P);
+    case 'yass', run_yass_(P);
+    case 'spykingcircus', run_circus_(P);
+    otherwise, disperr_(['Unsupported option: vcAlgorithm: ', vcAlgorithm]);
+end %switch    
+
+end %func
+
+
+%--------------------------------------------------------------------------
+function run_irc_(P)
+fprintf('Performing "irc detect", "irc sort" operations.\n');
+detect_(P); sort_(P, 0); describe_(P.vcFile_prm);
 end %func

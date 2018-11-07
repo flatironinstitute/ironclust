@@ -1,4 +1,9 @@
 function run_irc(vcDir_in, vcDir_out, vcFile_template)
+% usage
+% -----
+% run_irc(command)
+% run_irc(vcDir_in, vcDir_out, vcFile_template)
+%
 % arguments
 % -----
 % vcDir_in: input directory
@@ -8,7 +13,13 @@ function run_irc(vcDir_in, vcDir_out, vcFile_template)
 if nargin<3, vcFile_template = ''; end
 
 if ~isdeployed() , addpath(genpath('./matlab')); end
+if nargin==1
+    vcCmd = vcDir_in;
+    fprintf('%s\n', irc(vcCmd)); 
+    return; 
+end
 
+    
 cSep = filesep();
 
 p_ironclust(vcDir_out, ...

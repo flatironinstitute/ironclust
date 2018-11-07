@@ -3,6 +3,17 @@ IronClust, written by J. James Jun, Flatiron Institute, Simons Foundation
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [4.2.6] - 2018-11-04
+### Fixed
+- `sbatch-mda` command creates .log files in the destination folder
+  - `template_prm` file is found correctly if absolute path is given
+
+### Added
+- `sbatch` in `default.cfg` stores cluster run settings
+  - see examples: `sbatch_bionet.m` and `sbatch_magland_synth.m`
+- `copyfrom-voms` command copies files (`copyfrom_voms`) in (`path_voms`) under default.cfg
+
+
 ## [4.2.5] - 2018-11-02
 ### Added
 - `irc sbatch-mda` can run in non-blocking mode to launch multiple sbatch script
