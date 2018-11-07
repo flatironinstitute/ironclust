@@ -3,7 +3,16 @@ IronClust, written by J. James Jun, Flatiron Institute, Simons Foundation
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
-## [4.2.6] - 2018-11-04
+## [4.2.7] - 2018-11-07
+### Fixed
+- `addpath` correctly finds the current source path when a relative path is given
+  and directory is not found.
+
+### Added
+- `irc addpath` adds the current source path to the search path
+
+
+## [4.2.6] - 2018-11-07
 ### Fixed
 - `sbatch-mda` command creates .log files in the destination folder
   - `template_prm` file is found correctly if absolute path is given

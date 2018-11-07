@@ -20990,7 +20990,7 @@ end % func
 %--------------------------------------------------------------------------
 % 9/19/17 JJJ: Created for SPARC
 function [mnWav, hFile, P] = load_nsx__(vcFile_nsx)
-addpath_('./neuroshare/');
+addpath_('neuroshare/');
 [ns_RESULT, hFile] = ns_OpenFile(vcFile_nsx);
 % [ns_RESULT, nsFileInfo] = ns_GetFileInfo(hFile);
 vlAnalog_chan= strcmpi({hFile.Entity.EntityType}, 'Analog');
@@ -21167,7 +21167,7 @@ function [P, nSamples, vcFile_bin] = nsx2bin_(vcFile_nsx, fInvert)
 if nargin<2, fInvert = 0; end
 
 nBuffer = 1e8; % in bytes
-addpath_('./neuroshare/');
+addpath_('neuroshare/');
 vcFile_bin = subsFileExt_(vcFile_nsx, '.bin');
 [ns_RESULT, hFile] = ns_OpenFile(vcFile_nsx);
 % [ns_RESULT, nsFileInfo] = ns_GetFileInfo(hFile);
@@ -21233,7 +21233,7 @@ end %func
 %--------------------------------------------------------------------------
 % 9/22/17 JJJ: Created for SPARC
 function [fid, nBytes, header_offset] = fopen_nsx__(vcFile_nsx)
-addpath_('./neuroshare/');
+addpath_('neuroshare/');
 try
     [ns_RESULT, hFile] = ns_OpenFile(vcFile_nsx);
 catch
@@ -21258,7 +21258,7 @@ end %func
 %--------------------------------------------------------------------------
 % 9/22/17 JJJ: Created for SPARC
 function [P, nSamples, hFile] = nsx_info_(vcFile_nsx)
-addpath_('./neuroshare/');
+addpath_('neuroshare/');
 [ns_RESULT, hFile] = ns_OpenFile(vcFile_nsx);
 vlAnalog_chan= strcmpi({hFile.Entity.EntityType}, 'Analog');
 nSamples = hFile.TimeSpan / hFile.FileInfo.Period;
@@ -21296,7 +21296,7 @@ end %func
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_(vcFile_prm)
 if nargin<1, vcFile_prm = ''; end
-vcVer = 'v4.2.6';
+vcVer = 'v4.2.7';
 vcDate = '11/7/2018';
 vcHash = file2hash_();
 
@@ -22319,7 +22319,7 @@ if ~fOverwrite
     if exist_file_(vcFile_mda), return; end
 end
 t1=tic;
-addpath_('./mdaio/');
+addpath_('mdaio/');
 writemda(mnWav, vcFile_mda, cDataType_(class(mnWav)));
 fprintf('Writing to %s took %0.1fs\n', vcFile_mda, toc(t1));
 end %func
@@ -23263,7 +23263,7 @@ if exist_file_(vcArg_txt)
         case '.txt'
             S_txt = meta2struct_(vcArg_txt);
         case '.json'
-            addpath_('./jsonlab-1.5/');
+            addpath_('jsonlab-1.5/');
             S_txt = loadjson(vcArg_txt);
     end % switch
 else
@@ -26950,10 +26950,12 @@ end %func
 % 11/1/2018 JJJ: mcc-safe addpath, compatible without mcc
 function addpath_(vcPath)
 if nargin<1, vcPath=''; end
+ircpath = fileparts(mfilename('fullpath'));
 if isempty(vcPath)
     % add self to path
-    ircpath = fileparts(mfilename('fullpath'));
     vcPath = genpath(ircpath);
+elseif ~exist_dir_(vcPath)
+    vcPath = fullfile(ircpath, vcPath);
 end
 try
     if ~isdeployed() && ~ismcc()
@@ -27060,7 +27062,6 @@ end %fucn
 function [vcFile_batch, vcFile_end] = sbatch_mda_(vcDir_in, vcDir_out, vcFile_template, fWait)
 if nargin<3, vcFile_template = ''; end
 if nargin<4, fWait = 1; end
-fGpu = 0; % gpu script currently not working
 
 if ischar(fWait), fWait = str2num(fWait); end
 % compile if the version mismatches
@@ -27093,12 +27094,7 @@ csLine_disbatch = {vcCmd_start, vcCmd_barrier, csLine_disbatch{:}, vcCmd_barrier
 
 % Write to file and launch 
 cellstr2file_(vcFile_disbatch, csLine_disbatch, 1);
-if fGpu
-    vcCmd = S_cfg.sbatch_gpu;
-else
-    vcCmd = S_cfg.sbatch;
-end
-vcCmd = strrep_(vcCmd, '$taskfile', vcFile_disbatch, '$n', S_cfg.sbatch_nnodes, '$t', S_cfg.sbatch_ntasks_per_node, '$c', S_cfg.sbatch_ncpu_per_task);     
+vcCmd = strrep_(S_cfg.sbatch, '$taskfile', vcFile_disbatch, '$n', S_cfg.sbatch_nnodes, '$t', S_cfg.sbatch_ntasks_per_node, '$c', S_cfg.sbatch_ncpu_per_task);     
 fprintf('Running %s\n', vcCmd);
 system(vcCmd);
 
