@@ -140,19 +140,13 @@ fAverageTrial_psth = 1;     % Plot PSTH for averaged trial if set to 1, otherwis
 nSmooth_ms_psth = 50;       % PSTH smoothing time window (in milliseconds)
 rateLim_psth = [];          % range range in Hz
 dinput_imec_trial = 1;      % IMEC digital input channel number (1-16) to generate trial file (vcFile_trial) using 'maketrial-imec' command.
+nClu_show_trial = 10;         % Max # clusters to show for aux vs. firing rate correlation
+max_events_trial = 100;         % Create 100 entries for the event channels
 
 % #Firing rate estimation for unit
 sRateHz_rate = 1000;                % Resampled rate for the firing rate
 filter_sec_rate = 2;                % Time period to determine the firing rate
 filter_shape_rate = 'triangle';     % {'triangle', 'rectangle'} kernel shape for temporal averaging
-
-% #Aux channel (used for correlating with the unit firing rates)
-vcFile_aux = '';            % Aux channel file
-sRateHz_aux = [];           % sampling rate for aux file
-iChan_aux = [];             % Aux channel # to correlate with the unit firing rate    
-vcLabel_aux = '';           % Label for the aux channel
-vrScale_aux = 1;            % Scale factor for the aux input
-nClu_show_aux = 10;         % Max # clusters to show for aux vs. firing rate correlation
 
 % #LFP
 vcFile_lfp = '';            % LFP file

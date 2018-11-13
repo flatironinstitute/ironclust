@@ -3,6 +3,20 @@ IronClust, written by J. James Jun, Flatiron Institute, Simons Foundation
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [4.2.8] - 2018-11-13
+### Added
+- `trials` menu is added in `irc manual` GUI
+  - renamed from `plots`
+  - ability to add multiple trial types
+    - `event` trial type: user supplies 'on' and 'off' times in seconds
+    - `analog` trial type: user supplies file name and channel number 
+  - users can select, edit, remove and preview the trial variable
+  - `plot` menu correlates the unit firing rate with a selected trial variable
+
+### Fixed
+- `memory` function in Mac OS is added, which returns the free memory.
+
+
 ## [4.2.7] - 2018-11-07
 ### Fixed
 - `addpath` correctly finds the current source path when a relative path is given

@@ -80,7 +80,7 @@ switch lower(vcCmd)
     case 'convert-h5-mda', convert_h5_mda_(vcArg1, vcArg2); return;
     case 'export-gt', export_gt_(vcArg1, vcArg2); return;
     
-    case 'nsx-info', [~, ~, S_file] = nsx_info_(vcArg1); assignWorkspace_(S_file); return;
+%     case 'nsx-info', [~, ~, S_file] = nsx_info_(vcArg1); assignWorkspace_(S_file); return;
     case 'load-nsx', load_nsx_(vcArg1); return;
     case 'load-bin'
         mnWav = load_bin_(vcArg1, vcArg2); 
@@ -143,7 +143,7 @@ switch lower(vcCmd)
     case {'kilosort', 'ksort'}, kilosort_(vcFile_prm); import_ksort_(vcFile_prm, 0); 
     case 'export-imec-sync', export_imec_sync_(vcFile_prm);
     case 'export-prm', export_prm_(vcFile_prm, vcArg2);        
-    case 'dir', 
+    case 'dir'
         if any(vcFile_prm=='*')
             dir_files_(vcFile_prm, vcArg2, vcArg3);
         else
@@ -991,21 +991,6 @@ end
 runtime_sort = tic;
 % Sort and save
 S_clu = fet2clu_(S0, P);
-if get_set_(P, 'fCorrect_overlap', 0) % correct waveforms and features after correcting clusters
-    S_clu = sort_overlap_(S0, S_clu, P); 
-end
-
-% switch P.vcCluster
-%     case 'xcov'
-%         % reassign membership based on cluster
-%         mrFet_spk = get0_('mrFet_spk');
-%         mrFet_clu = cell2mat_(cellfun(@(x)mean(mrFet_spk(:,x),2), S_clu.cviSpk_clu, 'UniformOutput', 0));
-%         [~, viClu_spk] = min(eucl2_dist_(mrFet_clu, mrFet_spk));
-%         viClu_spk = int32(viClu_spk(:));
-%         frac_reassign = mean(S_clu.viClu ~= viClu_spk);
-%         fprintf('sort-xcov: %0.1f%% spikes reassigned by template matching.\n', frac_reassign*100);
-%         S_clu.viClu = viClu_spk;
-% end
 [S_clu, S0] = S_clu_commit_(S_clu, 'sort_');
 % S0 = set0_(P); %, dimm_fet, cvrTime_site, cvrVpp_site, cmrFet_site, P);
 
@@ -1020,84 +1005,7 @@ end %func
 
 
 %--------------------------------------------------------------------------
-% 2017/12/15 JJJ: Deal with overlapping spikes
-function trFet_spk = sort_overlap_(S0, S_clu, P) 
-global trFet_spk
-
-% find which spikes it's overlapping with
-% only use larger unit to correct smaller unit 
-% S_overlap = find_overlap_(S0.viTime_spk, S0.viSite_spk, S_clu, P);
-% load raw traces and redetect from filtered dtraces. load pairs
-% Find pair of spikes by unit. For unit A, find other units that collide with spikes. which spikes are colliding with which units 
-% subtract other spike waveforms by using time delays, adjust feature amplitudes, larger corecting smaller spikes, mutual corection
-t1 = tic;
-[cviSpk_o_1, cviSpk_o_12, cviDelay1] = find_overlap_(S0, S_clu, P);
-fprintf('overlapping spike detection took %0.1fs\n', toc(t1));
-%-----
-% Cancel overlap    
-% subtract other spike waveforms and features
-trFet_spk = cancel_overlap_(cviSpk_o_1, cviSpk_o_12, cviDelay1, S0, S_clu, P);
-% write to trFet_spk
-% strategy 1. find nearest features and copy cluster identity
-% strategy 2. recluster the whole thing after cancellation
-
-%-----
-% recluster
-S_clu = fet2clu_(S0, P);
-end %func
-
-
-%--------------------------------------------------------------------------
-% 2017/12/15 JJJ: correct overlapping spikes
-% Question: how to best fit? using global spike pca (pick) or cluster-private pca
-function trFet_spk = cancel_overlap_(cviSpk_o_1, cviSpk_o_12, cviDelay1, S0, S_clu, P)
-global tnWav_spk trFet_spk tnWav_raw
-
-viSites_ref = ceil(size(tnWav_spk,2)/2):size(tnWav_spk,2);
-nPc_fit = min(get_set_(P, 'nPc_fit_overlap', 5), size(S0.mrPv_global,2));
-mrPv = S0.mrPv_global(:,1:nPc_fit) / sqrt(size(S0.mrPv_global,1));
-% fit and cancel overlap using delay and mean clu waveform
-for iClu = 1:S_clu.nClu
-    [viSpk_o_1, viSpk_o_12, viDelay1] = deal(cviSpk_o_1{iClu}, cviSpk_o_12{iClu}, cviDelay1{iClu});
-    if isempty(viSpk_o_1), continue; end
-    [mrWav_clu1, iSite1] = deal(S_clu.trWav_spk_clu(:,:,iClu), S_clu.viSite_clu(iClu));    
-    [viSite_clu1, viSite1, viSite12] = deal(P.miSites(:, iSite1), S0.viSite_spk(viSpk_o_1), S0.viSite_spk(viSpk_o_12));
-    trWav1 = trWav_car_(tnWav_spk(:,:,viSpk_o_1), P);
-    trWav12 = trWav_car_(tnWav_spk(:,:,viSpk_o_12), P);
-%     [tnWav1, tnWav12] = deal(tnWav_spk(:,:,viSpk_o_1), tnWav_spk(:,:,viSpk_o_12));    
-%     mrWav_clu1_car = bsxfun(@minus, mrWav_clu1, mean(mrWav_clu1(:,viSites_ref),2));
-%     mrWav_clu1_shift = vr_shift_(mrWav_clu1_car(:,1), -1:.5:1);
-    % fft and use power to fit waveforms using the primary sites only. preserve phase and change power
-    
-    % calculate private pc. using non-colliding spikes (?). generate basis for the cluster
-%     viSpk_clu1 = S_clu.cviSpk_clu{iClu};
-%     viSpk_clu1 = subsample_vr_(viSpk_clu1(S0.viSite_spk(viSpk_clu1) == iSite1), 5e3);
-%     mr_ = reshape(meanSubt_(tnWav_spk(:,:,viSpk_clu1)), [], numel(viSpk_clu1));
-%     [~,mrPv_clu1] = pca(mr_, 'NumComponents', 3); %subsample if must
-    
-    % fit 
-    mrPv = mrPv_clu1;
-    
-%     trWav1 = single(tnWav1);
-    iSite_fit = 1:14;
-    vrData = toVec(meanSubt_(trWav1(:,iSite_fit,1)));
-    a = mrPv' * vrData;  % coefficient  
-    mrWav1_fit = mrPv * a;    
-    mrWav_err1 = trWav1(:,iSite_fit,1) - mrWav1_fit;
-    myfig; plot(meanSubt_(trWav1(:,iSite_fit,1)), 'k'); plot(mrWav_err1, 'r');
-    myfig; plot(mrWav1_fit, 'g'); plot(mrWav_err1, 'r');
-%     tnWav_raw1 = tnWav_raw(:,:,viSpk_o_1);
-%     tnWav_raw12 = tnWav_raw(:,:,viSpk_o_12);
-    % fit using center channel only
-%     trWav_car1 = trWav_car_(trWav1, P);
-%     trWav_car12 = trWav_car_(trWav12, P);
-    
-end
-end %func
-
-
-%--------------------------------------------------------------------------
-function mr = vr_shift_(vr, viShift);
+function mr = vr_shift_(vr, viShift)
 % viShift = [0, -1,-.5,.5,1]; %[0, -.5, .5]
 % viShift = [0, -1:.25:-.25,.25:.25:1]; 
 nShifts = numel(viShift);
@@ -1128,97 +1036,6 @@ if numel(viSite_ref) < 4, return; end % do not use for small number of sites
 mrWav_ref = mean(tr(:,:,viSite_ref), 3);
 tr = meanSubt_(reshape(bsxfun(@minus, reshape(tr,[],dimm_tr(3)), mrWav_ref(:)), dimm_tr));
 tr = permute(tr, [1,3,2]);
-end %func
-
-
-%--------------------------------------------------------------------------
-% find overlapping spikes
-function [cviSpk_o_1, cviSpk_o_12, cviDelay1] = find_overlap_(S0, S_clu, P)
-global trFet_spk
-
-snr_thresh_clu = get_set_(P, 'snr_thresh_clu', 8);
-
-mrDist_clu = squareform(pdist(P.mrSiteXY(S_clu.viSite_clu,:)));
-mrDist_site = squareform(pdist(P.mrSiteXY));
-nlimit = diff(P.spkLim);
-[cviDelay1, cviSpk_o_1, cviSpk_o_12] = deal(cell(1, S_clu.nClu));
-% [viTime_spk, vrAmp_spk, viSite_spk] = multifun_(@gpuArray_, S0.viTime_spk, abs(squeeze(trFet_spk(1,1,:))), S0.viSite_spk);
-[viTime_spk, vrAmp_spk, viSite_spk] = deal(S0.viTime_spk, abs(squeeze(trFet_spk(1,1,:))), S0.viSite_spk);
-[vrSnr_clu, viSite_clu, maxDist_site_um] = deal(S_clu.vrSnr_clu, S_clu.viSite_clu, P.maxDist_site_um);
-cviSpk_clu = cellfun(@int32, S_clu.cviSpk_clu, 'UniformOutput', 0);
-viTime_spk_bin = int32(round(double(viTime_spk) / double(nlimit)));
-for iClu1 = 1:S_clu.nClu
-    if vrSnr_clu(iClu1) < snr_thresh_clu, continue; end
-    % subtract waveform from others
-    % find largest and second largest
-    % fix two copies of the fet
-    viSpk_clu1 = cviSpk_clu{iClu1};
-    viTime_clu1 = viTime_spk(viSpk_clu1);
-    
-    % find other spikes within clu1
-    viClu12 = find(mrDist_clu(:,iClu1) <= maxDist_site_um); % find nearby clu
-    viClu12(viClu12 == iClu1) = []; %exclude self
-    viSpk_clu12 = cell2mat(cviSpk_clu(viClu12)');
-    viSite_near1 = find(mrDist_site(:,viSite_clu(iClu1)) <= maxDist_site_um);
-    viSpk_clu12 = viSpk_clu12(ismember(viSite_spk(viSpk_clu12), viSite_near1));    
-    if isempty(viSpk_clu12), continue; end
-    viSpk_clu12 = sort(viSpk_clu12);    
-    viSpk_clu12 = coarse_find_(viTime_spk_bin, viSpk_clu1, viSpk_clu12);
-    viTime_clu12 = viTime_spk(viSpk_clu12);
-    [vrAmp_spk1, vrAmp_spk12] = deal(vrAmp_spk(viSpk_clu1), vrAmp_spk(viSpk_clu12));
-    
-    % find overlapping spikes that has smaller amplitudes and within site limit
-    [viOverlap1, viDelay1] = deal(zeros(size(viTime_clu1), 'like', viTime_clu1));
-    vlOverlap1 = false(size(viTime_clu1));    
-    for iDelay = -nlimit:nlimit
-        [vl_, vi12_] = ismember(viTime_clu1 + iDelay, viTime_clu12);
-        vi_ = find(vl_);
-        vi_(vrAmp_spk1(vi_) < vrAmp_spk12(vi12_(vi_))) = []; %ignore amplitudes larger than self
-        if isempty(vi_), continue; end
-        viOverlap1(vi_) = vi12_(vi_);
-        viDelay1(vi_) = iDelay;
-        vlOverlap1(vi_) = 1;
-    end    
-    if ~any(vlOverlap1), continue; end
-    [viOverlap1, cviDelay1{iClu1}] = multifun_(@(x)gather_(x(vlOverlap1)), viOverlap1, viDelay1);
-    [cviSpk_o_1{iClu1}, cviSpk_o_12{iClu1}] = deal(viSpk_clu1(vlOverlap1), viSpk_clu12(viOverlap1));
-end %for
-end %func
-
-
-%--------------------------------------------------------------------------
-% coarse find using division operation
-function [viSpk_clu12, vl] = coarse_find_(viTime_spk_bin, viSpk_clu1, viSpk_clu12)
-viTime1 = viTime_spk_bin(viSpk_clu1);
-viTime12 = viTime_spk_bin(viSpk_clu12);
-vl = ismember(viTime12, viTime1) | ismember(viTime12, viTime1+1) | ismember(viTime12, viTime1-1);
-viSpk_clu12 = viSpk_clu12(vl);
-end %func
-
-
-%--------------------------------------------------------------------------
-% Use CPU
-function [vl1, vii12] = find_overlap_spk_(viTime_clu1, viTime_clu12, nlimit, vrAmp_spk1, vrAmp_spk12)
-n1 = numel(viTime_clu1);
-n2 = numel(viTime_clu12);
-vii12 = zeros(size(viTime_clu1));
-i2prev = 1;
-vl1 = false(size(viTime_clu1));
-for iSpk1 = 1:numel(viTime_clu1)
-    iTime1 = viTime_clu1(iSpk1);    
-    [vii_, i2prev] = findRange_(viTime_clu12, iTime1-nlimit, iTime1+nlimit, i2prev, n2); 
-    if isempty(vii_)
-        continue;
-    elseif numel(vii_) == 1
-        if vrAmp_spk1(iSpk1) < vrAmp_spk12(vii_), continue; end
-    else
-        if any(vrAmp_spk1(iSpk1) < vrAmp_spk12(vii_)), continue; end
-        [~, imin_] = min(abs(iTime1 - viTime_clu12(vii_)));
-        vii_ = vii_(imin_);
-    end   
-    vl1(iSpk1) = 1;
-    vii12(iSpk1) = vii_;
-end %for
 end %func
 
 
@@ -5361,6 +5178,28 @@ end %func
 
 
 %--------------------------------------------------------------------------
+% 11/13/2018 JJJ: return recording duration in sec
+function t_dur = recording_duration_(P, S0)
+% t_dur = recording_duration_(P)
+% t_dur = recording_duration_(P, S0)
+
+if nargin<2, S0 = []; end
+if isempty(S0)
+    csFile_merge = get_(P, 'csFile_merge');
+    if isempty(csFile_merge)
+        nBytes_file = filesize_(P.vcFile) - get_set_(P, 'header_offset', 0);
+        t_dur = nBytes_file / bytesPerSample_(P.vcDataType) / P.nChans / P.sRateHz;
+    else % multi-file format, check csFiles_merge
+        % currently unsupported
+        error('recording_duration_: not implemented yet');
+    end
+else % old method used in describe_ command
+    t_dur = double(max(S0.viTime_spk) - min(S0.viTime_spk)) / P.sRateHz;   
+end
+end %func
+
+
+%--------------------------------------------------------------------------
 function csDesc = describe_(vcFile_prm)
 %describe_()
 %describe_(vcFile_prm)
@@ -5377,7 +5216,7 @@ end
 P = S0.P;
 
 nSites = numel(P.viSite2Chan);
-tDur = double(max(S0.viTime_spk) - min(S0.viTime_spk)) / P.sRateHz;
+tDur = recording_duration_(P, S0); 
 nSpk = numel(S0.viTime_spk);
 nSitesPerEvent = P.maxSite*2+1;
 nFeatures = S0.dimm_fet(1);
@@ -6015,10 +5854,9 @@ uimenu(mh_proj, 'Label', 'ppca', 'Callback', @(h,e)proj_view_(h), ...
 % uimenu(mh_proj, 'Label', 'cov', 'Callback', @(h,e)proj_view_(h), ...
 %     'Checked', if_on_off_(P.vcFet_show, {'cov', 'spacetime'}));
 
-mh_plot = uimenu(hFig,'Label','Plot'); 
-uimenu(mh_plot, 'Label', 'All unit firing rate vs. aux. input', 'Callback', @(h,e)plot_aux_rate_);
-uimenu(mh_plot, 'Label', 'Selected unit firing rate vs. aux. input', 'Callback', @(h,e)plot_aux_rate_(1));
-% uimenu(mh_plot, 'Label', 'All unit firing rate vs. aux. input (zsperry)', 'Callback', @(h,e)plot_aux_rate_zsperry_());
+mh_trials = uimenu(hFig,'Label','Trials', 'Tag', 'mh_trials');
+set_userdata_(mh_trials, P);
+update_menu_trials_(mh_trials);
 
 mh_info = uimenu(hFig,'Label','','Tag', 'mh_info'); 
 uimenu(mh_info, 'Label', 'Annotate unit', 'Callback', @unit_annotate_);
@@ -11140,9 +10978,27 @@ end %func
 
 
 %--------------------------------------------------------------------------
+function [vcDir, vcFile, vcExt] = fileparts_(vcPath1)
+[vcDir, vcFile, vcExt] = fileparts(vcPath1);
+if any(vcFile == '/')
+    iSep = find(vcFile=='/', 1, 'last');
+elseif any(vcFile == '\')
+    iSep = find(vcFile=='\', 1, 'last');
+else
+    iSep = [];
+end % if
+if ~isempty(iSep)
+    vcDir = [vcDir, vcFile(1:iSep)];
+    vcFile = vcFile(iSep+1:end);
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+% 11/13/2018 JJJ: fileparts corrected
 function vcPath = replacePath_(vcPath1, vcPath2)
 % replace path1 with path2
-[~, vcFname1, vcExt1] = fileparts(vcPath1);
+[~, vcFname1, vcExt1] = fileparts_(vcPath1);
 [vcDir2,~,~] = fileparts(vcPath2);
 if ~isempty(vcDir2)
     vcPath = [vcDir2, filesep(), vcFname1, vcExt1];
@@ -14832,151 +14688,6 @@ end %func
 
 
 %--------------------------------------------------------------------------
-% function [S_clu, nClu_merged] = S_clu_pv_merge_(S_clu, P) %update mrWavCor when you merge
-% 
-% MAD_THRESH = -4;
-% nClu_merged = 0;
-% % [viSite_spk] = get0_('viSite_spk');
-% % mrWavCor = S_clu.mrWavCor;
-% nClu = S_clu.nClu;
-% fprintf('S_clu_pv_merge_\n');
-% 
-% % Identify clusters to remove, update and same (no change), disjoint sets
-% [vrMinDist_logz_clu, viMinDist_clu] = S_clu_pca_dist_(S_clu);
-% %vi_clu1 = find(vrMinDist_logz_clu < MAD_THRESH);
-% vi_clu1 = find(vrMinDist_logz_clu < -max(vrMinDist_logz_clu));
-% if isempty(vi_clu1), return; end
-% 
-% vi_clu2 = viMinDist_clu(vi_clu1);
-% viMap_clu = 1:nClu;
-% viMap_clu(vi_clu1) = vi_clu2;
-% viClu_same = setdiff(1:nClu, union(vi_clu1, vi_clu2));
-% viClu_remove = setdiff(1:nClu, viMap_clu);
-% viClu_update = setdiff(setdiff(1:nClu, viClu_same), viClu_remove);
-% % viClu_update = setdiff(1:nClu, viClu_same);
-% 
-% % update cluster number
-% try S_clu.icl(viClu_remove) = []; catch, end
-% S_clu = S_clu_map_index_(S_clu, viMap_clu); %index mapped
-% P.fVerbose = 0;
-% S_clu = S_clu_refrac_(S_clu, P); % remove refrac spikes
-% 
-% % update cluster waveforms and distance
-% S_clu = S_clu_wav_(S_clu, viClu_update); %update cluster waveforms
-% S_clu.mrWavCor = S_clu_wavcor_(S_clu, P, viClu_update);
-% % S_clu = S_clu_refresh_(S_clu); % remove empty and remap
-% S_clu = S_clu_remove_empty_(S_clu);
-% 
-% nClu_merged = nClu - S_clu.nClu;
-% fprintf('\n\tnClu: %d->%d (%d merged)\n', nClu, S_clu.nClu, nClu_merged);
-% end %func
-
-
-%--------------------------------------------------------------------------
-% function [vrMinDist_logz_clu, viMinDist_clu] = S_clu_pca_dist_(S_clu)
-% global tnWav_raw tnWav_spk
-% 
-% MAX_REAL_DIST = 50;
-% MAX_SAMPLE = 2000;
-% fUseMean = 1; %use median instead
-% nPc = 2;
-% fUseRaw = 1;
-% fUsePvCorr = 1;
-% nShift = 6;
-% fUseSd = 1;
-% 
-% P = S_clu.P;
-% 
-% trWav_clu = ifeq_(fUseRaw, S_clu.trWav_raw_clu, S_clu.trWav_spk_clu);
-% if ~fUseMean
-%     viSite_spk = get0_('viSite_spk');
-% end
-% nClu = S_clu.nClu;
-% nSamples = size(trWav_clu,1);
-% % mrPv1_clu = zeros(nSamples, nClu);
-% % mrPv1_clu = zeros(nSamples, nClu);
-% nDelay = 3;
-% [mrPv1_clu, mrPv2_clu, mrPv3_clu] = deal(zeros(size(trWav_clu,1), nClu));
-% for iClu=1:nClu
-% %     [~, mrPv1_clu(:,iClu)] = pca(trWav_clu(:,:,iClu), 'NumComponents', 1);
-%     if fUseMean
-%         mrWav_clu1 = trWav_clu(:,:,iClu);        
-%     else
-%         viSpk_clu1 = S_clu.cviSpk_clu{iClu};
-%         viSpk_clu1 = viSpk_clu1(viSite_spk(viSpk_clu1) == S_clu.viSite_clu(iClu));
-%         viSpk_clu1 = subsample_vr_(viSpk_clu1, MAX_SAMPLE);
-%         if fUseRaw
-% %             mrWav_clu1 = single(median(tnWav_raw(:,:,viSpk_clu1), 3));
-%             mrWav_clu1 = single(reshape(tnWav_raw(:,:,viSpk_clu1), nSamples, []));
-%         else
-% %             mrWav_clu1 = single(median(tnWav_spk(:,:,viSpk_clu1), 3));
-%             mrWav_clu1 = single(reshape(tnWav_spk(:,:,viSpk_clu1), nSamples, []));
-%         end
-%     end
-%     if fUseSd                              
-%         mrPv1_clu(:,iClu) = std(mrWav_clu1,1,2);
-%         if nPc>=2, mrPv2_clu(:,iClu) = mr_std2_(mrWav_clu1, nDelay)'; end
-%         if nPc>=2, mrPv3_clu(:,iClu) = mr_std2_(mrWav_clu1, nDelay*2)'; end
-%     else
-%         [~, mrPv_clu1] = pca(mrWav_clu1, 'NumComponents', nPc);
-%         mrPv1_clu(:,iClu) = mrPv_clu1(:,1);
-%         if nPc>=2, mrPv2_clu(:,iClu) = mrPv_clu1(:,2); end
-%         if nPc>=3, mrPv3_clu(:,iClu) = mrPv_clu1(:,3); end
-%     end
-% end
-% 
-% if fUsePvCorr
-%     func1 = @(x)1 - max(abs(xcorr_mr_(x, nShift)),[],3);
-%     switch nPc
-%         case 1
-%             mrPcDist_clu = func1(mrPv1_clu);
-%         case 2
-%             mrPcDist_clu = (func1(mrPv1_clu) + func1(mrPv2_clu))/2;
-%         case 3
-%             mrPcDist_clu = (func1(mrPv1_clu) + func1(mrPv2_clu) + func1(mrPv3_clu))/3;
-%     end          
-% else
-%     [vrPc1_clu, vrPv1_clu] = pca(mrPv1_clu, 'NumComponents', 1);
-%     switch nPc
-%         case 1            
-%             mrPc_clu = vrPc1_clu;
-%         case 2
-%             [vrPc2_clu, vrPv2_clu] = pca(mrPv2_clu, 'NumComponents', 1);
-%             mrPc_clu = [vrPc1_clu, vrPc2_clu];
-%         case 3
-%             [vrPc2_clu, vrPv2_clu] = pca(mrPv2_clu, 'NumComponents', 1);
-%             [vrPc3_clu, vrPv3_clu] = pca(mrPv3_clu, 'NumComponents', 1);
-%             mrPc_clu = [vrPc1_clu, vrPc2_clu, vrPc3_clu];
-%     end    
-%     mrPcDist_clu = pdist2_(abs(mrPc_clu));
-% end
-% mrRealDist_clu = pdist2_(P.mrSiteXY(S_clu.viSite_clu,:));
-% 
-% %mrPcDist_clu(sub2ind([nClu,nClu], 1:nClu, 1:nClu)) = nan;
-% mrPcDist_clu(tril(true(nClu)) | mrRealDist_clu > MAX_REAL_DIST) = nan; %ignore bottom half
-% 
-% % lower triangle only
-% [vrMinDist_clu, viMinDist_clu] = min(mrPcDist_clu);
-% vrRealDist_clu = mrRealDist_clu(sub2ind([nClu,nClu], 1:nClu, viMinDist_clu));
-% 
-% vrMinDist_logz_clu = zeros(size(vrMinDist_clu));
-% vi_NotNan = find(vrMinDist_clu > 0);
-% vrMinDist_logz_clu(vi_NotNan) = zscore_(log(vrMinDist_clu(vi_NotNan)));
-% % vrMinDist_logz_clu(2:end) = madscore_(log(vrMinDist_clu(2:end)));
-% 
-% if nargout==0
-%     figure; plot(vrMinDist_logz_clu, vrRealDist_clu, '.'); 
-%     xlabel('min clu dist (log-MAD pc)'); ylabel('real clu dist (um)'); grid on;    
-%     vi_clu1 = find(vrMinDist_logz_clu < MAD_THRESH);
-%     vi_clu2 = viMinDist_clu(vi_clu1);
-%     vr_dist12 = vrMinDist_logz_clu(vi_clu1);
-%     arrayfun(@(a,b,c)fprintf('(%d,%d,%0.2f), ', a,b,c), vi_clu1, vi_clu2, vr_dist12);
-%     fprintf('\n');
-% end
-% end %func
-
-
-%--------------------------------------------------------------------------
 function [sd2, viRange1, viRange2] = mr_std2_(mr, nDelay)
 if nDelay==0, sd2 = std(mr,1,2); return; end
 
@@ -14986,12 +14697,6 @@ iShift1 = -round(nDelay/2);
 iShift2 = nDelay + iShift1;
 viRange1 = max((1:nT) + iShift1, 1);
 viRange2 = min((1:nT) + iShift2, nT);
-
-% viRange1 = (1:nT) + iShift1;
-% viRange2 = (1:nT) + iShift2;
-% vl12 = (viRange1>=1 & viRange1<=nT) & (viRange2>=1 & viRange2<=nT);
-% viRange1 = viRange1(vl12);
-% viRange2 = viRange2(vl12);
 
 mr1 = mr(viRange1,:);
 mr2 = mr(viRange2,:);
@@ -20931,13 +20636,9 @@ if matchFileExt_(vcFile_prb, '.prm')
 end
 vcFile_prm = '';
 if ~exist_file_(vcFile_nsx, 1), return; end
-[P, nSamples] = nsx_info_(vcFile_nsx);
-% [P, nSamples, vcFile_bin] = nsx2bin_(vcFile_nsx, 1);
-% P.fInverse_file = 1;
-% [mnWav, hFile, P] = load_nsx_(vcFile_nsx);
+P = load_nsx_header_(vcFile_nsx);
 P.probe_file = vcFile_prb;
 P.vcFile = vcFile_nsx;
-% mnWav = mnWav * -1; %inverse polarity
 [~, vcFile_prb_] = fileparts(vcFile_prb);
 vcFile_prm = subsFileExt_(P.vcFile, sprintf('_%s.prm', vcFile_prb_));
 if isempty(vcTemplate_prm)
@@ -20953,7 +20654,7 @@ try
 catch
     disperr_(sprintf('Error loading the probe file: %s\n', vcFile_prb));
 end
-P.duration_file = nSamples / P.sRateHz; %assuming int16
+P.duration_file = P.nSamples / P.sRateHz; %assuming int16
 P.version = version_();
 P.vcFile_prm = vcFile_prm;
 % P.vcFile = vcFile_bin;
@@ -20972,7 +20673,7 @@ function [mnWav, P, S_nsx] = load_nsx_(vcFile_nsx)
 [S_nsx, fid] = openNSx_jjj(vcFile_nsx); % nChans, nSamples, header_offset
 
 nSamples = S_nsx.nSamples;
-nChans = S_nsx.nChans
+nChans = S_nsx.nChans;
 uV_per_bit = double(S_nsx.ElectrodesInfo(1).MaxAnalogValue) / ...
     double(S_nsx.ElectrodesInfo(1).MaxDigiValue);
 P = struct('vcDataType', 'int16', 'nChans', nChans, ...
@@ -21054,15 +20755,17 @@ end %func
 
 %--------------------------------------------------------------------------
 % 9/19/17 JJJ: Created for SPARC
-function plot_aux_corr_(mrRate_clu, vrWav_aux, vrCorr_aux_clu, vrTime_aux, iCluPlot)
+function plot_aux_corr_(mrRate_clu, vrWav_aux, vrCorr_aux_clu, vrTime_aux, iCluPlot, vcLabel_aux)
 if nargin<5, iCluPlot = []; end
+if nargin<6, vcLabel_aux = ''; end
+
 % show the firing rate and plot the 
 [vrCorr_srt, viSrt] = sort(vrCorr_aux_clu, 'descend');
 nClu = numel(vrCorr_aux_clu);
 [P, S_clu] = get0_('P', 'S_clu');
 P = loadParam_(P.vcFile_prm);
-nClu_show = min(get_set_(P, 'nClu_show_aux', 4), nClu);
-vcLabel_aux = get_set_(P, 'vcLabel_aux', 'aux');
+nClu_show = min(get_set_(P, 'nClu_show_trial', 10), nClu);
+% vcLabel_aux = get_set_(P, 'vcLabel_aux', 'aux');
 nSubsample_aux = get_set_(P, 'nSubsample_aux', 100);
 if ~isempty(iCluPlot)
    nClu_show = 1;
@@ -21103,25 +20806,85 @@ function plot_aux_rate_(fSelectedUnit)
 if nargin<1, fSelectedUnit = 0; end %plot all
 [P, S_clu, iCluCopy] = get0_('P', 'S_clu', 'iCluCopy');
 P = loadParam_(P.vcFile_prm);
-[vrWav_aux, vrTime_aux] = load_aux_(P);
+
+% [vrWav_aux, vrTime_aux] = load_aux_(P);
+[vrWav_aux, vrTime_aux, vcLabel_aux] = load_trial_(P);
+
 if isempty(vrWav_aux), msgbox_('Aux input is not found'); return; end
 mrRate_clu = clu_rate_(S_clu, [], numel(vrWav_aux));
 vrCorr_aux_clu = arrayfun(@(i)corr(vrWav_aux, mrRate_clu(:,i), 'type', 'Pearson'), 1:size(mrRate_clu,2));
 if ~fSelectedUnit, iCluCopy = []; end
-plot_aux_corr_(mrRate_clu, vrWav_aux, vrCorr_aux_clu, vrTime_aux, iCluCopy);
+plot_aux_corr_(mrRate_clu, vrWav_aux, vrCorr_aux_clu, vrTime_aux, iCluCopy, vcLabel_aux);
 vcMsg = assignWorkspace_(mrRate_clu, vrWav_aux, vrCorr_aux_clu, vrTime_aux);    
 % msgbox_(vcMsg);
 end %func
 
 
 %--------------------------------------------------------------------------
-% 9/27/17 JJJ: Imported from SPARC grant
+% 11/13/18 JJJ: load auxiliary channel or vcFile_trial 
+function [vrWav_trial, vrTime_trial, vcLabel_aux] = load_trial_(P, S_trial)
+[vrWav_trial, vrTime_trial, vcUnit] = deal([]);
+if nargin<2, S_trial = []; end
+
+if isempty(S_trial)
+    S_trials = get_trials_();
+    S_trial = S_trials.cTrials{S_trials.iTrial};
+end % if 
+
+switch S_trial.type
+    case 'analog'
+        [vcFile, iChan, sRateHz_trial, vcUnit, scale] = ...
+            struct_get_(S_trial.value, 'vcFile', 'iChan', 'sRateHz', 'vcUnit', 'scale');        
+        if ~exist_file_(vcFile), return; end
+        if isempty(iChan), return; end        
+        [~,~,vcExt] = fileparts(vcFile);
+        switch lower(vcExt)
+            case {'.ns2', '.ns5'}
+                mnWav_trial = load_nsx_(vcFile);
+                vrWav_trial = single(mnWav_trial(iChan,:)') * scale; 
+            case {'.dat', '.bin'}
+                mnWav_trial = load_bin_(vcFile, P.vcDataType); % it might be other bin channel
+                vrWav_trial = single(mnWav_trial(iChan:P.nChans:end)') * P.uV_per_bit * scale;
+            otherwise
+                fprintf(2, 'vcFile_aux: unsupported file format: %s\n', vcExt);
+                return;
+        end %switch
+
+    case 'event'
+        mrTable1 = mr_trim_nan_(S_trial.value);        
+        sRateHz_trial = get_set_(P, 'sRateHz_rate', 1000);
+        t_dur = recording_duration_(P);
+        nSamples = round(t_dur * sRateHz_trial);
+        vrWav_trial = zeros(nSamples, 1, 'single');
+        for iRow = 1:size(mrTable1,1)
+            iStart1 = max(1, round(mrTable1(iRow,1) * sRateHz_trial));
+            iEnd1 = min(round(mrTable1(iRow,2) * sRateHz_trial), nSamples);
+            vrWav_trial(iStart1:iEnd1) = 1;
+        end %for
+        vcUnit = 'on/off';
+        
+    otherwise
+        fprintf(2, 'load_trial_: unsupported trial type: %s\n', S_trial.type);
+        return;
+end %switch
+if nargout>=2
+    vrTime_trial = single(1:numel(vrWav_trial))' / sRateHz_trial; 
+end
+if nargout>=3
+    vcLabel_aux = [S_trial.name, ' (', vcUnit, ')'];
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+% 11/13/18 JJJ: load auxiliary channel or vcFile_trial 
 function [vrWav_aux, vrTime_aux] = load_aux_(P)
 
 [vrWav_aux, vrTime_aux] = deal([]);
 if isempty(P.vcFile), msgbox_('Multi-file mode is currently not supported'); return; end
 [~,~,vcExt] = fileparts(P.vcFile);
 vcFile_aux = get_set_(P, 'vcFile_aux', '');
+
 if isempty(vcFile_aux)
     switch lower(vcExt)
         case '.ns5', vcFile_aux = subsFileExt_(P.vcFile, '.ns2');
@@ -21269,6 +21032,23 @@ end %func
 
 
 %--------------------------------------------------------------------------
+% 11/13/2018 JJJ: loads .ns2
+function S_header = load_nsx_header_(vcFile_nsx)
+S_header = [];
+if ~exist_file_(vcFile_nsx), return; end
+[S_nsx, fid] = openNSx_jjj(vcFile_nsx);
+fclose(fid);
+if isempty(S_nsx), return; end
+
+uV_per_bit = double(S_nsx.ElectrodesInfo(1).MaxAnalogValue) / ...
+    double(S_nsx.ElectrodesInfo(1).MaxDigiValue);
+S_header = struct('vcDataType', 'int16', 'nChans', S_nsx.nChans, ...
+    'uV_per_bit', uV_per_bit, 'sRateHz', S_nsx.MetaTags.SamplingFreq, 'nSamples', S_nsx.nSamples);
+
+end %func
+
+
+%--------------------------------------------------------------------------
 % 9/22/17 JJJ: Created for SPARC
 function mrCor = chancor_(mn, P)
 % mr = single(mn);
@@ -21296,8 +21076,8 @@ end %func
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_(vcFile_prm)
 if nargin<1, vcFile_prm = ''; end
-vcVer = 'v4.2.7';
-vcDate = '11/7/2018';
+vcVer = 'v4.2.8';
+vcDate = '11/13/2018';
 vcHash = file2hash_();
 
 if nargout==0
@@ -22936,17 +22716,27 @@ end %func
 
 
 %--------------------------------------------------------------------------
+% 11/9/2018 JJJ: Added a case for mac
 function S = memory_()
 %Usage: [mem, unit] =get_free_mem()
-try
+mem_default = 1e9; % in bytes
+if ispc()
     S = memory();
-catch
-    [~,out] = system('vmstat -s -S M | grep "free memory"');    
+elseif isunix()
+    if ismac()
+        [~,out] = system('vm_stat | grep "Pages free" | grep -o -E ''[0-9]+''');    
+        mem_bytes = str2double(strtrim(out)) * 4096;
+    else
+        [~,out] = system('vmstat -s -S M | grep "free memory"');    
+        mem_bytes = sscanf(out,'%f  free memory') * 1048576;
+    end
     S = struct();
-    mem_bytes = sscanf(out,'%f  free memory') * 1048576;
     S.MemAvailableAllArrays = mem_bytes; % convert to Bytes (from -S M flag)
     S.MaxPossibleArrayBytes = mem_bytes;
     S.MemUsedMATLAB = []; 
+else
+    S = struct('MemAvailableAllArrays', mem_default, ...
+        'MaxPossibleArrayBytes', mem_default, 'MemUsedMATLAB', []);
 end
 end
 
@@ -24580,12 +24370,39 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function val = get_userdata_(h, vcName)
+function val = get_userdata_(h, vcName, fDelete)
+% fDelete: delete the field after retrieving
+val = [];
+if nargin<3, fDelete = 0; end
 try
-    S_userdata = h.UserData;
+    S_userdata = get(h, 'UserData');
+    if ~isfield(S_userdata, vcName), return; end
     val = S_userdata.(vcName);
+    if fDelete
+        set(h, 'UserData', rmfield(S_userdata, vcName));
+    end
 catch
     val = [];
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+function S_userdata = set_userdata_(h, vcName, val)
+% Usage
+% -----
+% S_userdata = set_userdata_(h, val)
+% S_userdata = set_userdata_(h, vcName, val)
+
+if nargin==2
+    val = vcName;
+    vcName = inputname(2);
+end
+try
+    h.UserData.(vcName) = val;
+    S_userdata = get(h, 'UserData');
+catch
+    S_userdata = [];
 end
 end %func
 
@@ -27094,7 +26911,8 @@ csLine_disbatch = {vcCmd_start, vcCmd_barrier, csLine_disbatch{:}, vcCmd_barrier
 
 % Write to file and launch 
 cellstr2file_(vcFile_disbatch, csLine_disbatch, 1);
-vcCmd = strrep_(S_cfg.sbatch, '$taskfile', vcFile_disbatch, '$n', S_cfg.sbatch_nnodes, '$t', S_cfg.sbatch_ntasks_per_node, '$c', S_cfg.sbatch_ncpu_per_task);     
+%vcCmd = strrep_(S_cfg.sbatch, '$taskfile', vcFile_disbatch, '$n', S_cfg.sbatch_nnodes, '$t', S_cfg.sbatch_ntasks_per_node, '$c', S_cfg.sbatch_ncpu_per_task);     
+vcCmd = strrep_(S_cfg.sbatch, '$taskfile', vcFile_disbatch, '$n', S_cfg.sbatch_nnodes, '$c', S_cfg.sbatch_ncpu_per_task);     
 fprintf('Running %s\n', vcCmd);
 system(vcCmd);
 
@@ -27241,8 +27059,7 @@ switch vcAlgorithm
     case 'yass', run_yass_(P);
     case 'spykingcircus', run_circus_(P);
     otherwise, disperr_(['Unsupported option: vcAlgorithm: ', vcAlgorithm]);
-end %switch    
-
+end %switch 
 end %func
 
 
@@ -27250,4 +27067,276 @@ end %func
 function run_irc_(P)
 fprintf('Performing "irc detect", "irc sort" operations.\n');
 detect_(P); sort_(P, 0); describe_(P.vcFile_prm);
+end %func
+
+
+
+%--------------------------------------------------------------------------
+function update_menu_trials_(mh_trials)
+% Usages
+% -----
+% update_menu_trials_()
+% update_menu_trials_(mh_trials)
+
+if nargin<1, mh_trials = []; end
+if isempty(mh_trials), mh_trials = get_tag_('mh_trials', 'uimenu'); end
+
+% load menu
+S_trials = get_trials_(mh_trials);
+% populate menu
+
+delete_(mh_trials.Children);
+% add menu
+cTrials = get_(S_trials, 'cTrials'); % contains name, value, type
+for iTrial = 1:numel(cTrials) % add menu items
+    trial1 = cTrials{iTrial};
+    %vcChecked = ifeq_(iTrial == S_trials.iTrial, 'on', 'off');
+    vcLabel1 = [trial1.name, ' (', trial1.type ')'];
+    if S_trials.iTrial == iTrial
+        vcLabel1 = ['[x] ', vcLabel1];
+    end
+    uimenu1 = uimenu(mh_trials, 'Text', vcLabel1); %, 'Checked', vcChecked);
+    add_actions_trial_(uimenu1, iTrial);
+end %for
+
+%add actions
+mh_add_event = uimenu(mh_trials,'Text','Add event channel', 'Callback', @(h,e)trial_add_event_(h,e));
+mh_add_event.Separator = 'on';
+uimenu(mh_trials,'Text','Add analog channel', 'Callback', @(h,e)trial_add_analog_(h,e));
+try
+    trial0 = cTrials{S_trials.iTrial};
+catch
+    return;
+end
+% uimenu(mh_trials, 'Text', sprintf('[%d] selected: %s (%s)', S_trials.iTrial, trial0.name, trial0.type));
+
+%-----
+uimenu(mh_trials, 'Label', 'All unit firing rate vs. aux. input', 'Callback', ...
+    @(h,e)plot_aux_rate_, 'Separator', 'on');
+uimenu(mh_trials, 'Label', 'Selected unit firing rate vs. aux. input', 'Callback', @(h,e)plot_aux_rate_(1));
+% uimenu(mh_plot, 'Label', 'All unit firing rate vs. aux. input (zsperry)', 'Callback', @(h,e)plot_aux_rate_zsperry_());
+
+% save S_trials struct
+P = get_userdata_(mh_trials, 'P');
+vcFile_trials = strrep_(P.vcFile_prm, '.prm', '_trials.mat');
+struct_save_(S_trials, vcFile_trials);
+end %func
+
+
+%--------------------------------------------------------------------------
+function S_trials = get_trials_(mh_trials)
+% usages
+% S_trials = get_trials_()
+% S_trials = get_trials_(mh_trials)
+
+if nargin<1, mh_trials = []; end
+if isempty(mh_trials), mh_trials = get_tag_('mh_trials', 'uimenu'); end
+S_trials = get_userdata_(mh_trials, 'S_trials');
+if ~isempty(S_trials), return ;end
+
+P = get_userdata_(mh_trials, 'P');
+vcFile_trials = strrep_(P.vcFile_prm, '.prm', '_trials.mat');
+if isempty(S_trials)
+    if exist_file_(vcFile_trials)
+        S_trials = load_(vcFile_trials);
+    end
+end
+if isempty(S_trials)
+    % create a new trials file
+    S_trials = struct();
+    S_trials.cTrials = {};
+    S_trials.iTrial = 0;
+end
+set_userdata_(mh_trials, S_trials);
+end %func
+
+
+%--------------------------------------------------------------------------
+function add_actions_trial_(mh_trial1, iTrial)
+uimenu(mh_trial1, 'Text', 'select', 'Callback', @(h,e)trial_select_(h,e,iTrial));
+uimenu(mh_trial1, 'Text', 'remove', 'Callback', @(h,e)trial_remove_(h,e,iTrial));
+uimenu(mh_trial1, 'Text', 'edit', 'Callback', @(h,e)trial_edit_(h,e,iTrial));
+uimenu(mh_trial1, 'Text', 'preview', 'Callback', @(h,e)trial_preview_(h,e,iTrial));
+end %func
+
+
+%--------------------------------------------------------------------------
+function trial_select_(h,e,iTrial)
+mh_trials = get_tag_('mh_trials', 'uimenu');
+S_trials = get_userdata_(mh_trials, 'S_trials');
+S_trials.iTrial = iTrial;
+set_userdata_(mh_trials, S_trials);
+update_menu_trials_(mh_trials);
+end %func
+
+
+%--------------------------------------------------------------------------
+function trial_remove_(h,e,iTrial)
+mh_trials = get_tag_('mh_trials', 'uimenu');
+S_trials = get_userdata_(mh_trials, 'S_trials');
+S_trials.cTrials(iTrial) = [];
+if S_trials.iTrial == iTrial
+    S_trials.iTrial = numel(S_trials.cTrials);
+end
+set_userdata_(mh_trials, S_trials);
+update_menu_trials_(mh_trials);
+end %func
+
+
+%--------------------------------------------------------------------------
+% 11/13/2018 JJJ: Edit trial input
+function trial_edit_(h,e,iTrial)
+mh_trials = get_tag_('mh_trials', 'uimenu');
+S_trials = get_userdata_(mh_trials, 'S_trials');
+trial1 = S_trials.cTrials{iTrial};
+switch lower(trial1.type)
+    case 'event', trial_add_event_(h,e, iTrial);
+    case 'analog', trial_add_analog_(h,e, iTrial);
+    otherwise, error(['trial_edit_: unsupported mode: ', trial1.type]);
+end %switch
+end %func
+
+
+%--------------------------------------------------------------------------
+% 11/13/2018 JJJ: Preview trial input
+function trial_preview_(h,e,iTrial)
+
+mh_trials = get_tag_('mh_trials', 'uimenu');
+P = get_userdata_(mh_trials, 'P');
+S_trials = get_userdata_(mh_trials, 'S_trials');
+S_trial = S_trials.cTrials{iTrial};
+[vrWav_aux, vrTime_aux, vcLabel_aux] = load_trial_(P, S_trial);
+
+hFig = create_figure_('FigAux', [.5 0 .5 1], P.vcFile_prm, 1, 1);
+hAx = axes('Parent', hFig);
+plot(hAx, vrTime_aux, vrWav_aux);
+xylabel_(hAx, 'Time (s)', vcLabel_aux, P.vcFile_prm);
+grid(hAx, 'on');
+set(hAx, 'XLim', vrTime_aux([1, end]));
+end %func
+
+
+%--------------------------------------------------------------------------
+% 11/13/2018 JJJ: Add an event-type trial
+function trial_add_event_(h,e, iTrial)
+if nargin<3, iTrial=[]; end
+mh_trials = get_tag_('mh_trials', 'uimenu');
+if isempty(iTrial)
+    csAns = inputdlg('Channel name','Add event channel',1,{''});
+    if isempty(csAns), return; end
+    name1 = csAns{1};
+    value1 = [];
+else
+    S_trials = get_userdata_(mh_trials, 'S_trials');
+    trial1 = S_trials.cTrials{iTrial};
+    [name1, value1] = deal(trial1.name, trial1.value);
+end
+
+f = figure;
+max_events_trial = get_set_(get0_('P'), 'max_events_trial', 100);
+if isempty(value1), value1 = nan(max_events_trial,2); end
+uiTable1 = uitable(f,'Data',value1, 'ColumnName', {'on (sec)','off (sec)'}, ...
+    'ColumnEditable', true);
+f.CloseRequestFcn = @(f1,e)uitable_save_close_(f1, h);
+f.InnerPosition = uiTable1.OuterPosition * 1.1;
+f.UserData = uiTable1;
+[f.MenuBar, f.ToolBar, f.Name, f.NumberTitle, f.WindowStyle] = ...
+    deal('none', 'none', [name1, ' (close to save)'], 'off', 'modal');
+uiwait(f); % wait until figure closure
+
+S_trials = get_userdata_(mh_trials, 'S_trials');
+mrTable1 = get_userdata_(h, 'mrTable1', 1);
+if isempty(mr_trim_nan_(mrTable1))
+    msgbox('Aborted, table is empty'); return;
+end
+if isempty(iTrial)
+    trial1 = struct('name', name1, 'value', mrTable1, 'type', 'event');
+    if isempty(S_trials.cTrials), S_trials.iTrial = 1; end
+    S_trials.cTrials{end+1} = trial1;
+else
+    trial1 = struct('name', name1, 'value', mrTable1, 'type', 'event');
+    S_trials.cTrials{iTrial} = trial1;
+end
+set_userdata_(mh_trials, S_trials);
+update_menu_trials_(mh_trials);
+end %func
+
+
+%--------------------------------------------------------------------------
+function uitable_save_close_(f, h)
+% save the table as mrTable1
+uiTable1 = get(f, 'UserData');
+set_userdata_(h, 'mrTable1', uiTable1.Data);
+delete_(f);
+end %func
+
+
+%--------------------------------------------------------------------------
+function [mr1, viKeep1] = mr_trim_nan_(mr)
+viKeep1 = any(~isnan(mr),2);
+mr1 = mr(viKeep1, :);
+end %fucn
+
+
+%--------------------------------------------------------------------------
+% 11/13/2018 JJJ: Add an analog-type trial
+function trial_add_analog_(h,e, iTrial)
+if nargin<3, iTrial=[]; end
+mh_trials = get_tag_('mh_trials', 'uimenu');
+P = get_userdata_(mh_trials, 'P');
+S_trials = get_userdata_(mh_trials, 'S_trials');
+
+if isempty(iTrial)
+    [name1, vcFile, iChan, sRateHz, vcUnit, scale] = deal('', P.vcFile, [], P.sRateHz, '', 1);
+    if matchFileExt_(vcFile, '.ns5')
+        vcFile_ns2 = strrep(vcFile, '.ns5', '.ns2');
+        if exist_file_(vcFile_ns2), vcFile = vcFile_ns2; end
+        S_header = load_nsx_header_(vcFile);
+        [sRateHz, scale] = struct_get_(S_header, 'sRateHz', 'uV_per_bit');
+    end
+else
+    trial1 = S_trials.cTrials{iTrial};
+    [name1, S_value1] = deal(trial1.name, trial1.value); % name, value, type
+    [vcFile, iChan, sRateHz, vcUnit, scale] = ...
+        struct_get_(S_value1, 'vcFile', 'iChan', 'sRateHz', 'vcUnit', 'scale');
+end
+csAns = inputdlg_(...
+    {'Channel name', 'File name', 'Channel number', 'Sampling rate', 'Unit', 'Scale'}, ...
+    'Recording format', 1, ...
+    num2str_({name1, vcFile, iChan, sRateHz, vcUnit, scale}));
+if isempty(csAns), return; end
+[name1, vcFile, iChan, sRateHz, vcUnit, scale] = deal(csAns{:});
+if isempty(name1), msgbox('Aborted, channel name is not specified'); return; end
+if ~exist_file_(vcFile), msgbox('Aborted, file does not exist'); return; end
+try
+    [iChan, sRateHz, scale] = multifun_(@str2num, iChan, sRateHz, scale);
+    if isempty(scale), msgbox('Aborted, invalid scale'); return; end
+catch
+    msgbox('Aborted, invalid format'); return;
+end
+S_value1 = makeStruct(vcFile, iChan, sRateHz, vcUnit, scale);
+trial1 = struct('name', name1, 'value', S_value1, 'type', 'analog');
+
+if isempty(iTrial)
+    if isempty(S_trials.cTrials), S_trials.iTrial = 1; end
+    S_trials.cTrials{end+1} = trial1;
+else
+    S_trials.cTrials{iTrial} = trial1;
+end
+set_userdata_(mh_trials, S_trials);
+update_menu_trials_(mh_trials);
+end %func
+
+
+%--------------------------------------------------------------------------
+function out = num2str_(val)
+if iscell(val)
+    out = cellfun(@(x)num2str_(x), val, 'UniformOutput', 0);
+else
+    if ischar(val)
+        out = val;
+    else
+        out = num2str(val);
+    end
+end
 end %func
