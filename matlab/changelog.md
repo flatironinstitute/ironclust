@@ -3,6 +3,18 @@ IronClust, written by J. James Jun, Flatiron Institute, Simons Foundation
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [4.2.9] - 2018-11-19
+### Added
+- `trials` GUI menu: Added a menu to import event information from .nev file
+  - Contributed by Zach Sperry
+
+### Fixed
+- `uimenu_()` function is created to make uimenu() version-neutral
+  - Since Matlab R2017b `Label` field is renamed to `Text` field
+- Parallel processing is disabled during GUI operation (`irc manual`)
+- `auto-merge` command in `irc manaul` correctly recomputes quality scores and position
+
+
 ## [4.2.8] - 2018-11-13
 ### Added
 - `trials` menu is added in `irc manual` GUI

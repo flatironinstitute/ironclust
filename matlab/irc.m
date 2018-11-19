@@ -3993,11 +3993,9 @@ end
 
 % Generate a map and merge clusters by translating index
 viMap_clu = int32(ml2map_(mlWavCor_clu));
-vlPos = S_clu.viClu > 0;
-S_clu.viClu(vlPos) = viMap_clu(S_clu.viClu(vlPos)); %translate cluster number
+S_clu = S_clu_map_index_(S_clu, viMap_clu);
 S_clu = S_clu_refresh_(S_clu);
 nClu_post = numel(unique(viMap_clu));
-nClu_pre = nClu;
 fprintf('\nMerged %d waveforms (%d->%d), took %0.1fs\n', nClu-nClu_post, nClu, nClu_post, toc(t1));
 end %func
 
@@ -5358,7 +5356,7 @@ else
     end
 end
 fDebug_ui = 0;
-P.fGpu = 0; %do not use GPU for manual use
+P.fParfor = 0;
 set0_(fDebug_ui, P);
 switch lower(vcMode)
     case 'groundtruth'
@@ -5807,73 +5805,73 @@ drawnow;
 posvec = get(hFig, 'OuterPosition');
 
 set(hFig, 'MenuBar','None');
-mh_file = uimenu(hFig,'Label','File'); 
-uimenu(mh_file,'Label', 'Save', 'Callback', @save_manual_);
-uimenu(mh_file,'Label', 'Save figures as .fig', 'Callback', @(h,e)save_figures_('.fig'));
-uimenu(mh_file,'Label', 'Save figures as .png', 'Callback', @(h,e)save_figures_('.png'));
-uimenu(mh_file,'Label', 'Describe', 'Callback', @(h,e)msgbox_(describe_()), 'Separator', 'on');
-uimenu(mh_file,'Label', 'Edit prm file', 'Callback', @edit_prm_);
-uimenu(mh_file,'Label', 'Reload prm file', 'Callback', @reload_prm_);
-uimenu(mh_file,'Label', 'Export units to csv', 'Callback', @export_csv_, 'Separator', 'on');
-uimenu(mh_file,'Label', 'Export unit qualities to csv', 'Callback', @(h,e)export_quality_);
-uimenu(mh_file,'Label', 'Export all mean unit waveforms', 'Callback', @export_tmrWav_clu_);
-uimenu(mh_file,'Label', 'Export selected mean unit waveforms', 'Callback', @(h,e)export_mrWav_clu_);
-uimenu(mh_file,'Label', 'Export all waveforms from the selected unit', 'Callback', @(h,e)export_tnWav_spk_);
-uimenu(mh_file,'Label', 'Export firing rate for all units', 'Callback', @(h,e)export_rate_);
-uimenu(mh_file,'Label', 'Exit', 'Callback', @exit_manual_, 'Separator', 'on', 'Accelerator', 'Q');
+mh_file = uimenu_(hFig,'Label','File'); 
+uimenu_(mh_file,'Label', 'Save', 'Callback', @save_manual_);
+uimenu_(mh_file,'Label', 'Save figures as .fig', 'Callback', @(h,e)save_figures_('.fig'));
+uimenu_(mh_file,'Label', 'Save figures as .png', 'Callback', @(h,e)save_figures_('.png'));
+uimenu_(mh_file,'Label', 'Describe', 'Callback', @(h,e)msgbox_(describe_()), 'Separator', 'on');
+uimenu_(mh_file,'Label', 'Edit prm file', 'Callback', @edit_prm_);
+uimenu_(mh_file,'Label', 'Reload prm file', 'Callback', @reload_prm_);
+uimenu_(mh_file,'Label', 'Export units to csv', 'Callback', @export_csv_, 'Separator', 'on');
+uimenu_(mh_file,'Label', 'Export unit qualities to csv', 'Callback', @(h,e)export_quality_);
+uimenu_(mh_file,'Label', 'Export all mean unit waveforms', 'Callback', @export_tmrWav_clu_);
+uimenu_(mh_file,'Label', 'Export selected mean unit waveforms', 'Callback', @(h,e)export_mrWav_clu_);
+uimenu_(mh_file,'Label', 'Export all waveforms from the selected unit', 'Callback', @(h,e)export_tnWav_spk_);
+uimenu_(mh_file,'Label', 'Export firing rate for all units', 'Callback', @(h,e)export_rate_);
+uimenu_(mh_file,'Label', 'Exit', 'Callback', @exit_manual_, 'Separator', 'on', 'Accelerator', 'Q');
 
-mh_edit = uimenu(hFig,'Label','Edit'); 
-uimenu(mh_edit,'Label', '[M]erge', 'Callback', @(h,e)keyPressFcn_cell_(hFig, 'm'));
-uimenu(mh_edit,'Label', 'Merge auto', 'Callback', @(h,e)merge_auto_());
-uimenu(mh_edit,'Label', '[D]elete', 'Callback', @(h,e)keyPressFcn_cell_(hFig, 'd'), 'Separator', 'on');
-uimenu(mh_edit,'Label', 'Delete auto', 'Callback', @(h,e)delete_auto_());
-uimenu(mh_edit,'Label', '[S]plit', 'Callback', @(h,e)keyPressFcn_cell_(hFig, 's'), 'Separator', 'on');
-uimenu(mh_edit,'Label', 'Auto split max-chan', 'Callback', @(h,e)auto_split_(0));
-uimenu(mh_edit,'Label', 'Auto split multi-chan', 'Callback', @(h,e)auto_split_(1));
-uimenu(mh_edit,'Label', 'Annotate', 'Callback', @(h,e)unit_annotate_());
+mh_edit = uimenu_(hFig,'Label','Edit'); 
+uimenu_(mh_edit,'Label', '[M]erge', 'Callback', @(h,e)keyPressFcn_cell_(hFig, 'm'));
+uimenu_(mh_edit,'Label', 'Merge auto', 'Callback', @(h,e)merge_auto_());
+uimenu_(mh_edit,'Label', '[D]elete', 'Callback', @(h,e)keyPressFcn_cell_(hFig, 'd'), 'Separator', 'on');
+uimenu_(mh_edit,'Label', 'Delete auto', 'Callback', @(h,e)delete_auto_());
+uimenu_(mh_edit,'Label', '[S]plit', 'Callback', @(h,e)keyPressFcn_cell_(hFig, 's'), 'Separator', 'on');
+uimenu_(mh_edit,'Label', 'Auto split max-chan', 'Callback', @(h,e)auto_split_(0));
+uimenu_(mh_edit,'Label', 'Auto split multi-chan', 'Callback', @(h,e)auto_split_(1));
+uimenu_(mh_edit,'Label', 'Annotate', 'Callback', @(h,e)unit_annotate_());
 
-mh_view = uimenu(hFig,'Label','View'); 
-uimenu(mh_view,'Label', 'Show traces', 'Callback', @(h,e)traces_());
-uimenu(mh_view,'Label', 'View all [R]', 'Callback', @(h,e)keyPressFcn_cell_(hFig, 'r'));
-uimenu(mh_view,'Label', '[Z]oom selected', 'Callback', @(h,e)keyPressFcn_cell_(hFig, 'z'));
-uimenu(mh_view,'Label', '[W]aveform (toggle)', 'Callback', @(h,e)keyPressFcn_cell_(hFig, 'w'));
-uimenu(mh_view,'Label', '[N]umbers (toggle)', 'Callback', @(h,e)keyPressFcn_cell_(hFig, 'n'));
-uimenu(mh_view,'Label', 'Show raw waveform', 'Callback', @(h,e)raw_waveform_(h), ...
+mh_view = uimenu_(hFig,'Label','View'); 
+uimenu_(mh_view,'Label', 'Show traces', 'Callback', @(h,e)traces_());
+uimenu_(mh_view,'Label', 'View all [R]', 'Callback', @(h,e)keyPressFcn_cell_(hFig, 'r'));
+uimenu_(mh_view,'Label', '[Z]oom selected', 'Callback', @(h,e)keyPressFcn_cell_(hFig, 'z'));
+uimenu_(mh_view,'Label', '[W]aveform (toggle)', 'Callback', @(h,e)keyPressFcn_cell_(hFig, 'w'));
+uimenu_(mh_view,'Label', '[N]umbers (toggle)', 'Callback', @(h,e)keyPressFcn_cell_(hFig, 'n'));
+uimenu_(mh_view,'Label', 'Show raw waveform', 'Callback', @(h,e)raw_waveform_(h), ...
     'Checked', ifeq_(get_(P, 'fWav_raw_show'), 'on', 'off'));
-%uimenu(mh_view,'Label', 'Threshold by sites', 'Callback', @(h,e)keyPressFcn_thresh_(hFig, 'n'));
-% uimenu(mh_view,'Label', '.prm file', 'Callback', @edit_prm_);
-uimenu(mh_view,'Label', 'Reset window positions', 'Callback', @reset_position_);
+%uimenu_(mh_view,'Label', 'Threshold by sites', 'Callback', @(h,e)keyPressFcn_thresh_(hFig, 'n'));
+% uimenu_(mh_view,'Label', '.prm file', 'Callback', @edit_prm_);
+uimenu_(mh_view,'Label', 'Reset window positions', 'Callback', @reset_position_);
 
-mh_proj = uimenu(hFig,'Label','Projection'); 
-uimenu(mh_proj, 'Label', 'vpp', 'Callback', @(h,e)proj_view_(h), ...
+mh_proj = uimenu_(hFig,'Label','Projection'); 
+uimenu_(mh_proj, 'Label', 'vpp', 'Callback', @(h,e)proj_view_(h), ...
     'Checked', if_on_off_(P.vcFet_show, {'vpp', 'vmin'}));
-uimenu(mh_proj, 'Label', 'pca', 'Callback', @(h,e)proj_view_(h), ...
+uimenu_(mh_proj, 'Label', 'pca', 'Callback', @(h,e)proj_view_(h), ...
     'Checked', if_on_off_(P.vcFet_show, {'pca'}));
-uimenu(mh_proj, 'Label', 'ppca', 'Callback', @(h,e)proj_view_(h), ...
+uimenu_(mh_proj, 'Label', 'ppca', 'Callback', @(h,e)proj_view_(h), ...
     'Checked', if_on_off_(P.vcFet_show, {'ppca', 'private pca'}));
-% uimenu(mh_proj, 'Label', 'cov', 'Callback', @(h,e)proj_view_(h), ...
+% uimenu_(mh_proj, 'Label', 'cov', 'Callback', @(h,e)proj_view_(h), ...
 %     'Checked', if_on_off_(P.vcFet_show, {'cov', 'spacetime'}));
 
-mh_trials = uimenu(hFig,'Label','Trials', 'Tag', 'mh_trials');
+mh_trials = uimenu_(hFig,'Label','Trials', 'Tag', 'mh_trials');
 set_userdata_(mh_trials, P);
 update_menu_trials_(mh_trials);
 
-mh_info = uimenu(hFig,'Label','','Tag', 'mh_info'); 
-uimenu(mh_info, 'Label', 'Annotate unit', 'Callback', @unit_annotate_);
-uimenu(mh_info, 'Label', 'single', 'Callback', @(h,e)unit_annotate_(h,e,'single'));
-uimenu(mh_info, 'Label', 'multi', 'Callback', @(h,e)unit_annotate_(h,e,'multi'));
-uimenu(mh_info, 'Label', 'noise', 'Callback', @(h,e)unit_annotate_(h,e,'noise'));
-uimenu(mh_info, 'Label', 'clear annotation', 'Callback', @(h,e)unit_annotate_(h,e,''));
-uimenu(mh_info, 'Label', 'equal to', 'Callback', @(h,e)unit_annotate_(h,e,'=%d'));
+mh_info = uimenu_(hFig,'Label','','Tag', 'mh_info'); 
+uimenu_(mh_info, 'Label', 'Annotate unit', 'Callback', @unit_annotate_);
+uimenu_(mh_info, 'Label', 'single', 'Callback', @(h,e)unit_annotate_(h,e,'single'));
+uimenu_(mh_info, 'Label', 'multi', 'Callback', @(h,e)unit_annotate_(h,e,'multi'));
+uimenu_(mh_info, 'Label', 'noise', 'Callback', @(h,e)unit_annotate_(h,e,'noise'));
+uimenu_(mh_info, 'Label', 'clear annotation', 'Callback', @(h,e)unit_annotate_(h,e,''));
+uimenu_(mh_info, 'Label', 'equal to', 'Callback', @(h,e)unit_annotate_(h,e,'=%d'));
 
-mh_history = uimenu(hFig, 'Label', 'History', 'Tag', 'mh_history'); 
+mh_history = uimenu_(hFig, 'Label', 'History', 'Tag', 'mh_history'); 
 
-mh_help = uimenu(hFig,'Label','Help'); 
-uimenu(mh_help, 'Label', '[H]elp', 'Callback', @help_FigWav_);
-uimenu(mh_help, 'Label', 'Wiki on GitHub', 'Callback', @(h,e)wiki_());
-uimenu(mh_help, 'Label', 'About', 'Callback', @(h,e)msgbox_(about_()));
-uimenu(mh_help, 'Label', 'Post an issue on GitHub', 'Callback', @(h,e)issue_('search'));
-uimenu(mh_help, 'Label', 'Search issues on GitHub', 'Callback', @(h,e)issue_('post'));
+mh_help = uimenu_(hFig,'Label','Help'); 
+uimenu_(mh_help, 'Label', '[H]elp', 'Callback', @help_FigWav_);
+uimenu_(mh_help, 'Label', 'Wiki on GitHub', 'Callback', @(h,e)wiki_());
+uimenu_(mh_help, 'Label', 'About', 'Callback', @(h,e)msgbox_(about_()));
+uimenu_(mh_help, 'Label', 'Post an issue on GitHub', 'Callback', @(h,e)issue_('search'));
+uimenu_(mh_help, 'Label', 'Search issues on GitHub', 'Callback', @(h,e)issue_('post'));
 
 drawnow;
 set(hFig, 'OuterPosition', posvec);
@@ -6649,9 +6647,6 @@ if nargin<2, fRemoveEmpty=1; end
 nClu = double(max(S_clu.viClu));
 S_clu.nClu = nClu;
 if nargin<3, viSite_spk = get0_('viSite_spk'); end
-% if isfield(S_clu, 'viSpk_shank'), viSite_spk = viSite_spk(S_clu.viSpk_shank); end
-% gviClu = gpuArray_(S_clu.viClu);
-% S_clu.cviSpk_clu = arrayfun(@(iClu)gather_(find(gviClu==iClu)), 1:nClu, 'UniformOutput', 0);
 S_clu.cviSpk_clu = arrayfun(@(iClu)find(S_clu.viClu==iClu), 1:nClu, 'UniformOutput', 0);
 S_clu.vnSpk_clu = cellfun(@numel, S_clu.cviSpk_clu); 
 S_clu.viSite_clu = double(arrayfun(@(iClu)mode(viSite_spk(S_clu.cviSpk_clu{iClu})), 1:nClu));
@@ -6672,6 +6667,7 @@ S_clu.cviSpk_clu = arrayfun(@(iClu)find(S_clu.viClu==iClu), 1:S_clu.nClu, 'Unifo
 S_clu.vnSpk_clu = cellfun(@numel, S_clu.cviSpk_clu);
 viSite_spk = get0_('viSite_spk');
 S_clu.viSite_clu = double(arrayfun(@(iClu)mode(viSite_spk(S_clu.cviSpk_clu{iClu})), 1:S_clu.nClu));
+% remao note
 end %func
 
 
@@ -8028,7 +8024,7 @@ viClu_keep = setdiff(1:nClu_prev, viClu_delete);
 try
     S_clu = S_clu_select_(S_clu, viClu_keep); % remap all
 catch
-    disp('err');
+    fprintf(2, 'delete_clu_: error selecting');
 end
 
 iClu_del = min(S_clu.viClu) - 1;
@@ -8042,37 +8038,7 @@ viMap = zeros(1, nClu_prev);
 viMap(viClu_keep) = 1:nClu_new;
 S_clu.viClu(vlMap) = viMap(S_clu.viClu(vlMap));
 S_clu.nClu = nClu_new;
-% update viClu
-% if viClu_delete < max(S_clu.viClu)
-%     viUpdate = find(S_clu.viClu>viClu_delete);
-%     S_clu.viClu(viUpdate) = S_clu.viClu(viUpdate) - 1;
-% end
-% for iClu3 = viClu_delete+1:S_clu.nClu % update cluster chain info
-%     S_clu = S_clu_update_note_(S_clu, iClu3, get_next_clu_(S_clu, iClu3) - 1);
-% end
 assert_(S_clu_valid_(S_clu), 'Cluster number is inconsistent after deleting');
-end %func
-
-
-%--------------------------------------------------------------------------
-function S_clu = S_clu_update_note_(S_clu, iClu1, iClu_next)
-if isempty(iClu_next), return ;end
-vcNote_clu1 = S_clu.csNote_clu{iClu1};
-if isempty(vcNote_clu1), return; end
-iStart = find(vcNote_clu1 == '=', 1, 'first');
-if isempty(iStart), return; end
-vcPre = vcNote_clu1(1:iStart);
-vcNote_clu1 = vcNote_clu1(iStart+1:end);
-iEnd = find(vcNote_clu1 == ',' | vcNote_clu1 == ';' | vcNote_clu1 == ' ', 1, 'first');
-if ~isempty(iEnd)
-    vcNote_clu1 = vcNote_clu1(1:iEnd-1); 
-    vcPost = vcNote_clu1(iEnd:end);
-else
-    vcPost = '';
-end
-S_clu.csNote_clu{iClu1} = sprintf('%s%d%s', vcPre, iClu_next, vcPost);
-
-if isnan(iClu_next), iClu_next = []; return; end
 end %func
 
 
@@ -8090,42 +8056,6 @@ if ~isempty(iEnd), vcNote_clu1 = vcNote_clu1(1:iEnd-1); end
 iClu_next = str2double(vcNote_clu1);
 if isnan(iClu_next), iClu_next = []; return; end
 end %func
-
-
-%--------------------------------------------------------------------------
-function restore_clu_(varargin)
-% restore last deleted. most negative clu is last deleted
-% error('to be fixed. Fix centroid code');
-S0 = get(0, 'UserData');
-[P, S_clu] = deal(S0.P, S0.S_clu);
-iClu_del = min(S_clu.viClu);
-if iClu_del >=0, msgbox_('Deleted cluster is not found'); return; end
-
-figure_wait_(1);
-% if deleted add a clu at the end and zoom at it
-% change clusters
-iClu_new = double(max(S_clu.viClu) + 1);
-S_clu.viClu(S_clu.viClu == iClu_del) = iClu_new;
-S_clu.nClu = iClu_new;
-S_clu = S_clu_update_(S_clu, iClu_new, P);
-S_clu.csNote_clu{end+1} = '';
-[S_clu, iClu_new] = clu_reorder_(S_clu);
-
-% update all the other views
-% delete_multi_(S0.vhPlot, S0.vhText);
-% S0.S_clu = S_clu; set(0, 'UserData', S0);
-[S_clu, S0] = S_clu_commit_(S_clu);
-plot_FigWav_(S0); %redraw plot
-plot_FigWavCor_(S0);
-% S0 = set0_(mrWavCor);
-set(0, 'UserData', S0);
-
-% append to the end for now
-button_CluWav_simulate_(iClu_new);
-keyPressFcn_cell_(get_fig_cache_('FigWav'), 'z');
-fprintf('%s [W] Restored Clu %d\n', datestr(now, 'HH:MM:SS'), iClu_new);
-figure_wait_(0);
-end
 
 
 %--------------------------------------------------------------------------
@@ -11926,20 +11856,20 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function Sclu = merge_clu_pair_(Sclu, iClu1, iClu2)
+function S_clu = merge_clu_pair_(S_clu, iClu1, iClu2)
 % if iClu1>iClu2, [iClu1, iClu2] = swap(iClu1, iClu2); end
 
 % update vnSpk_clu, viClu, viSite_clu. move iClu2 to iClu1
-n1 = Sclu.vnSpk_clu(iClu1);
-n2 = Sclu.vnSpk_clu(iClu2);
-Sclu.vnSpk_clu(iClu1) = n1 + n2;
-Sclu.vnSpk_clu(iClu2) = 0;
-Sclu.viClu(Sclu.viClu == iClu2) = iClu1;
-Sclu.cviSpk_clu{iClu1} = find(Sclu.viClu == iClu1);
-Sclu.cviSpk_clu{iClu2} = [];
+n1 = S_clu.vnSpk_clu(iClu1);
+n2 = S_clu.vnSpk_clu(iClu2);
+S_clu.vnSpk_clu(iClu1) = n1 + n2;
+S_clu.vnSpk_clu(iClu2) = 0;
+S_clu.viClu(S_clu.viClu == iClu2) = iClu1;
+S_clu.cviSpk_clu{iClu1} = find(S_clu.viClu == iClu1);
+S_clu.cviSpk_clu{iClu2} = [];
 try
-    Sclu.csNote_clu{iClu1} = '';
-    Sclu.csNote_clu{iClu2} = '';
+    S_clu.csNote_clu{iClu1} = '';
+    S_clu.csNote_clu{iClu2} = '';
 catch
 end
 end %func
@@ -12665,9 +12595,24 @@ S_clu = S_clu_update_wav_(S_clu, S0.P, S0);
 S_clu = S_clu_position_(S_clu);
 if ~isfield(S_clu, 'csNote_clu')
     S_clu.csNote_clu = cell(S_clu.nClu, 1);  %reset note
+else
+    S_clu.csNote_clu = cell_resize_(S_clu.csNote_clu, [S_clu.nClu, 1]);
 end
 S_clu = S_clu_quality_(S_clu, S0.P);
 [S_clu, S0] = S_clu_commit_(S_clu, 'S_clu_new_');
+end %func
+
+
+%--------------------------------------------------------------------------
+function cell_out = cell_resize_(cell_in, dimm1)
+if prod(dimm1) == numel(cell_in)
+    cell_out = cell_in;
+    return;
+end
+
+cell_out = cell(dimm1);
+nCells = min(numel(cell_out), numel(cell_in));
+cell_out(1:nCells) = cell_in(1:nCells);
 end %func
 
 
@@ -12871,16 +12816,15 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function struct_save_(S, vcFile, fVerbose)
+% 11/19/2018 JJJ: improved matlab version check
 % 7/13/17 JJJ: Version check routine
+function struct_save_(S, vcFile, fVerbose)
 nRetry = 3;
 if nargin<3, fVerbose = 0; end
 if fVerbose
     fprintf('Saving a struct to %s...\n', vcFile); t1=tic;
 end
-version_year = version('-release');
-version_year = str2double(version_year(1:end-1));
-if version_year >= 2017
+if version_matlab_() >= 2017
     for iRetry=1:nRetry
         try
             save(vcFile, '-struct', 'S', '-v7.3', '-nocompression'); %faster    
@@ -14432,7 +14376,7 @@ for iMenu = 1:numel(cS_log) % reverse order
     S_log1 = cS_log{iLog};
     vcLabel1 = sprintf('%s: %s', datestr(S_log1.datenum), S_log1.vcCmd);
     fEnable = (iMenu <= P.MAX_LOG) && iMenu~=1; 
-    uimenu(mh_history, 'Label', vcLabel1, 'Callback', @(h,e)restore_log_(iMenu), ...
+    uimenu_(mh_history, 'Label', vcLabel1, 'Callback', @(h,e)restore_log_(iMenu), ...
         'Checked', ifeq_(iMenu==1, 'on', 'off'), ...
         'Enable', ifeq_(fEnable, 'on', 'off'));
 end
@@ -17507,6 +17451,9 @@ nClu_prev = S_clu.nClu;
 S_clu = post_merge_wav_(S_clu, P.nRepeat_merge, setfield(P, 'maxWavCor', maxWavCor));
 % [S_clu, S0] = S_clu_commit_(S_clu, 'post_merge_');
 S_clu.mrWavCor = set_diag_(S_clu.mrWavCor, S_clu_self_corr_(S_clu, [], S0));
+S_clu = S_clu_position_(S_clu);
+S_clu.csNote_clu = cell(S_clu.nClu, 1);  %reset note
+S_clu = S_clu_quality_(S_clu, P);
 set0_(S_clu);
 S0 = gui_update_();
 figure_wait_(0);
@@ -18347,7 +18294,7 @@ if isempty(vcFile_prb)
     end
 end
 if isempty(vcFile_prb) % ask user
-    vcFile_prb = inputdlg({'Probe file'}, 'Please specify a probe file', 1, {''});
+    vcFile_prb = inputdlg_({'Probe file'}, 'Please specify a probe file', 1, {''});
     if isempty(vcFile_prb), P=[]; return; end
     vcFile_prb = vcFile_prb{1};
     if isempty(vcFile_prb)
@@ -19661,7 +19608,7 @@ function menu_parent = uimenu_options_(menu_parent, csLabels, hFunc, hFig);
 % create options branch in the uimenu
 if nargin<4, hFig = []; end
 for i=1:numel(csLabels)
-    uimenu(menu_parent, 'Label', csLabels{i}, 'Callback', @(h,e)hFunc(hFig, csLabels{i}, menu_parent));
+    uimenu_(menu_parent, 'Label', csLabels{i}, 'Callback', @(h,e)hFunc(hFig, csLabels{i}, menu_parent));
 end
 end %func
 
@@ -20300,56 +20247,56 @@ function Fig_preview_menu_(hFig)
 P = get0_('P');
 
 set(hFig, 'MenuBar','None');
-mh_file = uimenu(hFig, 'Label','File'); 
-uimenu(mh_file, 'Label', sprintf('Save to %s', P.vcFile_prm), 'Callback', @(h,e)Fig_preview_save_prm_(hFig));
-uimenu(mh_file, 'Label', '[E]xport to workspace', 'Callback', @(h,e)Fig_preview_export_(hFig));
-uimenu(mh_file, 'Label', 'Save spike detection threshold', 'Callback', @(h,e)Fig_preview_save_threshold_(hFig));
+mh_file = uimenu_(hFig, 'Label','File'); 
+uimenu_(mh_file, 'Label', sprintf('Save to %s', P.vcFile_prm), 'Callback', @(h,e)Fig_preview_save_prm_(hFig));
+uimenu_(mh_file, 'Label', '[E]xport to workspace', 'Callback', @(h,e)Fig_preview_export_(hFig));
+uimenu_(mh_file, 'Label', 'Save spike detection threshold', 'Callback', @(h,e)Fig_preview_save_threshold_(hFig));
 
 % Edit menu
-mh_edit = uimenu(hFig, 'Label','Edit'); 
+mh_edit = uimenu_(hFig, 'Label','Edit'); 
 
-uimenu(mh_edit, 'Label', 'Bad site threshold', 'Callback', @(h,e)Fig_preview_site_thresh_(hFig));
-uimenu(mh_edit, 'Label', 'Spike detection threshold', 'Callback', @(h,e)Fig_preview_spk_thresh_(hFig));
+uimenu_(mh_edit, 'Label', 'Bad site threshold', 'Callback', @(h,e)Fig_preview_site_thresh_(hFig));
+uimenu_(mh_edit, 'Label', 'Spike detection threshold', 'Callback', @(h,e)Fig_preview_spk_thresh_(hFig));
 
-mh_edit_filter = uimenu(mh_edit, 'Label', 'Filter mode');
+mh_edit_filter = uimenu_(mh_edit, 'Label', 'Filter mode');
 uimenu_options_(mh_edit_filter, {'ndiff', 'bandpass', 'sgdiff', 'fir1', 'user'}, @Fig_preview_filter_, hFig);
 menu_checkbox_(mh_edit_filter, get_filter_(P));
 
-mh_edit_ref = uimenu(mh_edit, 'Label', 'Reference mode');
+mh_edit_ref = uimenu_(mh_edit, 'Label', 'Reference mode');
 uimenu_options_(mh_edit_ref, {'none', 'mean', 'median'}, @Fig_preview_ref_, hFig); % @TODO: local mean
 menu_checkbox_(mh_edit_ref, P.vcCommonRef);
 
-uimenu(mh_edit, 'Label', 'Common reference threshold', 'Callback', @(h,e)Fig_preview_ref_thresh_(hFig));
+uimenu_(mh_edit, 'Label', 'Common reference threshold', 'Callback', @(h,e)Fig_preview_ref_thresh_(hFig));
 
-uimenu(mh_edit, 'Label', 'FFT cleanup threshold', 'Callback', @(h,e)Fig_preview_fft_thresh_(hFig));
+uimenu_(mh_edit, 'Label', 'FFT cleanup threshold', 'Callback', @(h,e)Fig_preview_fft_thresh_(hFig));
 
 
 % View menu
-mh_view = uimenu(hFig, 'Label','View'); 
+mh_view = uimenu_(hFig, 'Label','View'); 
 
-mh_view_trange = uimenu(mh_view, 'Label', 'Display time range (s)');
+mh_view_trange = uimenu_(mh_view, 'Label', 'Display time range (s)');
 uimenu_options_(mh_view_trange, {'0.05', '0.1', '0.2', '0.5', '1', '2', '5', 'Custom'}, @Fig_preview_trange_, hFig);
 menu_checkbox_(mh_view_trange, '0.1');
-uimenu(mh_view, 'Label', 'Display site range', 'Callback', @(h,e)Fig_preview_site_range_(hFig));
+uimenu_(mh_view, 'Label', 'Display site range', 'Callback', @(h,e)Fig_preview_site_range_(hFig));
 
-uimenu(mh_view, 'Label', 'Show raw traces [F]', 'Callback', @(h,e)keyPressFcn_cell_(hFig, 'f'), 'Tag', 'menu_preview_view_filter');
-uimenu(mh_view, 'Label', 'Show spike [T]hreshold', 'Callback', @(h,e)keyPressFcn_cell_(hFig, 't'), 'Tag', 'menu_preview_view_threshold');
-uimenu(mh_view, 'Label', 'Hide [S]pikes', 'Callback', @(h,e)keyPressFcn_cell_(hFig, 's'), 'Tag', 'menu_preview_view_spike');
-uimenu(mh_view, 'Label', 'Hide [G]rid', 'Callback', @(h,e)keyPressFcn_cell_(hFig, 'g'), 'Tag', 'menu_preview_view_grid');
+uimenu_(mh_view, 'Label', 'Show raw traces [F]', 'Callback', @(h,e)keyPressFcn_cell_(hFig, 'f'), 'Tag', 'menu_preview_view_filter');
+uimenu_(mh_view, 'Label', 'Show spike [T]hreshold', 'Callback', @(h,e)keyPressFcn_cell_(hFig, 't'), 'Tag', 'menu_preview_view_threshold');
+uimenu_(mh_view, 'Label', 'Hide [S]pikes', 'Callback', @(h,e)keyPressFcn_cell_(hFig, 's'), 'Tag', 'menu_preview_view_spike');
+uimenu_(mh_view, 'Label', 'Hide [G]rid', 'Callback', @(h,e)keyPressFcn_cell_(hFig, 'g'), 'Tag', 'menu_preview_view_grid');
 
-mh_view_site = uimenu(mh_view, 'Label', 'Site view');
+mh_view_site = uimenu_(mh_view, 'Label', 'Site view');
 uimenu_options_(mh_view_site, {'Site correlation', 'Spike threshold', 'Event rate (Hz)', 'Event SNR (median)'}, @Fig_preview_site_plot_, hFig);
 menu_checkbox_(mh_view_site, 'Site correlation');
 
-mh_view_ref = uimenu(mh_view, 'Label', 'Reference view');
+mh_view_ref = uimenu_(mh_view, 'Label', 'Reference view');
 uimenu_options_(mh_view_ref, {'original', 'binned'}, @Fig_preview_view_ref_, hFig);
 menu_checkbox_(mh_view_ref, 'original');
 
-mh_view_freq = uimenu(mh_view, 'Label', 'Frequency scale');
+mh_view_freq = uimenu_(mh_view, 'Label', 'Frequency scale');
 uimenu_options_(mh_view_freq, {'Linear', 'Log'}, @Fig_preview_psd_plot_, hFig);
 menu_checkbox_(mh_view_freq, 'Linear');
 
-% mh_view_psd = uimenu(mh_view, 'Label', 'PSD view');
+% mh_view_psd = uimenu_(mh_view, 'Label', 'PSD view');
 % uimenu_options_(mh_view_psd, {'original', 'detrended'}, @Fig_preview_view_psd_, hFig);
 % menu_checkbox_(mh_view_psd, 'original');
 
@@ -21076,8 +21023,8 @@ end %func
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_(vcFile_prm)
 if nargin<1, vcFile_prm = ''; end
-vcVer = 'v4.2.8';
-vcDate = '11/13/2018';
+vcVer = 'v4.2.9';
+vcDate = '11/19/2018';
 vcHash = file2hash_();
 
 if nargout==0
@@ -22256,7 +22203,7 @@ if nargin<2, fImec = 0; end
 P = loadParam_(vcFile_prm);
 
 % ask which channel and which output file
-csAns = inputdlg('Which channel to load', 'Channel', 1, {num2str(P.nChans)});
+csAns = inputdlg_('Which channel to load', 'Channel', 1, {num2str(P.nChans)});
 iChan = str2double(csAns{1});
 
 % get output file
@@ -22679,7 +22626,7 @@ end %func
 function export_chan_(P, vcArg1)
 % export list of channels to a bin file, use fskip?
 if isempty(vcArg1)
-    vcArg1 = inputdlg('Which channel(s) to export (separate by commas or space)', 'Channel', 1, {num2str(P.nChans)});
+    vcArg1 = inputdlg_('Which channel(s) to export (separate by commas or space)', 'Channel', 1, {num2str(P.nChans)});
     if isempty(vcArg1), return; end
     vcArg1 = vcArg1{1};
 end
@@ -24487,9 +24434,9 @@ end %func
 % hLine = hLine(1);
 % c = uicontextmenu();
 % hLine.UIContextMenu = c;
-% uimenu(c, 'Label', 'Show Clusters', 'Callback',@(h,e)callback_gt_(h,e,hLine));
-% uimenu(c, 'Label', 'Show Waveforms', 'Callback',@(h,e)callback_gt_(h,e,hLine));
-% uimenu(c, 'Label', 'Show Features', 'Callback',@(h,e)callback_gt_(h,e,hLine));
+% uimenu_(c, 'Label', 'Show Clusters', 'Callback',@(h,e)callback_gt_(h,e,hLine));
+% uimenu_(c, 'Label', 'Show Waveforms', 'Callback',@(h,e)callback_gt_(h,e,hLine));
+% uimenu_(c, 'Label', 'Show Features', 'Callback',@(h,e)callback_gt_(h,e,hLine));
 % end %func
 
 
@@ -27095,26 +27042,26 @@ for iTrial = 1:numel(cTrials) % add menu items
     if S_trials.iTrial == iTrial
         vcLabel1 = ['[x] ', vcLabel1];
     end
-    uimenu1 = uimenu(mh_trials, 'Text', vcLabel1); %, 'Checked', vcChecked);
+    uimenu1 = uimenu_(mh_trials, 'Label', vcLabel1); %, 'Checked', vcChecked);
     add_actions_trial_(uimenu1, iTrial);
 end %for
 
 %add actions
-mh_add_event = uimenu(mh_trials,'Text','Add event channel', 'Callback', @(h,e)trial_add_event_(h,e));
+mh_add_event = uimenu_(mh_trials,'Label','Add event channel', 'Callback', @(h,e)trial_add_event_(h,e));
 mh_add_event.Separator = 'on';
-uimenu(mh_trials,'Text','Add analog channel', 'Callback', @(h,e)trial_add_analog_(h,e));
+uimenu_(mh_trials,'Label','Add analog channel', 'Callback', @(h,e)trial_add_analog_(h,e));
 try
     trial0 = cTrials{S_trials.iTrial};
 catch
     return;
 end
-% uimenu(mh_trials, 'Text', sprintf('[%d] selected: %s (%s)', S_trials.iTrial, trial0.name, trial0.type));
+% uimenu_(mh_trials, 'Label', sprintf('[%d] selected: %s (%s)', S_trials.iTrial, trial0.name, trial0.type));
 
 %-----
-uimenu(mh_trials, 'Label', 'All unit firing rate vs. aux. input', 'Callback', ...
+uimenu_(mh_trials, 'Label', 'All unit firing rate vs. aux. input', 'Callback', ...
     @(h,e)plot_aux_rate_, 'Separator', 'on');
-uimenu(mh_trials, 'Label', 'Selected unit firing rate vs. aux. input', 'Callback', @(h,e)plot_aux_rate_(1));
-% uimenu(mh_plot, 'Label', 'All unit firing rate vs. aux. input (zsperry)', 'Callback', @(h,e)plot_aux_rate_zsperry_());
+uimenu_(mh_trials, 'Label', 'Selected unit firing rate vs. aux. input', 'Callback', @(h,e)plot_aux_rate_(1));
+% uimenu_(mh_plot, 'Label', 'All unit firing rate vs. aux. input (zsperry)', 'Callback', @(h,e)plot_aux_rate_zsperry_());
 
 % save S_trials struct
 P = get_userdata_(mh_trials, 'P');
@@ -27153,10 +27100,10 @@ end %func
 
 %--------------------------------------------------------------------------
 function add_actions_trial_(mh_trial1, iTrial)
-uimenu(mh_trial1, 'Text', 'select', 'Callback', @(h,e)trial_select_(h,e,iTrial));
-uimenu(mh_trial1, 'Text', 'remove', 'Callback', @(h,e)trial_remove_(h,e,iTrial));
-uimenu(mh_trial1, 'Text', 'edit', 'Callback', @(h,e)trial_edit_(h,e,iTrial));
-uimenu(mh_trial1, 'Text', 'preview', 'Callback', @(h,e)trial_preview_(h,e,iTrial));
+uimenu_(mh_trial1, 'Label', 'select', 'Callback', @(h,e)trial_select_(h,e,iTrial));
+uimenu_(mh_trial1, 'Label', 'remove', 'Callback', @(h,e)trial_remove_(h,e,iTrial));
+uimenu_(mh_trial1, 'Label', 'edit', 'Callback', @(h,e)trial_edit_(h,e,iTrial));
+uimenu_(mh_trial1, 'Label', 'preview', 'Callback', @(h,e)trial_preview_(h,e,iTrial));
 end %func
 
 
@@ -27218,13 +27165,17 @@ end %func
 
 %--------------------------------------------------------------------------
 % 11/13/2018 JJJ: Add an event-type trial
-function trial_add_event_(h,e, iTrial)
+function trial_add_event_(h,e,iTrial)
 if nargin<3, iTrial=[]; end
 mh_trials = get_tag_('mh_trials', 'uimenu');
 if isempty(iTrial)
-    csAns = inputdlg('Channel name','Add event channel',1,{''});
+    csAns = inputdlg_('Channel name','Add event channel',1,{''});
     if isempty(csAns), return; end
     name1 = csAns{1};
+    if isempty(name1)
+        msgbox_('Aborted: channel name is not specified'); 
+        return; 
+    end
     value1 = [];
 else
     S_trials = get_userdata_(mh_trials, 'S_trials');
@@ -27238,10 +27189,12 @@ if isempty(value1), value1 = nan(max_events_trial,2); end
 uiTable1 = uitable(f,'Data',value1, 'ColumnName', {'on (sec)','off (sec)'}, ...
     'ColumnEditable', true);
 f.CloseRequestFcn = @(f1,e)uitable_save_close_(f1, h);
-f.InnerPosition = uiTable1.OuterPosition * 1.1;
 f.UserData = uiTable1;
 [f.MenuBar, f.ToolBar, f.Name, f.NumberTitle, f.WindowStyle] = ...
-    deal('none', 'none', [name1, ' (close to save)'], 'off', 'modal');
+    deal('none', 'none', [name1, ' (close to save)'], 'off', 'normal');
+mh_import = uimenu_(f,'Label','Import');
+uimenu_(mh_import,'Label','Import from .nev','Callback',@(h,e)ui_import_nev_(h,e,uiTable1));
+f.InnerPosition = uiTable1.OuterPosition * 1.1;
 uiwait(f); % wait until figure closure
 
 S_trials = get_userdata_(mh_trials, 'S_trials');
@@ -27260,6 +27213,35 @@ end
 set_userdata_(mh_trials, S_trials);
 update_menu_trials_(mh_trials);
 end %func
+
+
+%--------------------------------------------------------------------------
+% 11/19/2018 JJJ: Merged from Zach Sperry's contribution
+function ui_import_nev_(h,e,uiTable1)
+P = get0_('P');
+min_event_interval = get_set_(P, 'min_event_interval_trial', 1);
+max_events_trial = get_set_(P, 'max_events_trial', 100);
+[vcDir, ~, ~] = fileparts(P.vcFile_prm);
+try
+    [nev_file, nev_dir] = uigetfile(fullfile(vcDir, '*.nev'));
+    vcFile_nev = fullfile(nev_dir, nev_file);
+    if ~exist_file_(vcFile_nev), return; end % user pressed cancel
+    [~,hFile]=ns_OpenFile(vcFile_nev);
+    vi_event = find(strcmp({hFile.Entity.EntityType}, 'Event'));
+    [~, S_EntityInfo] = ns_GetEntityInfo(hFile, vi_event);
+    vrT_event = zeros(S_EntityInfo.ItemCount, 1);
+    for iT = 1:numel(vrT_event)
+        [~, vrT_event(iT)]=ns_GetEventData(hFile, vi_event, iT);
+    end
+    if min_event_interval > 0
+        vrT_event = vrT_event([true; diff(vrT_event)>min_event_interval]); % filter events
+    end
+    mrTable1 = reshape_(vrT_event, 2)';    
+    uiTable1.Data = [mrTable1; nan(max_events_trial, 2)];
+catch
+    errordlg(['Import failed: ', vcFile_nev])
+end % try
+end % func
 
 
 %--------------------------------------------------------------------------
@@ -27306,7 +27288,7 @@ csAns = inputdlg_(...
     num2str_({name1, vcFile, iChan, sRateHz, vcUnit, scale}));
 if isempty(csAns), return; end
 [name1, vcFile, iChan, sRateHz, vcUnit, scale] = deal(csAns{:});
-if isempty(name1), msgbox('Aborted, channel name is not specified'); return; end
+if isempty(name1), msgbox_('Aborted, channel name is not specified'); return; end
 if ~exist_file_(vcFile), msgbox('Aborted, file does not exist'); return; end
 try
     [iChan, sRateHz, scale] = multifun_(@str2num, iChan, sRateHz, scale);
@@ -27339,4 +27321,48 @@ else
         out = num2str(val);
     end
 end
+end %func
+
+
+%--------------------------------------------------------------------------
+% 11/19/2018 JJJ: returns 2017 if R2017a and 2017.5 if R2017b
+function ver_year = version_matlab_()
+
+vcVer_matlab = version('-release');
+ver_year = str2double(vcVer_matlab(1:end-1));
+if lower(vcVer_matlab(end)) == 'b', ver_year = ver_year + .5; end
+end %func
+
+
+%--------------------------------------------------------------------------
+% 11/19/2018 JJJ: version-neutral uimenu
+function h = uimenu_(varargin)
+cell_args = varargin;
+% csFields = varargin(2:2:end);
+if version_matlab_() >= 2017.5 % new version calls Label as Text
+    cell_args = cellstr_subs_(cell_args, 'Label', 'Text', 1);
+else
+    cell_args = cellstr_subs_(cell_args, 'Text', 'Label', 1);
+end
+h = uimenu(cell_args{:});
+end %func
+
+
+%--------------------------------------------------------------------------
+% 11/19/2018 JJJ: version-neutral uimenu
+function cell_args = cellstr_subs_(cell_args, vcPre, vcPost, fEven)
+if nargin<4, fEven = 0; end
+if ~fEven
+    viCell = 1:numel(cell_args);
+else
+    viCell = 2:2:numel(cell_args);
+end
+for i = viCell
+    vc1 = cell_args{i};
+    if ischar(vc1)
+        if strcmpi(vc1, vcPre)
+            cell_args{i} = vcPost;
+        end
+    end
+end %i
 end %func

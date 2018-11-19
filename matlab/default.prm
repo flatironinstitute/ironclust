@@ -142,6 +142,7 @@ rateLim_psth = [];          % range range in Hz
 dinput_imec_trial = 1;      % IMEC digital input channel number (1-16) to generate trial file (vcFile_trial) using 'maketrial-imec' command.
 nClu_show_trial = 10;         % Max # clusters to show for aux vs. firing rate correlation
 max_events_trial = 100;         % Create 100 entries for the event channels
+min_event_interval_trial = 1;   % Minimum event interval allowed when importing .nev file. Set to 0 to disable it
 
 % #Firing rate estimation for unit
 sRateHz_rate = 1000;                % Resampled rate for the firing rate
