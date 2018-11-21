@@ -35,11 +35,13 @@ switch lower(vcCmd)
     case 'changelog', edit_('changelog.md'); web_('changelog.md'); return;
     case {'help', '-h', '?', '--help'}, help_(vcArg1); about_();
     case 'about', about_();
+    case 'wiki-download', wiki_download_();
+    case 'install', install_();
+    case 'which', return;    
 
-    % one argument
+        % one argument
     case 'copyto-voms', copyto_voms_(vcArg1); return;     
     case 'copyfrom-voms', copyfrom_voms_(vcArg1); return;     
-    case 'waitfor', waitfor_file_(vcArg1, vcArg2);
     case 'copyto', copyto_(vcArg1); return; %copy source code to destination    
     case 'version'
         if nargout==0, version_(vcArg1);
@@ -51,14 +53,22 @@ switch lower(vcCmd)
     case 'doc-edit', doc_('IronClust manual.docx');
     case 'update', git_pull_(vcArg1);
     case 'git-pull', git_pull_(vcArg1);
-    case 'install', install_();
     case 'commit', commit_(vcArg1);
     case 'wiki', wiki_(vcArg1);
-    case 'wiki-download', wiki_download_();
     case 'gui', gui_(vcArg1, vcFile_prm_);
     case 'issue', issue_('post');        
-    case 'which', return;    
     case 'download', download_(vcArg1);
+    case 'import-tsf', import_tsf_(vcArg1);
+    case 'import-h5', import_h5_(vcArg1);
+    case 'import-jrc1', import_jrc1_(vcArg1);
+    case 'export-jrc1', export_jrc1_(vcArg1);
+    case 'convert-mda', convert_mda_(vcArg1);
+        
+    % two arguments
+    case 'makeprb', makeprb_(vcArg1, vcArg2); return;
+    case 'waitfor', waitfor_file_(vcArg1, vcArg2);
+
+    % three arguments
     case {'makeprm', 'createprm', 'makeprm-all'}
 %         makeprm_(vcFile_bin, vcFile_prb, fAsk, vcFile_template, vcDir_prm)
         vcFile_prm_ = makeprm_(vcArg1, vcArg2, 1, vcArg3, vcArg4);
@@ -69,11 +79,7 @@ switch lower(vcCmd)
         vcFile_prm_ = makeprm_mda_(vcArg1, vcArg2, vcArg3, vcArg4, vcArg5);
         if nargout>0, varargout{1} = vcFile_prm_; end        
     case 'makeprm-f', makeprm_(vcArg1, vcArg2, 0, vcArg3, vcArg4);
-    case 'import-tsf', import_tsf_(vcArg1);
-    case 'import-h5', import_h5_(vcArg1);
-    case 'import-jrc1', import_jrc1_(vcArg1);
-    case 'export-jrc1', export_jrc1_(vcArg1);
-    case 'convert-mda', convert_mda_(vcArg1);
+
     case 'export-mda', export_mda_(vcArg1, vcArg2);
     case 'import-intan', vcFile_prm_ = import_intan_(vcArg1, vcArg2, vcArg3); return;
     case {'import-nsx', 'import-ns5'}, vcFile_prm_ = import_nsx_(vcArg1, vcArg2, vcArg3); return;
@@ -18282,7 +18288,8 @@ else
     end
 end
 vcFile_meta = ircpath_(vcFile_meta, 1);
-P_meta = read_meta_file_(vcFile_meta);
+nChans = numel(get_(file2struct_(find_prb_(vcFile_prb)), 'channels')); % make a guess
+P_meta = read_meta_file_(vcFile_meta, nChans);
 if isempty(P_meta), P=[]; return; end
 
 % Get the probe file if missing
@@ -18830,8 +18837,15 @@ end % func
 
 %--------------------------------------------------------------------------
 % 8/2/17 JJJ: Documentation and test
-function P = read_meta_file_(vcFile_meta)
 % Parse meta file, ask user if meta file doesn't exist
+function P = read_meta_file_(vcFile_meta, nChans)
+% Usages
+% -----
+% P = read_meta_file_(vcFile_meta)
+% P = read_meta_file_(vcFile_meta, nChans)
+
+if nargin<2, nChans = []; end
+vcChans = num2str(nChans);
 P = [];
 try
     if exist_file_(vcFile_meta)
@@ -18848,7 +18862,7 @@ try
             'sampling rate (Hz)', '# channels in file', ...
             'uV/bit', 'Header offset (bytes)', ...
             'Data Type (int16, uint16, single, double)', 'Neuropixels option (0 if N/A)'}, ...
-                'Recording format', 1, {'30000', '385', '1','0','int16','0'});
+                'Recording format', 1, {'30000', vcChans, '1','0','int16','0'});
         if isempty(csAns), return; end
         P = struct('sRateHz', str2double(csAns{1}), 'nChans', str2double(csAns{2}), ...
             'uV_per_bit', str2double(csAns{3}), 'header_offset', str2double(csAns{4}), ...
@@ -21023,8 +21037,8 @@ end %func
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_(vcFile_prm)
 if nargin<1, vcFile_prm = ''; end
-vcVer = 'v4.2.9';
-vcDate = '11/19/2018';
+vcVer = 'v4.3.0';
+vcDate = '11/21/2018';
 vcHash = file2hash_();
 
 if nargout==0
@@ -27296,7 +27310,7 @@ try
 catch
     msgbox('Aborted, invalid format'); return;
 end
-S_value1 = makeStruct(vcFile, iChan, sRateHz, vcUnit, scale);
+S_value1 = makeStruct_(vcFile, iChan, sRateHz, vcUnit, scale);
 trial1 = struct('name', name1, 'value', S_value1, 'type', 'analog');
 
 if isempty(iTrial)
@@ -27365,4 +27379,58 @@ for i = viCell
         end
     end
 end %i
+end %func
+
+
+%--------------------------------------------------------------------------
+% 11/19/2018 JJJ: Generate a prb file from various probe files
+function makeprb_(vcFile_in, vcFile_prb)
+if nargin<2, vcFile_prb = ''; end
+if isempty(vcFile_prb)
+    vcFile_prb = subsFileExt_(vcFile_in, '.prb');
+end
+[~, ~, vcExt] = fileparts(vcFile_in);
+switch lower(vcExt)
+    case '.mat' % kilosort format
+        S = load(vcFile_in);
+        channels = S.chanMap;
+        geometry = [S.xcoords(:), S.ycoords(:)];
+        shank = S.kcoords(:)';
+        
+        % trim channels based on connectedness
+        S.connected = get_set_(S, 'connected', true(size(channels)));
+        if ~all(S.connected)
+            [channels, geometry, shank] = multifun_(@(x)x(S.connected), channels, geometry, shank);
+        end
+        
+        % sort by physical location and group by shank
+        mrD_site = squareform(pdist(geometry));
+        if max(shank) == 1
+            shank = ml2map_(mrD_site < min_gap_(geometry) * 1.5);
+            vrX_shank = arrayfun(@(x)median(geometry(shank==x,1)), 1:max(shank));
+            [~, viMap] = sort(vrX_shank);
+            shank = viMap(shank);
+        end
+        max_gap = max(geometry(:)) * 100;        
+        [~, viOrder] = sort(geometry(:,1) + max_gap * (geometry(:,2) + max_gap * shank(:)), 'ascend');
+        [channels, shank] = multifun_(@(x)x(viOrder), channels, shank);
+        geometry = geometry(viOrder,:);
+        
+        pad = [10 10]; % use default number
+        shank = shank(:)';
+        S_prb = makeStruct_(channels, geometry, shank, pad);        
+    otherwise
+        disperr_('invalid format');
+        return;
+end %switch
+struct2file_(S_prb, vcFile_prb);
+probe_(vcFile_prb);
+end %func
+
+
+%--------------------------------------------------------------------------
+% find a minimum gap greater than zero
+function gap = min_gap_(vr)
+vrD = pdist(vr);
+gap = min(vrD(vrD>0));
 end %func
