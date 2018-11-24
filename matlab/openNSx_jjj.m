@@ -1,4 +1,12 @@
-function [NSx, FID] = openNSx_jjj(varargin)
+function varargout = openNSx_jjj(varargin)
+% JJJ: Modified from openNSx.m (v6.4.3.0)
+% Read Data skipped if nargout == 2, returns FID
+% 
+% Usage
+% -----
+% openNSx_jjj(varargin)
+% S_NSx = openNSx(varargin)
+% [S_NSx, FID] = openNSx(varargin) % skips data reading
 
 % openNSx
 % 
@@ -246,7 +254,7 @@ NSx.MetaTags = struct('FileTypeID',[],'SamplingLabel',[],'ChannelCount',[],'Samp
 NSx.MetaTags.openNSxver = '6.4.3.0';
                   
 %% Check for the latest version fo NPMK
-NPMKverChecker_
+NPMKverChecker
 
 % Defining constants
 ExtHeaderLength = 66;
@@ -767,7 +775,9 @@ if strcmp(ReadData, 'read')
             % Skip the file to the first channel to read
             fseek(FID, (find(NSx.MetaTags.ChannelID == min(userRequestedChannels))-1) * 2, 'cof');        
             % Read data
-            NSx.Data{size(NSx.Data,2)+1} = fread(FID, [numChansToRead segmentDataPoints(dataIDX)], [num2str(numChansToRead) precisionType], double((ChannelCount-numChansToRead)*2 + ChannelCount*(skipFactor-1)*2));
+            if nargout < 2 %JJJ
+                NSx.Data{size(NSx.Data,2)+1} = fread(FID, [numChansToRead segmentDataPoints(dataIDX)], [num2str(numChansToRead) precisionType], double((ChannelCount-numChansToRead)*2 + ChannelCount*(skipFactor-1)*2));
+            end
         end
         NSx.MetaTags.DataPoints = segmentDataPoints(segmentCounters(1):segmentCounters(2));
         NSx.MetaTags.Timestamp = NSx.MetaTags.Timestamp(segmentCounters(1):segmentCounters(2));
@@ -778,15 +788,18 @@ if strcmp(ReadData, 'read')
         fseek(FID, (StartPacket - 1) * 2 * ChannelCount, 'cof');
         % Skip the file to the first channel to read
         fseek(FID, (find(NSx.MetaTags.ChannelID == min(userRequestedChannels))-1) * 2, 'cof');        
-        
-        % JJJ return
-        NSx.nChans = numChansToRead;
-        NSx.nSamples = DataLength;
-        return; % JJJ: stop and return
-        
         % Read data
-        NSx.Data = fread(FID, [numChansToRead DataLength], [num2str(numChansToRead) precisionType], double((ChannelCount-numChansToRead)*2 + ChannelCount*(skipFactor-1)*2));
+        if nargout < 2 %JJJ        
+            NSx.Data = fread(FID, [numChansToRead DataLength], [num2str(numChansToRead) precisionType], double((ChannelCount-numChansToRead)*2 + ChannelCount*(skipFactor-1)*2));
+        end
     end
+end
+
+% JJJ
+if nargout >= 2
+    varargout{2} = FID;
+    varargout{1} = NSx;
+    return;
 end
 
 %% Fixing a bug in 6.03 TOC where an extra 0-length packet is introduced
@@ -896,45 +909,4 @@ if strcmp(Report, 'report')
 end
 fclose(FID);
 
-end % func
-
-
-%--------------------------------------------------------------------------
-function NPMKverChecker_()
-% NPMKverChecker
-%
-% Checks to see if there is a newer version of NPMK is available for
-% download.
-%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% 
-% Use NPMKverChecker
-% 
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%   Kian Torab
-%   support@blackrockmicro.com
-%   Blackrock Microsystems
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% Version History
-%
-% 1.0.0.0: September 13, 2017
-%   - Initial release.
-%
-% 1.0.1.0: September 13, 2017
-%   - Fixed a crash in case there is no Internet connection.
-%
-
-%% Check for the latest version fo NPMK
-try
-    FIDv = fopen('Versions.txt');
-    verFile = fscanf(FIDv, '%s'); 
-    fclose(FIDv);
-    latestVersion = verFile(findstr('LATEST', verFile)+7:findstr('LATEST', verFile)+13);
-    gitHubPage = urlread('https://github.com/BlackrockMicrosystems/NPMK/releases/latest');
-    newVersionAvailable = findstr(latestVersion, gitHubPage);
-    if isempty(newVersionAvailable)
-        disp('A new version of NPMK may be available.');
-        disp('Please visit https://github.com/BlackrockMicrosystems/NPMK/releases/latest to get the latest version.');
-    end
-catch
 end
-end %func

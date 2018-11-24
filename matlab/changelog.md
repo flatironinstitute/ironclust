@@ -3,6 +3,27 @@ IronClust, written by J. James Jun, Flatiron Institute, Simons Foundation
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [4.3.1] - 2018-11-23
+### Added
+- `preview` command under `Trials` menu displays the channel label and unit
+- Blackrock Neuroshare reader upgraded to v4.5.3.0
+  - Previous version: v4.5.2.0
+  - https://github.com/BlackrockMicrosystems/NPMK/releases/tag/4.5.3.0
+- `split` menu now displays error bounds (mean+/-SD) of the unit waveforms 
+  and channel numbers
+
+### Fixed
+- `add analog` command under `Trials` menu
+  - Correct channel number is loaded when the channel number doesn't match 
+    the file storage order
+  - Previously it was selecting a channel using an electrode number
+
+### Changed
+- `add analog` command under `Trials` menu asks for `Gain` factor instead of
+  the bit conversion factor
+  - The timeseries later gets multiplied by `uV_per_bit` and `Gain` factor
+
+
 ## [4.3.0] - 2018-11-21
 ### Fixed
 - `irc manual` analog channel add error
