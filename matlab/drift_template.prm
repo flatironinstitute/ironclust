@@ -13,6 +13,7 @@ nDiff_filt = 3; % 4 saturates for int16
 
 uV_per_bit = .1; % uV per bit resolution
 fTranspose_bin = 0;     % catalin's format
+vcFile_gt = 'D:\bionet\drift_gt.mat';
 spkLim_raw_factor = 2;      % if spkLim_raw_ms==[] then spkLim_raw = spkLim * spkLim_raw_factor
 spkLim_factor_merge = 1;
 
@@ -39,6 +40,3 @@ vcSpkRef = 'none';
 
 maxWavCor = .98;            % merge if waveform correlation is greater than maxWavCor.
 thresh_core_knn = 1-1/8;
-
-
-fRaw_feature = 0; vcFilter = 'ndiff'; vcFet='gpca';

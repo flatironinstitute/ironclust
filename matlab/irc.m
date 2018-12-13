@@ -30,7 +30,7 @@ switch lower(vcCmd)
     % No arguments        
     case 'hash', varargout{1} = file2hash_(); return; 
     case 'addpath', addpath_(); return; %add path of current irc
-    case 'mcc', mcc_(); return; %matlab compiler
+    case 'mcc', mcc_(vcArg1); return; %matlab compiler
     case {'setprm' 'set', 'set-prm'}, vcFile_prm_ = vcArg1; return;
     case 'changelog', edit_('changelog.md'); web_('changelog.md'); return;
     case {'help', '-h', '?', '--help'}, help_(vcArg1); about_();
@@ -86,7 +86,6 @@ switch lower(vcCmd)
     case 'convert-h5-mda', convert_h5_mda_(vcArg1, vcArg2); return;
     case 'export-gt', export_gt_(vcArg1, vcArg2); return;
     
-%     case 'nsx-info', [~, ~, S_file] = nsx_info_(vcArg1); assignWorkspace_(S_file); return;
     case 'load-nsx', load_nsx_(vcArg1); return;
     case 'load-bin'
         mnWav = load_bin_(vcArg1, vcArg2); 
@@ -706,8 +705,8 @@ switch lower(event.Key)
         mrX = reshape(vrX, S_plot.dimm);
         mrY = reshape(vrY, S_plot.dimm);
         hold(S_fig.hAx, 'on');
-        hPoint = plot(vrX(index_plot), vrY(index_plot), 'r*');
-        hLine = plot(S_fig.hAx, mrX(:,iSite), mrY(:,iSite), 'r-');
+        hPoint = plot_(vrX(index_plot), vrY(index_plot), 'r*');
+        hLine = plot_(S_fig.hAx, mrX(:,iSite), mrY(:,iSite), 'r-');
         hold(S_fig.hAx, 'off');
         iChan = P.viSite2Chan(iSite);
         msgbox_(sprintf('Site: %d/ Chan: %d', iSite, iChan), 1);
@@ -1473,7 +1472,10 @@ end %func
 %--------------------------------------------------------------------------
 function [P, vcFile_prm] = loadParam_(vcFile_prm, fEditFile)
 % Load prm file
-
+if nargin==0
+    vcFile_prm = get_(get0_('P'), 'vcFile_prm');
+    if ~exist_file_(vcFile_prm), P=[]; return; end
+end
 if nargin<2, fEditFile = 0; end
 assert(exist_file_(vcFile_prm), sprintf('.prm file does not exist: %s\n', vcFile_prm));
 P0 = file2struct_(ircpath_(read_cfg_('default_prm', 0)));  %P = defaultParam();
@@ -1826,7 +1828,7 @@ else
     end
     vlKeep_ref = expand_vr_(vlKeep_ref, nwin, size(vrWav_mean1));
 end
-% figure; plot(vrMad_ref); hold on; plot(find(~vlKeep_ref), vrMad_ref(~vlKeep_ref), 'r.')
+% figure; plot_(vrMad_ref); hold on; plot_(find(~vlKeep_ref), vrMad_ref(~vlKeep_ref), 'r.')
 end %func
 
 
@@ -2378,7 +2380,7 @@ if get_set_(P, 'knn',0) > 0
     [vrRho0, vrDelta0] = deal(vrRho, vrDelta);
     vrDelta = vrDelta .* vrRho;
     vrRho = vrRho / max(vrRho) / 10;    
-%     figure; plot(log10(vrRho), log10(vrDelta), '.');
+%     figure; plot_(log10(vrRho), log10(vrDelta), '.');
 end
 
 %-----
@@ -2795,7 +2797,7 @@ disp_score_(makeStruct_(vrSnr, vrFp, vrFn, vrAccuracy, vnSite, vnSpk, fVerbose, 
 
 % plot if not running from the cluster
 if isempty(fPlot_gt), fPlot_gt = get_(S_cfg, 'fPlot_gt'); end
-if isUsingBuiltinEditor_()
+if isUsingBuiltinEditor_() % cluster
     try
         vrAccuracy = S_score.S_score_clu.vrAccuracy;        
         switch fPlot_gt
@@ -3507,7 +3509,7 @@ parfor iSpk = 1:nSpk
     
 %     [a,b,c] = pca(single(mrWav1), 'NumComponents', nPc);
 %     tnWav_spk(:,:,iSpk) = b*a(1:nC,:)';
-%     myfig; plot(mrWav1(:,1:nC)); myfig; plot(mrWav2);
+%     myfig; plot_(mrWav1(:,1:nC)); myfig; plot_(mrWav2);
 end
 fprintf('\ttook %0.1fs\n', toc(t1));
 end %func
@@ -3658,7 +3660,7 @@ for iRepeat = 1:3
     mr(:,viMax==3) = mr([2:end,end],viMax==3);
     vr_mean = mean(mr,2);
     
-    plot(vr_mean);
+    plot_(vr_mean);
 end
 
 end %func
@@ -4029,7 +4031,7 @@ switch 1
     case 1
         mr = a(:,1:nPc) * b(1:nPc,:) * c ;
 end
-% myfig; plot(mr,'k'); plot(mr1,'b');
+% myfig; plot_(mr,'k'); plot_(mr1,'b');
 
 end %fun
 
@@ -4700,28 +4702,28 @@ switch fPlot_gt
         [vrFp, vrFn, vrError] = deal(vrFp*100, vrFn*100, vrError*100);
         figure;  ax=[];
         ax(1)=subplot(421); hold on;
-        plot(vrSnr(:), vrError(:), 'k.', 'MarkerSize', 2);
+        plot_(vrSnr(:), vrError(:), 'k.', 'MarkerSize', 2);
         boxplot_(vrError(:), vrSnr(:), vpp_bin, [3, 30]); ylabel('Error (%)'); 
         set(gca,'XTickLabel', {}); grid on; set(gca,'YScale','linear');
         set(gca, 'YLim', [0 15], 'YTick', 0:3:15);
         title_(vcFile_batch);
 
         ax(2)=subplot(423);  hold on;
-        plot(vrSnr(:), vrFn(:), 'k.', 'MarkerSize', 2);
+        plot_(vrSnr(:), vrFn(:), 'k.', 'MarkerSize', 2);
         boxplot_(vrFn(:), vrSnr(:), vpp_bin, [3, 30]); ylabel('False Negative(%)'); 
         set(gca,'XTickLabel', {}); grid on; set(gca,'YScale','linear');
         set(gca, 'YLim', [0 15], 'YTick', 0:3:15);
         set(gcf,'Color','w');
 
         ax(3)=subplot(425); hold on;
-        plot(vrSnr(:), vrFp(:), 'k.', 'MarkerSize', 2);
+        plot_(vrSnr(:), vrFp(:), 'k.', 'MarkerSize', 2);
         boxplot_(vrFp(:), vrSnr(:), vpp_bin, [3, 30]); ylabel('False Positive (%)'); 
         set(gca,'XTickLabel', {}); grid on; set(gca,'YScale','linear');
         set(gca, 'YLim', [0 15], 'YTick', 0:3:15);
         % title_(vcFile_batch);
 
         ax(4)=subplot(427);  hold on;
-        plot(vrSnr(:), vnSite(:), 'k.', 'MarkerSize', 2);
+        plot_(vrSnr(:), vnSite(:), 'k.', 'MarkerSize', 2);
         boxplot_(vnSite(:), vrSnr(:), vpp_bin, [3, 30]); ylabel('#sites>thresh'); 
         xlabel('SNR (Vp/Vrms)'); grid on; set(gca,'YScale','linear');
         set(gcf,'Color','w');
@@ -4761,17 +4763,17 @@ try
         subplot(2,2,iPlot);
         switch iPlot
             case 1
-                plot(vrVmin, vrAccuracy, '.', 'MarkerSize', markerSize); 
+                plot_(vrVmin, vrAccuracy, '.', 'MarkerSize', markerSize); 
                 xylabel_(gca, vcXlabel, 'Accuracy', fh_text('Accuracy', vrAccuracy));
             case 2
-                plot(vrVmin, vrFp, '.', 'MarkerSize', markerSize); 
+                plot_(vrVmin, vrFp, '.', 'MarkerSize', markerSize); 
                 xylabel_(gca, vcXlabel, '');
                 xylabel_(gca, vcXlabel, 'False Positive', fh_text('False Positive', vrFp));
             case 3
-                plot(vrVmin, vrFn, '.', 'MarkerSize', markerSize); 
+                plot_(vrVmin, vrFn, '.', 'MarkerSize', markerSize); 
                 xylabel_(gca, vcXlabel, 'False Negative', fh_text('False Negative', vrFn));
             case 4
-                plot(vrFp, vrFn, '.', 'MarkerSize', markerSize); 
+                plot_(vrFp, vrFn, '.', 'MarkerSize', markerSize); 
                 xylabel_(gca, 'False Positive', 'False Negative');   
                 set(gca,'XLim', [-.05, 1.05], 'XTick', 0:.2:1); 
         end %switch
@@ -4914,6 +4916,10 @@ function [vcFile_gt_mat, S_gt] = import_gt_(vcFile_gt, vcFile_prm)
 %   prefix
 
 if nargin<2, vcFile_prm = ''; end
+if ~assert_(exist_file_(vcFile_gt), 'ground truth file does not exist')
+    [vcFile_gt_mat, S_gt] = deal([]);
+    return;
+end
 
 viSite = [];
 if matchFileExt_(vcFile_gt, '.mat')
@@ -5421,6 +5427,7 @@ S0 = keyPressFcn_cell_(get_fig_cache_('FigWav'), {'z'}, S0); %zoom
 S_log = load_(strrep(P.vcFile_prm, '.prm', '_log.mat'), [], 0);
 if ~isempty(S_log), S0.cS_log = {S_log}; end
 save_log_('start', S0); %crash proof log
+% reset_position_(); % reposition all figures at lsat
 
 % Finish up
 close_(hMsg);
@@ -5445,7 +5452,7 @@ create_figure_('FigIsi', [.85 .5 .15 .25], ['Return map: ', P.vcFile_prm]);
 create_figure_('FigCorr', [.85 .25 .15 .25], ['Time correlation: ', P.vcFile_prm]);
 create_figure_('FigRD', [.85 0 .15 .25], ['Cluster rho-delta: ', P.vcFile_prm]);
 
-%drawnow;
+% drawnow;
 csFig = {'FigPos', 'FigMap', 'FigTime', 'FigWav', 'FigWavCor', 'FigProj', 'FigRD', 'FigCorr', 'FigIsi', 'FigHist'};
 cvrFigPos0 = cellfun(@(vc)get(get_fig_(vc), 'OuterPosition'), csFig, 'UniformOutput', 0);
 S0 = set0_(cvrFigPos0, csFig);
@@ -5465,8 +5472,9 @@ S0 = keyPressFcn_cell_(get_fig_cache_('FigWav'), {'j','t','c','i','v','e','f'}, 
 set(0, 'UserData', S0);
 
 auto_scale_proj_time_(S0);
-plot_raster_(S0); %psth
 figure_wait_(0, hFig_wait);
+
+plot_raster_(S0); %psth
 end
 
 
@@ -5689,13 +5697,13 @@ switch P.vcDetrend_postclu
         fDetrend = 1;
 end
 
-hold on; plot(x, y, '.');
+hold on; plot_(x, y, '.');
 axis tight;
 axis_([-4 -.5 -1 2])
 set(gcf,'color','w');
 set(gcf, 'UserData', struct('x', x, 'y', y)); grid on; 
 set(gca,'XScale','linear', 'YScale', 'linear');
-plot(P.rho_cut*[1 1], get(gca,'YLim'), 'r--', get(gca,'XLim'), P.delta1_cut*[1, 1], 'r--');
+plot_(P.rho_cut*[1 1], get(gca,'YLim'), 'r--', get(gca,'XLim'), P.delta1_cut*[1, 1], 'r--');
 xlabel('log10 rho'); ylabel(sprintf('log10 delta (detrend=%d)', fDetrend));
 
 % label clusters
@@ -5708,7 +5716,7 @@ y_icl = double(y(icl));
 %     arrayfun(@(i)text(x_icl(i), y_icl(i), sprintf('%dn%d',i,S_clu.vnSpk_clu(i)), 'VerticalAlignment', 'bottom'), 1:numel(icl));
 % end
 hold on; 
-plot(x_icl, y_icl, 'r.');
+plot_(x_icl, y_icl, 'r.');
 grid on; 
 % nClu = numel(unique(S_clu.viClu(S_clu.viClu>0))); %numel(icl)
 title_(sprintf('rho-cut:%f, delta-cut:%f', P.rho_cut, P.delta1_cut));
@@ -5736,33 +5744,33 @@ P = S0.P; S_clu = S0.S_clu;
 [hFig, S_fig] = get_fig_cache_('FigWav'); 
 
 % Show number of spikes per clusters
-% hold on; tight_plot(gca, [.04 .04], [.04 .02]);
 P.LineWidth = 1; %plot a thicker line
 P.viSite_clu = S_clu.viSite_clu;
 nSites = numel(P.viSite2Chan);
-if isempty(S_fig)
-    % initialize
+if isempty(S_fig) % initialize
     S_fig.maxAmp = P.maxAmp;
     S_fig.hAx = axes_new_(hFig);
-    set(gca, 'Position', [.05 .05 .9 .9], 'XLimMode', 'manual', 'YLimMode', 'manual'); 
-    xlabel('Cluster #');    ylabel('Site #');   grid on;    
+    set(S_fig.hAx, 'Position', [.05 .05 .9 .9], 'XLimMode', 'manual', 'YLimMode', 'manual'); 
+    grid(S_fig.hAx, 'on');    
     S_fig.vcTitle = 'Scale: %0.1f uV; [H]elp; [Left/Right]:Select cluster; (Sft)[Up/Down]:scale; [M]erge; [S]plit auto; [D]elete; [A]:Resample spikes; [P]STH; [Z]oom; in[F]o; [Space]:Find similar';
-    title_(sprintf(S_fig.vcTitle, S_fig.maxAmp)); %update scale
-    
-%     set(gca, 'ButtonDownFcn', @(src,event)button_CluWav_(src,event), 'BusyAction', 'cancel');
+    xylabel_(S_fig.hAx, 'Cluster #', 'Site #', sprintf(S_fig.vcTitle, S_fig.maxAmp));
+
     set(hFig, 'KeyPressFcn', @keyPressFcn_FigWav_, 'CloseRequestFcn', @exit_manual_, 'BusyAction', 'cancel');
-    axis_([0, S_clu.nClu + 1, 0, nSites + 1]);
+    axis_(S_fig.hAx, [0, S_clu.nClu + 1, 0, nSites + 1]);
     add_menu_(hFig, P);      
+%     vrPos_ = get(hFig, 'OuterPosition');
     mouse_figure(hFig, S_fig.hAx, @button_CluWav_);
     S_fig = plot_spkwav_(S_fig, S0); %plot spikes
     S_fig = plot_tnWav_clu_(S_fig, P); %do this after plotSpk_
     S_fig.cvhHide_mouse = mouse_hide_(hFig, S_fig.hSpkAll, S_fig);
+%     set(hFig, 'OuterPosition', vrPos_);
 else
 %     mh_info = [];
     S_fig = plot_spkwav_(S_fig, S0); %plot spikes
     try delete(S_fig.vhPlot); catch; end %delete old text
     S_fig = rmfield_(S_fig, 'vhPlot');
     S_fig = plot_tnWav_clu_(S_fig, P); %do this after plotSpk_
+%     xylabel_(S_fig.hAx, 'Cluster #', 'Site #');
 end
 
 % create text
@@ -5800,7 +5808,6 @@ S_fig.csHelp = { ...
     '[O] Overlap average waveforms across sites', ...
     }; 
 set(hFig, 'UserData', S_fig);
-xlabel('Clu #'); ylabel('Site #');
 end %func
 
 
@@ -5814,9 +5821,13 @@ mh_file = uimenu_(hFig,'Label','File');
 uimenu_(mh_file,'Label', 'Save', 'Callback', @save_manual_);
 uimenu_(mh_file,'Label', 'Save figures as .fig', 'Callback', @(h,e)save_figures_('.fig'));
 uimenu_(mh_file,'Label', 'Save figures as .png', 'Callback', @(h,e)save_figures_('.png'));
+
 uimenu_(mh_file,'Label', 'Describe', 'Callback', @(h,e)msgbox_(describe_()), 'Separator', 'on');
 uimenu_(mh_file,'Label', 'Edit prm file', 'Callback', @edit_prm_);
 uimenu_(mh_file,'Label', 'Reload prm file', 'Callback', @reload_prm_);
+uimenu_(mh_file,'Label', 'Copy prm file to clipboard', 'Callback', @clipboard_prm_);
+uimenu_(mh_file,'Label', 'Open prm folder', 'Callback', @open_prm_folder_);
+
 uimenu_(mh_file,'Label', 'Export units to csv', 'Callback', @export_csv_, 'Separator', 'on');
 uimenu_(mh_file,'Label', 'Export unit qualities to csv', 'Callback', @(h,e)export_quality_);
 uimenu_(mh_file,'Label', 'Export all mean unit waveforms', 'Callback', @export_tmrWav_clu_);
@@ -5920,7 +5931,7 @@ S = makeStruct_(cvrY, cviSite, vnSpk);
 try
     set(S_fig.hSpkAll, 'XData', cell2mat_(cvrX), 'YData', cell2mat_(cvrY), 'UserData', S);
 catch
-    S_fig.hSpkAll = plot(S_fig.hAx, cell2mat_(cvrX), cell2mat_(cvrY), 'Color', [.5 .5 .5], 'LineWidth', .5); %, P.LineStyle); 
+    S_fig.hSpkAll = plot_(S_fig.hAx, cell2mat_(cvrX), cell2mat_(cvrY), 'Color', [.5 .5 .5], 'LineWidth', .5); %, P.LineStyle); 
     set(S_fig.hSpkAll, 'UserData', S);
 end
 end %func
@@ -5933,16 +5944,13 @@ try
     if ~isvalid(src), return; end
     S0 = get(0, 'UserData'); 
     P = S0.P;
-%     if ~get_set_([], 'fDebug_ui', 0)
     fExit = save_manual_(P);
     if ~fExit, return; end 
     if ~isfield(S0, 'csFig')
         S0.csFig = {'FigPos', 'FigMap', 'FigTime', 'FigWav', 'FigWavCor', 'FigProj', 'FigRD', 'FigCorr', 'FigIsi', 'FigHist'};
     end
     delete_multi_(get_fig_all_(S0.csFig), src);
-    close_(get_fig_('FigTrial'));
-    close_(get_fig_('FigTrial_b'));
-    close_(get_fig_('FigAux'));    
+    close_(get_fig_('FigTrial'), get_fig_('FigTrial_b'), get_fig_('FigAux'));    
 catch
     disperr_();
     close(src);
@@ -6298,8 +6306,9 @@ switch lower(event.Key)
     case 'e', plot_FigMap_(S0);        
     case 'u', update_FigCor_(S0);        
     case 'p' %PSTH plot
-        if isempty(P.vcFile_trial), msgbox_('''vcFile_trial'' not set. Reload .prm file after setting (under "File menu")'); return; end
-        plot_raster_(S0, 1);
+%         if isempty(P.vcFile_trial), msgbox_('''vcFile_trial'' not set. Reload .prm file after setting (under "File menu")'); return; end
+%         plot_raster_(S0, 1);
+        plot_psth_trial_(S0, 1);
     otherwise, figure_wait_(0); %stop waiting
 end
 figure_(hObject); %change the focus back to the current object
@@ -6353,7 +6362,7 @@ vrTime_lag = viLag * P.jitter_ms;
 % draw
 if isempty(S_fig)
     S_fig.hAx = axes_new_(hFig);
-    S_fig.hBar = bar(vrTime_lag, vnCnt, 1);     
+    S_fig.hBar = bar_(vrTime_lag, vnCnt, 1);     
     xlabel('Time (ms)'); 
     ylabel('Counts');
     grid on; 
@@ -7229,8 +7238,8 @@ P = S0.P; S_clu = S0.S_clu;
 [vrX1, vrY1] = get_returnMap_(S0.iCluCopy, P);                        
 if isempty(S_fig)
     S_fig.hAx = axes_new_(hFig);
-    S_fig.hPlot1 = plot(S_fig.hAx, nan, nan, 'ko');
-    S_fig.hPlot2 = plot(S_fig.hAx, nan, nan, 'ro');
+    S_fig.hPlot1 = plot_(S_fig.hAx, nan, nan, 'ko');
+    S_fig.hPlot2 = plot_(S_fig.hAx, nan, nan, 'ro');
     set(S_fig.hAx, 'XScale','log', 'YScale','log');   
     xlabel('ISI_{k} (ms)'); ylabel('ISI_{k+1} (ms)');
     axis_(S_fig.hAx, [1 10000 1 10000]);
@@ -8270,12 +8279,12 @@ while 1
             axes(hAx_); 
             cla(hAx_);
             [vrX1, vrY1] = deal(mrFet_split(:,iAx1), mrFet_split(:,iAx2));
-            plot(hAx_, vrX1, vrY1, 'k.');
+            plot_(hAx_, vrX1, vrY1, 'k.');
             close_(hPoly);
             hPoly = impoly_();
             mrPolyPos = getPosition(hPoly);              
             vlSpkIn = inpolygon(vrX1, vrY1, mrPolyPos(:,1), mrPolyPos(:,2));
-            plot(hAx_, vrX1(vlSpkIn), vrY1(vlSpkIn), 'b.', vrX1(~vlSpkIn), vrY1(~vlSpkIn), 'r.');
+            plot_(hAx_, vrX1(vlSpkIn), vrY1(vlSpkIn), 'b.', vrX1(~vlSpkIn), vrY1(~vlSpkIn), 'r.');
     end %switch
 end
 split_clu_(iClu1, vlSpkIn);
@@ -8427,6 +8436,42 @@ function reload_prm_(hObject, event)
 [S0, P] = get0_();
 S0.P = loadParam_(P.vcFile_prm);
 set(0, 'UserData', S0);
+end %func
+
+
+%--------------------------------------------------------------------------
+% 12/10/2018 JJJ: open folder containing prm file
+function open_prm_folder_(hObject, event)
+% Edit prm file
+[S0, P] = get0_();
+P = loadParam_(P.vcFile_prm);
+[vcDir, ~, ~] = fileparts(P.vcFile);
+winopen_(vcDir);
+end %func
+
+
+%--------------------------------------------------------------------------
+% 12/11/2018 JJJ: Copy prm file to the clipboard
+function clipboard_prm_(hObject, event)
+[S0, P] = get0_();
+clipboard('copy', P.vcFile_prm);
+msgbox(sprintf('Copied "%s" to clipboard', P.vcFile_prm));
+disp(P.vcFile_prm);
+end %func
+
+
+%--------------------------------------------------------------------------
+% 12/10/2018 JJJ: open folder outside of matlab using system file browser
+function winopen_(vcDir)
+if ispc()
+    winopen(vcDir)
+elseif ismac()
+    system(['open "', vcDir, '"']);
+elseif isunix()
+    system(['xdg-open "', vcDir, '"']);
+else
+    error ('winopen_: unsupported OS');
+end
 end %func
 
 
@@ -9011,7 +9056,7 @@ resize_figure_(hFig, [0 0 .5 1]);
 subplot(2,2,[1,3]); hold on;
 line(vxPlot, vyPlot, 'Color', P.mrColor_proj(2,:), 'Marker', 'o', 'MarkerSize', 2, 'LineStyle', 'none');
 hPlot = line(vxPlot(vlIn), vyPlot(vlIn), 'Color', P.mrColor_proj(3,:), 'Marker', 'o', 'MarkerSize', 2, 'LineStyle', 'none');
-% plot(vxPoly, vyPoly, 'b+-'); %boundary
+% plot_(vxPoly, vyPoly, 'b+-'); %boundary
 title(sprintf('Cluster %d (%d spikes)', iClu1, S_clu.vnSpk_clu(iClu1)));
 xlabel(sprintf('Site %d', site12(1)));
 ylabel(vcYlabel);   xlabel(vcXlabel);
@@ -9047,12 +9092,12 @@ if isempty(viIn) || isempty(viOut)
 end
 
 subplot 222; hold on;
-plot(vrT, mrWavX(:,viOut), 'k', vrT, mrWavX(:,viIn), 'r');
+plot_(vrT, mrWavX(:,viOut), 'k', vrT, mrWavX(:,viIn), 'r');
 title(vcXlabel); ylabel('Voltage (\muV)'); xlabel('Time (ms)');
 grid on;
 
 subplot 224; hold on;
-plot(vrT, mrWavY(:,viOut), 'k', vrT, mrWavY(:,viIn), 'r');
+plot_(vrT, mrWavY(:,viOut), 'k', vrT, mrWavY(:,viIn), 'r');
 title(vcYlabel); ylabel('Voltage (\muV)'); xlabel('Time (ms)');
 grid on;
 
@@ -9213,9 +9258,9 @@ if nargout==0
     vrXp = log10(S_clu.rho);
     vrYp = log10(S_clu.delta);
     figure; hold on; 
-    plot(vrXp, vrYp, 'b.', vrXp(S_clu.icl), vrYp(S_clu.icl), 'ro');
-    plot(get(gca, 'XLim'), P.delta1_cut*[1 1], 'r-');
-    plot(P.rho_cut*[1 1], get(gca, 'YLim'), 'r-');
+    plot_(vrXp, vrYp, 'b.', vrXp(S_clu.icl), vrYp(S_clu.icl), 'ro');
+    plot_(get(gca, 'XLim'), P.delta1_cut*[1 1], 'r-');
+    plot_(P.rho_cut*[1 1], get(gca, 'YLim'), 'r-');
     xlabel('log10 rho');
     ylabel('log10 delta');    
 end 
@@ -9296,7 +9341,7 @@ else
 end
 
 if nargout==0
-    figure; plot(x,y,'.', x(icl),y(icl),'ro'); grid on; 
+    figure; plot_(x,y,'.', x(icl),y(icl),'ro'); grid on; 
 end
 end %func
 
@@ -9351,7 +9396,7 @@ else
 end
 
 if nargout==0
-    figure; plot(x,z,'.', x(icl),z(icl),'ro'); grid on; 
+    figure; plot_(x,z,'.', x(icl),z(icl),'ro'); grid on; 
     title(sprintf('%d clu', numel(icl)));
 end
 end %func
@@ -10323,19 +10368,43 @@ end %func
 
 
 %--------------------------------------------------------------------------
+function vrPos = get_screensize_()
+persistent vrPos_ vrPos0_
+vrPos0 = get(groot, 'ScreenSize'); 
+if ~isempty(vrPos_)
+    if all(vrPos0 == vrPos0_)
+       vrPos = vrPos_; 
+       return;
+    end
+end
+
+f=figure('visible','on'); 
+jFrame=get(f, 'JavaFrame'); 
+pause(.3); 
+set(jFrame, 'Maximized', 1); 
+pause(.3); 
+drawnow;
+vrPos = f.OuterPosition; 
+close_(f); 
+[vrPos_, vrPos0_] = deal(vrPos, vrPos0);
+end %func
+
+
+%--------------------------------------------------------------------------
 function hFig = resize_figure_(hFig, posvec0, fRefocus)
 if nargin<3, fRefocus = 1; end
-height_taskbar = 40;
-
+height_offset = 40;
+width_offset = 0;
 pos0 = get(groot, 'ScreenSize'); 
-width = pos0(3); 
-height = pos0(4) - height_taskbar;
+%pos0 = get_screensize_();
+width = pos0(3) - width_offset; 
+height = pos0(4) - height_offset;
 % width = width;
 % height = height - 132; %width offset
 % width = width - 32;
 posvec = [0 0 0 0];
-posvec(1) = max(round(posvec0(1)*width),1);
-posvec(2) = max(round(posvec0(2)*height),1) + height_taskbar;
+posvec(1) = max(round(posvec0(1)*width),1) + pos0(1) - 1 + width_offset;
+posvec(2) = max(round(posvec0(2)*height),1) + pos0(2) - 1 + height_offset;
 posvec(3) = min(round(posvec0(3)*width), width);
 posvec(4) = min(round(posvec0(4)*height), height);
 % drawnow;
@@ -10344,8 +10413,13 @@ if isempty(hFig) || ~ishandle(hFig)
 else
     hFig = figure(hFig);
 end
+switch 1
+    case 2
+        set(hFig, 'units', 'normalized');
+        set(hFig, 'OuterPosition', posvec0, 'Color', 'w', 'NumberTitle', 'off');
+    case 1, set(hFig, 'OuterPosition', posvec, 'Color', 'w', 'NumberTitle', 'off');
+end
 drawnow;
-set(hFig, 'OuterPosition', posvec, 'Color', 'w', 'NumberTitle', 'off');
 end
 
 
@@ -11189,7 +11263,7 @@ if P.nSmooth>1, vrPow = filterq_(ones([P.nSmooth,1]),P.nSmooth,vrPow); end
 
 if P.fPlot
     if P.fKHz, vrFreq = vrFreq/1000; end
-    plot(vrFreq, pow2db_(vrPow), P.LineStyle);
+    plot_(vrFreq, pow2db_(vrPow), P.LineStyle);
 %     set(gca, 'YScale', 'log'); 
 %     set(gca, 'XScale', 'linear'); 
     xlabel('Frequency (Hz)'); ylabel('Mean power across sites (dB uV^2/Hz)');
@@ -11675,16 +11749,16 @@ switch lower(vcMode)
         mrYp(end+1,:) = mrYp(end,:);
         stairs(vrXp, mrYp); grid on; 
     case 'line'
-        plot(vrXp, mrYp); grid on; 
+        plot_(vrXp, mrYp); grid on; 
     case 'both'
         hold on; grid on;
         vrXp1 = vrXp - xbin/2;
         vrXp1(end+1) = vrXp1(end)+xbin;      
         stairs(vrXp1, mrYp([1:end,end],[1, 3]), 'k-');
 %         plot_rect_(mrXp1(:,1:2), mrYp(:,[1,3]), .25);
-        plot(mrXp1', repmat(mrYp(:,2), 1, 3)', 'k-', 'LineWidth', 1);
+        plot_(mrXp1', repmat(mrYp(:,2), 1, 3)', 'k-', 'LineWidth', 1);
 %         stairs(vrXp1, mrYp([1:end,end],[2]), 'k-', 'LineWidth', 1);
-%         plot(vrXp, mrYp(:,2), 'k-', 'LineWidth', 1); 
+%         plot_(vrXp, mrYp(:,2), 'k-', 'LineWidth', 1); 
 end
 end %func
 
@@ -11705,9 +11779,19 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function close_(hMsg)
-try close(hMsg); catch; end
+% 12/11/2018 JJJ: multiple close supported
+function close_(varargin)
+for iArg = 1:nargin
+    vh1 = varargin{iArg};
+    for ih1 = 1:numel(vh1)       
+        try 
+            close(vh1(ih1)); 
+        catch
+            ;
+        end
+    end
 end
+end %func
 
 
 %--------------------------------------------------------------------------
@@ -11745,7 +11829,7 @@ function hPlot = plotTable_(lim, varargin)
 vrX = floor((lim(1)*2:lim(2)*2+1)/2);
 vrY = repmat([lim(1), lim(2), lim(2), lim(1)], [1, ceil(numel(vrX)/4)]);
 vrY = vrY(1:numel(vrX));
-hPlot = plot([vrX(1:end-1), fliplr(vrY)], [vrY(1:end-1), fliplr(vrX)], varargin{:});
+hPlot = plot_([vrX(1:end-1), fliplr(vrY)], [vrY(1:end-1), fliplr(vrX)], varargin{:});
 end %func
 
 
@@ -11754,8 +11838,8 @@ function hPlot = plotDiag_(lim, varargin)
 [vrX, vrY] = plotDiag__(lim);
 % vrY = floor((lim(1)*2:lim(2)*2+1)/2);
 % vrX = [vrY(2:end), lim(end)];
-% hPlot = plot([vrX(1:end-1), fliplr(vrY)], [vrY(1:end-1), fliplr(vrX)], varargin{:});
-hPlot = plot(vrX, vrY, varargin{:});
+% hPlot = plot_([vrX(1:end-1), fliplr(vrY)], [vrY(1:end-1), fliplr(vrX)], varargin{:});
+hPlot = plot_(vrX, vrY, varargin{:});
 end %func
 
 
@@ -12080,12 +12164,12 @@ for iAx=1:numel(vhAx)
     vhAx(iAx) = subplot(2,2,iAx, 'Parent', hFig); hold on;
 end
 if size(mrFet,2) == 3
-    plot(vhAx(1), mrFet(:,1), mrFet(:,2), '.'); xylabel_(vhAx(1), 'PC1', 'PC2', 'PC1 vs PC2');
-    plot(vhAx(2), mrFet(:,3), mrFet(:,2), '.'); xylabel_(vhAx(2), 'PC3', 'PC2', 'PC3 vs PC2');
-    plot(vhAx(3), mrFet(:,1), mrFet(:,3), '.'); xylabel_(vhAx(3), 'PC1', 'PC3', 'PC1 vs PC3');
+    plot_(vhAx(1), mrFet(:,1), mrFet(:,2), '.'); xylabel_(vhAx(1), 'PC1', 'PC2', 'PC1 vs PC2');
+    plot_(vhAx(2), mrFet(:,3), mrFet(:,2), '.'); xylabel_(vhAx(2), 'PC3', 'PC2', 'PC3 vs PC2');
+    plot_(vhAx(3), mrFet(:,1), mrFet(:,3), '.'); xylabel_(vhAx(3), 'PC1', 'PC3', 'PC1 vs PC3');
     drawnow;
 else
-    plot(vhAx(1), mrFet(vlIn_spk,1), mrFet(vlIn_spk,2), 'b.', mrFet(~vlIn_spk,1), mrFet(~vlIn_spk,2), 'r.');
+    plot_(vhAx(1), mrFet(vlIn_spk,1), mrFet(vlIn_spk,2), 'b.', mrFet(~vlIn_spk,1), mrFet(~vlIn_spk,2), 'r.');
     return;
 end
 
@@ -12102,9 +12186,9 @@ catch
     return;
 end
 vlOut_spk = ~vlIn_spk;
-plot(vhAx(1), mrFet(vlIn_spk,1), mrFet(vlIn_spk,2), 'b.', mrFet(vlOut_spk,1), mrFet(vlOut_spk,2), 'r.');
-plot(vhAx(2), mrFet(vlIn_spk,3), mrFet(vlIn_spk,2), 'b.', mrFet(vlOut_spk,3), mrFet(vlOut_spk,2), 'r.');
-plot(vhAx(3), mrFet(vlIn_spk,1), mrFet(vlIn_spk,3), 'b.', mrFet(vlOut_spk,1), mrFet(vlOut_spk,3), 'r.');
+plot_(vhAx(1), mrFet(vlIn_spk,1), mrFet(vlIn_spk,2), 'b.', mrFet(vlOut_spk,1), mrFet(vlOut_spk,2), 'r.');
+plot_(vhAx(2), mrFet(vlIn_spk,3), mrFet(vlIn_spk,2), 'b.', mrFet(vlOut_spk,3), mrFet(vlOut_spk,2), 'r.');
+plot_(vhAx(3), mrFet(vlIn_spk,1), mrFet(vlIn_spk,3), 'b.', mrFet(vlOut_spk,1), mrFet(vlOut_spk,3), 'r.');
 
 min_y=min(reshape(mrSpkWav,1,[]));
 max_y=max(reshape(mrSpkWav,1,[]));
@@ -12116,8 +12200,8 @@ title(vhAx(4), sprintf('Spike waveforms (mean/SD), dist (MAD):%0.3f', dist_mad))
 mrSpkWav(1:dimm1(1):end,:) = nan; % show boundary
 [vrMean_in, vrSd_in, vrX_in] = mean_std_(mrSpkWav(viSpk1,vlIn_spk), 2);
 [vrMean_out, vrSd_out, vrX_out] = mean_std_(mrSpkWav(viSpk1,vlOut_spk), 2);
-plot(vhAx(4), vrX_in, vrMean_in, 'b-', vrX_in, vrMean_in+vrSd_in, 'b:', vrX_in, vrMean_in-vrSd_in, 'b:');
-plot(vhAx(4), vrX_out, vrMean_out, 'r-', vrX_out, vrMean_out+vrSd_out, 'r:', vrX_out, vrMean_out-vrSd_out, 'r:');
+plot_(vhAx(4), vrX_in, vrMean_in, 'b-', vrX_in, vrMean_in+vrSd_in, 'b:', vrX_in, vrMean_in-vrSd_in, 'b:');
+plot_(vhAx(4), vrX_out, vrMean_out, 'r-', vrX_out, vrMean_out+vrSd_out, 'r:', vrX_out, vrMean_out-vrSd_out, 'r:');
 ylim_([min_y max_y]);
 vrXTick_plot = (1:dimm1(1):dimm1(1)*dimm1(2)) + dimm1(1)/2;
 set(vhAx(4), 'XTick', vrXTick_plot, 'XTickLabel', viSites); 
@@ -12296,36 +12380,55 @@ end %func
 
 %--------------------------------------------------------------------------
 % 122917 JJJ: Got rid of Tab which is slow
-function plot_raster_(S0, fNewFig)
+function plot_raster_(S0, fNewFig, vcFile_psth, iChan)
 %plot_raster_()
 %   plot if window open using curretnly selected clusters
 %plot_raster_(P, iClu, S_clu)
 %   Open window and plot specific clusters and S_clu
 
-persistent hFig hFig_b
+persistent hFig hFig_b vcFile_trial_ iChan_
+if nargin<1, S0 = []; end
 if nargin<2, fNewFig = 0; end
-% import  trial time
-% P = loadParam(vcFile_prm);
-if ~isvalid_(hFig) && ~fNewFig, return; end
-if nargin<1, S0 = get(0, 'UserData'); end
-[P, S_clu, iCluCopy, iCluPaste] = deal(S0.P, S0.S_clu, S0.iCluCopy, S0.iCluPaste);
-if isfield(P, 'vcFile_psth'), P.vcFile_trial = P.vcFile_psth; end % old field name
+if nargin<3, vcFile_psth = ''; end
+if nargin<4, iChan = []; end
 
+if ~isvalid_(hFig) && ~fNewFig, return; end
+
+hFig_wait = figure_wait_(1);
+if isempty(S0), S0 = get(0, 'UserData'); end
+[S_clu, iCluCopy, iCluPaste] = deal(S0.S_clu, S0.iCluCopy, S0.iCluPaste);
+P = loadParam_(); % refresh P
+if fNewFig, [vcFile_trial_, iChan_] = deal([]); end
+
+% load data
 try
-    if ~exist_file_(P.vcFile_trial), P.vcFile_trial = subsDir_(P.vcFile_trial, P.vcFile_prm); end
-    if ~exist_file_(P.vcFile_trial)
-        msgbox_(sprintf('File does not exist: vcFile_trial=%s', P.vcFile_trial), 1);
-        return;
+    if isempty(vcFile_psth)  
+        vcFile_psth = get_(P, 'vcFile_psth');
+        if isempty(vcFile_psth), vcFile_psth = get_(P, 'vcFile_trial'); end
+        if isempty(vcFile_psth) && ~isempty(vcFile_trial_)
+            [vcFile_psth, iChan] = deal(vcFile_trial_, iChan_);
+        end
     end
-    crTime_trial = loadTrial_(P.vcFile_trial);
+    if ~exist_file_(vcFile_psth), vcFile_psth = subsDir_(vcFile_psth, P.vcFile_prm); end
+    crTime_trial = loadTrial_(vcFile_psth, iChan);
 catch
-    return;
+    disperr_();
+    figure_wait_(0, hFig_wait);
 end
+
+% format data
 if ~iscell(crTime_trial), crTime_trial = {crTime_trial}; end
 nstims = numel(crTime_trial);
-if isempty(crTime_trial), msgbox('Trial file does not exist', 'modal'); return; end
+if isempty(crTime_trial)
+    figure_wait_(0, hFig_wait);
+    msgbox('Trial file does not exist', 'modal'); 
+    return; 
+end
 
-[hFig, hFig_b] = create_figure_psth_(hFig, hFig_b, P, nstims);
+% create figure
+[hFig, hFig_b] = create_figure_psth_(hFig, hFig_b, vcFile_psth, nstims);
+[vcFile_trial_, iChan_] = deal(vcFile_psth, iChan); 
+
 plot_figure_psth_(hFig, iCluCopy, crTime_trial, S_clu, P);
 if ~isempty(iCluPaste)
     set(hFig_b, 'Visible', 'on');
@@ -12333,6 +12436,7 @@ if ~isempty(iCluPaste)
 else
     set(hFig_b, 'Visible', 'off');
 end
+figure_wait_(0, hFig_wait);
 end %func
 
 
@@ -12361,13 +12465,13 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function [hFig, hFig_b] = create_figure_psth_(hFig, hFig_b, P, nStims)
+function [hFig, hFig_b] = create_figure_psth_(hFig, hFig_b, vcFile_psth, nStims)
 
 % Figure handle for the iCluCopy
 [axoffset, axlen] = deal(.08, 1/nStims);
 
 if ~isvalid_(hFig)    
-    hFig = create_figure_('FigTrial', [.5  .5 .35 .5], P.vcFile_trial, 0, 0);
+    hFig = create_figure_('FigTrial', [.5  .5 .35 .5], vcFile_psth, 1, 1);
     [vhAx1, vhAx2] = deal(nan(nStims, 1));
     for iStim = 1:nStims
         axoffset_ = axoffset + (iStim-1) * axlen;
@@ -12375,12 +12479,17 @@ if ~isvalid_(hFig)
         vhAx2(iStim) = axes('Parent', hFig, 'Position',[.08 axoffset_ + axlen*.68 .9 axlen*.2]);
     end
     vcColor = 'k';
-    set(hFig, 'UserData', makeStruct_(vhAx1, vhAx2, vcColor));
+    set(hFig, 'UserData', makeStruct_(vhAx1, vhAx2, vcColor), ...
+        'Name', vcFile_psth, 'CloseRequestFcn', @(h,e)close_(hFig_b, hFig));
+    
+    set(hFig, 'MenuBar','None');
+    mh_settings = uimenu_(hFig,'Label','Settings');
+    uimenu_(mh_settings,'Label','Change PSTH settings','Callback',@(h,e)settings_psth_(h,e));
 end
 
 % Figure handle for the iCluPaste
 if ~isvalid_(hFig_b)
-    hFig_b = create_figure_('FigTrial_b', [.5  0 .35 .5], P.vcFile_trial, 0, 0);
+    hFig_b = create_figure_('FigTrial_b', [.5  0 .35 .5], vcFile_psth, 1, 1);
     set(hFig_b, 'Visible', 'off');
     [vhAx1, vhAx2] = deal(nan(nStims, 1));
     for iStim = 1:nStims
@@ -12389,8 +12498,20 @@ if ~isvalid_(hFig_b)
         vhAx2(iStim) = axes('Parent', hFig_b, 'Position',[.08 axoffset_ + axlen*.68 .9 axlen*.2]);
     end
     vcColor = 'r';
-    set(hFig_b, 'UserData', makeStruct_(vhAx1, vhAx2, vcColor));
+    set(hFig_b, 'UserData', makeStruct_(vhAx1, vhAx2, vcColor), ...
+        'Name', vcFile_psth, 'CloseRequestFcn', @(h,e)close_(hFig_b, hFig));
+    
+    set(hFig_b, 'MenuBar','None');
+    mh_settings = uimenu_(hFig_b,'Label','Settings');
+    uimenu_(mh_settings,'Label','Change PSTH settings','Callback',@(h,e)settings_psth_(h,e));
 end
+end %func
+
+
+%--------------------------------------------------------------------------
+function settings_psth_(h,e)
+ui_update_prm_('*_psth');
+plot_raster_([]);
 end %func
 
 
@@ -12409,12 +12530,12 @@ vlTime1(ceil(double(viTime_clu)/nbin))=1;
 mr1 = vr2mr2_(double(vlTime1), viTime_Trial, nlim);
 vnRate = mean(mr1,2) / tbin;
 vrTimePlot = (nlim(1):nlim(end))*tbin + tbin/2;
-bar(hAx, vrTimePlot, vnRate, 1, 'EdgeColor', 'none', 'FaceColor', vcColor);
+bar_(hAx, vrTimePlot, vnRate, 1, 'EdgeColor', 'none', 'FaceColor', vcColor);
 vrXTick = P.tlim_psth(1):(P.xtick_psth):P.tlim_psth(2);
 set(hAx, 'XTick', vrXTick, 'XTickLabel', []);
 grid(hAx, 'on');
 hold(hAx, 'on'); 
-plot(hAx, [0 0], get(hAx,'YLim'), 'r-');
+plot_(hAx, [0 0], get(hAx,'YLim'), 'r-');
 ylabel(hAx, 'Rate (Hz)');
 xlim_(hAx, P.tlim_psth);
 end
@@ -12438,9 +12559,11 @@ for iTrial = 1:nTrials
 end
 
 % Plot
-% hAx_pre = axes_(hAx);
-plotSpikeRaster(spikeTimes,'PlotType','vertline','RelSpikeStartTime',0,'XLimForCell',[0 1], ...
-    'LineFormat', struct('LineWidth', 1.5), 'hAx', hAx);
+spikeTimes1 = spikeTimes(~isempty_(spikeTimes));
+if ~isempty(spikeTimes1)
+    plotSpikeRaster(spikeTimes,'PlotType','vertline','RelSpikeStartTime',0,'XLimForCell',[0 1], ...
+        'LineFormat', struct('LineWidth', 1.5), 'hAx', hAx);
+end
 % axes_(hAx_pre);
 ylabel(hAx, 'Trial #')
 % title('Vertical Lines With Spike Offset of 10ms (Not Typical; for Demo Purposes)');
@@ -12449,7 +12572,7 @@ vrXTick = linspace(0,1,numel(vrXTickLabel));
 set(hAx, {'XTick', 'XTickLabel'}, {vrXTick, vrXTickLabel});
 grid(hAx, 'on');
 hold(hAx, 'on'); 
-plot(hAx, [t0,t0]/trialLength, get(hAx,'YLim'), 'r-');
+plot_(hAx, [t0,t0]/trialLength, get(hAx,'YLim'), 'r-');
 xlabel(hAx, 'Time (s)');
 end %func
 
@@ -12927,7 +13050,7 @@ subplot 122; imagesc(mrAmp90(~vlSite_left, :), 'XData', (1:nTime) * tbin, 'YData
 viSiteA = iSite_center + [-2:2]; %look neighbors
 mrAmp90a = mrAmp90(viSiteA, :);
 vrCentroid = bsxfun(@rdivide, sum(bsxfun(@times, mrAmp90a.^2, vrSiteY(viSiteA))), sum(mrAmp90a.^2));
-hold on; plot((1:nTime) * tbin, vrCentroid, 'r');
+hold on; plot_((1:nTime) * tbin, vrCentroid, 'r');
 
 % if get_set_([], 'fDebug_ui', 0), close(hFig); end
 if fDebug_ui==1, close(hFig); end
@@ -13053,7 +13176,7 @@ hold(hAx, 'on');
 for iGroup=1:nGroups
     vrX1 = mrX(:, iGroup:nGroups:end);
     vrY1 = mrY(:, iGroup:nGroups:end);
-    vhPlot(iGroup) = plot(hAx, vrX1(:), vrY1(:), varargin{:}, 'Color', mrColor(:,iGroup)');
+    vhPlot(iGroup) = plot_(hAx, vrX1(:), vrY1(:), varargin{:}, 'Color', mrColor(:,iGroup)');
 end
 end %func
 
@@ -13459,9 +13582,9 @@ if fPlot_drift
 %     viSpk1 = viSpk1(1:2:end); %plot every other
     figure; hold on; set(gcf,'Color','w');
     ax(1)=subplot(121); 
-    plot(viTime_spk(viSpk), vrY_pre(viSpk), 'go', 'MarkerSize', 2); title('before correction'); grid on;
+    plot_(viTime_spk(viSpk), vrY_pre(viSpk), 'go', 'MarkerSize', 2); title('before correction'); grid on;
     ax(2)=subplot(122); 
-    plot(viTime_spk(viSpk), vrY_post(viSpk), 'bo', 'MarkerSize', 2); title('after correction'); grid on;
+    plot_(viTime_spk(viSpk), vrY_post(viSpk), 'bo', 'MarkerSize', 2); title('after correction'); grid on;
     linkaxes(ax,'xy');
 end
 end %func
@@ -13677,7 +13800,7 @@ function [iClu, hPlot] = plot_tmrWav_clu_(S0, iClu, hPlot, vrColor)
 [S_clu, P] = getfield_(S0, 'S_clu', 'P');
 [hFig, S_fig] = get_fig_cache_('FigWav');
 if ~isvalid_(hPlot)
-    hPlot = plot(nan, nan, 'Color', vrColor, 'LineWidth', 2, 'Parent', S_fig.hAx);
+    hPlot = plot_(nan, nan, 'Color', vrColor, 'LineWidth', 2, 'Parent', S_fig.hAx);
 end
 if P.fWav_raw_show
     mrWav_clu1 = S_clu.tmrWav_raw_clu(:,:, iClu);
@@ -15004,7 +15127,7 @@ mnWav1 = uint2int_(mnWav1);
 hFig_traces = create_figure_('Fig_traces', [0 0 .5 1], vcFile_bin, 0, 1); %remove all other figure traces
 hAx = axes_new_(hFig_traces); % create axis
 hPlot = line(hAx, nan, nan, 'Color', [1 1 1]*.5, 'Parent', hAx, 'LineWidth', .5);
-hPlot_edges = plot(nan, nan, 'Color', [1 0 0]*.5, 'Parent', hAx, 'LineWidth', 1);
+hPlot_edges = plot_(nan, nan, 'Color', [1 0 0]*.5, 'Parent', hAx, 'LineWidth', 1);
 set(hAx, 'Position',[.05 .05 .9 .9], 'XLimMode', 'manual', 'YLimMode', 'manual');
 S_fig = makeStruct_(hAx, hPlot, nlim_bin, fid_bin, nSamples_bin, nLoad_bin, hPlot_edges);
 S_fig.maxAmp = P.maxAmp;
@@ -15756,7 +15879,7 @@ switch lower(vcMode)
 %         nShift_post = nShift_post_;
         mn1 = int16(conv2(single(gather_(mn)), vrFilt_spk(:), 'same'));
 %         mn1 = shift_mr_(mn1, nShift_post); % or do it later in the spike detection phase
-%         figure; plot(xcorr(mn(:,41), mn1(:,41), 10));
+%         figure; plot_(xcorr(mn(:,41), mn1(:,41), 10));
 %         nShift_post = P.spkLim(1)-1;
     case 'autocov'
         mn1 = -int16(filt_corr(single(mn), 2));
@@ -16853,16 +16976,16 @@ if ~isempty(S_clu)
         posY_clu1 = S_clu.vrPosY_clu(iClu);
         switch vcMode_drift
             case 'tay'
-                plot3(ax, vrTime_spk(viSpk1), vrAmp_spk(viSpk1), vrPosY_spk(viSpk1), '.', 'Color', vrColor1, 'MarkerSize', 5); 
+                plot3_(ax, vrTime_spk(viSpk1), vrAmp_spk(viSpk1), vrPosY_spk(viSpk1), '.', 'Color', vrColor1, 'MarkerSize', 5); 
             case 'x'
-                plot(ax, vrTime_spk(viSpk1), vrPosX_spk(viSpk1), '.', 'Color', vrColor1, 'MarkerSize', 5); 
+                plot_(ax, vrTime_spk(viSpk1), vrPosX_spk(viSpk1), '.', 'Color', vrColor1, 'MarkerSize', 5); 
             case 'y'
-                plot(ax, vrTime_spk(viSpk1), vrPosY_spk(viSpk1), '.', 'Color', vrColor1, 'MarkerSize', 5); 
+                plot_(ax, vrTime_spk(viSpk1), vrPosY_spk(viSpk1), '.', 'Color', vrColor1, 'MarkerSize', 5); 
             case 'xy'
-                plot(ax, vrPosX_spk(viSpk1), vrPosY_spk(viSpk1), '.', 'Color', vrColor1, 'MarkerSize', 5);      
+                plot_(ax, vrPosX_spk(viSpk1), vrPosY_spk(viSpk1), '.', 'Color', vrColor1, 'MarkerSize', 5);      
             case 'xya'
                 if S_clu.vrSnr_clu(iClu) < snr_thresh_clu, continue; end
-                plot3(ax, vrPosX_spk(viSpk1), vrPosY_spk(viSpk1), vrAmp_spk(viSpk1), '.', 'Color', vrColor1, 'MarkerSize', 5);                    
+                plot3_(ax, vrPosX_spk(viSpk1), vrPosY_spk(viSpk1), vrAmp_spk(viSpk1), '.', 'Color', vrColor1, 'MarkerSize', 5);                    
             case 'gt'
                 iClu_gt = viClu_gt(iClu);
                 if iClu_gt==0, continue; end
@@ -16871,28 +16994,28 @@ if ~isempty(S_clu)
 %                 viSpk1 = subsample_vr_(viSpk1, 4000);
                 vl_ = vrPosY_spk(viSpk1) >= ylim_gt(1) & vrPosY_spk(viSpk1) < ylim_gt(2);
                 vrColor1 = mrColor_gt(iClu_gt,:);                
-                plot(ax, vrTime_spk(viSpk1(vl_)), vrPosY_spk(viSpk1(vl_)), '.', 'Color', vrColor1, 'MarkerSize', 5);
+                plot_(ax, vrTime_spk(viSpk1(vl_)), vrPosY_spk(viSpk1(vl_)), '.', 'Color', vrColor1, 'MarkerSize', 5);
             case 'z'
 %                 if S_clu.vnSpk_clu(iClu) < nSpk_thresh_clu, continue; end
                 if S_clu.vrSnr_clu(iClu) < snr_thresh_clu, continue; end                
 %                 if vrA_spk(S_clu.cviSpk_clu{iClu})
 %                 if S_clu.vrPosX_clu(iClu) < posX_thresh, continue; end
                 if posX_clu1 < posX_lim(1) || posX_clu1 > posX_lim(2) || posY_clu1 < posY_lim(1) || posY_clu1 > posY_lim(2), continue; end
-                plot(ax, vrTime_spk(viSpk1), vrPosY_spk(viSpk1), '.', 'Color', vrColor1, 'MarkerSize', 5);  % - median(vrPosY_spk(viSpk1))
+                plot_(ax, vrTime_spk(viSpk1), vrPosY_spk(viSpk1), '.', 'Color', vrColor1, 'MarkerSize', 5);  % - median(vrPosY_spk(viSpk1))
         end %switch
     end
 else
     switch vcMode_drift
-        case 'tay', plot3(ax, vrTime_spk, vrAmp_spk, vrPosY_spk, 'o', 'MarkerSize', 5); 
-        case 'x', plot(ax, vrTime_spk, vrPosX_spk, '.', 'MarkerSize', 5); 
-        case 'y', plot(ax, vrTime_spk, vrPosY_spk, '.', 'MarkerSize', 5); 
-        case 'xy', plot(ax, vrPosX_spk, vrPosY_spk, '.', 'MarkerSize', 5); 
-        case 'xya', plot3(ax, vrPosX_spk, vrPosY_spk, vrAmp_spk, '.', 'MarkerSize', 5); 
+        case 'tay', plot3_(ax, vrTime_spk, vrAmp_spk, vrPosY_spk, 'o', 'MarkerSize', 5); 
+        case 'x', plot_(ax, vrTime_spk, vrPosX_spk, '.', 'MarkerSize', 5); 
+        case 'y', plot_(ax, vrTime_spk, vrPosY_spk, '.', 'MarkerSize', 5); 
+        case 'xy', plot_(ax, vrPosX_spk, vrPosY_spk, '.', 'MarkerSize', 5); 
+        case 'xya', plot3_(ax, vrPosX_spk, vrPosY_spk, vrAmp_spk, '.', 'MarkerSize', 5); 
         case 'z'
             posX_lim = quantile(vrPosX_spk, [.25, .75]);
             posY_lim = quantile(vrPosY_spk, [.35, .65]);
             viSpk_plot = find(vrPosX_spk(:) > posX_lim(1) & vrPosX_spk(:) < posX_lim(2) & vrPosY_spk(:) > posY_lim(1) & vrPosY_spk(:) < posY_lim(2)); % & vrAmp_spk(:) < median(vrAmp_spk));
-            plot(ax, vrTime_spk(viSpk_plot), vrPosY_spk(viSpk_plot), '.', 'MarkerSize', 5); 
+            plot_(ax, vrTime_spk(viSpk_plot), vrPosY_spk(viSpk_plot), '.', 'MarkerSize', 5); 
     end %switch        
 end
 
@@ -17349,16 +17472,16 @@ vrY_plot1 = log10(vrY_plot1);
 vhAx = [];
 hFig = create_figure_('Fig_RD1', [0 0 .5 1], P.vcFile_prm, 1, 1);
 vhAx(1) = subplot(211); hold on; 
-plot(vrX_plot1, vrY_plot, '.', 'Color', repmat(.5,1,3));
-plot(vrX_plot1(S_clu.icl), vrY_plot(S_clu.icl), 'ro');
-plot(P.rho_cut*[1,1], [0, max_delta], 'r-');
+plot_(vrX_plot1, vrY_plot, '.', 'Color', repmat(.5,1,3));
+plot_(vrX_plot1(S_clu.icl), vrY_plot(S_clu.icl), 'ro');
+plot_(P.rho_cut*[1,1], [0, max_delta], 'r-');
 xylabel_(gca, 'log10 Rho', vcY_label, sprintf('lin-log plot, nClu: %d', S_clu.nClu)); 
 axis_([-4, -.5, 0, max_delta]); grid on;
 
 vhAx(2) = subplot(212); hold on;
-plot(vrX_plot1, vrY_plot1, '.', 'Color', repmat(.5,1,3));
-plot(vrX_plot1(S_clu.icl), vrY_plot1(S_clu.icl), 'ro');
-plot(P.rho_cut*[1,1], [-.5, 2], 'r-', [-4, -.5], P.delta1_cut*[1,1], 'r-');
+plot_(vrX_plot1, vrY_plot1, '.', 'Color', repmat(.5,1,3));
+plot_(vrX_plot1(S_clu.icl), vrY_plot1(S_clu.icl), 'ro');
+plot_(P.rho_cut*[1,1], [-.5, 2], 'r-', [-4, -.5], P.delta1_cut*[1,1], 'r-');
 xylabel_(gca, 'log10 Rho', 'log10 Delta (detrended)', ...
     sprintf('detrended log-log plot (P.rho_cut=%0.3f; P.delta1_cut=%0.3f; nClu:%d)', ...
         P.rho_cut, P.delta1_cut, S_clu.nClu));
@@ -17418,7 +17541,7 @@ S0 = get(0, 'UserData');
 hFig = create_figure_('', [.5 .7 .35 .3], ['Delete Auto: ', P.vcFile]);
 
 % Ask user which clusters to delete
-plot(S_clu.vrSnr_clu(:), S_clu.vnSpk_clu(:), '.'); % show cluster SNR and spike count
+plot_(S_clu.vrSnr_clu(:), S_clu.vnSpk_clu(:), '.'); % show cluster SNR and spike count
 xlabel('Unit SNR'); ylabel('# spikes/unit'); grid on;
 set(gca,'YScale','log');
 % snr_thresh = inputdlg_num_('SNR threshold: ', 'Auto-deletion based on SNR', 10); % also ask about # spikes/unit (or firing rate) @TODO
@@ -17561,6 +17684,14 @@ end
 end %func
 
 
+%--------------------------------------------------------------------------
+% 12/11/18 JJJ: extract struct fields
+function csFields = struct_fields_(S, vcFilter)
+csFields = fieldnames(S);
+csMatch = cellfun(@(cs)regexp(cs, ['\w', vcFilter, '$']), csFields, 'UniformOutput', false);
+csFields = csFields(~isempty_(csMatch));
+end %func
+
 
 %--------------------------------------------------------------------------
 % 10/24/17 JJJ: remap mrWavCor
@@ -17657,7 +17788,7 @@ end
 vrActivity_clu = mean(~isnan(mrPos_clu_drift));
 vrPos_drift = nanmean(mrPos_clu_drift(:,vrActivity_clu>quantile(vrActivity_clu, .9)),2);
 
-figure; plot(vrTime_drift, vrPos_drift)
+figure; plot_(vrTime_drift, vrPos_drift)
 end %func
 
 
@@ -17882,9 +18013,10 @@ end %func
 
 %--------------------------------------------------------------------------
 % 7/26/17: Now accept csv file format
-function vrTime_trial = loadTrial_(vcFile_trial)
+function vrTime_trial = loadTrial_(vcFile_trial, iChan)
 % import  trial time (in seconds)
 vrTime_trial = [];
+if nargin<2, iChan = []; end
 try
     if ~exist_file_(vcFile_trial), return; end
 
@@ -17898,7 +18030,16 @@ try
     elseif matchFileExt_(vcFile_trial, '.csv')
         vrTime_trial = csvread(vcFile_trial);
         if isrow(vrTime_trial), vrTime_trial = vrTime_trial(:); end
-    end
+    elseif matchFileExt_(vcFile_trial, '.nev')
+        [vrTime_trial, vrWav_trial] = load_nev_(vcFile_trial, iChan);
+        vrWav_uniq = unique(vrWav_trial);
+        if numel(vrWav_uniq) > 1 % divide to cells
+            vrTime_trial = cellfun(@(x)vrTime_trial(vrWav_trial == x), ...
+                vrWav_uniq, 'UniformOutput', 0);
+        end
+        min_interval_psth = get_set_(loadParam_(), 'min_interval_psth', 1);
+        vrTime_trial = timestamp_remove_jitter_(vrTime_trial, min_interval_psth);
+    end        
 catch
     disperr_();
 end
@@ -19085,7 +19226,7 @@ end %func
 
 %--------------------------------------------------------------------------
 % 8/2/17 JJJ: Documentation and test
-function edit_prm_file_(P, vcFile_prm)
+function P = edit_prm_file_(P, vcFile_prm)
 % Modify the parameter file using the variables in the P struct
 
 csLines = file2cellstr_(vcFile_prm); %read to cell string
@@ -19108,6 +19249,7 @@ for i=1:numel(csName)
     end
 end
 cellstr2file_(vcFile_prm, csLines);
+if nargout > 0, P = loadParam_(vcFile_prm); end
 end %func
 
 
@@ -19862,8 +20004,8 @@ tlim_sec = (S_fig.nlim_bin + [-1 1]) / P.sRateHz;
 %-----
 % Mean plot
 if isempty(get_(S_fig, 'hPlot_mean'))
-    S_fig.hPlot_mean = plot(S_fig.hAx_mean, nan, nan, 'k');
-    S_fig.hPlot_mean_thresh = plot(S_fig.hAx_mean, nan, nan, 'r');
+    S_fig.hPlot_mean = plot_(S_fig.hAx_mean, nan, nan, 'k');
+    S_fig.hPlot_mean_thresh = plot_(S_fig.hAx_mean, nan, nan, 'r');
 end
 switch S_fig.vcRef_view
     case 'original'
@@ -19885,11 +20027,11 @@ end
 %-----
 % Traces plot
 if isempty(get_(S_fig, 'hPlot_traces'))
-    S_fig.hPlot_traces = plot(S_fig.hAx_traces, nan, nan, 'Color', [1 1 1]*.5);
-    S_fig.hPlot_traces_spk = plot(S_fig.hAx_traces, nan, nan, 'm.-', 'LineWidth', 1.5);
-    S_fig.hPlot_traces_spk1 = plot(S_fig.hAx_traces, nan, nan, 'ro');
-    S_fig.hPlot_traces_thresh = plot(S_fig.hAx_traces, nan, nan, 'm:');
-    S_fig.hPlot_traces_bad = plot(S_fig.hAx_traces, nan, nan, 'r');
+    S_fig.hPlot_traces = plot_(S_fig.hAx_traces, nan, nan, 'Color', [1 1 1]*.5);
+    S_fig.hPlot_traces_spk = plot_(S_fig.hAx_traces, nan, nan, 'm.-', 'LineWidth', 1.5);
+    S_fig.hPlot_traces_spk1 = plot_(S_fig.hAx_traces, nan, nan, 'ro');
+    S_fig.hPlot_traces_thresh = plot_(S_fig.hAx_traces, nan, nan, 'm:');
+    S_fig.hPlot_traces_bad = plot_(S_fig.hAx_traces, nan, nan, 'r');
 end
 if S_fig.fFilter    
     vcFilter = S_fig.vcFilter;
@@ -19946,7 +20088,7 @@ end
 if isempty(get_(S_fig, 'hPlot_site'))
     S_fig.hPlot_site = barh(S_fig.hAx_sites, nan, nan, 1); 
     S_fig.hPlot_site_bad = barh(S_fig.hAx_sites, nan, nan, 1, 'r'); 
-    S_fig.hPlot_site_thresh = plot(S_fig.hAx_sites, nan, nan, 'r'); 
+    S_fig.hPlot_site_thresh = plot_(S_fig.hAx_sites, nan, nan, 'r'); 
 end
 switch S_fig.vcSite_view
     case 'Site correlation', vrPlot_site = S_fig.vrCorr_max_site;
@@ -19975,9 +20117,9 @@ title_(S_fig.hAx_sites, sprintf('thresh_corr_bad_site=%0.4f', S_fig.thresh_corr_
 %-----
 % PSD plot
 if isempty(get_(S_fig, 'hPlot_psd'))
-    S_fig.hPlot_psd = plot(S_fig.hAx_psd, nan, nan, 'k');
-    S_fig.hPlot_clean_psd = plot(S_fig.hAx_psd, nan, nan, 'g');
-    S_fig.hPlot_psd_thresh = plot(S_fig.hAx_psd, nan, nan, 'r');
+    S_fig.hPlot_psd = plot_(S_fig.hAx_psd, nan, nan, 'k');
+    S_fig.hPlot_clean_psd = plot_(S_fig.hAx_psd, nan, nan, 'g');
+    S_fig.hPlot_psd_thresh = plot_(S_fig.hAx_psd, nan, nan, 'r');
 end
 set(S_fig.hPlot_psd, 'XData', S_fig.vrFreq_psd, 'YData', S_fig.vrPower_psd);
 set(S_fig.hPlot_clean_psd, 'XData', S_fig.vrFreq_psd, 'YData', S_fig.vrPower_clean_psd);
@@ -20135,7 +20277,6 @@ end %func
 function Fig_preview_save_prm_(hFig)
 % Update to a parameter file, show a preview window
 % List of parameters to update. Set threshold: save to a known location and load 
-P = get0_('P');
 S_fig = get(hFig, 'UserData');
 
 P_update = struct_copy_(S_fig, ...
@@ -20143,19 +20284,86 @@ P_update = struct_copy_(S_fig, ...
 P_update.viSiteZero = find(S_fig.vlSite_bad);
 
 % Preview variables in the edit box
-vcUpdate = struct2str_(P_update);
+P = ui_update_prm_(P_update);
+msgbox_('Parameter file is updated', 1);
+edit_(P.vcFile_prm); 
+end %func
+
+
+%--------------------------------------------------------------------------
+% 8/14/17 JJJ: Created
+function P = ui_update_prm_(P_update, P)
+% Usages
+% -----
+% P = ui_update_prm_(csFields)
+% P = ui_update_prm_(P_update)
+% P = ui_update_prm_('*_psth') % or any wildcard
+% P = ui_update_prm_(csFields, P)
+% P = ui_update_prm_(P_update, P)
+
+if nargin<2, P = []; end
+
+if isempty(P), P = get0_('P'); end
+if iscell(P_update)
+    vcUpdate = load_txt_(P.vcFile_prm, P_update{:});
+elseif ischar(P_update)
+    vcFilter = P_update;
+    csFields = struct_fields_(P, vcFilter);
+    vcUpdate = load_txt_(P.vcFile_prm, csFields);
+else
+    vcUpdate = struct2str_(P_update);
+end
+% vcUpdate = sprintf('%s\n%s', vcUpdate, repmat(' ', 1,100));
+% vcTitle_dlg = P.vcFile_prm;
+% vcTitle_dlg(99) = '.';
 csAns = inputdlg_(P.vcFile_prm, 'Update confirmation', 16, {vcUpdate}, struct('Resize', 'on'));
 if isempty(csAns), return; end
 [P_update, vcErr] = str2struct_(csAns{1});
 if isempty(P_update)
-    msgbox_(vcErr);
+    msgbox_('Error found, update aborted');
     return; 
 end
-P = get0_('P');
-edit_prm_file_(P_update, P.vcFile_prm);
-% P = struct_merge_(P, P_update);
-% set0_(P);
-edit_(P.vcFile_prm);
+
+P = edit_prm_file_(P_update, P.vcFile_prm);
+set0_(P);
+% if nargout==0   
+% end
+end %func
+
+
+%--------------------------------------------------------------------------
+% 12/11/18 JJJ: Created
+function vcLines = load_txt_(vcFile_txt, csFields)
+% Usages
+% -----
+% vcLines = load_txt_(vcFile_txt)
+% vcLines = load_txt_(vcFile_txt, csFields): filter lines containig csFields
+% 
+% Output
+% -----
+% vcLines: string (vector of characters) of lines that follows 
+%   "name = value; % comment \n" format
+
+if nargin<2, csFields = {}; end
+if ischar(csFields), csFields = {csFields}; end
+
+csLines = filter_lines_(file2lines_(vcFile_txt), csFields);
+vcLines = cell2mat(cellfun(@(s)sprintf('%s\n',s), csLines(:)', 'UniformOutput', 0));
+vcLines = strtrim(vcLines);
+end %func
+
+
+%--------------------------------------------------------------------------
+% 12/11/18 JJJ: Created
+function csLines3 = filter_lines_(csLines, csFields)
+% strip comments and white spaces
+csLines1 = cellfun(@strtrim, csLines, 'UniformOutput', 0);
+csLines1 = csLines1(cellfun(@(x)~isempty(x), csLines1));
+csLines1 = csLines1(cellfun(@(x)x(1) ~= '%', csLines1));
+csLines2 = cellfun(@(x)strtrim(strtok(x, '%')), csLines1, 'UniformOutput', 0);
+
+csNames1 = cellfun(@(x)strtrim(strtok(x, '=')), csLines1, 'UniformOutput', 0);
+csLines3 = csLines2(ismember(csNames1, csFields));
 end %func
 
 
@@ -20449,7 +20657,7 @@ if fLocal
         if isempty(icl_), continue; end
         cvi_cl{iSite} = viSpk_(icl_); 
         z(viSpk_) = z_;
-%         figure; plot(x_, y_det_, 'k.', x_(icl_), y_det_(icl_), 'ro'); axis([-5 0 -1 1]); grid on;
+%         figure; plot_(x_, y_det_, 'k.', x_(icl_), y_det_(icl_), 'ro'); axis([-5 0 -1 1]); grid on;
     end
     icl = cell2vec_(cvi_cl);
 else
@@ -20466,7 +20674,7 @@ end
 
 
 if nargout==0
-    figure; plot(x,z,'.', x(icl),z(icl),'ro'); grid on; 
+    figure; plot_(x,z,'.', x(icl),z(icl),'ro'); grid on; 
     axis_([-5 0 -20 100]);
     title(sprintf('%d clu', numel(icl)));
 end
@@ -20658,34 +20866,6 @@ end % func
 
 %--------------------------------------------------------------------------
 % 9/19/17 JJJ: Created for SPARC
-function [mnWav, hFile, P] = load_nsx__(vcFile_nsx)
-addpath_('neuroshare/');
-[ns_RESULT, hFile] = ns_OpenFile(vcFile_nsx);
-% [ns_RESULT, nsFileInfo] = ns_GetFileInfo(hFile);
-vlAnalog_chan= strcmpi({hFile.Entity.EntityType}, 'Analog');
-nSamples = hFile.TimeSpan / hFile.FileInfo.Period;
-nChans = sum(vlAnalog_chan);
-% viElecID = double([hFile.Entity.ElectrodeID]);
-P = struct('vcDataType', 'int16', 'nChans', nChans, ...
-    'uV_per_bit', hFile.Entity(1).Scale, 'sRateHz', 30000 / hFile.FileInfo.Period);
-
-fprintf('Loading %s...', vcFile_nsx); t_load = tic;
-fid = hFile.FileInfo.FileID;
-if ismember(hFile.FileInfo.FileTypeID, {'NEURALCD', 'NEUCDFLT'})
-    fseek(fid, hFile.FileInfo.BytesHeaders + 9, -1);
-else
-    fseek(fid, hFile.FileInfo.BytesHeaders, -1);
-end
-mnWav = fread(fid, [nChans, nSamples], '*int16');  
-fclose(fid);
-fprintf('took %0.1fs\n', toc(t_load));
-
-if nargout==0, assignWorkspace_(mnWav, hFile); end
-end % func
-
-
-%--------------------------------------------------------------------------
-% 9/19/17 JJJ: Created for SPARC
 function mrRate_clu = clu_rate_(S_clu, viClu, nSamples)
 S0 = get(0, 'UserData');
 P = S0.P;
@@ -20759,7 +20939,7 @@ for iClu1 = 1:nClu_show
     grid on;
     
     subplot(2, 1, 2);
-    plot(vrWav_aux(1:nSubsample_aux:end), mrRate_clu(1:nSubsample_aux:end,iClu), 'k.');
+    plot_(vrWav_aux(1:nSubsample_aux:end), mrRate_clu(1:nSubsample_aux:end,iClu), 'k.');
     xlabel(vcLabel_aux); 
     ylabel('Firing Rate (Hz)');
     grid on;
@@ -20806,24 +20986,25 @@ if isempty(S_trial)
     S_trial = S_trials.cTrials{S_trials.iTrial};
 end % if 
 
-vcTitle_aux = '';
+[vrTime_trial, vcTitle_aux] = deal([], '');
 switch S_trial.type
-    case 'analog'
-        [vcTitle_aux, iChan, sRateHz_trial, vcUnit, scale] = ...
-            struct_get_(S_trial.value, 'vcFile', 'iChan', 'sRateHz', 'vcUnit', 'scale');        
-        if ~exist_file_(vcTitle_aux), return; end
+    case 'analog'        
+        [vcFile_analog, iChan, sRateHz_trial, vcUnit, scale] = ...
+            struct_get_(S_trial.value, 'vcFile', 'iChan', 'sRateHz', 'vcUnit', 'scale'); 
+        if ~exist_file_(vcFile_analog), return; end
         if isempty(iChan), return; end        
-        [~,~,vcExt] = fileparts(vcTitle_aux);
+        [~,~,vcExt] = fileparts(vcFile_analog);
         switch lower(vcExt)
             case {'.ns2', '.ns5'}
-                [vrWav_uv, P_, S_nsx] = load_nsx_(vcTitle_aux, iChan);
+                [vrWav_uv, P_, S_nsx] = load_nsx_(vcFile_analog, iChan);
                 vrWav_trial = single(vrWav_uv(:)) * P_.uV_per_bit * scale; 
                 [vcLabel1, vcAnalogUnits1] = struct_get_(S_nsx.ElectrodesInfo, 'Label', 'AnalogUnits');
                 vcTitle_aux = sprintf('%s (Chan:%d, Label:"%s", Unit:"%s")', ...
-                    vcTitle_aux, iChan, strtrim_(vcLabel1), strtrim_(vcAnalogUnits1));
+                    vcFile_analog, iChan, strtrim_(vcLabel1), strtrim_(vcAnalogUnits1));
             case {'.dat', '.bin'}
-                mnWav_trial = load_bin_(vcTitle_aux, P.vcDataType); % it might be other bin channel
+                mnWav_trial = load_bin_(vcFile_analog, P.vcDataType); % it might be other bin channel
                 vrWav_trial = single(mnWav_trial(iChan:P.nChans:end)') * P.uV_per_bit * scale;
+                vcTitle_aux = vcFile_analog;
             otherwise
                 fprintf(2, 'vcFile_aux: unsupported file format: %s\n', vcExt);
                 return;
@@ -20842,15 +21023,49 @@ switch S_trial.type
         end %for
         vcUnit = 'on/off';
         
+    case 'psth'
+        [vcFile_psth, iChan, sRateHz_trial] = ...
+            struct_get_(S_trial.value, 'vcFile', 'iChan', 'sRateHz');        
+        if ~exist_file_(vcFile_psth), return; end
+        [~,~,vcExt] = fileparts(vcFile_psth);
+        switch lower(vcExt)
+            case '.nev'
+                [vrTime_trial, vrWav_trial] = load_nev_(vcFile_psth, iChan);
+                vcTitle_aux = sprintf('%s (Chan:%d)', vcFile_psth, iChan);
+            case {'.dat', '.bin'} % apply threshold on TTL
+                mnWav_trial = load_bin_(vcFile_psth, P.vcDataType); % it might be other bin channel
+                vrWav_trial = single(mnWav_trial(iChan:P.nChans:end)') * P.uV_per_bit;
+            otherwise
+                fprintf(2, 'vcFile_aux: unsupported file format: %s\n', vcExt);
+                return;
+        end %switch
+        vcUnit = 'trigger';
+        
     otherwise
         fprintf(2, 'load_trial_: unsupported trial type: %s\n', S_trial.type);
         return;
 end %switch
-if nargout>=2
+if isempty(vrTime_trial) && nargout >= 2
     vrTime_trial = single(1:numel(vrWav_trial))' / sRateHz_trial; 
 end
 if nargout>=3
     vcLabel_aux = [S_trial.name, ' (', vcUnit, ')'];
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+function [vrTime_trial, vrWav_trial] = load_nev_(vcFile_psth, iChan)
+if nargin<2, iChan = []; end
+if isempty(which('openNEV')), addpath_('NPMK'); end
+S_nev = openNEV(vcFile_psth, 'nomat', 'nosave');
+S_event = S_nev.Data.SerialDigitalIO;
+vrTime_trial = S_event.TimeStampSec;
+vrWav_trial = double(S_event.InsertionReason);
+if ~isempty(iChan)
+    vlSelect = ismember(vrWav_trial, iChan);
+    vrTime_trial = vrTime_trial(vlSelect);
+    vrWav_trial = vrWav_trial(vlSelect);
 end
 end %func
 
@@ -20917,53 +21132,8 @@ end %func
 
 
 %--------------------------------------------------------------------------
-% 9/26/17 JJJ: Merged to Master. This function is not used, instead IronClust deals with the offset
-% 9/22/17 JJJ: Created for SPARC. 
-function [P, nSamples, vcFile_bin] = nsx2bin_(vcFile_nsx, fInvert)
-if nargin<2, fInvert = 0; end
-
-nBuffer = 1e8; % in bytes
-addpath_('neuroshare/');
-vcFile_bin = subsFileExt_(vcFile_nsx, '.bin');
-[ns_RESULT, hFile] = ns_OpenFile(vcFile_nsx);
-% [ns_RESULT, nsFileInfo] = ns_GetFileInfo(hFile);
-vlAnalog_chan= strcmpi({hFile.Entity.EntityType}, 'Analog');
-nSamples = hFile.TimeSpan / hFile.FileInfo.Period;
-nChans = sum(vlAnalog_chan);
-% viElecID = double([hFile.Entity.ElectrodeID]);
-P = struct('vcDataType', 'int16', 'nChans', nChans, ...
-    'uV_per_bit', hFile.Entity(1).Scale, 'sRateHz', 30000 / hFile.FileInfo.Period);
-fprintf('Loading %s...', vcFile_nsx); t_load = tic;
-
-fid = hFile.FileInfo.FileID;
-fidw = fopen(vcFile_bin, 'w');
-
-if ismember(hFile.FileInfo.FileTypeID, {'NEURALCD', 'NEUCDFLT'})
-    fseek(fid, hFile.FileInfo.BytesHeaders + 9, -1);
-else
-    fseek(fid, hFile.FileInfo.BytesHeaders, -1);
-end
-nLoad = ceil(nSamples*nChans / nBuffer);
-for iLoad = 1:nLoad
-    if iLoad==nLoad
-        nBuffer_ = nSamples*nChans - (nLoad-1) * nBuffer;
-    else
-        nBuffer_ = nBuffer;
-    end
-    vnBuffer = fread(fid, nBuffer_, '*int16');
-    if fInvert, vnBuffer = -vnBuffer; end
-    fwrite(fidw, vnBuffer, 'int16');
-end
-fclose(fid);
-fclose(fidw);
-fprintf('took %0.1fs\n', toc(t_load));
-end %func
-
-
-%--------------------------------------------------------------------------
 % 4/10/18 JJJ: Handle the new ns5 format
 function [fid, nBytes, header_offset] = fopen_nsx_(vcFile_nsx)
-% addpath_('./neuroshare/');
 try
     [P, fid] = openNSx_(vcFile_nsx, 'fid'); % nChans, nSamples, header_offset
 catch
@@ -20984,6 +21154,7 @@ function varargout = openNSx_(vcFile_nsx, iChan)
 % [S_header, fid] = openNSx_(vcFile_nsx, 'fid')
 % [S_header, mnWav] = openNSx_(vcFile_nsx, []) % load all channels
 % [S_header, vnWav] = openNSx_(vcFile_nsx, iChan) % read one channel
+if isempty(which('openNSx')), addpath_('NPMK'); end
 
 [S_header, fid] = deal([]);
 if ~exist_file_(vcFile_nsx), return; end
@@ -21013,44 +21184,6 @@ uV_per_bit = (double(amax1)-double(amin1)) / (double(dmax1)-double(dmin1));
 vcDataType = 'int16';
 S_header = makeStruct_(nChans, sRateHz, nSamples, S_nsx, uV_per_bit, vcDataType);
 varargout{1} = S_header;
-end %func
-
-
-%--------------------------------------------------------------------------
-% 9/22/17 JJJ: Created for SPARC
-function [fid, nBytes, header_offset] = fopen_nsx__(vcFile_nsx)
-addpath_('neuroshare/');
-try
-    [ns_RESULT, hFile] = ns_OpenFile(vcFile_nsx);
-catch
-    disperr_();
-end
-% [ns_RESULT, nsFileInfo] = ns_GetFileInfo(hFile);
-vlAnalog_chan= strcmpi({hFile.Entity.EntityType}, 'Analog');
-nSamples = hFile.TimeSpan / hFile.FileInfo.Period;
-nChans = sum(vlAnalog_chan);
-nBytes = nSamples * nChans * 2;
-fid = hFile.FileInfo.FileID;
-
-if ismember(hFile.FileInfo.FileTypeID, {'NEURALCD', 'NEUCDFLT'})
-    header_offset = hFile.FileInfo.BytesHeaders + 9;
-else
-    header_offset = hFile.FileInfo.BytesHeaders;
-end
-fseek(fid, header_offset, -1);
-end %func
-
-
-%--------------------------------------------------------------------------
-% 9/22/17 JJJ: Created for SPARC
-function [P, nSamples, hFile] = nsx_info_(vcFile_nsx)
-addpath_('neuroshare/');
-[ns_RESULT, hFile] = ns_OpenFile(vcFile_nsx);
-vlAnalog_chan= strcmpi({hFile.Entity.EntityType}, 'Analog');
-nSamples = hFile.TimeSpan / hFile.FileInfo.Period;
-% viElecID = double([hFile.Entity.ElectrodeID]);
-P = struct('vcDataType', 'int16', 'nChans', sum(vlAnalog_chan), ...
-    'uV_per_bit', hFile.Entity(1).Scale, 'sRateHz', 30000 / hFile.FileInfo.Period);
 end %func
 
 
@@ -21095,8 +21228,8 @@ end %func
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_(vcFile_prm)
 if nargin<1, vcFile_prm = ''; end
-vcVer = 'v4.3.1';
-vcDate = '11/23/2018';
+vcVer = 'v4.3.2';
+vcDate = '12/13/2018';
 vcHash = file2hash_();
 
 if nargout==0
@@ -21925,7 +22058,7 @@ elseif exist_file_(vcFile_raw)
     rawPipette = h5read(vcFile_raw, '/rawPipette');
     rawPipette1 = ndiff_(rawPipette, 2);
     [viTime_gt, vrAmp_gt, thresh_gt] = spikeDetectSingle_fast_(-rawPipette1, struct('qqFactor', 10));    
-%     figure; hold on; plot(rawPipette1); plot(S_gt.viTime_all, rawPipette1(S_gt.viTime_all), 'ro');
+%     figure; hold on; plot_(rawPipette1); plot_(S_gt.viTime_all, rawPipette1(S_gt.viTime_all), 'ro');
 else
     error('no spike time info');
 end
@@ -22331,9 +22464,9 @@ fprintf('Parameter file updated: %s\n\tvcFile_trial = ''%s''\n', vcFile_prm, vcF
 hFig = create_figure_('Trial timing', [0 0 .5 1], vcFile_trial, 1, 1); hold on;
 % vlOver = vr_set_(vrWav >= thresh, [viT_rising(:) - 1; viT_falling(:) + 1], 1);
 vlOver = vrWav >= thresh;
-plot(find(vlOver)/P.sRateHz, vrWav(vlOver), 'b.');
-stem(vrT, vrWav(viT), 'r'); hold on;
-plot(get(gca, 'XLim'), double(thresh) * [1 1], 'm-');
+plot_(find(vlOver)/P.sRateHz, vrWav(vlOver), 'b.');
+stem_(vrT, vrWav(viT), 'r'); hold on;
+plot_(get(gca, 'XLim'), double(thresh) * [1 1], 'm-');
 xylabel_(gca, 'Time (s)', sprintf('Chan %d', iChan), vcTitle); 
 ylim([minV, maxV]); grid on;
 close_(hMsg);
@@ -22762,10 +22895,12 @@ end
 
 
 %--------------------------------------------------------------------------
-function vcFile_prb = csv2prb_(vcFile_csv)
+function vcFile_prb = csv2prb_(vcFile_csv, vcFile_prb)
 % convert .csv file to .prb file
-
-vcFile_prb = strrep(vcFile_csv, '.csv', '.prb');
+if nargin<2, vcFile_prb = ''; end
+if isempty(vcFile_prb)
+    vcFile_prb = strrep(vcFile_csv, '.csv', '.prb');
+end
 geometry = csvread(vcFile_csv); % check dimensions
 nChans = size(geometry, 1);
 S_prb = struct('channels', 1:nChans, ...
@@ -23085,7 +23220,9 @@ if isempty(vcFile_template)
         assert_(exist_file_(vcFile_template), 'template file does not exist.');
     end
 else
-%     vcFile_template = ircpath_(vcFile_template);
+    if ~exist_file_(vcFile_template)
+        vcFile_template = ircpath_(vcFile_template);
+    end
     assert_(exist_file_(vcFile_template), 'prm file does not exist.');
 end
 P.sRateHz = get_set_(S_txt, 'samplerate', 30000);
@@ -23120,7 +23257,12 @@ maxWavCor = get_(S_txt, 'merge_thresh');
 if ~isempty(maxWavCor), P.maxWavCor = maxWavCor; end
 
 % create prb file from geom.csv file
-if matchFileEnd_(vcFile_prb, '.csv'), vcFile_prb = csv2prb_(vcFile_prb); end
+if matchFileEnd_(vcFile_prb, '.csv')
+    vcFile_prb_csv = vcFile_prb;
+    vcFile_prb = strrep(vcFile_prb_csv, '.csv', '.prb');
+    vcFile_prb = subsDir_(vcFile_prb, format_dir_(vcDir_prm));
+    csv2prb_(vcFile_prb_csv, vcFile_prb); 
+end
 P.probe_file = vcFile_prb;
 
 % create a parameter file name
@@ -24002,6 +24144,7 @@ end
 function web_(vcPage)
 if isempty(vcPage), return; end
 if ~ischar(vcPage), return; end
+
 try
     % use system browser
     if ispc()
@@ -24028,6 +24171,9 @@ try
     if ~isempty(vcEditor), result = false; return; end
     s = matlab.settings.internal.settings;
     result = s.matlab.editor.UseMATLABEditor.ActiveValue;
+    
+    % return ture if deployed
+    if isdeployed()  || ismcc(), result = true; end
 catch
     result = true;
 end
@@ -24365,7 +24511,7 @@ for iAx = 1:numel(vhAx);
     [x_gt, y_gt] = deal(hLine_.XData(iClu_gt), hLine_.YData(iClu_gt));
     if isempty(get_(S_ax_, 'hMarker'))
         hold(hAx_,'on');
-        hMarker = plot(hAx_,x_gt,y_gt,'ro');
+        hMarker = plot_(hAx_,x_gt,y_gt,'ro');
         add_userdata_(hAx_, 'hMarker', hMarker);        
     else
        hMarker = S_ax_.hMarker;
@@ -24534,7 +24680,7 @@ S_fig.hAx9 = subplot(3,3,9);
 
 hAx_ = S_fig.hAx1;
 hold(hAx_,'on'); grid(hAx_,'on'); 
-hPlot1 = plot(hAx_, S_score.vrSnr_gt, S_score.S_score_clu.vrFp*100, 'k+');
+hPlot1 = plot_(hAx_, S_score.vrSnr_gt, S_score.S_score_clu.vrFp*100, 'k+');
 add_userdata_(hAx_, 'hLine', hPlot1);
 vcSnr = sprintf('SNR(%s)', read_cfg_('vcSnr_gt'));
 xylabel_(hAx_, vcSnr, 'False Positive (%)', 'Left-click: show best matching cluster only');
@@ -24542,7 +24688,7 @@ hPlot1.ButtonDownFcn = @callback_gt_;
 
 hAx_ = S_fig.hAx2;
 hold(hAx_,'on'); grid(hAx_,'on');
-hPlot2 = plot(hAx_, S_score.vrSnr_gt, S_score.S_score_clu.vrMiss*100, 'kx');
+hPlot2 = plot_(hAx_, S_score.vrSnr_gt, S_score.S_score_clu.vrMiss*100, 'kx');
 add_userdata_(S_fig.hAx2, 'hLine', hPlot2);
 xylabel_(S_fig.hAx2, vcSnr, 'False Negative (%)', 'Right-click: show best & second-best');
 hPlot2.ButtonDownFcn = @callback_gt_;
@@ -24550,7 +24696,7 @@ linkaxes([S_fig.hAx1, S_fig.hAx2], 'x');
 
 hAx_ = S_fig.hAx3;
 hold(hAx_,'on'); grid(hAx_,'on');
-hPlot3 = plot(hAx_, S_score.S_score_clu.vrMiss*100, S_score.S_score_clu.vrFp*100, 'k.');
+hPlot3 = plot_(hAx_, S_score.S_score_clu.vrMiss*100, S_score.S_score_clu.vrFp*100, 'k.');
 add_userdata_(hAx_, 'hLine', hPlot3);
 xylabel_(hAx_, 'False Negative (%)', 'False Positive (%)');
 hPlot3.ButtonDownFcn = @callback_gt_;
@@ -24619,11 +24765,11 @@ hFig.UserData = S_fig;
 fh_btn_ = @(vx)arrayfun(@(x)set(x, 'ButtonDownFcn', @button_event_gt_), vx);
 hAx_ = S_fig.hAx4;
 if fShow_clu2
-    hPlot_ = plot(hAx_, mrPos_spk(viSpk_clu2,1), mrPos_spk(viSpk_clu2,2), 'k.', ...
+    hPlot_ = plot_(hAx_, mrPos_spk(viSpk_clu2,1), mrPos_spk(viSpk_clu2,2), 'k.', ...
         mrPos_spk(viSpk_hit,1), mrPos_spk(viSpk_hit,2), 'b.', ...
         mrPos_spk(viSpk_miss,1), mrPos_spk(viSpk_miss,2), 'r.');
 else
-    hPlot_ = plot(hAx_, mrPos_spk(viSpk_hit,1), mrPos_spk(viSpk_hit,2), 'b.', ...
+    hPlot_ = plot_(hAx_, mrPos_spk(viSpk_hit,1), mrPos_spk(viSpk_hit,2), 'b.', ...
         mrPos_spk(viSpk_miss,1), mrPos_spk(viSpk_miss,2), 'r.');
 end
 grid(hAx_, 'on'); 
@@ -24633,11 +24779,11 @@ fh_btn_(hPlot_);
 %# Time vs ypos
 hAx_ = S_fig.hAx5;
 if fShow_clu2
-    hPlot_ = plot(hAx_, viTime_spk(viSpk_clu2), mrPos_spk(viSpk_clu2,2), 'k.', ...
+    hPlot_ = plot_(hAx_, viTime_spk(viSpk_clu2), mrPos_spk(viSpk_clu2,2), 'k.', ...
         viTime_spk(viSpk_hit), mrPos_spk(viSpk_hit,2), 'b.', ...
         viTime_spk(viSpk_miss), mrPos_spk(viSpk_miss,2), 'r.');
 else
-    hPlot_ = plot(hAx_, viTime_spk(viSpk_hit), mrPos_spk(viSpk_hit,2), 'b.', ...
+    hPlot_ = plot_(hAx_, viTime_spk(viSpk_hit), mrPos_spk(viSpk_hit,2), 'b.', ...
         viTime_spk(viSpk_miss), mrPos_spk(viSpk_miss,2), 'r.');
 end
 grid(hAx_, 'on'); 
@@ -24647,12 +24793,12 @@ fh_btn_(hPlot_);
 %# Time vs ampl
 hAx_ = S_fig.hAx6;
 if fShow_clu2
-    hPlot_ = plot(hAx_, viTime_spk(viSpk_clu2), vrAmp_spk(viSpk_clu2), 'k.', ...
+    hPlot_ = plot_(hAx_, viTime_spk(viSpk_clu2), vrAmp_spk(viSpk_clu2), 'k.', ...
         viTime_spk(viSpk_hit), vrAmp_spk(viSpk_hit), 'b.', ...
         viTime_spk(viSpk_miss), vrAmp_spk(viSpk_miss), 'r.');
     legend(hAx_,{'Clu2', 'correct','FP'});
 else
-    hPlot_ = plot(hAx_, viTime_spk(viSpk_hit), vrAmp_spk(viSpk_hit), 'b.', ...
+    hPlot_ = plot_(hAx_, viTime_spk(viSpk_hit), vrAmp_spk(viSpk_hit), 'b.', ...
         viTime_spk(viSpk_miss), vrAmp_spk(viSpk_miss), 'r.');
     legend(hAx_,{'correct','FP'});
 end
@@ -24663,11 +24809,11 @@ fh_btn_(hPlot_);
 %# Ampl vs pos
 hAx_ = S_fig.hAx7;
 if fShow_clu2
-    hPlot_ = plot(hAx_, vrAmp_spk(viSpk_clu2), mrPos_spk(viSpk_clu2,2), 'k.', ...
+    hPlot_ = plot_(hAx_, vrAmp_spk(viSpk_clu2), mrPos_spk(viSpk_clu2,2), 'k.', ...
         vrAmp_spk(viSpk_hit), mrPos_spk(viSpk_hit,2), 'b.', ...
         vrAmp_spk(viSpk_miss), mrPos_spk(viSpk_miss,2), 'r.');
 else
-    hPlot_ = plot(hAx_, vrAmp_spk(viSpk_hit), mrPos_spk(viSpk_hit,2), 'b.', ...
+    hPlot_ = plot_(hAx_, vrAmp_spk(viSpk_hit), mrPos_spk(viSpk_hit,2), 'b.', ...
         vrAmp_spk(viSpk_miss), mrPos_spk(viSpk_miss,2), 'r.');
 end
 grid(hAx_, 'on'); 
@@ -24687,11 +24833,11 @@ deal(fh_(tmrWav_clu1_hit), fh_(tmrWav_clu1_miss), fh_(tmrWav_clu2));
 vrT_ = (1:size(mrWav_clu2,1))/P.sRateHz*1000;
 fh_nan_ = @(x)ifeq_(isempty(x), nan(size(vrT_)), x);
 if fShow_clu2
-    hPlot_ = plot(hAx_, vrT_, fh_nan_(mrWav_clu1_hit), 'b-', ...
+    hPlot_ = plot_(hAx_, vrT_, fh_nan_(mrWav_clu1_hit), 'b-', ...
         vrT_, fh_nan_(mrWav_clu2), 'k--', ...            
         vrT_, fh_nan_(mrWav_clu1_miss), 'r-');
 else
-    hPlot_ = plot(hAx_, vrT_, fh_nan_(mrWav_clu1_hit), 'b-', ...
+    hPlot_ = plot_(hAx_, vrT_, fh_nan_(mrWav_clu1_hit), 'b-', ...
         vrT_, fh_nan_(mrWav_clu1_miss), 'r-');
 end
 grid(hAx_, 'on'); 
@@ -24706,11 +24852,11 @@ mrFet_clu2 = trFet_full_(trFet_spk, S0, viSpk_clu2)'; %randomSelect_(viSpk_clu2,
 [~,viSite_sort] = sort(nanmean(abs(mrFet_clu1_hit)),'descend');
 [iSite1,iSite2,iSite3]=deal(viSite_sort(1), viSite_sort(2), viSite_sort(3));
 if fShow_clu2
-    hPlot_ = plot3(hAx_, mrFet_clu2(:,iSite1), mrFet_clu2(:,iSite2), mrFet_clu2(:,iSite3), 'k.', ...
+    hPlot_ = plot3_(hAx_, mrFet_clu2(:,iSite1), mrFet_clu2(:,iSite2), mrFet_clu2(:,iSite3), 'k.', ...
         mrFet_clu1_hit(:,iSite1), mrFet_clu1_hit(:,iSite2), mrFet_clu1_hit(:,iSite3), 'b.', ...
         mrFet_clu1_miss(:,iSite1), mrFet_clu1_miss(:,iSite2), mrFet_clu1_miss(:,iSite3), 'r.');
 else
-    hPlot_ = plot3(hAx_, mrFet_clu1_hit(:,iSite1), mrFet_clu1_hit(:,iSite2), mrFet_clu1_hit(:,iSite3), 'b.', ...
+    hPlot_ = plot3_(hAx_, mrFet_clu1_hit(:,iSite1), mrFet_clu1_hit(:,iSite2), mrFet_clu1_hit(:,iSite3), 'b.', ...
         mrFet_clu1_miss(:,iSite1), mrFet_clu1_miss(:,iSite2), mrFet_clu1_miss(:,iSite3), 'r.');
 end
 grid(hAx_, 'on');
@@ -24720,7 +24866,7 @@ fh_btn_(hPlot_);
 if callbackdata.Button == 2 %wheel pressed
     vi1 = (S_clu.viClu_premerge(viSpk_clu1));
     vi2 = (S_clu.viClu_premerge(viSpk_clu2));
-    myfig; plot(sort(vi1),'b.');plot(sort(vi2),'r.')
+    myfig; plot_(sort(vi1),'b.');plot_(sort(vi2),'r.')
 end
 end %func
 
@@ -24856,7 +25002,7 @@ S_gt = S_fig.S_gt;
 
 hAx_ = S_fig.hAx3;
 [iSite1, iSite2] = deal(S_gt.viSite_clu(iClu1), S_gt.viSite_clu(iClu2));
-vhPlot = plot(hAx_,nan,nan,'k-',nan,nan,'r-');
+vhPlot = plot_(hAx_,nan,nan,'k-',nan,nan,'r-');
 scale_ = P.maxAmp * 2^(P.nDiff_filt-1);
 % [mrWav_gt1, mrWav_gt2] = deal(S_gt.trWav_clu(:,:,iClu1), S_gt.trWav_clu(:,:,iClu2));
 fh_ = @(x)single(permute(mn2tn_gpu_(S_fig.mnWav_filt, spkLim, x), [1,3,2])) * P.uV_per_bit;
@@ -24915,21 +25061,21 @@ for fSubtract=0:1
         {trWav_spk21, trWav_spk21, trWav_spk12, trWav_spk12}, ... 
         {mrWav_gt1, mrWav_gt2, mrWav_gt1, mrWav_gt2}, 'UniformOutput', 0);
     [vr11,vr12,vr21,vr22] = deal(cvr_proj{:});
-    plot(hAx_, vr11, vr12, 'k.', vr21, vr22, 'r.');
+    plot_(hAx_, vr11, vr12, 'k.', vr21, vr22, 'r.');
     grid(hAx_, 'on');
     xylabel_(hAx_, 'GT-Clu1','GT-Clu2', vcSubt);
 
     hAx_ = ifeq_(~fSubtract, S_fig.hAx5, S_fig.hAx8);
     nSites = size(trWav_spk21,2);
     vrT_ = (1:size(trWav_spk21,1)) / sRateHz * 1000;
-    hPlot_ = plot(hAx_,nan,nan,'k-');
+    hPlot_ = plot_(hAx_,nan,nan,'k-');
     multiplot(hPlot_, scale_, vrT_, trWav_spk21);
     xylabel_(hAx_, 'Time (ms)', 'Site#', sprintf('Clu#:%d, %s', iClu1, vcSubt));
     grid(hAx_,'on');
     set(hAx_, 'YLim', [-3.5,3.5]+(iSite1+iSite2)/2, 'XLim', [.5,1.5]);
 
     hAx_ = ifeq_(~fSubtract, S_fig.hAx6, S_fig.hAx9);
-    hPlot_ = plot(hAx_,nan,nan,'r-');
+    hPlot_ = plot_(hAx_,nan,nan,'r-');
     multiplot(hPlot_, scale_, vrT_, trWav_spk12);
     xylabel_(hAx_, 'Time (ms)', 'Site#', sprintf('Clu#:%d, %s', iClu2, vcSubt));
     grid(hAx_,'on');
@@ -25014,8 +25160,8 @@ mr_template = mean(tr(:,:,vlKeep),3);
 % plot to confirm
 if nargout==0
     mr1_ = bsxfun(@rdivide, squeeze_(tr(:,iSite1,:)), vrA1);
-    figure; plot(mr1_, 'k');
-    figure; plot(mr1_(:,vlKeep),'r');
+    figure; plot_(mr1_, 'k');
+    figure; plot_(mr1_(:,vlKeep),'r');
 end
 end %func 
 
@@ -25025,9 +25171,9 @@ if nargin<5, vcLine=[]; end
 [vrX, vrY] = deal(vrX(:), vrY(:));
 if isempty(get_userdata_(hAx1, vcName))
     if isempty(vcLine)
-        hLine1 = plot(hAx1, vrX, vrY);
+        hLine1 = plot_(hAx1, vrX, vrY);
     else
-        hLine1 = plot(hAx1, vrX, vrY, vcLine);
+        hLine1 = plot_(hAx1, vrX, vrY, vcLine);
     end
     add_userdata_(hAx1, vcName, hLine1);
 else
@@ -25381,7 +25527,7 @@ catch
     hMarker = [];
 end
 if isempty(hMarker)
-    hMarker = plot(hAx,xp,yp,'mo');
+    hMarker = plot_(hAx,xp,yp,'mo');
     add_userdata_(hAx, 'hMarker', hMarker);
 end
 % uistack_(hMarker, 'top');
@@ -25406,7 +25552,7 @@ mnWav_spk1 = tnWav_spk1(:,:,iEvent);
 vrTime_ = (1:numel(mnWav_clu2))/P.sRateHz*1000;
 figure_new_('Fig_gt_spk', [0,0,.5,1]); 
 if callback.Button==3
-    vhPlot = plot(nan,nan,'k--',nan,nan,'b--',nan,nan,'r--',nan,nan,'m');
+    vhPlot = plot_(nan,nan,'k--',nan,nan,'b--',nan,nan,'r--',nan,nan,'m');
     scale = P.maxAmp * 2^(P.nDiff_filt-2);
     multiplot(vhPlot(1), scale, [], mnWav_clu2);
     multiplot(vhPlot(2), scale, [], mnWav_hit);
@@ -25415,7 +25561,7 @@ if callback.Button==3
     legend('clu2(mean)','match(mean)','added(mean)','selected');
 else
     legend('match(mean)','added(mean)','selected');
-    vhPlot = plot(nan,nan,'b--',nan,nan,'r--',nan,nan,'m');
+    vhPlot = plot_(nan,nan,'b--',nan,nan,'r--',nan,nan,'m');
     scale = P.maxAmp * 2^(P.nDiff_filt-1);
     multiplot(vhPlot(1), scale, [], mnWav_hit);
     multiplot(vhPlot(2), scale, [], mnWav_miss);
@@ -26604,8 +26750,8 @@ for iPlot1=1:nPlot1
         viSpk2 = S_clu.cviSpk_clu{iClu2};
         
         vh_(end+1) = subplot(nPlot1, nPlot2,iPair); grid on; hold on;       
-        plot3(mrFet_spk(1,viSpk1), mrFet_spk(2,viSpk1), mrFet_spk(3,viSpk1), '.k');
-        plot3(mrFet_spk(1,viSpk2), mrFet_spk(2,viSpk2), mrFet_spk(3,viSpk2), '.r');
+        plot3_(mrFet_spk(1,viSpk1), mrFet_spk(2,viSpk1), mrFet_spk(3,viSpk1), '.k');
+        plot3_(mrFet_spk(1,viSpk2), mrFet_spk(2,viSpk2), mrFet_spk(3,viSpk2), '.r');
 %         xlabel('Fet1'); ylabel('Fet2'); zlabel('Fet3');
         title(sprintf('Clu%d(b) vs %d(k)', iClu1, iClu2));
     end
@@ -26625,8 +26771,8 @@ for iPlot1=1:nPlot1
         mrWav_clu2 = cmrWav_clu{iClu2};
         
         vh_(end+1) = subplot(nPlot1, nPlot2,iPair); grid on; hold on;
-        plot(toCol_(mrWav_clu1(:,1:4)), 'k');
-        plot(toCol_(mrWav_clu2(:,1:4)), 'r');
+        plot_(toCol_(mrWav_clu1(:,1:4)), 'k');
+        plot_(toCol_(mrWav_clu2(:,1:4)), 'r');
 %         xlabel('Fet1'); ylabel('Fet2'); zlabel('Fet3');
         title(sprintf('Clu%d(b) vs %d(k)', iClu1, iClu2));
     end
@@ -26875,11 +27021,27 @@ end %func
 
 
 %--------------------------------------------------------------------------
+% 12/13/2018 JJJ: checks if function exists
+function flag = exist_func_(vcFunc)
+flag = ~isempty(which(vcFunc));
+end %func
+
+
+%--------------------------------------------------------------------------
 % 11/2/2018 JJJ: matlab compiler, generates run_irc
 % @TODO: get the dependency list from sync_list
-function mcc_()
+function mcc_(vcDir_out)
+if nargin<1, vcDir_out = ''; end
+
+if ~assert_(exist_func_('mcc'), 'Matlab Compiler Toolbox is not installed.')
+   return; 
+end
 fprintf('Compiling run_irc.m\n'); t1=tic;
-vcEval = ["mcc -m -v -a '*.ptx' -a '*.cu' -a './mdaio/*' -a './jsonlab-1.5/*' -a './npy-matlab/*' -a 'default.*' -a './prb/*' -a '*_template.prm' -R '-nodesktop, -nosplash -singleCompThread -nojvm' run_irc.m"];
+vcEval = 'mcc -m -v -R ''-nodesktop, -nosplash -singleCompThread -nojvm'' -a *.ptx -a *.cu -a ./mdaio/* -a ./jsonlab-1.5/* -a ./npy-matlab/* -a default.* -a ./prb/* -a *_template.prm run_irc.m';
+if ~isempty(vcDir_out)
+    mkdir_(vcDir_out);
+    vcEval = [vcEval, ' -d ', vcDir_out];
+end
 disp(vcEval);
 eval(vcEval);
 fprintf('\n\trun_irc.m is compiled by mcc, took %0.1fs\n', toc(t1));
@@ -27121,20 +27283,38 @@ end %for
 %add actions
 mh_add_event = uimenu_(mh_trials,'Label','Add event channel', 'Callback', @(h,e)trial_add_event_(h,e));
 mh_add_event.Separator = 'on';
+uimenu_(mh_trials,'Label','Add PSTH channel', 'Callback', @(h,e)trial_add_psth_(h,e));
 uimenu_(mh_trials,'Label','Add analog channel', 'Callback', @(h,e)trial_add_analog_(h,e));
 
-if isempty(cTrials), return; end 
-
-%-----
-uimenu_(mh_trials, 'Label', 'All unit firing rate vs. aux. input', 'Callback', ...
-    @(h,e)plot_aux_rate_, 'Separator', 'on');
-uimenu_(mh_trials, 'Label', 'Selected unit firing rate vs. aux. input', 'Callback', @(h,e)plot_aux_rate_(1));
-% uimenu_(mh_plot, 'Label', 'All unit firing rate vs. aux. input (zsperry)', 'Callback', @(h,e)plot_aux_rate_zsperry_());
+if ~isempty(cTrials)
+    %-----
+    uimenu_(mh_trials, 'Label', 'All unit firing rate vs. aux. input', 'Callback', ...
+        @(h,e)plot_aux_rate_, 'Separator', 'on');
+    uimenu_(mh_trials, 'Label', 'Selected unit firing rate vs. aux. input', 'Callback', @(h,e)plot_aux_rate_(1));
+    uimenu_(mh_trials, 'Label', 'Plot PSTH [P]', 'Callback', @(h,e)plot_psth_trial_(h,e));
+    % uimenu_(mh_plot, 'Label', 'All unit firing rate vs. aux. input (zsperry)', 'Callback', @(h,e)plot_aux_rate_zsperry_());
+end
 
 % save S_trials struct
 P = get_userdata_(mh_trials, 'P');
 vcFile_trials = strrep_(P.vcFile_prm, '.prm', '_trials.mat');
 struct_save_(S_trials, vcFile_trials);
+end %func
+
+
+%--------------------------------------------------------------------------
+function plot_psth_trial_(h,e)
+
+mh_trials = get_tag_('mh_trials', 'uimenu');
+S_trials = get_userdata_(mh_trials, 'S_trials');
+S_trial1 = S_trials.cTrials{S_trials.iTrial};
+if ~strcmpi(S_trial1.type, 'psth')
+    msgbox_('Select a PSTH channel (under `Trials` menu)', 1); 
+    return;
+end
+
+[vcFile_psth, iChan] = struct_get_(S_trial1.value, 'vcFile', 'iChan');
+plot_raster_([], 1, vcFile_psth, iChan);
 end %func
 
 
@@ -27190,9 +27370,7 @@ function trial_remove_(h,e,iTrial)
 mh_trials = get_tag_('mh_trials', 'uimenu');
 S_trials = get_userdata_(mh_trials, 'S_trials');
 S_trials.cTrials(iTrial) = [];
-if S_trials.iTrial == iTrial
-    S_trials.iTrial = numel(S_trials.cTrials);
-end
+S_trials.iTrial = min(S_trials.iTrial, numel(S_trials.cTrials));
 set_userdata_(mh_trials, S_trials);
 update_menu_trials_(mh_trials);
 end %func
@@ -27206,6 +27384,7 @@ S_trials = get_userdata_(mh_trials, 'S_trials');
 trial1 = S_trials.cTrials{iTrial};
 switch lower(trial1.type)
     case 'event', trial_add_event_(h,e, iTrial);
+    case 'psth', trial_add_psth_(h,e, iTrial);
     case 'analog', trial_add_analog_(h,e, iTrial);
     otherwise, error(['trial_edit_: unsupported mode: ', trial1.type]);
 end %switch
@@ -27225,10 +27404,14 @@ S_trial = S_trials.cTrials{iTrial};
 
 hFig = create_figure_('FigAux', [.5 0 .5 1], P.vcFile_prm, 1, 1);
 hAx = axes('Parent', hFig);
-plot(hAx, vrTime_aux, vrWav_aux);
+switch S_trial.type
+    case 'psth', vcStyle = 'k+';
+    otherwise, vcStyle = 'k-';
+end
+plot_(hAx, vrTime_aux, vrWav_aux, vcStyle);
 xylabel_(hAx, 'Time (s)', vcLabel_aux, vcTitle_aux);
 grid(hAx, 'on');
-set(hAx, 'XLim', vrTime_aux([1, end]));
+if ~isempty(vrTime_aux), set(hAx, 'XLim', vrTime_aux([1, end])); end
 figure_wait_(0, hFig_wait);
 end %func
 
@@ -27239,7 +27422,7 @@ function trial_add_event_(h,e,iTrial)
 if nargin<3, iTrial=[]; end
 mh_trials = get_tag_('mh_trials', 'uimenu');
 if isempty(iTrial)
-    csAns = inputdlg_('Channel name','Add event channel',1,{''});
+    csAns = inputdlg_('Channel name (required)','Add event channel',1,{''});
     if isempty(csAns), return; end
     name1 = csAns{1};
     if isempty(name1)
@@ -27296,22 +27479,26 @@ try
     [nev_file, nev_dir] = uigetfile(fullfile(vcDir, '*.nev'));
     vcFile_nev = fullfile(nev_dir, nev_file);
     if ~exist_file_(vcFile_nev), return; end % user pressed cancel
-    [~,hFile]=ns_OpenFile(vcFile_nev);
-    vi_event = find(strcmp({hFile.Entity.EntityType}, 'Event'));
-    [~, S_EntityInfo] = ns_GetEntityInfo(hFile, vi_event);
-    vrT_event = zeros(S_EntityInfo.ItemCount, 1);
-    for iT = 1:numel(vrT_event)
-        [~, vrT_event(iT)]=ns_GetEventData(hFile, vi_event, iT);
-    end
-    if min_event_interval > 0
-        vrT_event = vrT_event([true; diff(vrT_event)>min_event_interval]); % filter events
-    end
+    vrT_event = load_nev_(vcFile_nev);
+    vrT_event = timestamp_remove_jitter_(vrT_event, min_event_interval);
     mrTable1 = reshape_(vrT_event, 2)';    
     uiTable1.Data = [mrTable1; nan(max_events_trial, 2)];
 catch
     errordlg(['Import failed: ', vcFile_nev])
 end % try
 end % func
+
+
+%--------------------------------------------------------------------------
+% 12/11/2018 JJ: remove timestamp jitter
+function [vrT_event, vlKeep] = timestamp_remove_jitter_(vrT_event, min_event_interval)
+if min_event_interval > 0
+    vlKeep = [true; diff(vrT_event(:)) > min_event_interval];
+    vrT_event = vrT_event(vlKeep); % filter events
+else
+    vlKeep = [];
+end
+end %func
 
 
 %--------------------------------------------------------------------------
@@ -27353,7 +27540,7 @@ else
         struct_get_(S_value1, 'vcFile', 'iChan', 'sRateHz', 'vcUnit', 'scale');
 end
 csAns = inputdlg_(...
-    {'Channel name', 'File name', 'Channel number', 'Sampling rate', 'Unit', 'Gain'}, ...
+    {'Channel name (required)', 'File name', 'Channel number', 'Sampling rate', 'Unit', 'Gain'}, ...
     'Recording format', 1, ...
     num2str_({name1, vcFile, iChan, sRateHz, vcUnit, scale}));
 if isempty(csAns), return; end
@@ -27368,6 +27555,55 @@ catch
 end
 S_value1 = makeStruct_(vcFile, iChan, sRateHz, vcUnit, scale);
 trial1 = struct('name', name1, 'value', S_value1, 'type', 'analog');
+
+if isempty(iTrial)
+    if isempty(S_trials.cTrials), S_trials.iTrial = 1; end
+    S_trials.cTrials{end+1} = trial1;
+else
+    S_trials.cTrials{iTrial} = trial1;
+end
+set_userdata_(mh_trials, S_trials);
+update_menu_trials_(mh_trials);
+end %func
+
+
+%--------------------------------------------------------------------------
+% 11/13/2018 JJJ: Add an PSTH trial
+function trial_add_psth_(h,e, iTrial)
+if nargin<3, iTrial=[]; end
+mh_trials = get_tag_('mh_trials', 'uimenu');
+P = get_userdata_(mh_trials, 'P');
+S_trials = get_userdata_(mh_trials, 'S_trials');
+
+if isempty(iTrial)
+    [name1, vcFile, iChan, sRateHz, fRisingEdge] = ...
+        deal('', P.vcFile, [], P.sRateHz, 1);
+    if matchFileExt_(vcFile, '.ns5')
+        vcFile_nev = strrep(vcFile, '.ns5', '.nev');
+        if exist_file_(vcFile_nev), vcFile = vcFile_nev; end
+    end
+else
+    trial1 = S_trials.cTrials{iTrial};
+    [name1, S_value1] = deal(trial1.name, trial1.value); % name, value, type
+    [vcFile, iChan, sRateHz, fRisingEdge] = ...
+        struct_get_(S_value1, 'vcFile', 'iChan', 'sRateHz', 'fRisingEdge');
+end
+csAns = inputdlg_(...
+    {'Channel name (required)', 'File name', 'Channel number (leave blank to include all)', 'Sampling rate', 'Rising Edge'}, ...
+    'Recording format', 1, ...
+    num2str_({name1, vcFile, iChan, sRateHz, fRisingEdge}));
+if isempty(csAns), return; end
+[name1, vcFile, iChan, sRateHz, fRisingEdge] = deal(csAns{:});
+if isempty(name1), msgbox_('Aborted, channel name is not specified'); return; end
+if ~exist_file_(vcFile), msgbox('Aborted, file does not exist'); return; end
+try
+    [iChan, sRateHz, fRisingEdge] = multifun_(@str2num, iChan, sRateHz, fRisingEdge);
+%     if isempty(iChan), msgbox('Aborted, invalid channel'); return; end
+catch
+    msgbox('Aborted, invalid format'); return;
+end
+S_value1 = makeStruct_(vcFile, iChan, sRateHz, fRisingEdge);
+trial1 = struct('name', name1, 'value', S_value1, 'type', 'psth');
 
 if isempty(iTrial)
     if isempty(S_trials.cTrials), S_trials.iTrial = 1; end
@@ -27489,4 +27725,43 @@ end %func
 function gap = min_gap_(vr)
 vrD = pdist(vr);
 gap = min(vrD(vrD>0));
+end %func
+
+
+%--------------------------------------------------------------------------
+% 11/28/2018 JJJ: string to number
+function varargout = str2num_(varargin)
+for iArg = 1:nargin()
+    val1 = varargin{iArg};
+    if ischar(val1)
+        varargout{iArg} = str2num(val1);
+    else
+        varargout{iArg} = val1;
+    end
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+% 12/13/2018 JJJ: error catching plot
+function hPlot = plot_(varargin)
+try hPlot = plot(varargin{:}); catch, hPlot = []; end
+end %func
+
+
+%--------------------------------------------------------------------------
+function hPlot = plot3_(varargin)
+try hPlot = plot3(varargin{:}); catch, hPlot = []; end
+end %func
+
+
+%--------------------------------------------------------------------------
+function hPlot = bar_(varargin)
+try hPlot = bar(varargin{:}); catch, hPlot = []; end
+end %func
+
+
+%--------------------------------------------------------------------------
+function hPlot = stem_(varargin)
+try hPlot = stem(varargin{:}); catch, hPlot = []; end
 end %func
