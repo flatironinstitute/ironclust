@@ -3,6 +3,23 @@ IronClust, written by J. James Jun, Flatiron Institute, Simons Foundation
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [4.3.2] - 2018-12-13
+### Added
+- Settings menu is added for the `PSTH` plot
+- `Open prm folder` command is added under `File` menu.
+  - This opens a system file browser containing the .prm file
+- `Plot PSTH` command is added under `Trials` menu.
+  - User needs to add a `PSTH channel` under `Trials` menu and select it
+
+### Fixed
+- `irc mcc` and `run_irc.m` scripts were made compatible with the spikeforest singularity container.
+  - `geom.prb` file is generated in the output folder
+  - `tetrode_template.prm` file is correctly located in the irc path
+  - Plot error is caught if plots can't be generated inside of the container
+- run_irc.m (used by the python wrapper) and run_irc executable files were made consistent
+  - Syntax: `run_irc dir_in dir_out myparam.prm`
+
+
 ## [4.3.1] - 2018-11-23
 ### Added
 - `preview` command under `Trials` menu displays the channel label and unit

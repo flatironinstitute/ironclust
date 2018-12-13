@@ -133,16 +133,19 @@ thresh_core_knn = 1-1/8;      % Fraction of KNN from the same cluster to be cons
 vcFile_trial = '';          % .mat or .csv file containing timestamp in seconds unit. use any variable name.
 thresh_trial = [];          % Threshold to detect trial event timing from the TTL pulse. If empty, half between min and max is used.
 tRefrac_trial = .001;       % Trial timestamp refractory period (sec), disable duplicate events
-tlim_psth = [-1 5];         % Time range to display PSTH (in seconds)
+dinput_imec_trial = 1;      % IMEC digital input channel number (1-16) to generate trial file (vcFile_trial) using 'maketrial-imec' command.
+nClu_show_trial = 10;         % Max # clusters to show for aux vs. firing rate correlation
+max_events_trial = 100;         % Create 100 entries for the event channels
+min_event_interval_trial = 1;   % Minimum event interval allowed when importing .nev file. Set to 0 to disable it
+
+% PSTH info
+tlim_psth = [-1, 5];        % Time range to display PSTH (in seconds)
 tbin_psth = .01;            % Time bin for the PSTH histogram (in seconds)
 xtick_psth = .2;            % PSTH time tick mark spacing
 fAverageTrial_psth = 1;     % Plot PSTH for averaged trial if set to 1, otherwise plot individual trials (opens multiple tabs)
 nSmooth_ms_psth = 50;       % PSTH smoothing time window (in milliseconds)
 rateLim_psth = [];          % range range in Hz
-dinput_imec_trial = 1;      % IMEC digital input channel number (1-16) to generate trial file (vcFile_trial) using 'maketrial-imec' command.
-nClu_show_trial = 10;         % Max # clusters to show for aux vs. firing rate correlation
-max_events_trial = 100;         % Create 100 entries for the event channels
-min_event_interval_trial = 1;   % Minimum event interval allowed when importing .nev file. Set to 0 to disable it
+min_interval_psth = 1;      % Minimum time interval for PSTH trigger in sec
 
 % #Firing rate estimation for unit
 sRateHz_rate = 1000;                % Resampled rate for the firing rate
