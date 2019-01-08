@@ -3,6 +3,25 @@ IronClust, written by J. James Jun, Flatiron Institute, Simons Foundation
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [4.3.3] - 2019-1-8
+### Added
+- `Trials\add PSTH channel` menu validates the file format
+  - Operation is aborted if no events are found.
+  - Number of events are shown after successful validation
+- User file selection dialogs were added for `add analog channel` and 
+  `add PSTH channel` under `Trials` menu
+
+### Changed
+- Defalut changed: `thresh_core_knn = .9` (previously .875)
+  - improves real groundtruth performance
+- Added a paramter for post-clustering: `fTemplateMatch_post` (default value: 1)
+  - controls template matching for the outer part of the cluster cloud.
+
+### Fixed
+- `manaul GUI`: PSTH bar plot is now correctly centered.
+  - Previous version displayed incorrectly time-shifted bars on the upper plot.
+
+
 ## [4.3.2] - 2018-12-13
 ### Added
 - Settings menu is added for the `PSTH` plot

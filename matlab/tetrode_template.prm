@@ -17,6 +17,6 @@ fRemove_duplicate = 0;
 vcDetect = 'xcov';
 vcCluster = 'xcov'; 
 nDelays_xcov = 4;
-maxWavCor = .98;
+maxWavCor = .99;
 thresh_core_knn = 1-1/8;
 knn = 30;

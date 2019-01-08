@@ -67,8 +67,13 @@ switch lower(vcCmd)
     % two arguments
     case 'makeprb', makeprb_(vcArg1, vcArg2); return;
     case 'waitfor', waitfor_file_(vcArg1, vcArg2);
-
+    case 'convert-mda-manual', convert_mda_manual_(vcArg1, vcArg2);
+    case 'convert-mda-boyden', convert_mda_boyden_(vcArg1, vcArg2);
+    case 'convert-mda-kampff1', convert_mda_kampff1_(vcArg1, vcArg2);
+    case 'convert-mda-kampff2', convert_mda_kampff2_(vcArg1, vcArg2);        
+        
     % three arguments
+    case 'convert-mda-mea', convert_mda_mea_(vcArg1, vcArg2, vcArg3);
     case {'makeprm', 'createprm', 'makeprm-all'}
 %         makeprm_(vcFile_bin, vcFile_prb, fAsk, vcFile_template, vcDir_prm)
         vcFile_prm_ = makeprm_(vcArg1, vcArg2, 1, vcArg3, vcArg4);
@@ -2773,14 +2778,18 @@ S_burst = makeStruct_(cvpHit_burst_gt, vlHit_gtspk, vnBurst_gtspk, vpHit_burst, 
 S_score = struct_add_(S_score, S_burst);
 
 % Overlap stats
-S_overlap = analyze_overlap_(S_gt, S_cfg, P);
-cvnOverlap_gt = S_overlap.cvnOverlap_gt;
-vnOverlap_gtspk = cell2vec_(cvnOverlap_gt);
-[vpHit_overlap, vnHit_overlap] = grpstats(vlHit_gtspk, cell2vec_(cvnOverlap_gt), {'mean', 'numel'});
-cvpHit_overlap_gt = cellfun(@(vl_,vi_)grpstats(vl_,vi_+1,'mean'), S_score_clu.cvlHit_gt(:), cvnOverlap_gt(:), 'UniformOutput', 0);
-mpHit_overlap_gt = cell2mat_nan_(cvpHit_overlap_gt)';
-S_overlap = struct_add_(S_overlap, ...
-    cvpHit_overlap_gt, vlHit_gtspk, vnOverlap_gtspk, vpHit_overlap, vnHit_overlap, mpHit_overlap_gt);
+try
+    S_overlap = analyze_overlap_(S_gt, S_cfg, P);
+    cvnOverlap_gt = S_overlap.cvnOverlap_gt;
+    vnOverlap_gtspk = cell2vec_(cvnOverlap_gt);
+    [vpHit_overlap, vnHit_overlap] = grpstats(vlHit_gtspk, cell2vec_(cvnOverlap_gt), {'mean', 'numel'});
+    cvpHit_overlap_gt = cellfun(@(vl_,vi_)grpstats(vl_,vi_+1,'mean'), S_score_clu.cvlHit_gt(:), cvnOverlap_gt(:), 'UniformOutput', 0);
+    mpHit_overlap_gt = cell2mat_nan_(cvpHit_overlap_gt)';
+    S_overlap = struct_add_(S_overlap, ...
+        cvpHit_overlap_gt, vlHit_gtspk, vnOverlap_gtspk, vpHit_overlap, vnHit_overlap, mpHit_overlap_gt);
+catch
+    S_overlap = [];
+end
 S_score = struct_add_(S_score, S_overlap);
 
 fprintf('SNR_gt (Vp/Vrms): %s\n', sprintf('%0.1f ', S_score.vrSnr_gt));
@@ -3357,7 +3366,11 @@ switch 1
                     case 2
                         [mrDist1(:,iShift), vii_] = min(maddist2_(mrTemplate11, mrWav_spkout1),[],1);                  
                     case 1
-                        [mrDist1(:,iShift), vii_] = min(pdist2(mrTemplate11, mrWav_spkout1),[],1);  
+                        try
+                            [mrDist1(:,iShift), vii_] = min(pdist2_(mrTemplate11, mrWav_spkout1),[],1);  
+                        catch
+                            disperr_();
+                        end
                 end
                 miiClu_min1(:,iShift) = gather_(vii_);
             end
@@ -4891,9 +4904,11 @@ end %func
 function tbl = disp_mr_(mr, csCol, csRow, vcTitle)
 if nargin<4, vcTitle = inputname(1); end
 cvr_ = mr2cvr_(mr);
-tbl = table(cvr_{:}, 'RowNames', csRow, 'VariableNames', csCol);
-disp(vcTitle);
-disp(tbl);
+if ~isempty(cvr_)
+    tbl = table(cvr_{:}, 'RowNames', csRow, 'VariableNames', csCol);
+    disp(vcTitle);
+    disp(tbl);
+end
 end %func
 
 
@@ -12516,22 +12531,31 @@ end %func
 
 
 %--------------------------------------------------------------------------
+function vl = index2logical_(viTime, sRateHz, binsize_sec)
+if nargin<3, binsize_sec = .001; end
+vi = ceil(double(viTime) / sRateHz / binsize_sec);
+vl = false(max(vi), 1);
+vl(vi) = true;
+end %func
+
+
+%--------------------------------------------------------------------------
 function plot_psth_clu_(viTime_clu, vrTime_trial, P, hAx, vcColor)
 if nargin<4, hAx=gca; end
 if nargin<5, vcColor = 'k'; end
 
-tbin = P.tbin_psth;
-nbin = round(tbin * P.sRateHz);
-nlim = round(P.tlim_psth/tbin);
-viTime_Trial = round(vrTime_trial / tbin);
+[tlim_psth, tbin] = deal(P.tlim_psth, P.tbin_psth);
 
-vlTime1=zeros(0);
-vlTime1(ceil(double(viTime_clu)/nbin))=1;
-mr1 = vr2mr2_(double(vlTime1), viTime_Trial, nlim);
-vnRate = mean(mr1,2) / tbin;
-vrTimePlot = (nlim(1):nlim(end))*tbin + tbin/2;
-bar_(hAx, vrTimePlot, vnRate, 1, 'EdgeColor', 'none', 'FaceColor', vcColor);
-vrXTick = P.tlim_psth(1):(P.xtick_psth):P.tlim_psth(2);
+% 1 msec downsample
+ml_trial_ms = vr2mr2_(index2logical_(viTime_clu, P.sRateHz, .001), ...
+    ceil(vrTime_trial * 1000), round(tlim_psth * 1000));
+[viCol_, ~] = ind2sub(size(ml_trial_ms), find(ml_trial_ms));
+vrSpike_trial = viCol_ / 1000 + tlim_psth(1);
+[vnCnt, vrTimePlot] = hist(vrSpike_trial, tlim_psth(1):tbin:tlim_psth(2));
+vrRate = vnCnt / tbin;
+
+bar_(hAx, vrTimePlot, vrRate, 1, 'EdgeColor', 'none', 'FaceColor', vcColor);
+vrXTick = tlim_psth(1):(P.xtick_psth):tlim_psth(2);
 set(hAx, 'XTick', vrXTick, 'XTickLabel', []);
 grid(hAx, 'on');
 hold(hAx, 'on'); 
@@ -19040,9 +19064,8 @@ viRef_imec3 = [37 76 113 152 189 228 265 304 341 380];
 
 % Ask user if file is missing
 if nargin < 1
-    [FileName,PathName,FilterIndex] = uigetfile();
-    vcFname = fullfile(PathName, FileName);
-    if ~FilterIndex, return; end
+    vcFname = uigetfile_();
+    if isempty(vcFname), return; end
 end
 
 try
@@ -19954,7 +19977,7 @@ S_fig.vnThresh_site = vnThresh_site;
 [vlKeep_ref, S_fig.vrMad_ref] = car_reject_(vrWav_filt_mean, P_);
 [S_fig.viTime_spk, S_fig.vnAmp_spk, viSite_spk] = detect_spikes_(mnWav_filt, vnThresh_site, vlKeep_ref, P_);
 t_dur = size(mnWav_filt,1) / P.sRateHz;
-S_fig.vrEventRate_site = hist(viSite_spk, 1:nSites) / t_dur; % event count
+S_fig.vrEventRate_site = hist(double(viSite_spk), 1:nSites) / t_dur; % event count
 S_fig.vrEventSnr_site = abs(single(arrayfun(@(i)median(S_fig.vnAmp_spk(viSite_spk==i)), 1:nSites))) ./ vrRmsQ_site;
 S_fig.vlKeep_ref = vlKeep_ref;
 S_fig.viSite_spk = viSite_spk;
@@ -21228,8 +21251,8 @@ end %func
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_(vcFile_prm)
 if nargin<1, vcFile_prm = ''; end
-vcVer = 'v4.3.2';
-vcDate = '12/13/2018';
+vcVer = 'v4.3.3';
+vcDate = '1/8/2019';
 vcHash = file2hash_();
 
 if nargout==0
@@ -23207,8 +23230,7 @@ if exist_file_(vcArg_txt)
         case '.txt'
             S_txt = meta2struct_(vcArg_txt);
         case '.json'
-            addpath_('jsonlab-1.5/');
-            S_txt = loadjson(vcArg_txt);
+            S_txt = loadjson_(vcArg_txt);
     end % switch
 else
     S_txt = [];
@@ -23704,38 +23726,44 @@ end %func
 % 10/16/2018 JJJ: Using native function in matlab (pdist2 function)
 % 9/20/2018 JJJ: Memory-optimized knn
 function [vrKnn, miKnn] = knn_cpu_(mrFet, vi1, vi2, knn)
-% if isempty(vi1), vi1 = 1:size(mrFet,2); end
-% if isempty(vi2), vi2 = 1:size(mrFet,2); end
-switch 2
-    case 2
-        if isempty(vi1) && isempty(vi2)
-            mrFet_T = mrFet';
-            [mrKnn, miKnn] = pdist2(mrFet_T, mrFet_T, 'euclidean', 'smallest', knn);
-        else
-            [mrKnn, miKnn] = pdist2(mrFet(:,vi2)', mrFet(:,vi1)', 'euclidean', 'smallest', knn);             
-            miKnn = vi2(miKnn);
-        end
-        miKnn = int32(miKnn);
-        vrKnn = mrKnn(end,:)';
-    case 1
-        nStep_knn = 1000;
-        n1 = numel(vi1);
-        miKnn = zeros([knn, n1], 'int32'); 
-        vrKnn = zeros([n1, 1], 'single');
+% mrFet = gather_(mrFet);
+% try
+%     if isempty(vi1) && isempty(vi2)
+%         mrFet_T = mrFet';
+%         [mrKnn, miKnn] = pdist2(mrFet_T, mrFet_T, 'euclidean', 'smallest', knn);
+%     else
+%         [mrKnn, miKnn] = pdist2(mrFet(:,vi2)', mrFet(:,vi1)', 'euclidean', 'smallest', knn);             
+%         miKnn = vi2(miKnn);
+%     end
+%     miKnn = int32(miKnn);
+%     vrKnn = mrKnn(end,:)';
+% catch % gpu paging
+    nStep_knn = 1000;
+    if isempty(vi1) && isempty(vi2)
+        mrFet2 = mrFet;
+        mrFet1 = mrFet;
+        
+    else
         mrFet2 = mrFet(:,vi2);
         mrFet1 = mrFet(:,vi1);
-
-        fh_dist_ = @(y)bsxfun(@plus, sum(y.^2), bsxfun(@minus, sum(mrFet2.^2)', 2*mrFet2'*y));
-        for i1 = 1:nStep_knn:n1
-            vi1_ = i1:min(i1+nStep_knn-1, n1);
-            mrD_ = fh_dist_(mrFet1(:,vi1_));
-            [mrSrt_, miSrt_] = sort(mrD_);
-            miKnn(:,vi1_) = miSrt_(1:knn,:);
-            vrKnn(vi1_) = mrSrt_(knn,:);
-        end %for
-        miKnn = vi2(miKnn);
-        vrKnn = sqrt(abs(vrKnn));
-end
+    end
+    n1 = size(mrFet1,2);
+    miKnn = int32(zeros([knn, n1], 'like', mrFet));
+    vrKnn = zeros([n1, 1], 'like', mrFet);
+    mrFet2_T = mrFet2';
+%     fh_dist_ = @(y)bsxfun(@plus, sum(y.^2), bsxfun(@minus, sum(mrFet2.^2)', 2*mrFet2'*y));
+    for i1 = 1:nStep_knn:n1
+        vi1_ = i1:min(i1+nStep_knn-1, n1);
+        [mrKnn1, miKnn(:,vi1_)] = pdist2(mrFet2_T, mrFet(:,vi1_)', 'euclidean', 'smallest', knn);
+        vrKnn(vi1_) = mrKnn1(end,:);
+%         mrD_ = fh_dist_(mrFet1(:,vi1_));
+%         [mrSrt_, miSrt_] = sort(mrD_);
+%         miKnn(:,vi1_) = miSrt_(1:knn,:);
+%         vrKnn(vi1_) = mrSrt_(knn,:);
+    end %for
+    if ~isempty(vi2), miKnn = vi2(miKnn); end
+%     vrKnn = sqrt(abs(vrKnn));
+% end
 end %func
 
 
@@ -24942,7 +24970,7 @@ cviTime_gt = cellfun(@(x)S_gt.viTime(x), cviSpk_gt, 'UniformOutput', 0); % don't
 cvnOverlap_gt = cell(1, nClu_gt);
 mrDist_gt = squareform(pdist(P.mrSiteXY(S_gt.viSite_clu,:)));
 fh_lim_ = @(x,lim)x>=lim(1) & x<=lim(2);
-for iGt1 = 1:nClu_gt
+for iGt1 = 2:nClu_gt
     viTime1_ = cviTime_gt{iGt1};
     iSite1 = S_gt.viSite_clu(iGt1);
     viGt2_ = find(mrDist_gt(1:iGt1-1,iGt1) <= maxDist_um_gt);
@@ -26932,6 +26960,10 @@ end %func
 % 11/1/2018 JJJ: mcc-safe addpath, compatible without mcc
 function addpath_(vcPath)
 if nargin<1, vcPath=''; end
+
+% see if exists
+if searchpath_(vcPath), return; end %return if already added
+
 ircpath = fileparts(mfilename('fullpath'));
 if isempty(vcPath)
     % add self to path
@@ -27307,9 +27339,14 @@ function plot_psth_trial_(h,e)
 
 mh_trials = get_tag_('mh_trials', 'uimenu');
 S_trials = get_userdata_(mh_trials, 'S_trials');
-S_trial1 = S_trials.cTrials{S_trials.iTrial};
+try
+    S_trial1 = S_trials.cTrials{S_trials.iTrial};
+catch
+    msgbox_('Add PSTH channel (under `Trials` menu)', 1); 
+    return;    
+end
 if ~strcmpi(S_trial1.type, 'psth')
-    msgbox_('Select a PSTH channel (under `Trials` menu)', 1); 
+    msgbox_('Select PSTH channel (under `Trials` menu)', 1); 
     return;
 end
 
@@ -27476,9 +27513,8 @@ min_event_interval = get_set_(P, 'min_event_interval_trial', 1);
 max_events_trial = get_set_(P, 'max_events_trial', 100);
 [vcDir, ~, ~] = fileparts(P.vcFile_prm);
 try
-    [nev_file, nev_dir] = uigetfile(fullfile(vcDir, '*.nev'));
-    vcFile_nev = fullfile(nev_dir, nev_file);
-    if ~exist_file_(vcFile_nev), return; end % user pressed cancel
+    vcFile_nev = uigetfile_(fullfile(vcDir, '*.nev'));
+    if isempty(vcFile_nev), return; end % user pressed cancel
     vrT_event = load_nev_(vcFile_nev);
     vrT_event = timestamp_remove_jitter_(vrT_event, min_event_interval);
     mrTable1 = reshape_(vrT_event, 2)';    
@@ -27528,8 +27564,9 @@ S_trials = get_userdata_(mh_trials, 'S_trials');
 if isempty(iTrial)
     [name1, vcFile, iChan, sRateHz, vcUnit, scale] = deal('', P.vcFile, [], P.sRateHz, '', 1);
     if matchFileExt_(vcFile, '.ns5')
-        vcFile_ns2 = strrep(vcFile, '.ns5', '.ns2');
-        if exist_file_(vcFile_ns2), vcFile = vcFile_ns2; end
+        vcFile = strrep(vcFile, '.ns5', '.ns2');
+        vcFile = uigetfile_(vcFile); % show a file picker
+        if isempty(vcFile), return; end
         S_header = load_nsx_header_(vcFile);
         [sRateHz, scale] = deal(S_header.sRateHz, 1);
     end
@@ -27539,14 +27576,15 @@ else
     [vcFile, iChan, sRateHz, vcUnit, scale] = ...
         struct_get_(S_value1, 'vcFile', 'iChan', 'sRateHz', 'vcUnit', 'scale');
 end
-csAns = inputdlg_(...
-    {'Channel name (required)', 'File name', 'Channel number', 'Sampling rate', 'Unit', 'Gain'}, ...
-    'Recording format', 1, ...
-    num2str_({name1, vcFile, iChan, sRateHz, vcUnit, scale}));
-if isempty(csAns), return; end
-[name1, vcFile, iChan, sRateHz, vcUnit, scale] = deal(csAns{:});
-if isempty(name1), msgbox_('Aborted, channel name is not specified'); return; end
 if ~exist_file_(vcFile), msgbox('Aborted, file does not exist'); return; end
+
+csAns = inputdlg_(...
+    {'Channel name (required)', 'Channel number', 'Sampling rate', 'Unit', 'Gain'}, ...
+    'Recording format', 1, ...
+    num2str_({name1, iChan, sRateHz, vcUnit, scale}));
+if isempty(csAns), return; end
+[name1, iChan, sRateHz, vcUnit, scale] = deal(csAns{:});
+if isempty(name1), msgbox_('Aborted, channel name is not specified'); return; end
 try
     [iChan, sRateHz, scale] = multifun_(@str2num, iChan, sRateHz, scale);
     if isempty(scale), msgbox('Aborted, invalid scale'); return; end
@@ -27568,6 +27606,18 @@ end %func
 
 
 %--------------------------------------------------------------------------
+% 1/7/2019 JJJ: get file
+function vcFile = uigetfile_(varargin)
+global fDebug_ui
+vcFile = [];
+if fDebug_ui==1, return; end
+[FileName, PathName, FilterIndex] = uigetfile(varargin{:});
+if FilterIndex, return; end
+vcFile = fullfile(PathName, FileName);
+end %func
+    
+    
+%--------------------------------------------------------------------------
 % 11/13/2018 JJJ: Add an PSTH trial
 function trial_add_psth_(h,e, iTrial)
 if nargin<3, iTrial=[]; end
@@ -27579,37 +27629,50 @@ if isempty(iTrial)
     [name1, vcFile, iChan, sRateHz, fRisingEdge] = ...
         deal('', P.vcFile, [], P.sRateHz, 1);
     if matchFileExt_(vcFile, '.ns5')
-        vcFile_nev = strrep(vcFile, '.ns5', '.nev');
-        if exist_file_(vcFile_nev), vcFile = vcFile_nev; end
+        vcFile = strrep(vcFile, '.ns5', '.nev');
     end
+    vcFile = uigetfile_(vcFile); % show a file picker
+    if isempty(vcFile), return; end
 else
-    trial1 = S_trials.cTrials{iTrial};
-    [name1, S_value1] = deal(trial1.name, trial1.value); % name, value, type
+    S_trial1 = S_trials.cTrials{iTrial};
+    [name1, S_value1] = deal(S_trial1.name, S_trial1.value); % name, value, type
     [vcFile, iChan, sRateHz, fRisingEdge] = ...
         struct_get_(S_value1, 'vcFile', 'iChan', 'sRateHz', 'fRisingEdge');
 end
-csAns = inputdlg_(...
-    {'Channel name (required)', 'File name', 'Channel number (leave blank to include all)', 'Sampling rate', 'Rising Edge'}, ...
-    'Recording format', 1, ...
-    num2str_({name1, vcFile, iChan, sRateHz, fRisingEdge}));
-if isempty(csAns), return; end
-[name1, vcFile, iChan, sRateHz, fRisingEdge] = deal(csAns{:});
-if isempty(name1), msgbox_('Aborted, channel name is not specified'); return; end
 if ~exist_file_(vcFile), msgbox('Aborted, file does not exist'); return; end
+
+csAns = inputdlg_(...
+    {'Channel name (required)', 'Channel number (leave blank to include all)', 'Sampling rate', 'Rising Edge'}, ...
+    'Recording format', 1, ...
+    num2str_({name1, iChan, sRateHz, fRisingEdge}));
+if isempty(csAns), return; end
+[name1, iChan, sRateHz, fRisingEdge] = deal(csAns{:});
+if isempty(name1), msgbox_('Aborted, channel name is not specified'); return; end
+
 try
     [iChan, sRateHz, fRisingEdge] = multifun_(@str2num, iChan, sRateHz, fRisingEdge);
-%     if isempty(iChan), msgbox('Aborted, invalid channel'); return; end
 catch
     msgbox('Aborted, invalid format'); return;
 end
 S_value1 = makeStruct_(vcFile, iChan, sRateHz, fRisingEdge);
-trial1 = struct('name', name1, 'value', S_value1, 'type', 'psth');
+S_trial1 = struct('name', name1, 'value', S_value1, 'type', 'psth');
 
+% validate file
+try
+    [vrWav_trial, vrTime_trial, vcLabel_aux, vcTitle_aux] = load_trial_(P, S_trial1);    
+    if isempty(vrTime_trial)
+        msgbox_('No events found. Try leaving the `Channel number` empty to include all events.', 1); return;
+    else
+        msgbox_(sprintf('Found %d events', numel(vrTime_trial)), 1);
+    end
+catch
+    msgbox_('Aborted, invalid format', 1); return;
+end
 if isempty(iTrial)
     if isempty(S_trials.cTrials), S_trials.iTrial = 1; end
-    S_trials.cTrials{end+1} = trial1;
+    S_trials.cTrials{end+1} = S_trial1;
 else
-    S_trials.cTrials{iTrial} = trial1;
+    S_trials.cTrials{iTrial} = S_trial1;
 end
 set_userdata_(mh_trials, S_trials);
 update_menu_trials_(mh_trials);
@@ -27764,4 +27827,460 @@ end %func
 %--------------------------------------------------------------------------
 function hPlot = stem_(varargin)
 try hPlot = stem(varargin{:}); catch, hPlot = []; end
+end %func
+
+
+%--------------------------------------------------------------------------
+function convert_mda_kampff1_(vcDir_in, vcDir_out)
+if isempty(vcDir_in)
+    vcDir_in = 'K:\AdamKampff\kampff2\';
+end
+if isempty(vcDir_out)
+    vcDir_out = 'K:\spikeforest\groundtruth\paired_recordings\neuropix32c\';
+end
+viChan_A = [1 3 6 8]' + [0:8:63]; viChan_A = viChan_A(:);
+viChan_B = [2 4 5 7]' + [0:8:63]; viChan_B = viChan_B(:);
+cviChan = {viChan_A, viChan_B};
+csDir = {'2015_09_03_Pair_9_0A', '2015_09_03_Pair_9_0B'};
+
+vcFile_raw = fullfile(vcDir_in, 'raw.mda');
+vcFile_geom = fullfile(vcDir_in, 'geom.csv');
+mrWav = readmda_(vcFile_raw);
+mrSiteXY = csvread(vcFile_geom);
+
+for iDir = 1:numel(csDir)
+    vcDir_out1 = fullfile(vcDir_out, csDir{iDir});
+    mkdir_(vcDir_out1);
+    
+    % write geom.csv
+    viChan1 = cviChan{iDir};
+    csvwrite(fullfile(vcDir_out1, 'geom.csv'), mrSiteXY(viChan1,:));
+    
+    % copy params.json and gorund truth
+    copyfile(fullfile(vcDir_in, 'params.json'), fullfile(vcDir_out1, 'params.json'));
+    copyfile(fullfile(vcDir_in, 'firings_true.mda'), fullfile(vcDir_out1, 'firings_true.mda'));
+    
+    % write raw.mda
+    writemda_(mrWav(viChan1,:), fullfile(vcDir_out1, 'raw.mda'));
+end %for
+
+end %func
+
+
+%--------------------------------------------------------------------------
+function convert_mda_kampff2_(vcDir_in, vcDir_out)
+if isempty(vcDir_in)
+    vcDir_in = 'K:\AdamKampff\Neuropixels';
+end
+if isempty(vcDir_out)
+    vcDir_out = 'K:\spikeforest\groundtruth\paired_recordings\neuropix32c';
+end
+
+S_npx = struct('sRateHz', 30000, 'nChans', 384, 'nChans_out', 32, 'vcDataType', 'int16', 'spike_sign', -1); % 320 um span
+S_npx.viChan_max = [235 190 219 182 179 249 184 230 162 176 110 190];
+S_npx.csDir_in = {'c28', 'c21', 'c24', 'c46', 'c45', 'c26', 'c19', 'c27', 'c14', 'c44', 'c42', 'c16'};
+
+convert_mda_kampff_(vcDir_in, vcDir_out, S_npx);
+end %func
+
+
+%--------------------------------------------------------------------------
+function convert_mda_kampff_(vcDir_in, vcDir_out, S_npx)
+
+S_map = load(fullfile(vcDir_in, 'chanMap.mat'));
+mrSiteXY_in = [S_map.xcoords(:), S_map.ycoords(:)];
+[csDir_in, viChan_max] = struct_get_(S_npx, 'csDir_in', 'viChan_max');
+% extract 32 nearest sites from the center and sort by channel numbers and
+% write to geom.csv
+S_params = struct('spike_sign', S_npx.spike_sign, 'samplerate', S_npx.sRateHz);
+bytes_per_sample = bytesPerSample_(S_npx.vcDataType);
+
+for iFile = 1:numel(csDir_in)
+    vcDir1 = csDir_in{iFile};
+    vcFile_npx1 = fullfile(vcDir_in, vcDir1, [vcDir1, '_npx_raw.bin']);
+    vcFile_npy1 = fullfile(vcDir_in, vcDir1, [vcDir1, '_extracellular_spikes.npy']);    
+    try
+        assert(exist_file_(vcFile_npx1) && exist_file_(vcFile_npy1), sprintf('%d: %s error\n', iFile, vcDir1));
+        
+        % output files
+        vcDir_out1 = fullfile(vcDir_out, vcDir1);
+        mkdir_(vcDir_out1);
+
+        % write geom.csv
+        iChan0_in1 = viChan_max(iFile);
+        [~, viSrt_site_] = sort(pdist2(mrSiteXY_in, mrSiteXY_in(iChan0_in1,:)), 'ascend');
+        viChan_out1 = sort(viSrt_site_(1:S_npx.nChans_out));
+        iSite_gt1 = find(viChan_out1 == iChan0_in1);        
+        csvwrite(fullfile(vcDir_out1, 'geom.csv'), mrSiteXY_in(viChan_out1,:));    
+
+        % write raw.mda
+        S_dir1 = dir(vcFile_npx1);
+        nSamples1 = floor(S_dir1.bytes / S_npx.nChans / bytes_per_sample);
+%         mrWav_ = irc('call', 'load_bin', {vcFile_npx1, S_npx.vcDataType, [S_npx.nChans, nSamples1]}, 1);
+        mrWav_ = load_bin_(vcFile_npx1, S_npx.vcDataType, [S_npx.nChans, nSamples1]);
+        mrWav_ = mrWav_(viChan_out1,:);
+        writemda(mrWav_, fullfile(vcDir_out1, 'raw.mda'), S_npx.vcDataType);
+        
+        % write param.json
+        struct2json_(S_params, fullfile(vcDir_out1, 'params.json'));
+
+        % export firings_true.mda
+        viTime_gt1 = readNPY(vcFile_npy1);
+        nSpikes = numel(viTime_gt1);
+        mrFirings_out = ones(3, nSpikes, 'double');
+        mrFirings_out(1,:) = iSite_gt1;
+        mrFirings_out(2,:) = viTime_gt1;
+        writemda(mrFirings_out, fullfile(vcDir_out1, 'firings_true.mda'), 'float64');
+
+        fprintf('%d: %s converted\n', iFile, vcDir1);
+    catch        
+        disperr_();
+    end
+end %for iFile
+end %func
+
+
+%--------------------------------------------------------------------------
+function convert_mda_mea_(vcDir_in, vcDir_out, vcFile_prm)
+if isempty(vcDir_in)
+    vcDir_in = 'K:\PierreYger\';
+end
+if isempty(vcDir_out)
+    vcDir_out = 'K:\spikeforest\groundtruth\paired_recordings\mea64c';
+end
+
+% load the probe layout
+S_map = load(fullfile(vcDir_in, 'chanMap.mat'));
+mrSiteXY_in = [S_map.xcoords(:), S_map.ycoords(:)];
+if ~isempty(get_(S_map, 'exclude_chan'))
+    mrSiteXY_in(S_map.exclude_chan,:) = inf; % exclude channel will not get selected
+end
+
+S_mea = struct('nChans_out', 64, 'spike_sign', -1, 'nChans', 256, 'vcDataType', 'uint16');
+S_params = struct('spike_sign', -1, 'samplerate', 20000); 
+bytes_per_sample = bytesPerSample_(S_mea.vcDataType); % @TODO: use S_npx.vcDataType
+
+% look for .raw files
+vS_Files_raw = dir(fullfile(vcDir_in, '*/*.raw'));
+csFiles_raw = cellfun(@(x,y)fullfile(x,y), {vS_Files_raw.folder}, {vS_Files_raw.name}, 'UniformOutput', 0);
+csFiles_raw = csFiles_raw(~contains(csFiles_raw, 'juxta'));
+
+% look for raw files in it
+for iFile = 1:numel(csFiles_raw)
+    vcFile_raw1 = csFiles_raw{iFile};
+    [~,vcDir1] = fileparts(fileparts(vcFile_raw1));
+    vcFile_txt1 = strrep(vcFile_raw1, '.raw', '.txt');
+    vcFile_npy1 = strrep(vcFile_raw1, '.raw', '.triggers.npy');  
+%     if ~exist_file_(vcFile_npy1), vcFile_npy1 = strrep(vcFile_raw1, '.raw', '.snippets.npy'); end
+    try
+        assert(exist_file_(vcFile_npy1) && exist_file_(vcFile_txt1), sprintf('%d: %s error\n', iFile, vcDir1));
+        S_txt1 = meta2struct_(vcFile_txt1);
+        
+        % output files
+        vcDir_out1 = fullfile(vcDir_out, vcDir1);
+        mkdir_(vcDir_out1);
+
+        % write geom.csv
+        iChan0_in1 = S_txt1.channel+1;
+        [~, viSrt_site_] = sort(pdist2(mrSiteXY_in, mrSiteXY_in(iChan0_in1,:)), 'ascend');
+        viChan_out1 = sort(viSrt_site_(1:S_mea.nChans_out));
+        iSite_gt1 = find(viChan_out1 == iChan0_in1);        
+        csvwrite(fullfile(vcDir_out1, 'geom.csv'), mrSiteXY_in(viChan_out1,:));
+
+        % write raw.mda
+        S_dir1 = dir(vcFile_raw1);
+        nBytes = S_dir1.bytes - S_txt1.padding;
+        nSamples1 = floor(nBytes / S_mea.nChans / bytes_per_sample);
+        mrWav_ = load_bin_(vcFile_raw1, S_mea.vcDataType, [S_mea.nChans, nSamples1], S_txt1.padding);
+        mrWav_ = mrWav_(viChan_out1,:);
+        writemda(mrWav_, fullfile(vcDir_out1, 'raw.mda'), S_mea.vcDataType);
+        
+        % write param.json
+        struct2json_(S_params, fullfile(vcDir_out1, 'params.json'));
+
+        % export firings_true.mda
+        viTime_gt1 = readNPY(vcFile_npy1);
+        nSpikes = numel(viTime_gt1);
+        mrFirings_out = ones(3, nSpikes, 'double');
+        mrFirings_out(1,:) = iSite_gt1;
+        mrFirings_out(2,:) = viTime_gt1;
+        writemda(mrFirings_out, fullfile(vcDir_out1, 'firings_true.mda'), 'float64');
+
+        fprintf('%d: %s converted\n', iFile, vcDir1);
+    catch        
+        disperr_();
+    end
+end %for iFile
+end %func
+
+
+%--------------------------------------------------------------------------
+function convert_mda_boyden_(vcDir_in, vcDir_out)
+if isempty(vcDir_in)
+    vcDir_in = 'K:\spikeforest\groundtruth\paired_recordings\boyden\';
+end
+if isempty(vcDir_out)
+    vcDir_out = 'K:\spikeforest\groundtruth\paired_recordings\boyden32c\';
+end
+S_mea = struct('nChans_out', 32);
+
+% look for .raw files
+vS_Files_raw = dir(fullfile(vcDir_in, '*/raw.mda'));
+csFiles_raw = cellfun(@(x,y)fullfile(x,y), {vS_Files_raw.folder}, {vS_Files_raw.name}, 'UniformOutput', 0);
+
+% look for raw files in it
+for iFile = 1:numel(csFiles_raw)
+    vcFile_raw1 = csFiles_raw{iFile};
+    vcDir_in1 = fileparts(vcFile_raw1);
+    [~, vcDir1] = fileparts(vcDir_in1);
+    vcDir_out1 = fullfile(vcDir_out, vcDir1);
+    try
+%         if exist_dir_(vcDir_out1), continue; end
+        mkdir_(vcDir_out1);
+        vcFile_out_raw1 = fullfile(vcDir_out1, 'raw.mda');
+        if exist_file_(vcFile_out_raw1), continue; end
+        
+        copyfile(fullfile(vcDir_in1, 'params.json'), fullfile(vcDir_out1, 'params.json'));
+        copyfile(fullfile(vcDir_in1, 'firings_true.mda'), fullfile(vcDir_out1, 'firings_true.mda'));
+        
+        % determine the peak channel
+        mrGt1 = readmda_(fullfile(vcDir_in1, 'firings_true.mda'));
+        viTime_gt1 = mrGt1(2,:);
+        mrWav1 = readmda_(fullfile(vcDir_in1, 'raw.mda'));
+        mrWav_mean1 = mr2tr3_(mrWav1', [-30,30], viTime_gt1);
+        mrWav_mean1 = squeeze(mean(mrWav_mean1,2));
+        [~, iChan0_in1] = max(max(mrWav_mean1)-min(mrWav_mean1));
+        
+        % write geom.csv
+        mrSiteXY1 = csvread(fullfile(vcDir_in1, 'geom.csv'));
+        [~, viSrt_site_] = sort(pdist2(mrSiteXY1, mrSiteXY1(iChan0_in1,:)), 'ascend');
+        viChan_out1 = sort(viSrt_site_(1:S_mea.nChans_out));
+        iSite_gt1 = find(viChan_out1 == iChan0_in1);        
+        csvwrite(fullfile(vcDir_out1, 'geom.csv'), mrSiteXY1(viChan_out1,:));
+
+        % write raw.mda
+        writemda_(mrWav1(viChan_out1,:), vcFile_out_raw1);       
+
+        fprintf('%d: %s converted\n', iFile, vcDir1);
+    catch     
+        fprintf(2, '%d: error processing %s\n', iFile, vcDir_in1);
+    end
+end %for iFile
+end %func
+
+
+%--------------------------------------------------------------------------
+% extract time and put it in the folders
+% divide files into 600 s chunk and evaluate accuracy
+function convert_mda_manual_(vcDir_in, vcDir_out)
+if isempty(vcDir_in)
+    vcDir_in = 'K:\JasonChung\tetrodes_manual\';
+end
+if isempty(vcDir_out)
+    vcDir_out = 'K:\spikeforest\groundtruth\manual_sortings\tetrode_1200s\'; % cratet sorter 1,2,3
+end
+S_out = struct('t_dur_sec', 1200); % export 10 minute recordings
+
+% look for .raw files
+vcFile_raw = '20160426_DL15_02_r1.nt16.mda';
+csFiles_gt = {'manclust1_firings.mda', 'manclust2_firings.mda', 'manclust3_firings.mda'};
+csDir_out = {'sorter1', 'sorter2', 'sorter3'};
+
+mrWav1 = readmda_(fullfile(vcDir_in, vcFile_raw));
+nSamples = size(mrWav1,2);
+vcFile_param = fullfile(vcDir_in, 'params.json');
+S_param = loadjson_(vcFile_param);
+nSamples_per_file = S_out.t_dur_sec * S_param.samplerate;
+nTime = floor(nSamples / nSamples_per_file);
+        
+for iFile = 1:numel(csFiles_gt)   
+    mrGt1 = readmda_(fullfile(vcDir_in, csFiles_gt{iFile})); 
+    viTime_gt1 = mrGt1(2,:);    
+    for iTime = 1:nTime
+        vcDir_out11 = fullfile(vcDir_out, sprintf('%s_%d', csDir_out{iFile}, iTime));                    
+        try
+            mkdir_(vcDir_out11);
+
+            % copy params.jsona nd geom.csv
+            copyfile(vcFile_param, fullfile(vcDir_out11, 'params.json'));
+            copyfile(fullfile(vcDir_in, 'geom.csv'), fullfile(vcDir_out11, 'geom.csv'));
+
+            % write raw.mda
+            viTime_out11 = (1:nSamples_per_file) + (iTime-1)*nSamples_per_file;        
+            writemda_(mrWav1(:,viTime_out11), fullfile(vcDir_out11, 'raw.mda'));
+
+            % write firings_true.mda
+            mrGt11 = mrGt1(:,viTime_gt1 >= viTime_out11(1) & viTime_gt1 <= viTime_out11(end));
+            mrGt11(2,:) = mrGt11(2,:) - (viTime_out11(1) - 1);
+            writemda_(mrGt11, fullfile(vcDir_out11, 'firings_true.mda'));
+
+            fprintf('%d_%d: converted to %s\n', iFile, iTime, vcDir_out11);
+        catch
+            fprintf(2, '%d_%d: error creating %s\n', iFile, iTime, vcDir_out11);
+        end
+    end %for    
+end %for
+end %func
+
+
+%--------------------------------------------------------------------------
+function S_txt = loadjson_(vcArg_txt)
+addpath_('jsonlab-1.5/');
+S_txt = loadjson(vcArg_txt);
+end %func
+
+
+%--------------------------------------------------------------------------
+% search for path
+function flag = searchpath_(varargin)
+if nargin > 0
+    [varargin{:}] = convertStringsToChars(varargin{:});
+end
+
+narginchk(1, Inf);
+
+if nargout>0
+    oldpath = path;
+end
+
+ps = pathsep;
+
+% Make cell array of MATLABPATH directories
+cmdirs = regexp([matlabpath ps],['.[^' ps ']*' ps],'match')';
+
+% Check, trim, and concatenate the input strings
+dirs = catdirs_(mfilename, varargin{:});
+
+% Convert to clean cells
+cdirs = parsedirs_(dirs);
+
+% Absolutize input strings
+for i=1:length(cdirs)
+    try
+    if feature('IsPM2.0')
+        cdirs{i} = [builtin('_canonicalizepath', cdirs{i}(1:end-1)) pathsep];
+    else
+        cdirs{i} = [builtin('_canonicalizepath', cdirs{i}(1:end-1), false) pathsep];
+    end
+    catch
+        % Could not absolutize a path and let later code issue a warning
+    end
+end
+    
+% Only do case sensitive search on UNIX
+if ispc
+    cdirsCased = lower(cdirs);
+    cmdirsCased = lower(cmdirs);
+else
+    cdirsCased = cdirs;
+    cmdirsCased = cmdirs;
+end
+
+% Loop through directories to find out where to remove them
+pmatch = false(size(cmdirs));
+for n=1:length(cdirsCased)
+	pTemp = strcmp(cdirsCased{n},cmdirsCased);
+        if ~any(pTemp)
+            warning(message('MATLAB:rmpath:DirNotFound', cdirs{ n }( 1:end - 1 )));
+        end
+	pmatch = pmatch | pTemp;
+end
+
+flag = any(pmatch);
+end %func
+
+
+%--------------------------------------------------------------------------
+% 2018/12/21 JJJ: Copied from Matlab
+function cdirs = catdirs_(caller, varargin)
+%CATDIRS Concatenate separate strings of directories into one string. 
+%   CATDIRS  CALLER DIRNAME checks that DIRNAME is a string, removes any
+%   leading or tailing whitespace, and appends a path separator. CALLER is
+%   the name of the calling function, used only when displaying warnings.
+%
+%   CATDIRS  CALLER DIR1 DIR2 DIR3 ... for each input, checks it is a
+%    string, removes any leading or tailing whitespace, and appends a path
+%    separator; and then concatenates all these strings. CALLER is the
+%    name of the calling function, used only when displaying warnings.
+%
+%   Example:
+%       dirlist = catdirs('addpath', '/home/user/matlab','/home/user/matlab/test');
+
+%   Copyright 1984-2015 The MathWorks, Inc.
+
+n= nargin-1;
+narginchk(2,Inf);
+
+cdirs = '';
+
+for i=1:n
+    next = varargin{i};
+    if ~ischar(next)
+        error(message('MATLAB:catdirs:ArgNotString'));
+    end
+    % Remove leading and trailing whitespace
+	trimmedNext = strtrim(next);
+    if ~isempty(trimmedNext)
+        if ~strcmp(trimmedNext, next)
+            [~,caller]=fileparts(caller);
+            switch caller
+                case 'addpath'
+                    warning(message('MATLAB:catdirs:AddLeadingTrailingWhitespace', ...
+                        trimmedNext, next));
+                case 'rmpath'
+                    warning(message('MATLAB:catdirs:RemoveLeadingTrailingWhitespace', ...
+                        trimmedNext, next));
+            end
+        end
+        cdirs = [cdirs trimmedNext pathsep]; %#ok<AGROW>
+    end
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+function cdirs = parsedirs_(str,varargin)
+%PARSEDIRS Convert string of directories into a cell array
+%   C = PARSEDIRS(S) converts S, a string of directories separated by path
+%   separators, to C, a cell array of directories. 
+%
+%   The function will clean up each directory name by converting file
+%   separators to the appropriate operating system file separator, and by
+%   ending each cell with a path separator. It will also remove repeated
+%   file and path separators, and insignificant whitespace. 
+%
+%   Example:
+%       cp = parsedirs(path);
+
+%   Copyright 1984-2007 The MathWorks, Inc.
+
+fs = filesep;
+ps = pathsep;
+
+cdirs = regexp(str, sprintf('[^\\s%s;][^%s;]*', ps, ps), 'match')';
+
+if ps == ';'
+    % Only iron fileseps on PC:
+    cdirs = strrep(cdirs,'/','\');
+
+    % Remove repeated "\"s unless they are the start of string
+    % Also ensure a "\" exists after a colon
+	cdirs = regexprep(cdirs, '(:)\s*$|(.)\\{2,}', '$1\');
+else
+    % Remove repeated "/"s
+    cdirs = regexprep(cdirs, '/{2,}', '/');
+
+    % Do any tilde expansion
+    ix = find(strncmp(cdirs,'~',1));
+    if ~isempty(ix)
+      cdirs(ix) = unix_tilde_expansion(cdirs(ix));
+    end
+end
+
+% Remove trailing fileseps, but allow a directory to be "X:\", "\" or "/" 
+% Add pathseps to the end of all paths
+cdirs = regexprep(cdirs,sprintf('(.*[^:])\\%s\\s*$|(.+)\\s*$',fs),sprintf('$1%s', ps));
+
+% Remove empty paths
+cdirs(cellfun('isempty', cdirs)) = [];
 end %func

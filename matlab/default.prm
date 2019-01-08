@@ -111,9 +111,8 @@ knn = 30;                   % K nearest neighbor clustering
 nDelays_xcov = 4;           % Used for vcCluster='xcov'. Number of delays for channel-pair covariance 
 
 % #Post-cluster auto-merging parameters (run "jrc auto" after change)
-delta1_cut = .6;            % RL cluster: delta cut-off. Increasing this will produce less clusters.
-rho_cut = -2.5;             % RL cluster: rho cut-off. Decreasing (more negative) this will produce more clusters.
-maxWavCor = .98;            % merge if waveform correlation is greater than maxWavCor.
+knn_merge_thresh = 1;       % Number of spikes shared between two peaks to be merged
+maxWavCor = .99;            % merge if waveform correlation is greater than maxWavCor.
 min_count = 30;             % Minimum cluster size (min_count will be set to 2*#features if lower).
 nRepeat_merge = 10;         % # of repeats for average unit raw waveform based merging
 vcDetrend_postclu = 'global'; % 'none', 'hidehiko', 'global', 'local', 'logz'
@@ -123,11 +122,11 @@ fDrift_merge = 1;           % Compute multiple waveforms at three drift location
 nInterp_merge = 1;          % Interpolation factor for the mean unit waveforms, set to 1 to disable
 spkLim_factor_merge = 1;    % Waveform range for computing the correlation. spkLim_factor_merge <= spkLim_raw_factor_merge. circa v3.1.8
 fWavRaw_merge = 0;          % Use raw average unit waveforms for merge when set to 1, if not use filtered waveforms.
-frac_equal_knn = .5;        % Fraction of k-nearest neighbors from the same cluster. 
 frac_shift_merge = .1;      % Fraction of the waveform to shift to check for merging
 fRemove_duplicate = 1;      % Remove clusters whose detection site occurs far from the min waveform site (d>=maxDist_site_um)
+fTemplateMatch_post = 1;    % Perform template matching on the outer part of the cluster cloud
 nTemplates_clu = 100;       % Number of template waveforms per cluster to perform post-hoc merging and cluster assignment on the outer edge of clusters
-thresh_core_knn = 1-1/8;      % Fraction of KNN from the same cluster to be considered as the core member of a cluster
+thresh_core_knn = .9;      % Fraction of KNN from the same cluster to be considered as the core member of a cluster
 
 % #Trial (used for plotting PSTH for each unit after clustering)
 vcFile_trial = '';          % .mat or .csv file containing timestamp in seconds unit. use any variable name.
@@ -267,6 +266,8 @@ maxSite_merge = [];        % Number of sites (2n+1) to merge based on waveform s
 vcDc_clu = 'distr';         % use noise distribution to determine cutoff {noise, distr, entropy, otsu}
 fProj_sort = 0;             % PCA project from PCA
 fNormRhoDelta = 1;          % remove spikes in delta dimension if set
+delta1_cut = .6;            % RL cluster: delta cut-off. Increasing this will produce less clusters.
+rho_cut = -2.5;             % RL cluster: rho cut-off. Decreasing (more negative) this will produce more clusters.
 
 % Post-cluster parameters (run "jrc auto" after change)
 thresh_merge_clu = 0;       % Pierre Yger's cluster merging criterial based on medium projection of cluster pairs
@@ -274,6 +275,7 @@ thresh_automerge_pca = [];   % posthoc merge based on the eigvec similarity. rec
 thresh_split_clu = 0;       % Split a cluster to two if separation distance > (x) after k-means clustering
 fDiscard_count = 1;         % Discard cluster under minimum count. set to zero to absorb to the nearest cluster
 vcCluWavMode = 'mean';      % use median to compute average cluster waveform
+frac_equal_knn = .25;        % Fraction of k-nearest neighbors from the same cluster. 
 
 % Batch process parameters
 fProcessReverseOrder = 0;
@@ -287,3 +289,4 @@ iChan_vid = [];             % video sync channel, zero-based
 flim_vid = [];              % used for video sync, video frame #
 tlim_vid = [];              % used for video sync, ephys time
 vcFile_bonsai = '';         % bonsai 5-column output (x,y are 2 and 3)
+
