@@ -51,6 +51,9 @@ if nargin>2 %create
 %         hPlot = plot(mrX(:), mrY(:));
         hPlot = line(mrX(:), mrY(:)); %faster
         set(hPlot, 'UserData', S_plot);
+    elseif isa(hPlot, 'matlab.graphics.axis.Axes')
+        hPlot = line(hPlot, mrX(:), mrY(:)); %faster
+        set(hPlot, 'UserData', S_plot);        
     else
         set(hPlot, 'XData', mrX(:), 'YData', mrY(:), 'UserData', S_plot);
     end    

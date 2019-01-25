@@ -3,6 +3,28 @@ IronClust, written by J. James Jun, Flatiron Institute, Simons Foundation
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [4.3.4] - 2019-1-25
+### Added
+- `irc convert-mda-crcns` opens a GUI that lets users to select and export Buzsakilab 
+  groundtruth dataset (paired intra/extra recordings) from crcns.org (hc-1)
+  - syntax: `irc convert-mda-crcns path_in path_out`
+  - Data source: https://crcns.org/data-sets/hc/hc-1 (log-in required to download)
+
+### Fixed
+- `irc install` compiles CUDA code using the GPU compute capability 
+  installed on the local system
+  - Previously it compiled for compute capability 3.5 (Kepler and above) 
+    for backward compatibility
+  - run `irc install 0` to compile CUDA code for older GPU cards for 
+    backward compatibility (compute capability 3.5)
+
+### Changed
+- syntax updated for `run_irc path_in path_out template_file`
+  - template_file can be either full file name or simplified name
+  - If template file is `tetrode` the full name is auto-complted to `tetrode_template.prm`
+  - Autocompletion only works when the simplified name does not contain a file extension 
+
+
 ## [4.3.3] - 2019-1-8
 ### Added
 - `Trials\add PSTH channel` menu validates the file format

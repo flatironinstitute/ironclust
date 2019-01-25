@@ -36,7 +36,7 @@ switch lower(vcCmd)
     case {'help', '-h', '?', '--help'}, help_(vcArg1); about_();
     case 'about', about_();
     case 'wiki-download', wiki_download_();
-    case 'install', install_();
+    case 'install', install_(vcArg1);
     case 'which', return;    
 
         % one argument
@@ -67,10 +67,14 @@ switch lower(vcCmd)
     % two arguments
     case 'makeprb', makeprb_(vcArg1, vcArg2); return;
     case 'waitfor', waitfor_file_(vcArg1, vcArg2);
+    case 'convert-mda-crcns', convert_mda_crcns_(vcArg1, vcArg2);
+    case 'convert-mda-buzsaki', convert_mda_buzsaki_(vcArg1, vcArg2);
     case 'convert-mda-manual', convert_mda_manual_(vcArg1, vcArg2);
     case 'convert-mda-boyden', convert_mda_boyden_(vcArg1, vcArg2);
     case 'convert-mda-kampff1', convert_mda_kampff1_(vcArg1, vcArg2);
-    case 'convert-mda-kampff2', convert_mda_kampff2_(vcArg1, vcArg2);        
+    case 'convert-mda-kampff2', convert_mda_kampff2_(vcArg1, vcArg2); 
+    case 'convert-mda-juxta', convert_mda_juxta_(vcArg1, vcArg2); 
+    case 'summarize-study', summarize_study_(vcArg1);
         
     % three arguments
     case 'convert-mda-mea', convert_mda_mea_(vcArg1, vcArg2, vcArg3);
@@ -777,9 +781,9 @@ S_cfg = file2struct_(ircpath_('default.cfg'));
 if exist_file_(ircpath_('user.cfg'))
     S_cfg1 = file2struct_(ircpath_('user.cfg')); %override
     S_cfg = struct_merge_(S_cfg, S_cfg1, {'path_dropbox', 'path_backup', 'default_prm'});
-    if fVerbose, fprintf('Configuration loaded from user.cfg.\n'); end
+    if fVerbose, fprintf('Configuration loaded from user.cfg\n'); end
 else
-    if fVerbose, fprintf('Configuration loaded from default.cfg.\n'); end
+    if fVerbose, fprintf('Configuration loaded from default.cfg\n'); end
 end
 
 % set path
@@ -828,8 +832,7 @@ if ~strcmpi(pwd(), S_cfg.path_alpha), disp('must commit from alpha'); return; en
 
 % just update the log
 if strcmpi(vcArg1, 'log')
-%     sprintf('copyfile changelog.md ''%s'' f;', S_cfg.path_dropbox);
-    copyfile_('changelog.md', S_cfg.path_github, S_cfg.path_ironclust);
+    copyfile_('changelog.md', S_cfg.path_ironclust);
     disp('Commited changelog.md');
     return;
 elseif ~strcmpi(vcArg1, 'skip')
@@ -910,18 +913,10 @@ end %func
 
 
 %--------------------------------------------------------------------------
-% 9/3/18 JJJ: set struct
+% 1/9/19 JJJ: set struct
 function S = struct_set_(varargin)
-% S = struct_set_(S, var1, var2, ...)
-S = varargin{1};
-for iArg=2:nargin
-    try
-        vcName = inputname(iArg);
-        S.(vcName) = varargin{iArg};
-    catch
-        ;
-    end
-end %for
+% S = struct_set_(S, name1, val1, name2, val2, ...)
+S = struct_merge_(varargin{1}, struct(varargin{2:end}));
 end %func
 
 
@@ -5522,7 +5517,7 @@ end %func
 
 %--------------------------------------------------------------------------
 function cursor_FigWavCor_(S0)
-if nargin==0, S0 = get(0, 'UseData'); end
+if nargin==0, S0 = get(0, 'UserData'); end
 P = S0.P; S_clu = S0.S_clu;
 
 [hFig, S_fig] = get_fig_cache_('FigWavCor');
@@ -11672,7 +11667,8 @@ end %func
 %--------------------------------------------------------------------------
 function [miSites, mrDist] = findNearSites_(mrSiteXY, maxSite, viSiteZero, viShank_site)
 % find nearest sites
-if nargin < 3, viSiteZero = []; end
+if nargin<2, maxSite = []; end
+if nargin<3, viSiteZero = []; end
 if nargin<4, viShank_site = []; end
 if numel(unique(viShank_site)) <= 1, viShank_site = []; end
 
@@ -11682,7 +11678,11 @@ max_dist = max(pdist(mrSiteXY));
 %     mrSiteXY(viSiteZero,:) = max_dist*2; %bad sites will never be near
 % end
 nSites = size(mrSiteXY,1);
-nNearSites = min(maxSite*2+1, nSites);
+if isempty(maxSite)
+    nNearSites = nSites;
+else
+    nNearSites = min(maxSite*2+1, nSites);
+end
 [miSites, mrDist] = deal(zeros(nNearSites, nSites));
 viNearSites = 1:nNearSites;
 for iSite=1:nSites
@@ -13499,7 +13499,7 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function [csFiles_full, csFiles] = dir_(vcFilter_dir, csExcl)
+function [csFiles_full, csFiles, vlDir] = dir_(vcFilter_dir, csExcl)
 % return name of files full path, exclude files
 if nargin>=2
     if ischar(csExcl), csExcl = {csExcl}; end
@@ -13509,6 +13509,7 @@ else
 end
 S_dir = dir(vcFilter_dir);
 csFiles  = {S_dir.('name')};
+vlDir = [S_dir.isdir];
 [csFiles, viKeep_file] = setdiff_(csFiles, csExcl);
 
 % combine directory path
@@ -15766,7 +15767,7 @@ if nargin < 2, P = struct('spkThresh', [], 'qqFactor', 5); end
 if ~isempty(get_(P, 'spkThresh')), thresh1 = P.spkThresh; end
 
 if thresh1==0, [viSpk1, vrSpk1] = deal([]); return; end % bad site
-if isempty(thresh1)
+if isempty(thresh1)    
     thresh1 = median(abs(subsample_vr_(vrWav1, MAX_SAMPLE_QQ)));
     thresh1 = single(thresh1)* P.qqFactor / 0.6745;
 end
@@ -18125,7 +18126,10 @@ end %func
 %--------------------------------------------------------------------------
 % Install IronClust 1) create user.cfg 2) compile cuda 3) compile kilosort
 % 7/26/17 Code cleanup and test
-function install_()
+function install_(vcArg1)
+% install_('0') % compile for local GPU
+% install_('1') % compile for CUDA SM3.5 (for distribution)
+
 fprintf('Installing ironclust (irc.m)\n');
 % create user.cfg
 % if exist_file_('user.cfg')
@@ -18136,7 +18140,7 @@ fprintf('Installing ironclust (irc.m)\n');
 %     edit_('user.cfg');
 %     msgbox_('Set path to ''path_dropbox'' and ''path_backup'' in user.cfg.');
 % end
-compile_cuda_();
+compile_cuda_([], vcArg1); % don't deploy, compile for the GPU installed
 % compile_ksort_();
 end %func
 
@@ -18152,7 +18156,7 @@ if nargin<1 || isempty(csFiles_cu)
 elseif ischar(csFiles_cu)
     csFiles_cu = {csFiles_cu};
 end
-fDeploy = ifeq_(isempty(vcDeploy), 1, str2num(vcDeploy));
+fDeploy = ifeq_(isempty(vcDeploy), 1, str2num_(vcDeploy));
 
 t1 = tic;
 disp('Compiling CUDA codes...');
@@ -18191,7 +18195,9 @@ end
 if ~fSuccess
     disp_cs_({'    Warning: CUDA could not be compiled but IronClust may work fine.', 
     sprintf('    If not, install CUDA toolkit v%0.1f and run "irc install".', S_gpu.ToolkitVersion),
-    '    or try manually setting ''vcPath_nvcc'' in ''default.cfg'''});
+    '    If you encounter error:  nvcc fatal   : Microsoft Visual Studio configuration file ''vcvars64.bat'' could not be found...', 
+    '      1. Copy $VS12/VC/bin/x86_amd64 to $VS12/VC/bin/amd64', 
+    '      2. Rename $VS12/VC/bin/amd64/vcvarsx86_amd64.bat to vcvars64.bat'});
 end
 fprintf('\tFinished compiling, took %0.1fs\n', toc(t1));
 end %func
@@ -18204,12 +18210,12 @@ if ispc()
     if isempty(csDir), vcPath_nvcc=[]; return; end
     vrVer = cellfun(@(x)str2num(x(2:end)), csDir);
     [~,imin] = min(abs(vrVer-S_gpu.ToolkitVersion));    
-    vcPath_nvcc = sprintf('"C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v%0.1f\\bin\\nvcc"', vrVer(imin));
+    vcPath_nvcc = sprintf('"C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v%0.1f\\bin\\nvcc"', vrVer(imin));    
 else
-    vcPath_nvcc = '/usr/local/cuda/bin/nvcc';
-end
-if ~exist_file_(vcPath_nvcc)
     vcPath_nvcc = read_cfg_('nvcc_path');
+    if ~exist_file_(vcPath_nvcc)
+        vcPath_nvcc = '/usr/local/cuda/bin/nvcc'; % try default installation location
+    end
 end
 end %func
 
@@ -21251,8 +21257,8 @@ end %func
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_(vcFile_prm)
 if nargin<1, vcFile_prm = ''; end
-vcVer = 'v4.3.3';
-vcDate = '1/8/2019';
+vcVer = 'v4.3.4';
+vcDate = '1/25/2019';
 vcHash = file2hash_();
 
 if nargout==0
@@ -22918,6 +22924,7 @@ end
 
 
 %--------------------------------------------------------------------------
+% 1/15/2019
 function vcFile_prb = csv2prb_(vcFile_csv, vcFile_prb)
 % convert .csv file to .prb file
 if nargin<2, vcFile_prb = ''; end
@@ -22926,8 +22933,8 @@ if isempty(vcFile_prb)
 end
 geometry = csvread(vcFile_csv); % check dimensions
 nChans = size(geometry, 1);
-S_prb = struct('channels', 1:nChans, ...
-    'geometry', geometry); % geometry should be the only requirement
+S_prb = struct('channels', 1:nChans, 'geometry', geometry); % geometry should be the only requirement
+
 struct2file_(S_prb, vcFile_prb);
 end %func
 
@@ -23235,14 +23242,17 @@ if exist_file_(vcArg_txt)
 else
     S_txt = [];
 end
+        
 prm_template_name = get_set_(S_txt, 'prm_template_name', []);
 if isempty(vcFile_template)
-    if ~isempty(prm_template_name)    
+    if ~isempty(prm_template_name)
+        prm_template_name = append_ext_default_(prm_template_name, '_template.prm');
         vcFile_template = ircpath_(prm_template_name);
         assert_(exist_file_(vcFile_template), 'template file does not exist.');
     end
 else
-    if ~exist_file_(vcFile_template)
+    vcFile_template = append_ext_default_(vcFile_template, '_template.prm');
+    if ~exist_file_(vcFile_template)        
         vcFile_template = ircpath_(vcFile_template);
     end
     assert_(exist_file_(vcFile_template), 'prm file does not exist.');
@@ -23320,6 +23330,16 @@ disp(sprintf('Created %s', P.vcFile_prm));
 % edit_(P.vcFile_prm);
 set0_(P);
 end %func
+
+
+%--------------------------------------------------------------------------
+% 1/25/2019 JJJ: append extension if empty
+function vcFile = append_ext_default_(vcFile, vcExt_default)
+[~,~,vcExt] = fileparts(vcFile);
+if isempty(vcExt)
+    vcFile = [vcFile, vcExt_default];
+end
+end % func
 
 
 %--------------------------------------------------------------------------
@@ -24581,22 +24601,30 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function S_userdata = set_userdata_(h, vcName, val)
+function S_userdata = set_userdata_(varargin)
 % Usage
 % -----
 % S_userdata = set_userdata_(h, val)
-% S_userdata = set_userdata_(h, vcName, val)
-
+% S_userdata = set_userdata_(h, name1, val1, name2, val2, ...)
+h = varargin{1};
+S_userdata = get(h, 'UserData');
 if nargin==2
-    val = vcName;
-    vcName = inputname(2);
+    [val, vcName] = deal(varargin{2}, inputname(2));
+    try
+        S_userdata.(vcName) = val;
+    catch
+        disp(lasterr());
+    end
+elseif nargin>2
+    
+    for iArg_in = 2:2:nargin
+        [vcName1, val1] = deal(varargin{iArg_in}, varargin{iArg_in+1});
+        S_userdata.(vcName1) = val1;
+    end %for
+else
+    return;
 end
-try
-    h.UserData.(vcName) = val;
-    S_userdata = get(h, 'UserData');
-catch
-    S_userdata = [];
-end
+set(h, 'UserData', S_userdata);
 end %func
 
 
@@ -26851,7 +26879,11 @@ for iStart = 1:nSkip:nT
         vrFilt1 = gpuArray_(vrFilt1, fGpu);
         n_prev = n1;
     end    
-    mrWav1 = fh_filt(mrWav1, vrFilt1);
+    try
+        mrWav1 = fh_filt(mrWav1, vrFilt1);  
+    catch
+        mrWav1 = fh_filt(gather_(mrWav1), vrFilt1);  
+    end
     mrWav_filt(iStart:iEnd,:) = mrWav1(nPad+1:end-nPad,:);
     fprintf('.');
 end
@@ -27688,6 +27720,7 @@ else
         out = val;
     else
         out = num2str(val);
+        out = strrep(out, '  ', ' ');
     end
 end
 end %func
@@ -28101,7 +28134,7 @@ for iFile = 1:numel(csFiles_gt)
         try
             mkdir_(vcDir_out11);
 
-            % copy params.jsona nd geom.csv
+            % copy params.json and geom.csv
             copyfile(vcFile_param, fullfile(vcDir_out11, 'params.json'));
             copyfile(fullfile(vcDir_in, 'geom.csv'), fullfile(vcDir_out11, 'geom.csv'));
 
@@ -28283,4 +28316,952 @@ cdirs = regexprep(cdirs,sprintf('(.*[^:])\\%s\\s*$|(.+)\\s*$',fs),sprintf('$1%s'
 
 % Remove empty paths
 cdirs(cellfun('isempty', cdirs)) = [];
+end %func
+
+
+%--------------------------------------------------------------------------
+% 1/8/2019 JJJ: returns a set of path that contains all the sets
+function varargout = dir_set_(varargin)
+% [] = dir_set_(vcDir_in, pattern, replace1, replace2, replace3, ...)
+[vcDir_in, vcPostfix1] = deal(varargin{1}, varargin{2});
+csFiles1 = dir_(fullfile(vcDir_in, ['**\*', vcPostfix1]));
+csPostfix = varargin(2:end);
+% cm_files = zeros(numel(csFiles1), numel(csPostfix));
+[xx,yy] = meshgrid(csFiles1, csPostfix');
+cc = cellfun(@(xx1,yy1)strrep(xx1, vcPostfix1, yy1), xx, yy, 'UniformOutput', 0);
+cc = cc(:, all(cellfun(@exist_file_, cc)));
+for iArg_out = 1:nargout
+    varargout{iArg_out} = cc(iArg_out,:);
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+function [miSites, mrDist_site] = mrSiteXY_to_miSites_(mrSiteXY, radius_um)
+if nargin<2, radius_um = []; end
+mrDist_site = pdist2(mrSiteXY, mrSiteXY);
+miSites = findNearSites_(mrSiteXY);
+if isempty(radius_um), return; end
+
+nSites_spk = max(sum(mrDist_site <= radius_um));
+miSites = miSites(1:nSites_spk,:);
+mrDist_site = mrDist_site(1:nSites_spk,:);
+end %func
+    
+    
+%--------------------------------------------------------------------------
+function convert_mda_buzsaki_(vcDir_in, vcDir_out)
+if isempty(vcDir_in)
+    vcDir_in = 'K:\globus\Buzsaki\juxtaExtra';
+end
+if isempty(vcDir_out)
+    vcDir_out = 'K:\spikeforest\groundtruth\paired_recordings\neuronexus32c';
+end
+fMatchProbe = 0; 
+
+[csFiles_JC, csFiles_clu, csFiles_res, csFiles_EC, csFiles_EC_XML] = ...
+    dir_set_(vcDir_in, '_JC.dat', '_JC.clu.1', '_JC.res.1', '_EC.dat', '_EC.xml');
+
+% load timestamps and parse out non-noise clusters
+S_prb_poly2 = load_prb_('poly2nn.prb');
+S_prb_poly3 = load_prb_('poly3nn.prb');
+[mrSiteXY_poly2, mrSiteXY_poly3] = deal(S_prb_poly2.mrSiteXY, S_prb_poly3.mrSiteXY);
+if fMatchProbe
+    [miSites_poly2, mrDist_site_poly2] = mrSiteXY_to_miSites_(mrSiteXY_poly2);
+    [miSites_poly3, mrDist_site_poly3] = mrSiteXY_to_miSites_(mrSiteXY_poly3);
+    P_bandpass = struct('freqLim', [500 6000], 'freqLim_width', [100 1000], 'fGpu', 0);
+    miRank_poly2 = rankorder_mr_(1./mrDist_site_poly2);
+    miRank_poly3 = rankorder_mr_(1./mrDist_site_poly3);
+end
+S_json = struct('spike_sign', -1);
+
+for iFile = 1:numel(csFiles_JC)
+    try
+        % firings_true.mda
+        viTime1 = load(csFiles_res{iFile});
+        viClu1 = load(csFiles_clu{iFile});
+        viClu1 = viClu1(2:end); % fist value is the total number of clusteres
+        viSpk_gt1 = viTime1(viClu1~=0);        
+        
+        % params.json
+        S_xml1 = xml2struct(csFiles_EC_XML{iFile}); % depends on an external file
+        sRateHz1 = str2num_(S_xml1.parameters.acquisitionSystem.samplingRate.Text);
+        nChans1 = str2num_(S_xml1.parameters.acquisitionSystem.nChannels.Text);
+        nBits1 = str2num_(S_xml1.parameters.acquisitionSystem.nBits.Text);
+        voltageRange1 = str2num_(S_xml1.parameters.acquisitionSystem.voltageRange.Text);
+        amplification1 = str2num_(S_xml1.parameters.acquisitionSystem.amplification.Text);
+        scale_factor1 = (voltageRange1 / amplification1 * 1e6) / 2 ^ nBits1;
+        cS_channels1 = S_xml1.parameters.anatomicalDescription.channelGroups.group;
+        if numel(cS_channels1) > 1, cS_channels1 = cS_channels1{1}; end
+        viSite2chan1 = fliplr(cellfun(@(x)str2num_(x.Text), ... % top to bottom order
+            cS_channels1.channel)) + 1;
+        S_json1 = struct_set_(S_json, 'samplerate', sRateHz1, 'scale_factor', scale_factor1);
+        
+        % filter out lower channel counts
+        assert(nBits1==16, 'convert_mda_buzsaki_: nBits==16');
+        if nChans1 ~= 33, continue; end                
+        
+        % output directory
+        vcFile_EC1 = csFiles_EC{iFile}; % read binary file and export as mda. needs nChans        
+        [vcDir_, vcDir12] = fileparts(fileparts(vcFile_EC1));
+        [~, vcDir11] = fileparts(vcDir_);
+        vcDir_out1 = fullfile(vcDir_out, sprintf('%s_%s', vcDir11, vcDir12));
+          
+        fprintf('\n%d/%d: %s, #ch=%d, sRate=%0.1f, scale_factor1=%0.4f\n\t%s\n', ...
+            iFile, numel(csFiles_JC), vcFile_EC1, nChans1, sRateHz1, scale_factor1, ...
+                sprintf('%d,', viSite2chan1));        
+            
+        % raw.mda
+        if ~exist_file_(fullfile(vcDir_out1, 'raw.mda'))
+            mnWav1 = reshape_(load_bin_(vcFile_EC1, 'int16'), nChans1);
+            mnWav1 = mnWav1(viSite2chan1,:); % use three column map and find first and last
+        else
+            mnWav1 = [];
+        end
+        export_spikeforest_(vcDir_out1, mnWav1, mrSiteXY_poly3, S_json1, viSpk_gt1);        
+    catch
+        disp(lasterr());
+    end
+    
+    % plot pairwise signal correlation and compare with two column vs.
+    if fMatchProbe
+        nSamples11 = min(size(mnWav1,2), round(sRateHz1 * 10)); % look at the first 10s
+        mrWav11 = single(mnWav1(:,1:nSamples11)');
+        mrWav11 = ms_bandpass_filter_(mrWav11, setfield(P_bandpass, 'sRateHz', sRateHz1));
+        mrCorr_site1 = corr_(mrWav11);
+        miSort_site1 = rankorder_mr_(mrCorr_site1);
+    end    
+end %for
+
+end %func
+
+
+%--------------------------------------------------------------------------
+% 1/9/2019 JJJ: export to spikeforest format
+% save raw.mda, geom.csv, params.json, firings_true.mda
+function export_spikeforest_(vcDir_out1, mnWav1, mrSiteXY1, S_json1, mrGt1)
+% export_spikeforest_paired_(vcDir_out1, mnWav1, mrSiteXY1, S_json1, mrGt1)
+% S_json: {'samplerate', 'spike_sign', 'scale_factor'}
+
+% make directory
+mkdir_(vcDir_out1);
+
+% write raw.mda
+writemda_(mnWav1, fullfile(vcDir_out1, 'raw.mda'));
+
+% write geom.csv
+csvwrite(fullfile(vcDir_out1, 'geom.csv'), mrSiteXY1);
+
+% Write to params.json
+struct2json_(S_json1, fullfile(vcDir_out1, 'params.json'));
+
+% write firings_true.mda
+if ~isempty(mrGt1)
+    if size(mrGt1,1) ~= 3
+        viTime1 = mrGt1;
+        mrGt1 = ones(3, numel(viTime1), 'double');
+        mrGt1(2,:) = viTime1;
+    end
+    writemda_(mrGt1, fullfile(vcDir_out1, 'firings_true.mda'));
+end %if
+end %func
+
+
+%--------------------------------------------------------------------------
+function [csDir, csFile] = subdir_(vcDir)
+[csDir, csFile, vlDir] = dir_(fullfile(vcDir));
+vlKeep = vlDir & ~ismember(csFile, {'.','..'});
+[csDir, csFile] = deal(csDir(vlKeep), csFile(vlKeep));
+end %func
+
+
+%--------------------------------------------------------------------------
+function summarize_study_(vcDir_study)
+% K:\spikeforest\irc_out\paired_recordings\neuronexus32c
+[csDir_full, csDir_rec] = subdir_(vcDir_study);
+
+nRec = numel(csDir_full);
+[vnSpikes, vr_snr_pp, vr_snr_min, vr_snr_rms, vrVpp, vrVmin] = deal(zeros(nRec,1));
+% generate a table output
+for iRec = 1:nRec
+    vcDir1 = csDir_full{iRec};
+    vcFile_gt1 = fullfile(vcDir1, 'raw_geom_gt1.mat');
+    S_gt1 = load(vcFile_gt1);
+    [vpp1, vmin1, snr_rms1, snr_min1, nSpk1] = ...
+        struct_get_(S_gt1, 'vrVpp_clu', 'vrVmin_clu', 'vrSnr_sd_clu', 'vrSnr_min_clu', 'vnSpk_clu');
+    snr_pp1 = snr_min1 * vpp1/vmin1;
+    vnSpikes(iRec) = nSpk1;
+    vr_snr_pp(iRec) = snr_pp1;
+    vr_snr_min(iRec) = snr_min1;
+    vr_snr_rms(iRec) = snr_rms1;
+    vrVpp(iRec) = vpp1;
+    vrVmin(iRec) = vmin1;
+end %for
+tbl_study = table(csDir_rec(:), vnSpikes, vr_snr_pp, vr_snr_min, vr_snr_rms, vrVpp, vrVmin, ...
+    'VariableNames', {'Recording', 'nSpikes', 'snr_pp', 'snr_min', 'snr_rms', 'Vpp_uV', 'Vmin_uV'});
+tbl_study = sortrows(tbl_study, 'snr_pp', 'ascend');
+disp(tbl_study);
+vcFile_tbl = fullfile(vcDir_study, 'summary_study.xlsx');
+writetable(tbl_study, vcFile_tbl);
+fprintf('Table saved as %s\n', vcFile_tbl);
+end %func
+
+
+%--------------------------------------------------------------------------
+function S_xml = load_xml_neuroscope_(vcFile_xml)
+S_xml1 = xml2struct(vcFile_xml); % depends on an external file
+sRateHz = str2num_(S_xml1.parameters.acquisitionSystem.samplingRate.Text);
+nChans = str2num_(S_xml1.parameters.acquisitionSystem.nChannels.Text);
+
+nBits = str2num_(S_xml1.parameters.acquisitionSystem.nBits.Text);
+voltageRange = str2num_(S_xml1.parameters.acquisitionSystem.voltageRange.Text);
+amplification = str2num_(S_xml1.parameters.acquisitionSystem.amplification.Text);
+uV_per_bit = (voltageRange / amplification * 1e6) / 2 ^ nBits;
+
+% parse out channel maps, bottom to top order
+[viSite2chan1, viSite2chan2, viSite2chan3] = deal([]);
+% fh_site2chan = @(x)fliplr(cellfun(@(y)str2num_(y.Text), x)) + 1;
+cS_channels = S_xml1.parameters.anatomicalDescription.channelGroups.group;
+if ~iscell(cS_channels), cS_channels = {cS_channels}; end
+for iCell = 1:numel(cS_channels)
+    cS_channel1 = cS_channels{iCell}.channel;
+    if ~iscell(cS_channel1), cS_channel1 = {cS_channel1}; end
+    viSite2chan_ = fliplr(cellfun(@(x)str2num_(x.Text), cS_channel1)) + 1;
+    eval(sprintf('viSite2chan%d = viSite2chan_;', iCell));
+end
+S_xml = makeStruct_(sRateHz, nChans, uV_per_bit, viSite2chan1, viSite2chan2, viSite2chan3, nBits);
+end %func
+        
+        
+%--------------------------------------------------------------------------
+% 1/11/2019 parse crcns buzsaki lab dataset
+% export to mda
+% @TODO: merge *.### multi session recordings from 
+% @TODO: select larger shank
+function convert_mda_crcns_(vcDir_in, vcDir_out)
+if isempty(vcDir_in) && isempty(vcDir_out)
+    vcDir_in = 'K:\BuzsakiLab\groundtruth_tetrode\';
+    vcDir_out = 'K:\spikeforest\groundtruth\paired_recordings\crcns';    
+    [csFiles_xml, csFiles_dat] = dir_set_(vcDir_in, '.xml', '.dat');
+elseif isempty(vcDir_out)
+    csFiles_dat = {vcDir_in};
+    csFiles_xml = {strrep(vcDir_in, '.dat', '.xml')};
+    vcDir_out = 'K:\spikeforest\groundtruth\paired_recordings\crcns';    
+end
+% fPlot = 1; 
+min_spikes = 30;
+
+% load timestamps and parse out non-noise clusters
+% csCell_merge = {'D14521', 'D14921', 'D15711', 'D15712', 'D16311', 'D16613', ...
+%     'D17012', 'D17013', 'D17014', 'D17111', 'D17211', 'D17212', 'D18011', ...
+%     'D18021', 'D18711', 'D18712', 'D18811', 'D18911'};
+% S_json = struct('spike_sign', -1); % base setting
+% vcDataType = 'int16';
+vcFile_mat = fullfile(vcDir_out, 'settings_crcns.mat');
+if exist_file_(vcFile_mat)
+    S_mat = load(vcFile_mat);
+    table_data = struct_get_(S_mat, 'table_data');
+    vnSpikes_crcns = S_mat.vnSpikes_crcns;
+else
+    [vnSpikes_crcns, ~] = count_spikes_crcns_(csFiles_dat);
+    mkdir_(vcDir_out);
+    save(vcFile_mat, 'vnSpikes_crcns');
+    table_data = [];
+end
+csFiles_dat = csFiles_dat(vnSpikes_crcns >= min_spikes);
+
+hFig = create_gui_crcns_(csFiles_dat, table_data);   
+set_userdata_(hFig, 'vcFile_mat', vcFile_mat, 'vcDir_out', vcDir_out);
+end %func
+
+
+
+%--------------------------------------------------------------------------
+% convert crcns files to mda, only include selected range
+% pay attention to geometry files
+function cbf_menu_crcns_(h, e)
+% read table and convert file
+hFig = h.Parent.Parent;
+S_fig = hFig.UserData;
+[hTbl, iFile, vcDir_out] = struct_get_(S_fig, 'hTbl', 'iFile', 'vcDir_out');
+csFiles_dat = hTbl.Data(:,1);
+cLim_incl = hTbl.Data(:,3);
+cChan_ext = hTbl.Data(:,4);
+
+vcFile_dat1 = csFiles_dat{iFile};
+[vcDir_, vcDir12] = fileparts(vcFile_dat1);
+[~, vcDir11] = fileparts(vcDir_);
+vcDir_out1 = fullfile(vcDir_out, sprintf('%s_%s', vcDir11, vcDir12));
+
+switch lower(h.Label)
+    case 'convert and next'
+        figure_wait_(1, hFig);
+        try
+            mrLim_incl1 = str2num_(cLim_incl{iFile});
+            viChan_ext1 = str2num_(cChan_ext{iFile});
+            export_spikeforest_crcns_(vcFile_dat1, vcDir_out1, mrLim_incl1, viChan_ext1);   
+            msgbox_(sprintf('Exported to %s.\n Advancing to next', vcFile_dat1), 1);
+        catch
+            errordlg(lasterr());
+        end
+        figure_wait_(0, hFig);
+        
+    case 'skip and next'
+        set_table_(hTbl, iFile, 2, false);
+        cbf_table_save_(hTbl);
+        
+    case 'open output'
+        if exist_dir_(vcDir_out1)
+            winopen_(vcDir_out1);
+        else
+            errordlg({'Folder does not exist', vcDir_out1});
+        end
+        return;
+        
+    otherwise, return;
+end %switch
+
+if iFile < numel(csFiles_dat)
+    cbf_table_crcns_(hTbl, iFile+1);
+else
+    msgbox_('all done', 1);
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+% 1/25/2019 JJJ: Sets the table value and reset the scroll 
+function set_table_(hTbl, irow, icol, val)
+
+hTbl.Data{irow,icol} = val;
+jscrollpane = javaObjectEDT(findjobj(hTbl));
+viewport    = javaObjectEDT(jscrollpane.getViewport);
+jtable      = javaObjectEDT( viewport.getView );
+jtable.scrollRowToVisible(min(irow));
+end %func
+
+
+%--------------------------------------------------------------------------
+function [vnSpikes_crcns, cS_crcns] = count_spikes_crcns_(csFiles_dat)
+vnSpikes_crnc = zeros(size(csFiles_dat));
+cS_crcns = cell(size(csFiles_dat));
+for iFile = 1:numel(csFiles_dat)
+    try
+       S_mda1 = export_spikeforest_crcns_(csFiles_dat{iFile});
+       [mrSiteXY, S_json, viSpk_gt, csMsg] = ...
+           struct_get_(S_mda1, 'mrSiteXY', 'S_json', 'viSpk_gt', 'csMsg');
+       vnSpikes_crcns(iFile) = numel(viSpk_gt);
+       cS_crcns{iFile} = makeStruct_(mrSiteXY, S_json, viSpk_gt, csMsg);
+    catch
+        ;
+    end
+end %for
+end %func
+
+
+%--------------------------------------------------------------------------
+function S_mda = export_spikeforest_crcns_(vcFile_dat1, vcDir_out1, mrLim_incl1, viChan_ext1)
+if nargin<2, vcDir_out1 = []; end
+if nargin<3, mrLim_incl1 = []; end
+if nargin<4, viChan_ext1 = []; end
+
+vcDataType = 'int16';
+[site_dist, shank_dist] = deal(25, 250);
+
+% params.json
+vcFile_xml = subsFileExt_(vcFile_dat1, '.xml');
+S_xml1 = load_xml_neuroscope_(vcFile_xml);
+[sRateHz1, nChans1, scale_factor1, viSite2chan1, viSite2chan2, viSite2chan3, nBits1] = ...
+    struct_get_(S_xml1, 'sRateHz', 'nChans', 'uV_per_bit', ...
+        'viSite2chan1', 'viSite2chan2', 'viSite2chan3', 'nBits');
+S_json = struct('spike_sign', -1, 'samplerate', sRateHz1, 'scale_factor', scale_factor1);
+
+% filter out legacy format
+if nBits1 ~= 16, return; end
+if isempty(viSite2chan2) % find intracellular channel
+    viSite2chan2 = viSite2chan1(end-2:end);
+    viSite2chan1 = viSite2chan1(1:end-3);
+end     
+
+% raw.mda
+% [mnWav1, vnWav_int1, viSpk_gt1] = deal([]);
+% if ~exist_file_(fullfile(vcDir_out1, 'raw.mda')) || ~exist_file_(fullfile(vcDir_out1, 'firings_true.mda'))
+mnWav1 = reshape_(load_bin_(vcFile_dat1, vcDataType), nChans1);
+if ~isempty(mrLim_incl1)
+    mnWav1 = mnWav1(:, lim2range_(size(mnWav1,2), mrLim_incl1));
+end
+if ~isempty(viSite2chan3) 
+    viSite2chan_int1 = viSite2chan3;
+else
+    viSite2chan_int1 = viSite2chan2;
+end
+if numel(viSite2chan_int1) > 1
+    vnWav_stim = mnWav1(viSite2chan_int1(end-1),:)'; % load intracelluar recordings
+else
+    vnWav_stim = [];
+end
+vnWav_int = mnWav1(viSite2chan_int1(end),:)'; % load intracelluar recordings
+
+% firings_true.mda
+if isempty(mnWav1), return; end
+
+spkLim1 = round(sRateHz1*[-1,1] / 1000);
+[viSpk_gt, S_intra] = detect_spikes_intra_(vnWav_int, vnWav_stim, spkLim1);            
+
+% shank selection
+if isempty(viSite2chan3)
+    mnWav_ext = mnWav1(viSite2chan1,:); % use three column map and find first and last
+else
+    mnWav_ext = mnWav1([viSite2chan1, viSite2chan2],:);
+end
+if ~isempty(viChan_ext1), mnWav_ext = mnWav_ext(viChan_ext1,:); end
+
+% geom.csv
+nSites1 = size(mnWav_ext,1);
+switch nSites1
+    case 32
+        S_prb1 = load_prb_('poly3nn.prb');
+        mrSiteXY = S_prb1.mrSiteXY;   
+    otherwise
+        mrSiteXY = [zeros(1, nSites1); (0:nSites1-1)]' * site_dist;
+        if ~isempty(viSite2chan3) % two shanks
+            viSite_shank2 = (1:numel(viSite2chan2)) + numel(viSite2chan1);
+            mrSiteXY(viSite_shank2,1) = shank_dist;  % shank separation distance
+        end
+end %switch          
+
+% set the 
+csMsg = {};
+t_dur1 = filesize_(vcFile_dat1) / nChans1 / sRateHz1 / bytesPerSample_(vcDataType); 
+csMsg{end+1} = sprintf('channel_count: %d\nt_dur1: %0.1fs\nsRateHz: %0.1f\nscale_factor: %0.4f', ...
+    nChans1, t_dur1, sRateHz1, scale_factor1);
+csMsg{end+1} = sprintf('channel group 1:\n    %s', sprintf('%d,', viSite2chan1));
+csMsg{end+1} = sprintf('channel group 2:\n    %s', sprintf('%d,', viSite2chan2));        
+csMsg{end+1} = sprintf('channel group 3:\n    %s', sprintf('%d,', viSite2chan3));           
+
+% output
+S_mda = makeStruct_(mnWav_ext, vnWav_int, vnWav_stim, mrSiteXY, S_json, viSpk_gt, csMsg, S_intra);
+if ~isempty(vcDir_out1) % write to file
+    export_spikeforest_(vcDir_out1, mnWav_ext, mrSiteXY, S_json, viSpk_gt);     
+end
+end %func
+        
+
+%--------------------------------------------------------------------------
+function hFig = create_gui_crcns_(csFiles_dat, table_data)
+if nargin<2, table_data = {}; end
+
+hFig = create_figure_('Fig_crcns', [.5 0 .5 1], 'crcns data selector', 0, 1); 
+
+% create table
+nFiles = numel(csFiles_dat);
+csColumnName = {['File', blanks(100)], 'Convert', ['Include time', blanks(100)], ['Include Chan (Vext)', blanks(20)]};
+vlEditable = [false, true, false, true];
+cData = cell(nFiles, numel(csColumnName)); 
+if isempty(table_data)           
+    cData(:,1) = csFiles_dat(:);
+    cData(:,2) = arrayfun(@(x)true, 1:nFiles, 'UniformOutput', 0);
+    cData(:,3) = {''};
+    cData(:,4) = {''};
+else
+    nCol = min(size(cData,2), size(table_data,2));
+    nRow = min(size(cData,1), size(table_data,1));
+    cData(1:nRow,1:nCol) = table_data(1:nRow,1:nCol);
+end
+hTbl = uitable(hFig, 'Data', cData, ...
+    'ColumnEditable', vlEditable, 'ColumnName', csColumnName, ...
+    'Unit', 'Normalized','OuterPosition',[0 .8 .8 .2]);
+hText  = uicontrol('Style','text','String','',...
+           'Unit', 'Normalized', 'OuterPosition', [.8 .8 .2 .2], ...
+           'HorizontalAlignment', 'left', 'BackgroundColor','w');
+hText.String = {'Click on a file name to plot'}; % display meta
+
+% create axes
+hAx1 = axes('OuterPosition', [0 .7 1 .1]); xylabel_(hAx1, 't','V_int','V_int'); % all subsampled
+hAx2 = axes('OuterPosition', [0 .6 1 .1]); xylabel_(hAx2, 't','dV_int/dt','dV_int/dt');    
+hAx3 = axes('OuterPosition', [0 .5 1 .1]); xylabel_(hAx3, 't','I_int', 'I_int');
+hAx4 = axes('OuterPosition', [0 0 1 .5]); xylabel_(hAx4, 't','V_ext','V_ext (Change scale using UP/DOWN arrows)');
+hFig.UserData = makeStruct_(hTbl, hAx1, hAx2, hAx3, hAx4, hText);
+
+% create menu
+set(hFig, 'MenuBar', 'none'); 
+mh_convert = uimenu_(hFig,'Label','Action'); 
+uimenu_(mh_convert,'Label', 'convert and next', 'Callback', @cbf_menu_crcns_);
+% uimenu_(mh_convert,'Label', 'convert all', 'Callback', @cbf_menu_crcns_);
+uimenu_(mh_convert,'Label', 'skip and next', 'Callback', @cbf_menu_crcns_);
+uimenu_(mh_convert,'Label', 'open output', 'Callback', @cbf_menu_crcns_);
+
+% add call back functions 
+hTbl.CellSelectionCallback = @cbf_table_crcns_;
+hTbl.CellEditCallback = @cbf_table_save_;
+hTbl.BusyAction  = 'cancel';
+cbf_table_crcns_(hTbl, 1);
+end %func
+
+
+%--------------------------------------------------------------------------
+% callback function for selecting a table on crcns figure
+function cbf_table_crcns_(hTbl, arg2)
+% cbf_table_crcns_(hTbl, event)
+% cbf_table_crcns_(hTbl, iFile)
+
+nSkip_plot = 2; % downsample
+hFig = hTbl.Parent;
+
+if nargin<2, arg2 = struct_get_(hFig.UserData, 'iFile'); end
+try
+    [iFile, iCol] = deal(arg2.Indices(1), arg2.Indices(2));
+catch
+    [iFile, iCol] = deal(arg2, 1);
+end
+if iCol~=1, return; end
+try
+    vcFile_dat1 = hTbl.Data{iFile,1};
+catch
+    return;
+end
+
+figure_wait_(1, hFig);
+S_fig1 = hFig.UserData;
+[hAx1, hAx2, hAx3, hAx4, hText] = ...
+    struct_get_(S_fig1, 'hAx1', 'hAx2', 'hAx3', 'hAx4', 'hText');
+cellfun(@(x)cla(x), {hAx1, hAx2, hAx3, hAx4});
+cellfun(@(x)hold(x, 'on'), {hAx1, hAx2, hAx3, hAx4});
+
+S_mda = export_spikeforest_crcns_(vcFile_dat1);
+
+[mnWav_ext, vnWav_int, vnWav_stim, mrSiteXY, S_json, viSpk_gt, csMsg, S_intra] = ...
+    struct_get_(S_mda, 'mnWav_ext', 'vnWav_int', 'vnWav_stim', 'mrSiteXY', 'S_json', ...
+        'viSpk_gt', 'csMsg', 'S_intra');
+nTime = numel(vnWav_stim);
+[vrFilt_intra, thresh_intra] = struct_get_(S_intra, 'vrWav_filt', 'thresh');
+S_fig1.hText.String = csMsg;
+[vrX_plot, vrY1_plot, vrY2_plot, vrY3_plot] = plot_subsample_(nSkip_plot, viSpk_gt, vnWav_int, vrFilt_intra, vnWav_stim);
+xlim0 = [0, vrX_plot(end)];    
+
+sRateHz = S_json.samplerate;
+fh_title = @(x,y)title(hAx1, sprintf('%d spikes, %0.3f Hz', numel(x), numel(x)/lim2duration_(y)*sRateHz));
+fh_axis = @(h,y)set(h, 'XLim', xlim0, 'YLim', [min(y), max(y)]);
+
+vhPlot1 = plot(hAx1, vrX_plot, vrY1_plot, 'k-', viSpk_gt, vnWav_int(viSpk_gt), 'ko');
+xylabel_(hAx1, '', 'Vint/dt');
+fh_axis(hAx1, vrY1_plot);
+
+vhPlot2 = plot(hAx2, vrX_plot, vrY2_plot, 'k-', viSpk_gt, vrFilt_intra(viSpk_gt), 'ko');
+plot(hAx2, [1, numel(vrFilt_intra)], -double(thresh_intra) * [1,1], 'r-');
+xylabel_(hAx2, '', 'dVint/dt');
+fh_axis(hAx2, vrY2_plot);
+
+vhPlot3 = plot(hAx3, vrX_plot, vrY3_plot, 'k-', viSpk_gt, vnWav_stim(viSpk_gt), 'ko'); 
+xylabel_(hAx3, 'Time (adc)', 'Current injection');
+fh_axis(hAx3, vrY3_plot);
+
+mrLim_incl = str2num_(hTbl.Data{iFile,3});
+fSave = 0;
+if isempty(mrLim_incl)
+    mrLim_incl = [1, nTime];
+    set_table_(hTbl, iFile, 3, lim2str_(mrLim_incl));
+    viSpk_plot = 1:numel(viSpk_gt);
+    fSave = 1;
+else
+    viSpk_plot = vr_select_lim_(viSpk_gt, mrLim_incl);
+end
+fh_title(viSpk_gt(viSpk_plot), mrLim_incl); % update title
+
+viChan_ext = str2num_(hTbl.Data{iFile,4});
+if isempty(viChan_ext)
+    set_table_(hTbl, iFile, 4, num2str_(1:size(mnWav_ext,1)));
+    fSave = 1;
+end
+% hTbl.Data(:,4) = cellfun(@(x)strrep(x,'  ',' '), hTbl.Data(:,4), 'UniformOutput', 0);
+
+mrWav_ext = ndiff_(mnWav_ext', 3);
+viX_ext = 1:nSkip_plot:size(mrWav_ext,1);
+scale_ext = double(max(max(mrWav_ext) - min(mrWav_ext))) / 2;
+hPlot = multiplot(hAx4, scale_ext, viX_ext, mrWav_ext(viX_ext,:));
+set(hAx4, 'YLim', [0, size(mrWav_ext,2)+1], 'YTick', 1:size(mrWav_ext,2), 'XLim', xlim0);
+hFig.KeyPressFcn = @(h,e)multifun_cbf_(h,e,hPlot);
+
+% add context menu
+c_ = uicontextmenu;
+cPlot_spk = plot2plot_([vhPlot1(2), vhPlot2(2), vhPlot3(2)], 'ro', viSpk_plot);
+c_.UserData = makeStruct_(cPlot_spk, fh_title);
+uimenu_(c_,'Label','include select','Callback',@cbf_axes_box_);
+uimenu_(c_,'Label','exclude select','Callback',@cbf_axes_box_);
+uimenu_(c_,'Label','include all','Callback',@cbf_axes_box_);
+uimenu_(c_,'Label','exclude all','Callback',@cbf_axes_box_);
+uimenu_(c_,'Label','zoom in x','Callback',@reset_view_,'Separator', 'on');
+uimenu_(c_,'Label','zoom in y','Callback',@reset_view_);
+uimenu_(c_,'Label','zoom in xy','Callback',@reset_view_);
+uimenu_(c_,'Label','center x','Callback',@reset_view_,'Separator', 'on');
+uimenu_(c_,'Label','zoom out x','Callback',@reset_view_);
+uimenu_(c_,'Label','reset x','Callback',@reset_view_,'Separator', 'on');
+uimenu_(c_,'Label','reset y','Callback',@reset_view_);
+uimenu_(c_,'Label','reset xy','Callback',@reset_view_);
+uimenu_(c_,'Label','redraw','Callback',@(h,e)cbf_table_crcns_(hTbl), 'Separator', 'on');
+arrayfun(@(x)set(x, 'UIContextMenu', c_, 'BusyAction', 'cancel'), [hAx1, hAx2, hAx3, hAx4]);
+
+% link plots
+cellfun(@(x)grid(x,'on'), {hAx1, hAx2, hAx3, hAx4});
+cellfun(@(x)set_userdata_(x, 'axis0', [double(x.XLim), double(x.YLim)]), {hAx1, hAx2, hAx3, hAx4});
+set_userdata_(hFig, 'iFile', iFile, 'nTime', nTime, 'sRateHz', sRateHz);
+set(hFig, 'Name', sprintf('(#%d) crcns data selector: %s', iFile, vcFile_dat1));
+if fSave, cbf_table_save_(hTbl); end
+drawnow;
+linkaxes([hAx1, hAx2, hAx3, hAx4], 'x');
+figure_wait_(0, hFig);
+end %func
+
+
+%--------------------------------------------------------------------------
+function multifun_cbf_(hFig, event, hPlot)
+% varargin: plot object to rescale
+% Change amplitude scaling 
+% change_amp_(event, maxAmp, varargin)
+% change_amp_(event) % directly set
+% if nargin<3, hPlot=[]; end
+factor = sqrt(2);
+if key_modifier_(event, 'shift'), factor = factor ^ 4; end
+mrAmp_prev = get_userdata_(hPlot, 'scale');
+if strcmpi(event.Key, 'uparrow')
+    maxAmp = mrAmp_prev / factor;
+elseif strcmpi(event.Key, 'downarrow')
+    maxAmp = mrAmp_prev * factor;
+else
+    return;
+end
+multiplot(hPlot, maxAmp);
+end %func
+
+
+%--------------------------------------------------------------------------
+function reset_view_(h,e)
+% find axis and set axis to 'axis0'
+hAx = gca;
+axis0 = get_userdata_(hAx, 'axis0');
+[xlim, ylim] = deal(get(hAx, 'XLim'), get(hAx, 'YLim'));
+point0 = hAx.CurrentPoint;
+xy = point0(1,1:2);
+
+switch h.Label
+    case 'reset y', ylim = axis0(3:4);
+    case 'reset x', xlim = axis0(1:2);
+    case 'reset xy', [xlim, ylim] = deal(axis0(1:2), axis0(3:4));
+    case 'zoom in x', [xlim, ~] = uirect_();
+    case 'zoom in y', [~, ylim] = uirect_();        
+    case 'zoom in xy', [xlim, ylim] = uirect_();        
+    case 'zoom out x', xlim = bound_limit_(xy(1) + diff(xlim)*2*[-1,1], axis0(1:2));
+    case 'center x', xlim = xy(1) + diff(xlim)*[-1,1]/2;
+end %switch
+if isempty(xlim) || isempty(ylim), return; end
+axis(hAx, [double(xlim), double(ylim)]);
+end %func
+
+
+%--------------------------------------------------------------------------
+function cPlot_out = plot2plot_(vhPlot_in, lineStyle, viPlot)
+if nargin<2, lineStyle = 'b-'; end
+if nargin<3, viPlot = []; end
+
+cPlot_out = cell(size(vhPlot_in));
+for iPlot = 1:numel(vhPlot_in)
+    hPlot_in = vhPlot_in(iPlot);
+    if ~isempty(viPlot)
+        [vx_, vy_] = deal(hPlot_in.XData(viPlot), hPlot_in.YData(viPlot));
+    else
+        [vx_, vy_] = deal(hPlot_in.XData, hPlot_in.YData);
+    end
+    hPlot_out = plot(hPlot_in.Parent, vx_, vy_, lineStyle);
+    hPlot_out.UserData = {hPlot_in.XData, hPlot_in.YData};
+    cPlot_out{iPlot} = hPlot_out;
+end %for
+end %func
+
+
+%--------------------------------------------------------------------------
+% exclude takes precedance
+function vi = vr_select_lim_(vrX, mrIncl)
+vl = false(1, numel(vrX));
+for iIncl=1:size(mrIncl,1)
+    vl(vrX >= mrIncl(iIncl,1) & vrX <= mrIncl(iIncl,2)) = true;
+end
+vi = find(vl);
+end %func
+   
+
+%--------------------------------------------------------------------------
+% draw a box and restrict the plot selection
+function cbf_axes_box_(source, callbackdata)
+[cPlot_spk, fh_title] = struct_get_(source.Parent.UserData, 'cPlot_spk', 'fh_title');
+
+switch source.Label
+    case 'include select', fInclude = 1; xlim=[];
+    case 'exclude select', fInclude = 0; xlim=[];
+    case 'include all', fInclude = 1; xlim=[1, inf];
+    case 'exclude all', fInclude = 0; xlim=[1, inf];
+    otherwise, return;
+end %switch
+
+% msgbox('Draw a rectangle and double click', 'modal');
+if isempty(xlim)
+    [xlim, ~] = uirect_();
+    if isempty(xlim), return; end
+end
+
+% update selected range on the table
+hFig1 = source.Parent.Parent;
+S_fig1 = hFig1.UserData;
+[iFile, hTbl, hAx1, nTime] = struct_get_(S_fig1, 'iFile', 'hTbl', 'hAx1', 'nTime');
+mrLim_incl = str2num_(hTbl.Data{iFile, 3});
+mrLim_incl = update_lim_(nTime, mrLim_incl, xlim, fInclude);
+set_table_(hTbl, iFile, 3, lim2str_(mrLim_incl));
+
+% update display
+figure_wait_(1, hFig1);
+viPlot = [];
+for iPlot = 1:numel(cPlot_spk)
+    hPlot_ = cPlot_spk{iPlot};
+    cXY_ = hPlot_.UserData;
+    [vx_, vy_] = deal(cXY_{1}, cXY_{2});
+    if isempty(viPlot)
+        viPlot = vr_select_lim_(vx_, mrLim_incl);
+        fh_title(vx_(viPlot), mrLim_incl);
+    end
+    set(hPlot_, 'XData', vx_(viPlot), 'YData', vy_(viPlot));
+end %for
+
+% save table data
+cbf_table_save_(hTbl);
+drawnow; 
+figure_wait_(0, hFig1);
+end % func
+
+
+%--------------------------------------------------------------------------
+function [xlim, ylim] = uirect_()
+[xlim, ylim] = deal([]);
+
+h=imrect();
+position = wait(h);
+delete(h);
+
+if isempty(position), return; end
+xlim = position(1) + [0, position(3)];
+ylim = position(2) + [0, position(4)];
+end % func
+
+
+%--------------------------------------------------------------------------
+% convert limit matrix ([a1,b1;a2,b2;a3,b3]) to sum of durations
+% include both edges
+function duration = lim2duration_(mrLim_incl)
+duration = sum(diff(mrLim_incl')+1);
+end %func
+
+
+%--------------------------------------------------------------------------
+% convert limit matrix ([a1,b1;a2,b2;a3,b3]) to sum of durations
+% include both edges
+function [vi, vl] = lim2range_(nTime, mrLim_incl)
+vl = false(1, nTime);
+for iIncl=1:size(mrLim_incl,1)
+    a1 = max(1, mrLim_incl(iIncl,1));
+    b1 = min(nTime, mrLim_incl(iIncl,2));
+    vl(a1:b1) = true;
+end
+vi = find(vl);
+end %func
+
+
+%--------------------------------------------------------------------------
+function cbf_table_save_(hTbl, callbackdata)
+% update selected range on the table
+hFig1 = hTbl.Parent;
+table_data = hTbl.Data;
+save(get_userdata_(hFig1, 'vcFile_mat'), 'table_data', '-append');
+end %func
+
+
+%--------------------------------------------------------------------------
+function [mrLim_incl, viPlot] = update_lim_(nTime, mrLim_incl, xlim, fInclude)
+vl = false(1, nTime);
+for iIncl=1:size(mrLim_incl,1)
+    a1 = max(1, mrLim_incl(iIncl,1));
+    b1 = min(numel(vl), mrLim_incl(iIncl,2));
+    vl(a1:b1) = true;
+end
+
+xlim = bound_limit_(xlim, [1, numel(vl)]);
+if fInclude
+    vl(xlim(1):xlim(2)) = true;
+else
+    vl(xlim(1):xlim(2)) = false;
+end
+viRise = find(diff(vl)>0);
+if vl(1), viRise = [1; viRise(:)]; end
+viFall = find(diff(vl)<0);
+if vl(end), viFall = [viFall(:); numel(vl)]; end
+mrLim_incl = [viRise(:), viFall(:)];
+viPlot = find(vl);
+end %func
+
+
+%--------------------------------------------------------------------------
+function limC = bound_limit_(limA, limB)
+limC = [max(limA(1), limB(1)), min(limA(end), limB(end))];
+end %func
+
+
+%--------------------------------------------------------------------------
+function vc = lim2str_(mrLim)
+% mrLIm: nx2
+cs = cell(1, size(mrLim,1));
+for iRow = 1:size(mrLim,1)
+    cs{iRow} = sprintf('[%g,%g]; ', mrLim(iRow,1), mrLim(iRow,2));
+end %for
+vc = cell2mat(cs);
+end %func
+
+
+%--------------------------------------------------------------------------
+% 1/18/2019 detect intracellular spikes
+function [viSpk1, S_intra] = detect_spikes_intra_(vnWav_int1, vnWav_stim1, spkLim, fJuxta)
+if nargin<3, spkLim = []; end
+if nargin<4, fJuxta = 0; end
+if isempty(spkLim), spkLim = [-30 30]; end
+[min_stim_step, thresh_stim_mad] = deal(10, 10);
+
+vrWav_int1 = single(vnWav_int1);
+if fJuxta
+    qqFactor = 6;
+    fft_thresh = 10;
+    vrWav_int1 = fft_clean_(vrWav_int1, struct('fft_thresh', fft_thresh, 'fGpu', 0));   
+    vrWav_filt = -ms_bandpass_filter_(vrWav_int1, ...
+        struct('freqLim', [300 6000], 'sRateHz', 30000, 'freqLim_width', [100 1000]));
+else
+    qqFactor = 12;
+    vrWav_filt = -ndiff_(vrWav_int1, 4);
+end
+nRefrac = diff(spkLim);
+[viSpk1, vrSpk1, thresh] = spikeDetectSingle_fast_(vrWav_filt, struct('qqFactor', qqFactor));
+[viSpk1, vrSpk1] = spike_refrac_(viSpk1, vrSpk1, [], nRefrac); %same site spikes
+
+% remove step artifact
+vlKeep_spk = true(size(viSpk1));
+if ~isempty(vnWav_stim1) && ~isempty(viSpk1)
+    max_step_stim1 = max(abs(diff(vnWav_stim1)));
+    if max_step_stim1 > min_stim_step % if significant current stimulation is given remove artifact
+        vrPre_spk1 = median(vr2mr3_(vnWav_stim1,viSpk1, [spkLim(1), 0]));
+        vrPost_spk1 = median(vr2mr3_(vnWav_stim1,viSpk1, [0, spkLim(2)]));
+        mad_stim = single(mad_nonzero_(vnWav_stim1));
+        vrStim_mad_spk1 = abs(single(vrPre_spk1) - single(vrPost_spk1)) / mad_stim;
+        vlKeep_spk(vrStim_mad_spk1 >= thresh_stim_mad) = 0;
+    end
+end
+
+% remove negative intracelluar spike artifact
+if ~fJuxta && ~isempty(viSpk1)
+    viSpk_pre1 = max(viSpk1 - spkLim(2), 1);
+    vr_dAmp = vnWav_int1(viSpk1) - vnWav_int1(viSpk_pre1); % should be positive
+    vlKeep_spk(vr_dAmp<0) = 0;
+    viSpk1 = viSpk1(vlKeep_spk);
+end
+S_intra = makeStruct_(vrWav_filt, thresh);
+end %func
+
+
+%--------------------------------------------------------------------------
+% 1/14/2019 JJJ: 
+function varargout = plot_subsample_(varargin)
+% [vrX, vrB1, vrB2, vrB3, ...] = plot_subsample_(nSkip_plot, viSpk1, vrA1, vrA2, vrA3, ...
+
+[nSkip_plot, viSpk1, n1] = deal(varargin{1}, varargin{2}, numel(varargin{3}));
+% n1 = min(n1, max(viSpk1));
+[viPlot, viSrt] = sort([1:nSkip_plot:n1, viSpk1(:)'], 'ascend');
+varargout{1} = viPlot;
+for iArg_in = 3:nargin
+    iArg_out = iArg_in - 1;
+    vr1 = varargin{iArg_in};
+    if ~isempty(vr1)
+        varargout{iArg_out} = vr1(viPlot); 
+    else
+        varargout{iArg_out} = [];
+    end
+end %for
+end %function
+    
+    
+%--------------------------------------------------------------------------
+function thresh = mad_nonzero_(vr)
+a = diff(vr);
+a = a(a~=0);
+thresh = median(abs(a));
+end %func
+
+
+%--------------------------------------------------------------------------
+function convert_mda_juxta_(vcFile_dat1, vcRange1)
+vcDir_in = fileparts(vcFile_dat1);
+vcDir_out1 = fullfile(vcDir_in, 'mda');
+nlim1 = str2num_(vcRange1);
+vcDataType = 'int16';
+
+S_xml1 = load_xml_neuroscope_(subsFileExt_(vcFile_dat1, '.xml'));
+[sRateHz1, nChans1, scale_factor1, viSite2chan1, viSite2chan2, viSite2chan3, nBits1] = ...
+    struct_get_(S_xml1, 'sRateHz', 'nChans', 'uV_per_bit', ...
+        'viSite2chan1', 'viSite2chan2', 'viSite2chan3', 'nBits');
+S_json1 = struct('spike_sign', -1, 'samplerate', sRateHz1, 'scale_factor', scale_factor1);
+
+% filter out legacy format
+assert(nBits1 == 16, 'convert_mda_juxta_: nBit == 16');
+assert(~isempty(viSite2chan2), 'convert_mda_juxta_: no intracellular spikes detected');
+
+% display info
+t_dur1 = filesize_(vcFile_dat1) / nChans1 / sRateHz1 / bytesPerSample_(vcDataType); 
+fprintf('\n%s: #ch=%d, t_dur1=%0.1fs, sRateHz=%0.1f, scale_factor1=%0.4f\n', ...
+    vcFile_dat1, nChans1, t_dur1, sRateHz1, scale_factor1);
+fprintf('\tchannel group 1: %s\n', sprintf('%d,', viSite2chan1));
+fprintf('\tchannel group 2: %s\n', sprintf('%d,', viSite2chan2));        
+fprintf('\tchannel group 3: %s\n', sprintf('%d,', viSite2chan3));        
+
+% raw.mda
+mnWav1 = reshape_(load_bin_(vcFile_dat1, vcDataType), nChans1);
+if ~isempty(viSite2chan3) 
+    viSite2chan_int1 = viSite2chan3;
+else
+    viSite2chan_int1 = viSite2chan2;
+end
+if isempty(nlim1)
+    mnWav_ext1 = mnWav1(viSite2chan1,:);
+else
+    mnWav_ext1 = mnWav1(viSite2chan1,nlim1(1):nlim1(2));
+end
+
+% firings_true.mda
+if numel(viSite2chan_int1) > 1
+    vnWav_stim1 = mnWav1(viSite2chan_int1(end-1),:)'; % load intracelluar recordings
+else
+    vnWav_stim1 = [];
+end
+if isempty(nlim1)
+    vnWav_int1 = mnWav1(viSite2chan_int1(end),:)'; % load intracelluar recordings
+else
+    vnWav_int1 = mnWav1(viSite2chan_int1(end),nlim1(1):nlim1(2))'; % load intracelluar recordings
+end
+spkLim1 = round(sRateHz1*[-1,1] / 1000);
+fJuxta = 1;
+[viSpk_gt1, S_intra] = detect_spikes_intra_(vnWav_int1, vnWav_stim1, spkLim1, fJuxta);    
+
+% geom.csv
+nSites1 = numel(viSite2chan1);
+switch nSites1
+    case 32
+        S_prb1 = load_prb_('poly3nn.prb');
+        mrSiteXY1 = S_prb1.mrSiteXY;   
+    otherwise
+        mrSiteXY1 = [zeros(1, nSites1); (0:nSites1-1)]' * 25;
+end %switch
+
+% output 
+export_spikeforest_(vcDir_out1, mnWav_ext1, mrSiteXY1, S_json1, viSpk_gt1);        
 end %func

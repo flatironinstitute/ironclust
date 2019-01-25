@@ -99,7 +99,7 @@ fRaw_feature = 0;           % Use raw waveform for feature extraction
 % #Clustering (run "jrc sort" after change)
 vcCluster = 'drift-knn';        % cluster method: {'spacetime', 'drift', 'drift2', 'drift-knn', 'wavcov'}, spacetime: spatiotemporal decentralized clustering that can handle slow drift; drift: fast drift clustering; wavcov: waveform covariance (creates nChans^2*nDelays_wavcov number of features)
 nQuantile_drift = 8;       % Valid if vcCluster = 'drift'; # of bins for amplitude histogram per site to find drift pairs
-nTime_clu = 4;              % number of time periods to perform separate clustering (later to be merged after clustering)
+nTime_clu = 1;              % number of time periods to perform separate clustering (later to be merged after clustering)
 nTime_drift = 16;           % divide to 16 drift time bins
 dc_percent = 2;             % used for distribution cutting
 fRepeat_clu = 0;            % Flag for whether to repeat clustering for the bottom half of the cluster amplitudes.
