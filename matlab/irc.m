@@ -1390,6 +1390,7 @@ end %func
 
 
 %--------------------------------------------------------------------------
+% 1/30/2019 JJJ: deal with .mda files
 % 1/18/2018 JJJ: vrWav_mean1 output removed
 function [mnWav1, dimm_wav] = load_file_(fid_bin, nSamples_load1, P, fSingle)
 % load file to memory. 
@@ -1406,6 +1407,11 @@ if ischar(fid_bin)
     if ~exist_file_(vcFile)
         error('File does not exist: %s\n', vcFile);
     end    
+    if matchFileExt_(vcFile, '.mda')
+        mnWav1 = readmda_(vcFile)';
+        dimm_wav = size(mnWav1);
+        return;
+    end
     [fid_bin, nBytes_file1] = fopen_(vcFile, 'r');
     if ~isempty(get_(P, 'header_offset'))
         nBytes_file1 = nBytes_file1 - P.header_offset;
@@ -1426,7 +1432,10 @@ mnWav1 = fread_(fid_bin, dimm_wav, P.vcDataType);
 % [mnWav1, P.fGpu] = gpuArray_(mnWav1, P.fGpu);
 switch(P.vcDataType)
     case 'uint16', mnWav1 = int16(single(mnWav1)-2^15);
-    case {'float', 'float32', 'float64', 'single', 'double'}, mnWav1 = int16(mnWav1 / P.uV_per_bit);
+    case {'float', 'float32', 'float64', 'single', 'double'}
+        vrWav_med1 = median_(subsample_mr_(mnWav1, 2^16, 2)')';
+        mnWav1 = bsxfun(@minus, mnWav1, vrWav_med1); % subtract med to prevent saturation
+        mnWav1 = int16(mnWav1 / P.uV_per_bit);
 end
 if get_(P, 'fInverse_file'), mnWav1 = -mnWav1; end %flip the polarity
 
@@ -1450,20 +1459,37 @@ end %func
 
 
 %--------------------------------------------------------------------------
+% 1/31/2019 JJJ: get the field(s) of a struct or index of an array or cell
 function varargout = get_(varargin)
+% same as struct_get_ function
 % retrieve a field. if not exist then return empty
 % [val1, val2] = get_(S, field1, field2, ...)
+% [val] = get_(cell, index)
 
 if nargin==0, varargout{1} = []; return; end
 S = varargin{1};
 if isempty(S), varargout{1} = []; return; end
 
-for i=2:nargin
-    vcField = varargin{i};
-    try
-        varargout{i-1} = S.(vcField);
+if isstruct(S)
+    for i=2:nargin
+        vcField = varargin{i};
+        try
+            varargout{i-1} = S.(vcField);
+        catch
+            varargout{i-1} = [];
+        end
+    end
+elseif iscell(S)
+    try    
+        varargout{1} = S{varargin{2:end}};
     catch
-        varargout{i-1} = [];
+        varargout{1} = [];
+    end
+else
+    try    
+        varargout{1} = S(varargin{2:end});
+    catch
+        varargout{1} = [];
     end
 end
 end %func
@@ -2974,19 +3000,17 @@ t1 = tic;
 fprintf('Computing ground truth units...\n');
 viClu = int32(S_gt.viClu); 
 viTime_spk = int32(S_gt.viTime);
-nSites = numel(P.viSite2Chan);
+nSites = numel(get_(P, 'viSite2Chan'));
 
-% Overload with default.cfg setting for GT units
-
-[vcFilter_gt, freqLim_gt, nDiff_filt_gt, spkLim_ms_gt] = ...
-    struct_get_(S_cfg, 'vcFilter_gt', 'freqLim_gt', 'nDiff_filt_gt', 'spkLim_ms_gt');
-P1 = struct('vcCommonRef', 'none', 'vcSpkRef', 'none', ... %'fGpu', 0,
-    'vcFilter', vcFilter_gt, 'freqLim', freqLim_gt, ...
-    'nDiff_filt', nDiff_filt_gt, 'spkLim_ms', spkLim_ms_gt);
+[vcFilter, freqLim, nDiff_filt, spkLim_ms, freqLim_width, qqFactor] = ...
+    struct_get_(S_cfg, 'vcFilter_gt', 'freqLim_gt', 'nDiff_filt_gt', 'spkLim_ms_gt', 'freqLim_width_gt', 'qqFactor_gt');
+[vcCommonRef, vcSpkRef] = deal('none');
+P1 = makeStruct_(vcCommonRef, vcSpkRef, vcFilter, freqLim, nDiff_filt, spkLim_ms, freqLim_width, qqFactor);
 P1 = struct_merge_(P, P1);
 P1.spkLim = round(P1.spkLim_ms * P1.sRateHz / 1000);
 
 mnWav = load_file_(P.vcFile, [], P1);
+if nSites==0, nSites = size(mnWav,2); end
 if fProcessRaw
     tnWav_raw = permute(mn2tn_gpu_(mnWav, P.spkLim_raw, viTime_spk), [1,3,2]);
 end
@@ -3037,7 +3061,7 @@ vrVmin_clu = abs(vrVmin_clu);
 vrVsd_clu = sqrt(squeeze(max(mean(trWav_clu.^2),[],2)))';
 vrSnr_min_clu = (vrVmin_clu ./ vrVrms_site(viSite_clu))';
 vrSnr_sd_clu = (vrVsd_clu ./ vrVsd_site(viSite_clu))'; % F. Franke noise definion
-vrThresh_site = vrVrms_site * P.qqFactor;
+vrThresh_site = vrVrms_site * qqFactor;
 vnSite_clu = sum(bsxfun(@lt, mrVmin_clu, -vrThresh_site(viSite_clu)));
 if strcmpi(S_cfg.vcSnr_gt, 'min')
     vrSnr_clu = vrSnr_min_clu;
@@ -3065,7 +3089,11 @@ else
     viClu_keep = 1:max(S_gt.viClu);    
 end
 S_gt = struct_merge_(S_gt, S_);
-miSites_clu = P.miSites(:, S_gt.viSite_clu);
+if isfield(P, 'miSites')
+    miSites_clu = P.miSites(:, S_gt.viSite_clu);
+else
+    miSites_clu = [];
+end
 cvnBurst_clu = analyze_burst_(S_gt.viTime, S_gt.viClu, S_cfg);
 S_gt = struct_add_(S_gt, viClu_keep, vrVrms_site, vrVsd_site, miSites_clu, cvnBurst_clu);
 fprintf('\n\ttook %0.1fs\n', toc(t1));
@@ -4574,7 +4602,8 @@ if get_(P, 'fMeanSite_drift')
 elseif fRepairSites
     mnWav1 = meanSite_drift_(mnWav1, P, P.viSiteZero); 
 else
-    mnWav1(:, P.viSiteZero) = 0;
+    viSiteZero = get_(P, 'viSiteZero');
+    mnWav1(:, viSiteZero) = 0;
 end
 % fprintf('\n\ttook %0.1fs.\n', toc(t1));
 end %func
@@ -12395,7 +12424,7 @@ end %func
 
 %--------------------------------------------------------------------------
 % 122917 JJJ: Got rid of Tab which is slow
-function plot_raster_(S0, fNewFig, vcFile_psth, iChan)
+function plot_raster_(S0, fNewFig, vcFile_psth, iChan, min_interval_psth)
 %plot_raster_()
 %   plot if window open using curretnly selected clusters
 %plot_raster_(P, iClu, S_clu)
@@ -12406,6 +12435,7 @@ if nargin<1, S0 = []; end
 if nargin<2, fNewFig = 0; end
 if nargin<3, vcFile_psth = ''; end
 if nargin<4, iChan = []; end
+if nargin<5, min_interval_psth = []; end
 
 if ~isvalid_(hFig) && ~fNewFig, return; end
 
@@ -12425,7 +12455,10 @@ try
         end
     end
     if ~exist_file_(vcFile_psth), vcFile_psth = subsDir_(vcFile_psth, P.vcFile_prm); end
-    crTime_trial = loadTrial_(vcFile_psth, iChan);
+    [vrTime_trial, vrWav_trial] = load_psth_(vcFile_psth, iChan, min_interval_psth);
+    vrWav_uniq = unique(vrWav_trial);
+    crTime_trial = arrayfun(@(x)vrTime_trial(vrWav_trial == x), ...
+        vrWav_uniq, 'UniformOutput', 0);
 catch
     disperr_();
     figure_wait_(0, hFig_wait);
@@ -12458,7 +12491,7 @@ end %func
 %--------------------------------------------------------------------------
 function plot_figure_psth_(hFig, iClu, crTime_trial, S_clu, P)
 S_fig = get(hFig, 'UserData');
-[vhAx1, vhAx2, vcColor] = deal(S_fig.vhAx1, S_fig.vhAx2, S_fig.vcColor);
+[vhAx1, vhAx2, vcColor] = struct_get_(S_fig, 'vhAx1', 'vhAx2', 'vcColor');
 for iStim = 1:numel(vhAx1)
     cla(vhAx1(iStim));
     cla(vhAx2(iStim));
@@ -12470,7 +12503,7 @@ for iStim = 1:numel(vhAx1)
     title(vhAx2(iStim), sprintf('Cluster %d; %d trials', iClu, nTrials));
 end
 %     offset = offset + nTrials;
-if numel(vhAx1)>2
+if numel(vhAx1)>=2
     set(vhAx1(2:end),'xticklabel',{});
     for ax = vhAx1(2:end)
         xlabel(ax, '')
@@ -12480,46 +12513,62 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function [hFig, hFig_b] = create_figure_psth_(hFig, hFig_b, vcFile_psth, nStims)
+function [hFigA, hFigB] = create_figure_psth_(hFigA, hFigB, vcFile_psth, nStims)
 
 % Figure handle for the iCluCopy
-[axoffset, axlen] = deal(.08, 1/nStims);
 
-if ~isvalid_(hFig)    
-    hFig = create_figure_('FigTrial', [.5  .5 .35 .5], vcFile_psth, 1, 1);
-    [vhAx1, vhAx2] = deal(nan(nStims, 1));
-    for iStim = 1:nStims
-        axoffset_ = axoffset + (iStim-1) * axlen;
-        vhAx1(iStim) = axes('Parent', hFig, 'Position',[.08 axoffset_ .9 axlen*.68]);
-        vhAx2(iStim) = axes('Parent', hFig, 'Position',[.08 axoffset_ + axlen*.68 .9 axlen*.2]);
-    end
-    vcColor = 'k';
-    set(hFig, 'UserData', makeStruct_(vhAx1, vhAx2, vcColor), ...
-        'Name', vcFile_psth, 'CloseRequestFcn', @(h,e)close_(hFig_b, hFig));
-    
-    set(hFig, 'MenuBar','None');
-    mh_settings = uimenu_(hFig,'Label','Settings');
-    uimenu_(mh_settings,'Label','Change PSTH settings','Callback',@(h,e)settings_psth_(h,e));
+if ~isvalid_(hFigA)    
+    hFigA = create_figure_('FigTrial', [.5  .5 .35 .5], vcFile_psth, 1, 1);
+    create_axes_psth_(hFigA, nStims, 'k');
 end
 
 % Figure handle for the iCluPaste
-if ~isvalid_(hFig_b)
-    hFig_b = create_figure_('FigTrial_b', [.5  0 .35 .5], vcFile_psth, 1, 1);
-    set(hFig_b, 'Visible', 'off');
-    [vhAx1, vhAx2] = deal(nan(nStims, 1));
-    for iStim = 1:nStims
-        axoffset_ = axoffset + (iStim-1) * axlen;
-        vhAx1(iStim) = axes('Parent', hFig_b, 'Position',[.08 axoffset_ .9 axlen*.68]);
-        vhAx2(iStim) = axes('Parent', hFig_b, 'Position',[.08 axoffset_ + axlen*.68 .9 axlen*.2]);
-    end
-    vcColor = 'r';
-    set(hFig_b, 'UserData', makeStruct_(vhAx1, vhAx2, vcColor), ...
-        'Name', vcFile_psth, 'CloseRequestFcn', @(h,e)close_(hFig_b, hFig));
+if ~isvalid_(hFigB)
+    hFigB = create_figure_('FigTrial_b', [.5  0 .35 .5], vcFile_psth, 1, 1);    
+    set(hFigB, 'Visible', 'off');
+    create_axes_psth_(hFigB, nStims, 'r');
     
-    set(hFig_b, 'MenuBar','None');
-    mh_settings = uimenu_(hFig_b,'Label','Settings');
-    uimenu_(mh_settings,'Label','Change PSTH settings','Callback',@(h,e)settings_psth_(h,e));
+%     [vhAx1, vhAx2] = deal(nan(nStims, 1));
+%     for iStim = 1:nStims
+%         axoffset_ = axoffset + (iStim-1) * axlen;
+%         vhAx1(iStim) = axes('Parent', hFigB, 'Position',[.08 axoffset_ .9 axlen*.68]);
+%         vhAx2(iStim) = axes('Parent', hFigB, 'Position',[.08 axoffset_ + axlen*.68 .9 axlen*.2]);
+%         if iStim > 1
+%             set(vhAx1(iStim), 'XTickLabel', []);
+%             set(vhAx2(iStim), 'XTickLabel', []);
+%         end
+%     end
+%     vcColor = 'r';
+%     set(hFigB, 'UserData', makeStruct_(vhAx1, vhAx2, vcColor), ...
+%         'Name', vcFile_psth, 'CloseRequestFcn', @(h,e)close_(hFigB, hFigA));
+%     
+%     set(hFigB, 'MenuBar','None');
+%     mh_settings = uimenu_(hFigB,'Label','Settings');
+%     uimenu_(mh_settings,'Label','Change PSTH settings','Callback',@(h,e)settings_psth_(h,e));
 end
+set(hFigA, 'CloseRequestFcn', @(h,e)close_(hFigB, hFigA));
+end %func
+
+
+%--------------------------------------------------------------------------
+function create_axes_psth_(hFigA, nStims, vcColor)
+[axoffset, axlen] = deal(.08, .9/nStims);
+
+[vhAx1, vhAx2] = deal(nan(nStims, 1));
+for iStim = 1:nStims
+    axoffset_ = axoffset + (iStim-1) * axlen;
+    vhAx1(iStim) = axes('Parent', hFigA, 'Position',[.08 axoffset_ .9 axlen*.68]);
+    vhAx2(iStim) = axes('Parent', hFigA, 'Position',[.08 axoffset_ + axlen*.68 .9 axlen*.2]);
+    if iStim > 1
+        set(vhAx1(iStim), 'XTickLabel', []);
+        set(vhAx2(iStim), 'XTickLabel', []);
+    end        
+end
+% vcColor = 'k';
+set(hFigA, 'UserData', makeStruct_(vhAx1, vhAx2, vcColor));
+set(hFigA, 'MenuBar','None');
+mh_settings = uimenu_(hFigA,'Label','Settings');
+uimenu_(mh_settings,'Label','Change PSTH settings','Callback',@(h,e)settings_psth_(h,e));
 end %func
 
 
@@ -18038,10 +18087,12 @@ end %func
 
 %--------------------------------------------------------------------------
 % 7/26/17: Now accept csv file format
-function vrTime_trial = loadTrial_(vcFile_trial, iChan)
+function [vrTime_trial, vrWav_trial, nRemoved] = load_psth_(vcFile_trial, iChan, min_interval_psth)
 % import  trial time (in seconds)
 vrTime_trial = [];
 if nargin<2, iChan = []; end
+if nargin<3, min_interval_psth = []; end
+vrWav_trial = [];
 try
     if ~exist_file_(vcFile_trial), return; end
 
@@ -18057,14 +18108,15 @@ try
         if isrow(vrTime_trial), vrTime_trial = vrTime_trial(:); end
     elseif matchFileExt_(vcFile_trial, '.nev')
         [vrTime_trial, vrWav_trial] = load_nev_(vcFile_trial, iChan);
-        vrWav_uniq = unique(vrWav_trial);
-        if numel(vrWav_uniq) > 1 % divide to cells
-            vrTime_trial = cellfun(@(x)vrTime_trial(vrWav_trial == x), ...
-                vrWav_uniq, 'UniformOutput', 0);
-        end
-        min_interval_psth = get_set_(loadParam_(), 'min_interval_psth', 1);
-        vrTime_trial = timestamp_remove_jitter_(vrTime_trial, min_interval_psth);
-    end        
+    end    
+    if ~isempty(min_interval_psth)
+        [vrTime_trial, vlKeep_trial] = timestamp_remove_jitter_(vrTime_trial, min_interval_psth);
+        vrWav_trial = vrWav_trial(vlKeep_trial);
+        nRemoved = sum(~vlKeep_trial);
+    else
+        nRemoved = 0;
+    end
+    if isempty(vrWav_trial), vrWav_trial = ones(size(vrTime_trial)); end
 catch
     disperr_();
 end
@@ -21009,7 +21061,6 @@ end %func
 function [vrWav_trial, vrTime_trial, vcLabel_aux, vcTitle_aux] = load_trial_(P, S_trial)
 [vrWav_trial, vrTime_trial, vcUnit] = deal([]);
 if nargin<2, S_trial = []; end
-
 if isempty(S_trial)
     S_trials = get_trials_();
     S_trial = S_trials.cTrials{S_trials.iTrial};
@@ -21053,21 +21104,11 @@ switch S_trial.type
         vcUnit = 'on/off';
         
     case 'psth'
-        [vcFile_psth, iChan, sRateHz_trial] = ...
-            struct_get_(S_trial.value, 'vcFile', 'iChan', 'sRateHz');        
+        [vcFile_psth, iChan, sRateHz_trial, min_interval_psth] = ...
+            struct_get_(S_trial.value, 'vcFile', 'iChan', 'sRateHz', 'min_interval_psth');        
         if ~exist_file_(vcFile_psth), return; end
-        [~,~,vcExt] = fileparts(vcFile_psth);
-        switch lower(vcExt)
-            case '.nev'
-                [vrTime_trial, vrWav_trial] = load_nev_(vcFile_psth, iChan);
-                vcTitle_aux = sprintf('%s (Chan:%d)', vcFile_psth, iChan);
-            case {'.dat', '.bin'} % apply threshold on TTL
-                mnWav_trial = load_bin_(vcFile_psth, P.vcDataType); % it might be other bin channel
-                vrWav_trial = single(mnWav_trial(iChan:P.nChans:end)') * P.uV_per_bit;
-            otherwise
-                fprintf(2, 'vcFile_aux: unsupported file format: %s\n', vcExt);
-                return;
-        end %switch
+        [vrTime_trial, vrWav_trial, nRemoved] = load_psth_(vcFile_psth, iChan, min_interval_psth);
+        vcTitle_aux = sprintf('%s (Chan:%d, %d removed)', vcFile_psth, iChan, nRemoved);
         vcUnit = 'trigger';
         
     otherwise
@@ -27382,8 +27423,8 @@ if ~strcmpi(S_trial1.type, 'psth')
     return;
 end
 
-[vcFile_psth, iChan] = struct_get_(S_trial1.value, 'vcFile', 'iChan');
-plot_raster_([], 1, vcFile_psth, iChan);
+[vcFile_psth, iChan, min_interval_psth] = struct_get_(S_trial1.value, 'vcFile', 'iChan', 'min_interval_psth');
+plot_raster_([], 1, vcFile_psth, iChan, min_interval_psth);
 end %func
 
 
@@ -27561,7 +27602,7 @@ end % func
 % 12/11/2018 JJ: remove timestamp jitter
 function [vrT_event, vlKeep] = timestamp_remove_jitter_(vrT_event, min_event_interval)
 if min_event_interval > 0
-    vlKeep = [true; diff(vrT_event(:)) > min_event_interval];
+    vlKeep = [true; diff(vrT_event(:)) >= min_event_interval];
     vrT_event = vrT_event(vlKeep); % filter events
 else
     vlKeep = [];
@@ -27644,7 +27685,7 @@ global fDebug_ui
 vcFile = [];
 if fDebug_ui==1, return; end
 [FileName, PathName, FilterIndex] = uigetfile(varargin{:});
-if FilterIndex, return; end
+if ~FilterIndex, return; end % Fix requested by zsperry
 vcFile = fullfile(PathName, FileName);
 end %func
     
@@ -27654,12 +27695,13 @@ end %func
 function trial_add_psth_(h,e, iTrial)
 if nargin<3, iTrial=[]; end
 mh_trials = get_tag_('mh_trials', 'uimenu');
-P = get_userdata_(mh_trials, 'P');
+% P = get_userdata_(mh_trials, 'P');
+P = loadParam_();
 S_trials = get_userdata_(mh_trials, 'S_trials');
 
 if isempty(iTrial)
-    [name1, vcFile, iChan, sRateHz, fRisingEdge] = ...
-        deal('', P.vcFile, [], P.sRateHz, 1);
+    [name1, vcFile, iChan, sRateHz, fRisingEdge, min_interval_psth] = ...
+        deal('', P.vcFile, [], P.sRateHz, 1, get_(P, 'min_interval_psth'));
     if matchFileExt_(vcFile, '.ns5')
         vcFile = strrep(vcFile, '.ns5', '.nev');
     end
@@ -27668,25 +27710,24 @@ if isempty(iTrial)
 else
     S_trial1 = S_trials.cTrials{iTrial};
     [name1, S_value1] = deal(S_trial1.name, S_trial1.value); % name, value, type
-    [vcFile, iChan, sRateHz, fRisingEdge] = ...
-        struct_get_(S_value1, 'vcFile', 'iChan', 'sRateHz', 'fRisingEdge');
+    [vcFile, iChan, sRateHz, fRisingEdge, min_interval_psth] = ...
+        struct_get_(S_value1, 'vcFile', 'iChan', 'sRateHz', 'fRisingEdge', 'min_interval_psth');
 end
 if ~exist_file_(vcFile), msgbox('Aborted, file does not exist'); return; end
 
 csAns = inputdlg_(...
-    {'Channel name (required)', 'Channel number (leave blank to include all)', 'Sampling rate', 'Rising Edge'}, ...
+    {'Channel name (required)', 'Channel number (leave blank to include all)', 'Sampling rate', 'Rising Edge', 'Minimum interval in sec (jitter suppression)'}, ...
     'Recording format', 1, ...
-    num2str_({name1, iChan, sRateHz, fRisingEdge}));
+    num2str_({name1, iChan, sRateHz, fRisingEdge, min_interval_psth}));
 if isempty(csAns), return; end
-[name1, iChan, sRateHz, fRisingEdge] = deal(csAns{:});
+name1 = csAns{1};
 if isempty(name1), msgbox_('Aborted, channel name is not specified'); return; end
-
 try
-    [iChan, sRateHz, fRisingEdge] = multifun_(@str2num, iChan, sRateHz, fRisingEdge);
+    [iChan, sRateHz, fRisingEdge, min_interval_psth] = str2num_(csAns{2:end});
 catch
     msgbox('Aborted, invalid format'); return;
 end
-S_value1 = makeStruct_(vcFile, iChan, sRateHz, fRisingEdge);
+S_value1 = makeStruct_(vcFile, iChan, sRateHz, fRisingEdge, min_interval_psth);
 S_trial1 = struct('name', name1, 'value', S_value1, 'type', 'psth');
 
 % validate file
@@ -27695,7 +27736,7 @@ try
     if isempty(vrTime_trial)
         msgbox_('No events found. Try leaving the `Channel number` empty to include all events.', 1); return;
     else
-        msgbox_(sprintf('Found %d events', numel(vrTime_trial)), 1);
+        msgbox_({sprintf('Found %d events', numel(vrTime_trial)), vcTitle_aux}, 1);
     end
 catch
     msgbox_('Aborted, invalid format', 1); return;
@@ -28476,34 +28517,59 @@ end %func
 
 
 %--------------------------------------------------------------------------
+% assume one GT per recording
 function summarize_study_(vcDir_study)
 % K:\spikeforest\irc_out\paired_recordings\neuronexus32c
+% todo: support firings_true.mda files 
+
 [csDir_full, csDir_rec] = subdir_(vcDir_study);
 
 nRec = numel(csDir_full);
-[vnSpikes, vr_snr_pp, vr_snr_min, vr_snr_rms, vrVpp, vrVmin] = deal(zeros(nRec,1));
+[vnSpikes, vr_snr_pp, vr_snr_min, vr_snr_rms, vrVpp, vrVmin, viSite] = deal(zeros(nRec,1));
 % generate a table output
 for iRec = 1:nRec
     vcDir1 = csDir_full{iRec};
     vcFile_gt1 = fullfile(vcDir1, 'raw_geom_gt1.mat');
-    S_gt1 = load(vcFile_gt1);
-    [vpp1, vmin1, snr_rms1, snr_min1, nSpk1] = ...
-        struct_get_(S_gt1, 'vrVpp_clu', 'vrVmin_clu', 'vrSnr_sd_clu', 'vrSnr_min_clu', 'vnSpk_clu');
+    vcFile_gt_mda1 = fullfile(vcDir1, 'firings_true.mda');
+    if exist_file_(vcFile_gt1)
+        S_gt1 = load(vcFile_gt1);
+    elseif exist_file_(vcFile_gt_mda1)        
+        S_gt1 = mda2gt1_(vcFile_gt_mda1);
+    else
+        disperr_('groundtruth file not found');
+    end
+    [vpp1, vmin1, snr_rms1, snr_min1, nSpk1, iSite1] = ...
+        struct_get_(S_gt1, 'vrVpp_clu', 'vrVmin_clu', 'vrSnr_sd_clu', 'vrSnr_min_clu', 'vnSpk_clu', 'viSite_clu');
     snr_pp1 = snr_min1 * vpp1/vmin1;
-    vnSpikes(iRec) = nSpk1;
-    vr_snr_pp(iRec) = snr_pp1;
-    vr_snr_min(iRec) = snr_min1;
-    vr_snr_rms(iRec) = snr_rms1;
-    vrVpp(iRec) = vpp1;
-    vrVmin(iRec) = vmin1;
+    [vnSpikes(iRec), vr_snr_pp(iRec), vr_snr_min(iRec), vr_snr_rms(iRec), vrVpp(iRec), vrVmin(iRec), viSite(iRec)] = ...
+        deal(nSpk1, snr_pp1, snr_min1, snr_rms1, vpp1, vmin1, iSite1);
 end %for
-tbl_study = table(csDir_rec(:), vnSpikes, vr_snr_pp, vr_snr_min, vr_snr_rms, vrVpp, vrVmin, ...
-    'VariableNames', {'Recording', 'nSpikes', 'snr_pp', 'snr_min', 'snr_rms', 'Vpp_uV', 'Vmin_uV'});
+tbl_study = table(csDir_rec(:), vnSpikes, vr_snr_pp, vr_snr_min, vr_snr_rms, vrVpp, vrVmin, viSite, ...
+    'VariableNames', {'Recording', 'nSpikes', 'snr_pp', 'snr_min', 'snr_rms', 'Vpp_uV', 'Vmin_uV', 'site_peak'});
 tbl_study = sortrows(tbl_study, 'snr_pp', 'ascend');
 disp(tbl_study);
 vcFile_tbl = fullfile(vcDir_study, 'summary_study.xlsx');
 writetable(tbl_study, vcFile_tbl);
 fprintf('Table saved as %s\n', vcFile_tbl);
+end %func
+
+
+%--------------------------------------------------------------------------
+% 2019/1/30 JJJ: 
+function S_gt1 = mda2gt1_(vcFile_gt_mda)
+
+% Create P (parameter struct)
+[vcDir,~,~] = fileparts(vcFile_gt_mda);
+vcFile = fullfile(vcDir, 'raw.mda');
+S_json = loadjson_(fullfile(vcDir, 'params.json'));
+[uV_per_bit, sRateHz] = struct_get_(S_json, 'scale_factor', 'samplerate');
+P = makeStruct_(vcFile, sRateHz, uV_per_bit);
+
+% compute S_gt1
+mnGt = int32(readmda_(vcFile_gt_mda)');
+[viSite, viTime, viClu] = deal(mnGt(:,1), mnGt(:,2), mnGt(:,3));
+S_gt = makeStruct_(viClu, viTime, viSite);
+S_gt1 = gt2spk_(S_gt, P);
 end %func
 
 

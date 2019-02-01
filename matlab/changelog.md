@@ -3,6 +3,21 @@ IronClust, written by J. James Jun, Flatiron Institute, Simons Foundation
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [4.3.5] - 2019-1-31
+### Added
+- `irc summarize-study path_study` outputs a summary table of ground truth units
+  - It works for paired recording studies with one ground truth unit.
+  - path_study contains folders containing either firings_true.mda or _gt1.mat files
+
+### Changed
+- Adding PSTH channel allows user to specify min_interval_psth
+
+### Fixed
+- Floating point data type doesn't saturate when gets converted to int16
+  - Now subtracts the median of each channel to center the data
+  - This prevents data saturation
+
+
 ## [4.3.4] - 2019-1-25
 ### Added
 - `irc convert-mda-crcns` opens a GUI that lets users to select and export Buzsakilab 
@@ -22,7 +37,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - syntax updated for `run_irc path_in path_out template_file`
   - template_file can be either full file name or simplified name
   - If template file is `tetrode` the full name is auto-complted to `tetrode_template.prm`
-  - Autocompletion only works when the simplified name does not contain a file extension 
+  - Autocompletion only works when the simplified name does not contain a file extension    
 
 
 ## [4.3.3] - 2019-1-8

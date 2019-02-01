@@ -144,7 +144,7 @@ xtick_psth = .2;            % PSTH time tick mark spacing
 fAverageTrial_psth = 1;     % Plot PSTH for averaged trial if set to 1, otherwise plot individual trials (opens multiple tabs)
 nSmooth_ms_psth = 50;       % PSTH smoothing time window (in milliseconds)
 rateLim_psth = [];          % range range in Hz
-min_interval_psth = 1;      % Minimum time interval for PSTH trigger in sec
+min_interval_psth = .01;      % Minimum time interval for PSTH trigger in sec
 
 % #Firing rate estimation for unit
 sRateHz_rate = 1000;                % Resampled rate for the firing rate
