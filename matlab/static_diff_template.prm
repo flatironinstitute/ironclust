@@ -1,0 +1,36 @@
+% static_template.prm
+% James Jun, 2019 Jan 25
+
+vcDataType = 'int16'; % raw data format
+sRateHz = 20000; % sampling rate
+vcFilter = 'ndiff';
+freqLim = [300, 6000];      % Frequency cut-off limit for vcFilter='bandpass', ignored otherwise. to use high-pass set to [f_lo, nan], to use low-pass set to [nan, f_hi]
+freqLim_width = [100, 1000]; % Frequency transition width for the higher filter cutoff when 'bandpass' is used
+
+uV_per_bit = .1; % uV per bit resolution
+fTranspose_bin = 0;     % catalin's format
+spkLim_raw_factor = 2;      % if spkLim_raw_ms==[] then spkLim_raw = spkLim * spkLim_raw_factor
+spkLim_factor_merge = 1;
+vcCommonRef = 'none';
+
+vcCluster = 'drift-knn'; % drift, spacetime, drift-knn
+nQuantile_drift = 8;       % Valid if vcCluster = 'drift'; # of bins for amplitude histogram per site to find drift pairs
+nTime_clu = 1;
+nTime_drift = 32;           % divide to 16 drift time bins
+
+% Knn experimental 
+knn = 30;
+fWavRaw_merge = 0;          % Use raw average unit waveforms for merge when set to 1, if not use filtered waveforms.
+fSavePlot_RD = 0;           % Save the Rho-Delta plot as .png file (prefix: '_RD.png' at the end of the .prm file name)
+frac_equal_knn = .5;       % Fraction of k-nearest neighbors from the same cluster. 
+frac_shift_merge = .1;      % Fraction of the waveform to shift to check for merging
+
+fInterp_fet = 0;
+fClean_fet = 0;
+
+maxDist_site_spk_um = 100;
+maxDist_site_um = 50;
+vcSpkRef = 'none';
+
+maxWavCor = .98;            % merge if waveform correlation is greater than maxWavCor.
+thresh_core_knn = 1-1/8;

@@ -3,6 +3,11 @@ IronClust, written by J. James Jun, Flatiron Institute, Simons Foundation
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [4.3.6] - 2019-2-4
+### Added
+- New template added `static_diff_template.prm`
+  - static probe with a differentiation filter
+
 ## [4.3.5] - 2019-1-31
 ### Added
 - `irc summarize-study path_study` outputs a summary table of ground truth units
