@@ -12484,6 +12484,7 @@ if ~isempty(iCluPaste)
 else
     set(hFig_b, 'Visible', 'off');
 end
+figure(hFig_wait);
 figure_wait_(0, hFig_wait);
 end %func
 
@@ -12601,7 +12602,7 @@ ml_trial_ms = vr2mr2_(index2logical_(viTime_clu, P.sRateHz, .001), ...
 [viCol_, ~] = ind2sub(size(ml_trial_ms), find(ml_trial_ms));
 vrSpike_trial = viCol_ / 1000 + tlim_psth(1);
 [vnCnt, vrTimePlot] = hist(vrSpike_trial, tlim_psth(1):tbin:tlim_psth(2));
-vrRate = vnCnt / tbin;
+vrRate = vnCnt / tbin / numel(vrTime_trial);
 
 bar_(hAx, vrTimePlot, vrRate, 1, 'EdgeColor', 'none', 'FaceColor', vcColor);
 vrXTick = tlim_psth(1):(P.xtick_psth):tlim_psth(2);
