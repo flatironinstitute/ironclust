@@ -3,6 +3,15 @@ IronClust, written by J. James Jun, Flatiron Institute, Simons Foundation
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [4.3.8] - 2019-2-7
+### Fixed
+- PSTH count histogram non-zero error is fixed
+  - Previously, PSTH histgram count was non-zero where it does't contain any spike.
+
+### Added
+- `irc github` opens a ironclust github website
+
+
 ## [4.3.7] - 2019-2-6
 ### Fixed
 - Plotting PSTH doesn't take the focus away from the main waveform window

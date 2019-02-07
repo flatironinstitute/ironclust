@@ -39,7 +39,8 @@ switch lower(vcCmd)
     case 'install', install_(vcArg1);
     case 'which', return;    
 
-        % one argument
+    % one argument
+    case 'github', web_(read_cfg_('repoURL')); return;
     case 'copyto-voms', copyto_voms_(vcArg1); return;     
     case 'copyfrom-voms', copyfrom_voms_(vcArg1); return;     
     case 'copyto', copyto_(vcArg1); return; %copy source code to destination    
@@ -12581,10 +12582,15 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function vl = index2logical_(viTime, sRateHz, binsize_sec)
+% 2/7/2019 JJJ: convert index to binary vector
+function vl = index2logical_(viTime, sRateHz, binsize_sec, nLen)
+% nLen: length of the vector vl (optional)
+
 if nargin<3, binsize_sec = .001; end
+if nargin<4, nLen = []; end
 vi = ceil(double(viTime) / sRateHz / binsize_sec);
-vl = false(max(vi), 1);
+if isempty(nLen), nLen = max(vi); end
+vl = false(nLen, 1);
 vl(vi) = true;
 end %func
 
@@ -12594,13 +12600,15 @@ function plot_psth_clu_(viTime_clu, vrTime_trial, P, hAx, vcColor)
 if nargin<4, hAx=gca; end
 if nargin<5, vcColor = 'k'; end
 
-[tlim_psth, tbin] = deal(P.tlim_psth, P.tbin_psth);
+sRateHz_psth = get_set_(P, 'sRateHz_psth', 1000); % psth sampling rate, 1000 Hz
 
-% 1 msec downsample
-ml_trial_ms = vr2mr2_(index2logical_(viTime_clu, P.sRateHz, .001), ...
-    ceil(vrTime_trial * 1000), round(tlim_psth * 1000));
+[tlim_psth, tbin] = deal(P.tlim_psth, P.tbin_psth);
+nlim_psth = round(tlim_psth * sRateHz_psth);
+nTime_psth = ceil(max(vrTime_trial) * sRateHz_psth) + nlim_psth(end) + 1;
+ml_trial_ms = vr2mr2_(index2logical_(viTime_clu, P.sRateHz, 1/sRateHz_psth, nTime_psth), ...
+    ceil(vrTime_trial * sRateHz_psth), nlim_psth);
 [viCol_, ~] = ind2sub(size(ml_trial_ms), find(ml_trial_ms));
-vrSpike_trial = viCol_ / 1000 + tlim_psth(1);
+vrSpike_trial = viCol_ / sRateHz_psth + tlim_psth(1);
 [vnCnt, vrTimePlot] = hist(vrSpike_trial, tlim_psth(1):tbin:tlim_psth(2));
 vrRate = vnCnt / tbin / numel(vrTime_trial);
 
@@ -21299,8 +21307,8 @@ end %func
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_(vcFile_prm)
 if nargin<1, vcFile_prm = ''; end
-vcVer = 'v4.3.7';
-vcDate = '2/6/2019';
+vcVer = 'v4.3.8';
+vcDate = '2/7/2019';
 vcHash = file2hash_();
 
 if nargout==0
