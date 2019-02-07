@@ -18841,7 +18841,7 @@ if nargin<4, vcFile_template = ''; end
 if nargin<5, vcDir_prm = ''; end
 fOverwrite = 0;
 if fDebug_ui==1, fAsk = 0; end
-[vcFile_prm, vcPrompt] = deal([]);
+[vcFile_prm, vcPrompt, P] = deal([]);
 if ~exist_file_(vcFile_bin, 1), return; end
 
 if matchFileExt_(vcFile_prb, '.prm')
@@ -18851,33 +18851,37 @@ end
 
 % import binary files
 vcFile_gt_mat = '';
-if matchFileEnd_(vcFile_bin, '.rhs') % INTAN RHS format
-    vcFile_rhs = vcFile_bin;    
-    vcFile_bin = strrep(vcFile_rhs, '.rhs', '.bin');
-    if ~exist_file_(vcFile_bin) || fOverwrite
-        [vcFile_bin, vcFile_meta] = rhs2bin_(vcFile_rhs); % also write vcFile_meta
-        if isempty(vcFile_bin), fprintf(2, '%s: invalid format\n', vcFile_rhs); return; end
-    end
-elseif matchFileEnd_(vcFile_bin, '.mda') % MDA format (mountainlab)
-    fprintf(2, 'Use "makeprm-mda" command for .mda files.\n');
-    fprintf(2, '\tUsage: "irc makeprm-mda myrecording.mda myprobe.csv myarg.txt tempdir myparam.prm"\n');
-    return;
-elseif matchFileEnd_(vcFile_bin, '.raw') % Pierre Yger format (.raw)
-    [vcFile_meta, ~, vcFile_gt_mat] = raw2meta_(vcFile_bin);
-    fprintf('Converted from .raw (Pirre Yger) to .bin format\n');
-elseif matchFileEnd_(vcFile_bin, '.txt')
-    % generate and export to .batch file by replacing .txt file
-    vcFile_batch = makeprm_list_(vcFile_bin, vcFile_prb, vcFile_template);
-    fprintf('Wote to %s\n', vcFile_batch);
-    edit_(vcFile_batch);
-    return;
-elseif matchFileEnd_(vcFile_bin, '.h5')
-    makeprm_template_(vcFile_bin, vcFile_prb, vcFile_template);
-    return;
+[~,~,vcExt] = fileparts(vcFile_bin);
+switch lower(vcExt)
+    case '.rhs'% INTAN RHS format
+        vcFile_rhs = vcFile_bin;    
+        vcFile_bin = strrep(vcFile_rhs, '.rhs', '.bin');
+        if ~exist_file_(vcFile_bin) || fOverwrite
+            [vcFile_bin, vcFile_meta] = rhs2bin_(vcFile_rhs); % also write vcFile_meta
+            if isempty(vcFile_bin), fprintf(2, '%s: invalid format\n', vcFile_rhs); return; end
+        end
+    case '.mda' % MDA format (mountainlab)
+        fprintf(2, 'Use "makeprm-mda" command for .mda files.\n');
+        fprintf(2, '\tUsage: "irc makeprm-mda myrecording.mda myprobe.csv myarg.txt tempdir myparam.prm"\n');
+        return;
+    case '.raw' % Pierre Yger format (.raw)
+        [vcFile_meta, ~, vcFile_gt_mat] = raw2meta_(vcFile_bin);
+        fprintf('Converted from .raw (Pirre Yger) to .bin format\n');
+    case '.txt' % generate and export to .batch file by replacing .txt file
+        vcFile_batch = makeprm_list_(vcFile_bin, vcFile_prb, vcFile_template);
+        fprintf('Wote to %s\n', vcFile_batch);
+        edit_(vcFile_batch);
+        return;
+    case '.h5'
+        makeprm_template_(vcFile_bin, vcFile_prb, vcFile_template);
+    case '.ns5'
+        [vcFile_prm, P] = import_nsx_(vcFile_bin, vcFile_prb, vcFile_template);
 end
 set(0, 'UserData', []); %clear memory
 
-[P, vcPrompt] = create_prm_file_(vcFile_bin, vcFile_prb, vcFile_template, fAsk, vcDir_prm);   
+if isempty(P)
+    [P, vcPrompt] = create_prm_file_(vcFile_bin, vcFile_prb, vcFile_template, fAsk, vcDir_prm);   
+end
 if isempty(P)
     [vcFile_prm, vcPrompt] = deal('');
     return;
@@ -20896,30 +20900,39 @@ end
 
 %--------------------------------------------------------------------------
 % 9/17/17 JJJ: Created for SPAARC
-function vcFile_prm = import_nsx_(vcFile_nsx, vcFile_prb, vcTemplate_prm)
 % Import neuroshare format
-% sample size is determined by the smallest file in the chan recording set
-% vcFile_nsx = 'E:\TimBruns\Ichabod Trial 14\exp_9_ichabod0014.ns5';
+function [vcFile_prm, P] = import_nsx_(vcFile_nsx, vcFile_prb, vcTemplate_prm)
+% [vcFile_prm, P] = import_nsx_(vcFile_nsx)
+% [vcFile_prm, P] = import_nsx_(vcFile_nsx, vcFile_prb)
+% [vcFile_prm, P] = import_nsx_(vcFile_nsx, vcTemplate_prm)
+% [vcFile_prm, P] = import_nsx_(vcFile_nsx, vcFile_prb, vcTemplate_prm)
 
+% parse input
+if ~exist_file_(vcFile_nsx, 1), return; end
+if nargin<2, vcFile_prb=''; end
 if nargin<3, vcTemplate_prm = ''; end
+
+% determine vcTemplate_prm
 if matchFileExt_(vcFile_prb, '.prm')
     vcTemplate_prm = vcFile_prb;
+    vcFile_prb = '';
+elseif isempty(vcTemplate_prm)
+    vcTemplate_prm = ircpath_(read_cfg_('default_prm'));
+end
+assert_(exist_file_(vcTemplate_prm), sprintf('Template file does not exist: %s', vcTemplate_prm));
+
+% determine probe file
+if isempty(vcFile_prb)
     S_ = file2struct_(vcTemplate_prm);
     vcFile_prb = S_.probe_file;
 end
-vcFile_prm = '';
-if ~exist_file_(vcFile_nsx, 1), return; end
+
+% Complete the parameter struct P
 P = load_nsx_header_(vcFile_nsx);
 P.probe_file = vcFile_prb;
 P.vcFile = vcFile_nsx;
 [~, vcFile_prb_] = fileparts(vcFile_prb);
 vcFile_prm = subsFileExt_(P.vcFile, sprintf('_%s.prm', vcFile_prb_));
-if isempty(vcTemplate_prm)
-    vcTemplate_prm = ircpath_(read_cfg_('default_prm'));
-end
-assert_(exist_file_(vcTemplate_prm), sprintf('Template file does not exist: %s', vcTemplate_prm));
-
-% Write to a .prm file
 try
     S_prb = file2struct_(find_prb_(vcFile_prb));
     if isfield(S_prb, 'maxSite'), P.maxSite = S_prb.maxSite; end
@@ -20930,7 +20943,8 @@ end
 P.duration_file = P.nSamples / P.sRateHz; %assuming int16
 P.version = version_();
 P.vcFile_prm = vcFile_prm;
-% P.vcFile = vcFile_bin;
+
+% output
 copyfile(vcTemplate_prm, P.vcFile_prm, 'f');
 edit_prm_file_(P, P.vcFile_prm);
 vcPrompt = sprintf('Created a new parameter file\n\t%s', P.vcFile_prm);
@@ -21307,7 +21321,7 @@ end %func
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_(vcFile_prm)
 if nargin<1, vcFile_prm = ''; end
-vcVer = 'v4.3.8';
+vcVer = 'v4.3.9';
 vcDate = '2/7/2019';
 vcHash = file2hash_();
 
@@ -21356,7 +21370,7 @@ end
 if code ~= 0
     fprintf(2, 'Not a git repository. Please run the following command to clone from GitHub.\n');    
     fprintf(2, '\tsystem(''git clone %s.git myDest''\n', repoURL);
-    fprintf(2, '\tReplace "myDest" with the desired installation location or omit to install in ./ironclust.\n', repoURL);
+    fprintf(2, '\tReplace "myDest" with the desired installation location or omit to install in ./ironclust.\n');
     fprintf(2, '\tYou may need to install git from https://git-scm.com/downloads.\n');  
 else
     edit_('changelog.md');

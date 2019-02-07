@@ -3,6 +3,17 @@ IronClust, written by J. James Jun, Flatiron Institute, Simons Foundation
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [4.3.9] - 2019-2-7
+### Added
+- `irc makeprm myfile.ns5 myprobe.prb` command is supported for nsx format
+  - previously user had to run a command `irc import-ns5 myfile.ns5 myprobe.prb`
+- `irc makeprm myfile.ns5` now takes myprobe.prb from the default_prm file
+  - `default_prm` points to the default parameters file (`default.prm by default`)
+  - `default.cfg` or `user.cfg` stores `default_prm` setting
+  - `user.cfg` settings takes precedence over `default.cfg` and doesn't get 
+    overwritten during updates
+
+
 ## [4.3.8] - 2019-2-7
 ### Fixed
 - PSTH count histogram non-zero error is fixed
