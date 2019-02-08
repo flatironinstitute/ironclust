@@ -3,6 +3,12 @@ IronClust, written by J. James Jun, Flatiron Institute, Simons Foundation
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [4.4.0] - 2019-2-8
+### Added
+- Splitting in the PSTH window
+  - Right-click and select either horizontal or vertical cut on the raster window
+
+
 ## [4.3.9] - 2019-2-7
 ### Added
 - `irc makeprm myfile.ns5 myprobe.prb` command is supported for nsx format

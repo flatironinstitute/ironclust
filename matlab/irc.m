@@ -6345,10 +6345,7 @@ switch lower(event.Key)
     case 'i', plot_FigHist_(S0); %ISI histogram               
     case 'e', plot_FigMap_(S0);        
     case 'u', update_FigCor_(S0);        
-    case 'p' %PSTH plot
-%         if isempty(P.vcFile_trial), msgbox_('''vcFile_trial'' not set. Reload .prm file after setting (under "File menu")'); return; end
-%         plot_raster_(S0, 1);
-        plot_psth_trial_(S0, 1);
+    case 'p', plot_psth_trial_(S0, 1);
     otherwise, figure_wait_(0); %stop waiting
 end
 figure_(hObject); %change the focus back to the current object
@@ -8953,14 +8950,25 @@ end %func
 
 
 %--------------------------------------------------------------------------
+% 2/8/2019 JJJ: accepts logical or index vlIn
 function S_clu = split_clu_(iClu1, vlIn)
-% split cluster. 
+% Splits a cluster
+% [Usage]
+% -----
+% S_clu = split_clu_(iClu1, vlIn)
+% S_clu = split_clu_(iClu1, viiSpk_clu)
+
 hFig_wait = figure_wait_(1); 
 [P, S_clu, viSite_spk] = get0_('P', 'S_clu', 'viSite_spk');
 hMsg = msgbox_open_('Splitting...');
 figure(get_fig_cache_('FigWav'));
 
 % create a new cluster (add at the end)
+if ~islogical(vlIn)
+    viIn_ = vlIn;
+    vlIn = false(S_clu.vnSpk_clu(iClu1), 1);
+    vlIn(viIn_) = true;
+end
 n2 = sum(vlIn); %number of clusters to split off
 iClu2 = max(S_clu.viClu) + 1;
 
@@ -12478,7 +12486,15 @@ end
 [hFig, hFig_b] = create_figure_psth_(hFig, hFig_b, vcFile_psth, nstims);
 [vcFile_trial_, iChan_] = deal(vcFile_psth, iChan); 
 
-plot_figure_psth_(hFig, iCluCopy, crTime_trial, S_clu, P);
+[vhAx_raster, vhAx_psth] = plot_figure_psth_(hFig, iCluCopy, crTime_trial, S_clu, P);
+
+% add a context menu
+c_ = uicontextmenu(hFig);
+
+uimenu_(c_,'Label','Split - (horizontal)', 'Callback', @cbf_split_psth_);
+uimenu_(c_,'Label','Split | (vertical)', 'Callback', @cbf_split_psth_);
+arrayfun(@(x)set(x, 'UIContextMenu', c_, 'BusyAction', 'cancel'), vhAx_raster);
+
 if ~isempty(iCluPaste)
     set(hFig_b, 'Visible', 'on');
     plot_figure_psth_(hFig_b, iCluPaste, crTime_trial, S_clu, P);
@@ -12491,23 +12507,62 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function plot_figure_psth_(hFig, iClu, crTime_trial, S_clu, P)
+function cbf_split_psth_(h,e)
+[iCluCopy, iCluPaste] = get0_('iCluCopy', 'iCluPaste');
+if ~isempty(iCluPaste)
+    msgbox_('Select only one cluster to split', 1);
+    return;
+end
+
+hAx = gca;
+switch h.Label
+    case 'Split - (horizontal)'
+        fHorizontal = 1;
+    case 'Split | (vertical)'
+        fHorizontal = 0;
+    otherwise
+        error(['cbf_split_: ', h.Label, ' (invalid option)']);
+end %switch
+% cancel if two clusters are chosen
+[x_split, y_split, key_split] = ginput(1);
+if key_split~=1, return; end % cancelled
+
+% fHorizontal
+S_Ax = hAx.UserData;
+if fHorizontal
+    vl1 = S_Ax.viTrial_clu < y_split;
+else
+    vl1 = S_Ax.vrTrial_clu < x_split;
+end
+if all(vl1) || ~any(vl1)
+    msgbox_('Nothing to split', 1);
+else
+    split_clu_(iCluCopy, S_Ax.viiSpk_clu(vl1));
+    plot_psth_trial_();
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+function [vhAx_raster, vhAx_psth] = plot_figure_psth_(hFig, iClu, crTime_trial, S_clu, P)
 S_fig = get(hFig, 'UserData');
-[vhAx1, vhAx2, vcColor] = struct_get_(S_fig, 'vhAx1', 'vhAx2', 'vcColor');
-for iStim = 1:numel(vhAx1)
-    cla(vhAx1(iStim));
-    cla(vhAx2(iStim));
+[vhAx_raster, vhAx_psth, vcColor] = struct_get_(S_fig, 'vhAx1', 'vhAx2', 'vcColor');
+for iStim = 1:numel(vhAx_raster)
+    cla(vhAx_raster(iStim));
+    cla(vhAx_psth(iStim));
     vrTime_trial = crTime_trial{iStim}; %(:,1);
     nTrials = numel(vrTime_trial);
-    viTime_clu1 = S_clu_time_(S_clu, iClu);
-    plot_raster_clu_(viTime_clu1, vrTime_trial, P, vhAx1(iStim));
-    plot_psth_clu_(viTime_clu1, vrTime_trial, P, vhAx2(iStim), vcColor);
-    title(vhAx2(iStim), sprintf('Cluster %d; %d trials', iClu, nTrials));
+    [viTime_clu1, viSpk_clu1] = S_clu_time_(S_clu, iClu);
+    [viTrial_clu1, vrTrial_clu1, viiSpk_clu1] = plot_raster_clu_(viTime_clu1, vrTime_trial, P, vhAx_raster(iStim));
+    S_Ax1 = struct('viTrial_clu', viTrial_clu1, 'vrTrial_clu', vrTrial_clu1, 'viiSpk_clu', viiSpk_clu1);
+    set(vhAx_raster(iStim), 'UserData', S_Ax1);
+    plot_psth_clu_(viTime_clu1, vrTime_trial, P, vhAx_psth(iStim), vcColor);
+    title(vhAx_psth(iStim), sprintf('Cluster %d; %d trials', iClu, nTrials));
 end
 %     offset = offset + nTrials;
-if numel(vhAx1)>=2
-    set(vhAx1(2:end),'xticklabel',{});
-    for ax = vhAx1(2:end)
+if numel(vhAx_raster)>=2
+    set(vhAx_raster(2:end),'xticklabel',{});
+    for ax = vhAx_raster(2:end)
         xlabel(ax, '')
     end
 end % end
@@ -12624,21 +12679,27 @@ end
 
 
 %--------------------------------------------------------------------------
-function plot_raster_clu_(viTime_clu, vrTime_trial, P, hAx)
+function [viTrial_clu, vrTrial_clu, viiSpk_clu] = plot_raster_clu_(viTime_clu, vrTime_trial, P, hAx)
 if nargin<4, hAx=gca; end
 
 trialLength = diff(P.tlim_psth); % seconds
 nTrials = numel(vrTime_trial);
 spikeTimes = cell(nTrials, 1);
 t0 = -P.tlim_psth(1);
+[viTrial_clu, vrTrial_clu, viiSpk_clu] = deal(cell(nTrials, 1));
 for iTrial = 1:nTrials
     rTime_trial1 = vrTime_trial(iTrial);
     vrTime_lim1 = rTime_trial1 + P.tlim_psth;
     vrTime_clu1 = double(viTime_clu) / P.sRateHz;
-    vrTime_clu1 = vrTime_clu1(vrTime_clu1>=vrTime_lim1(1) & vrTime_clu1<vrTime_lim1(2));    
+    viiSpk_clu1 = find(vrTime_clu1>=vrTime_lim1(1) & vrTime_clu1<vrTime_lim1(2));
+    vrTime_clu1 = vrTime_clu1(viiSpk_clu1);    
     vrTime_clu1 = (vrTime_clu1 - rTime_trial1 + t0) / trialLength;
     spikeTimes{iTrial} = vrTime_clu1';
+    [viTrial_clu{iTrial}, vrTrial_clu{iTrial}, viiSpk_clu{iTrial}] = ...
+        deal(repmat(iTrial, numel(vrTime_clu1), 1), vrTime_clu1(:), viiSpk_clu1(:));
 end
+[viTrial_clu, vrTrial_clu, viiSpk_clu] = ...
+    deal(cell2mat_(viTrial_clu), cell2mat_(vrTrial_clu), cell2mat_(viiSpk_clu));
 
 % Plot
 spikeTimes1 = spikeTimes(~isempty_(spikeTimes));
@@ -12656,6 +12717,7 @@ grid(hAx, 'on');
 hold(hAx, 'on'); 
 plot_(hAx, [t0,t0]/trialLength, get(hAx,'YLim'), 'r-');
 xlabel(hAx, 'Time (s)');
+% set(hAx, 'UserData', makeStruct_(spikeTimes));
 end %func
 
 
@@ -21321,8 +21383,8 @@ end %func
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_(vcFile_prm)
 if nargin<1, vcFile_prm = ''; end
-vcVer = 'v4.3.9';
-vcDate = '2/7/2019';
+vcVer = 'v4.4.0';
+vcDate = '2/8/2019';
 vcHash = file2hash_();
 
 if nargout==0
@@ -28972,7 +29034,7 @@ set(hAx4, 'YLim', [0, size(mrWav_ext,2)+1], 'YTick', 1:size(mrWav_ext,2), 'XLim'
 hFig.KeyPressFcn = @(h,e)multifun_cbf_(h,e,hPlot);
 
 % add context menu
-c_ = uicontextmenu;
+c_ = uicontextmenu(hFig);
 cPlot_spk = plot2plot_([vhPlot1(2), vhPlot2(2), vhPlot3(2)], 'ro', viSpk_plot);
 c_.UserData = makeStruct_(cPlot_spk, fh_title);
 uimenu_(c_,'Label','include select','Callback',@cbf_axes_box_);
