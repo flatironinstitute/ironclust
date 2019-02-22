@@ -23389,6 +23389,7 @@ if isfield(S_txt, 'detect_sign')
 elseif isfield(S_txt, 'spike_sign')
     P.fInverse_file = ifeq_(S_txt.spike_sign>0, 1, 0);
 end
+P.uV_per_bit = get_set_(S_txt, 'scale_factor', .1);
 
 mask_out_artifacts = get_set_(S_txt, 'mask_out_artifacts', []);
 if strcmpi(mask_out_artifacts, 'true')
