@@ -68,6 +68,7 @@ switch lower(vcCmd)
     % two arguments
     case 'makeprb', makeprb_(vcArg1, vcArg2); return;
     case 'waitfor', waitfor_file_(vcArg1, vcArg2);
+    case 'convert-mda-yass', convert_mda_yass_(vcArg1, vcArg2);    
     case 'convert-mda-crcns', convert_mda_crcns_(vcArg1, vcArg2);
     case 'convert-mda-buzsaki', convert_mda_buzsaki_(vcArg1, vcArg2);
     case 'convert-mda-manual', convert_mda_manual_(vcArg1, vcArg2);
@@ -3011,17 +3012,23 @@ P1 = struct_merge_(P, P1);
 P1.spkLim = round(P1.spkLim_ms * P1.sRateHz / 1000);
 
 mnWav = load_file_(P.vcFile, [], P1);
+vcDataType = class(mnWav); 
+if strcmpi(vcDataType, 'int16') || strcmpi(vcDataType, 'uint16')
+    uV_per_bit = P.uV_per_bit;
+else
+    uV_per_bit = 1;
+end
 if nSites==0, nSites = size(mnWav,2); end
 if fProcessRaw
-    tnWav_raw = permute(mn2tn_gpu_(mnWav, P.spkLim_raw, viTime_spk), [1,3,2]);
+    tnWav_raw = permute(mn2tn_gpu_(mnWav, P.spkLim_raw, viTime_spk, [], vcDataType), [1,3,2]);
 end
 [mnWav, ~] = filt_car_(mnWav, P1);
 % if fSubtract_nmean % Apply nmean CAR to ground truth spikes (previous standard)
 %     P1=P; P1.vcCommonRef = 'nmean'; mnWav = wav_car_(mnWav, P1);
 % end
-tnWav_spk = permute(mn2tn_gpu_(mnWav, P1.spkLim, viTime_spk), [1,3,2]);
+tnWav_spk = permute(mn2tn_gpu_(mnWav, P1.spkLim, viTime_spk, [], vcDataType), [1,3,2]);
 [vrVrms_site, vrVsd_site] = mr2rms_(mnWav, 1e6);
-[vrVrms_site, vrVsd_site] = gather_(vrVrms_site * P.uV_per_bit, vrVsd_site * P.uV_per_bit);
+[vrVrms_site, vrVsd_site] = gather_(vrVrms_site * uV_per_bit, vrVsd_site * uV_per_bit);
 
 clear mnWav;
 
@@ -3039,7 +3046,7 @@ for iClu=1:nClu
     viSpk1 = subsample_vr_(viSpk_clu1, MAX_SAMPLE);
     if isempty(viSpk1), continue; end
     try
-        trWav_clu(:,:,iClu) = mean(tnWav_spk(:,:,viSpk1), 3) * P.uV_per_bit; %multiply by scaling factor?
+        trWav_clu(:,:,iClu) = mean(tnWav_spk(:,:,viSpk1), 3) * uV_per_bit; %multiply by scaling factor?
     catch
         ;
     end
@@ -8288,7 +8295,7 @@ end
 trSpkWav1 = tnWav2uV_(tnWav_spk_sites_(S_clu.cviSpk_clu{iClu1}, viSites1, S0), P, 0);
 % mrSpkWav1 = tnWav2uV_(tnWav_spk_sites_(find(S_clu.viClu==iClu1), viSites1, S0), P);
 [vlSpkIn, mrFet_split, vhAx, hFigTemp] = auto_split_wav_(trSpkWav1, [], 2, viSites1);
-hPoly = [];
+[hPoly, hFig_wav] = deal([]);
 try 
     drawnow; 
     close(hMsg); 
@@ -8297,34 +8304,87 @@ catch
 end
 while 1
     vcAns = questdlg_('Split?', 'confirmation', 'Yes', 'No', 'Manual', 'Yes');
-    switch lower(vcAns)
-        case 'yes'
-            close(hFigTemp);
-            break;
-        case {'no', ''}
-            close(hFigTemp); return;
+    close_(hFig_wav, hPoly); 
+    switch lower(vcAns)        
+        case 'yes', close_(hFigTemp); break;
+        case {'no', ''}, close(hFigTemp); return;            
         case 'manual'
-            vcAns = questdlg_('Select projection', '', 'PC1 vs PC2', 'PC3 vs PC2', 'PC1 vs PC3', 'PC1 vs PC2');
+            %vcAns = questdlg_('Select projection', '', 'PC1 vs PC2', 'PC3 vs PC2', 'PC1 vs PC3', 'PC1 vs PC2');
+            csAns_opt = {'PC1 vs PC2', 'PC3 vs PC2', 'PC1 vs PC3', 'Waveform'};
+            [iAns, fSelected] = listdlg('PromptString', 'Select a projection', ...
+                'SelectionMode', 'single', 'ListString', csAns_opt);
+            if ~fSelected, close_(hFigTemp); return; end
+            vcAns = csAns_opt{iAns};                
             switch vcAns
                 case 'PC1 vs PC2', [hAx_, iAx1, iAx2] = deal(vhAx(1), 1, 2);
                 case 'PC3 vs PC2', [hAx_, iAx1, iAx2] = deal(vhAx(2), 3, 2);
                 case 'PC1 vs PC3', [hAx_, iAx1, iAx2] = deal(vhAx(3), 1, 3);
-                otherwise
-                    close(hFigTemp); return; 
+                case 'Waveform', [vlSpkIn, hFig_wav] = wave_split_manual_(trSpkWav1, viSites1, P);
+                otherwise, close_(hFigTemp); return; 
+            end              
+            if ~strcmpi(vcAns, 'Waveform')                
+                axes(hAx_); 
+                cla(hAx_);
+                [vrX1, vrY1] = deal(mrFet_split(:,iAx1), mrFet_split(:,iAx2));
+                plot_(hAx_, vrX1, vrY1, 'k.');                
+                hPoly = impoly_();
+                if isempty(hPoly), close_(hFigTemp); return; end 
+                mrPolyPos = getPosition(hPoly);              
+                vlSpkIn = inpolygon(vrX1, vrY1, mrPolyPos(:,1), mrPolyPos(:,2));
+                plot_(hAx_, vrX1(vlSpkIn), vrY1(vlSpkIn), 'b.', vrX1(~vlSpkIn), vrY1(~vlSpkIn), 'r.');
             end            
-%             msgbox_(sprintf('Draw a polygon in PC%d vs PC%d', iAx1, iAx2), 1);
-            axes(hAx_); 
-            cla(hAx_);
-            [vrX1, vrY1] = deal(mrFet_split(:,iAx1), mrFet_split(:,iAx2));
-            plot_(hAx_, vrX1, vrY1, 'k.');
-            close_(hPoly);
-            hPoly = impoly_();
-            mrPolyPos = getPosition(hPoly);              
-            vlSpkIn = inpolygon(vrX1, vrY1, mrPolyPos(:,1), mrPolyPos(:,2));
-            plot_(hAx_, vrX1(vlSpkIn), vrY1(vlSpkIn), 'b.', vrX1(~vlSpkIn), vrY1(~vlSpkIn), 'r.');
     end %switch
 end
 split_clu_(iClu1, vlSpkIn);
+end %func
+
+
+%--------------------------------------------------------------------------
+% Feb 20 2019: created by Zach Sperry
+function [spkIn, hFig]=wave_split_manual_(trSpkWav, viSites1, P)
+iiSite1 = 1;
+
+vcCaption = sprintf('Cluster %d', get0_('iCluCopy'));
+hFig=create_figure_('', [.5 0 .5 1], vcCaption);
+hAx=gca;
+wavDim=size(trSpkWav);
+wav1=trSpkWav(:,iiSite1,:);
+iSite1 = viSites1(iiSite1);
+wav1=reshape(wav1,[wavDim(1) wavDim(3)]);
+vrT_ms = (1:size(wav1,1)); % / P.sRateHz * 1000;
+plot_(hAx,vrT_ms, wav1,'k');
+grid(hAx, 'on');
+xylabel_(hAx, 'Time (adc)', sprintf('Site %d', iSite1), 'Draw a line to split (drag and release)');
+
+%draw line through waveforms to select
+selLine=imline(hAx);
+selPos=getPosition(selLine);
+selXRange=selPos(:,1);
+selYRange=selPos(:,2);
+if selXRange(2)<selXRange(1)
+    selXRange=flip(selXRange);
+    selYRange=flip(selYRange);
+end
+if ceil(selXRange(2))>wavDim(1)
+    selXRange(2)=wavDim(1);
+end
+if floor(selXRange(1))<1
+    selXRange(1)=1;
+end
+
+%calculate intersections
+selLineSlope=(selYRange(2)-selYRange(1))/(selXRange(2)-selXRange(1));
+selLineInt=selYRange(2)-selLineSlope*selXRange(2);
+selLineInterpX=floor(selXRange(1)):ceil(selXRange(2));
+selLineInterp=selLineInterpX*selLineSlope+selLineInt;
+selWave=wav1(floor(selXRange(1)):ceil(selXRange(2)),:);
+selWave=selWave-repmat(selLineInterp',[1,size(selWave,2)]);
+cross=diff(sign(selWave))~=0;
+spkIn=sum(cross)~=0;
+
+%plot split preview
+hold(hAx, 'on');
+plot_(hAx, vrT_ms, wav1(:,spkIn), 'b', vrT_ms, wav1(:,~spkIn), 'r');
 end %func
 
 
@@ -12210,8 +12270,7 @@ end
 % nSplit = preview_split_(mrSpkWav1);
 % if isnan(nSplit), return; end
 
-hFig = figure;
-resize_figure_(hFig, [.5 0 .5 1]);
+hFig = create_figure_('Fig_autosplit', [.5 0 .5 1]);
 vhAx = zeros(4,1);
 for iAx=1:numel(vhAx)
     vhAx(iAx) = subplot(2,2,iAx, 'Parent', hFig); hold on;
@@ -14395,15 +14454,14 @@ end
 
 
 %--------------------------------------------------------------------------
-function [tr, miRange] = mn2tn_gpu_(mr, spkLim, viTime, viSite)
+% 2/19/2019 JJJ: adata type added
+function [tr, miRange] = mn2tn_gpu_(mr, spkLim, viTime, viSite, vcDataType)
 % what to do if viTime goves out of the range?
 % gpu memory efficient implementation
 % it uses GPU if mr is in GPU
-
 if nargin<4, viSite=[]; end %faster indexing
-% if nargin<5, fMeanSubt=0; end
+if nargin<5, vcDataType = 'int16'; end
 
-% JJJ 2015 Dec 24
 % vr2mr2: quick version and doesn't kill index out of range
 % assumes vi is within range and tolerates spkLim part of being outside
 % works for any datatype
@@ -14422,8 +14480,7 @@ spkLim = gpuArray_(spkLim, fGpu);
 viTime0 = [spkLim(1):spkLim(end)]'; %column
 miRange = bsxfun(@plus, int32(viTime0), int32(viTime));
 miRange = min(max(miRange, 1), nT);
-% miRange = miRange(:);
-tr = zeros([numel(viTime0), numel(viTime), nSites], 'int16');
+tr = zeros([numel(viTime0), numel(viTime), nSites], vcDataType);
 dimm_tr = size(tr);
 for iSite = 1:nSites
     if fGpu
@@ -21383,8 +21440,8 @@ end %func
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_(vcFile_prm)
 if nargin<1, vcFile_prm = ''; end
-vcVer = 'v4.4.0';
-vcDate = '2/8/2019';
+vcVer = 'v4.4.1';
+vcDate = '2/22/2019';
 vcHash = file2hash_();
 
 if nargout==0
@@ -23388,6 +23445,9 @@ if isfield(S_txt, 'detect_sign')
     P.fInverse_file = ifeq_(S_txt.detect_sign>0, 1, 0);
 elseif isfield(S_txt, 'spike_sign')
     P.fInverse_file = ifeq_(S_txt.spike_sign>0, 1, 0);
+end
+if isfield(S_txt, 'scale_factor')
+    P.uV_per_bit = S_txt.scale_factor;
 end
 P.uV_per_bit = get_set_(S_txt, 'scale_factor', .1);
 
@@ -28569,6 +28629,7 @@ end %func
 function export_spikeforest_(vcDir_out1, mnWav1, mrSiteXY1, S_json1, mrGt1)
 % export_spikeforest_paired_(vcDir_out1, mnWav1, mrSiteXY1, S_json1, mrGt1)
 % S_json: {'samplerate', 'spike_sign', 'scale_factor'}
+% mrGt1: 3 x nSpk double matrix. elec#, time index, cluster number
 
 % make directory
 mkdir_(vcDir_out1);
@@ -29416,4 +29477,62 @@ end %switch
 
 % output 
 export_spikeforest_(vcDir_out1, mnWav_ext1, mrSiteXY1, S_json1, viSpk_gt1);        
+end %func
+
+
+%--------------------------------------------------------------------------
+function convert_mda_yass_(vcDir_in, vcDir_out)
+
+if isempty(vcDir_in)
+    vcDir_in = 'K:\PeterLee';
+end
+if isempty(vcDir_out)
+    vcDir_out = 'K:\spikeforest\groundtruth\visapy_mea';
+end
+[csFiles_gt, csFiles_h5] = dir_set_(vcDir_in, 'ViSAPy_ground_truth.gdf', 'ViSAPy_nonfiltered.h5');
+
+% load timestamps and parse out non-noise clusters
+S_json = struct('spike_sign', -1);
+sample_offset = 16001;
+
+for iFile = 1:numel(csFiles_gt)
+    try
+        % firings_true.mda
+        gt = textread(csFiles_gt{iFile},'%u');
+        gt = reshape(gt,2,[])';
+        vi_gt1 = find(gt(:,2) > sample_offset);
+        mrGt1 = zeros(3, size(gt,1), 'double');
+        mrGt1(2,:) = gt(vi_gt1,2) - sample_offset; % time
+        mrGt1(3,:) = gt(vi_gt1,1); % cluster label
+        
+        % params.json
+        sRateHz1 = double(str2num_(h5read(csFiles_h5{iFile}, '/srate')));
+        vx = h5read(csFiles_h5{iFile}, '/electrode/x');
+        vy = h5read(csFiles_h5{iFile}, '/electrode/y');
+        vz = h5read(csFiles_h5{iFile}, '/electrode/z');
+        mrSiteXY1 = [vx(:), vz(:)];        
+        nChans1 = numel(vx);
+        scale_factor1 = 1e-4;
+        S_json1 = struct_set_(S_json, 'samplerate', sRateHz1, 'scale_factor', scale_factor1);
+        
+        % output directory
+        [~, vcDir12] = fileparts(fileparts(csFiles_gt{iFile}));
+        vcDir_out1 = fullfile(vcDir_out, vcDir12);
+          
+        fprintf('\n%d/%d: %s, #ch=%d, sRateHz=%0.1f\n', ...
+            iFile, numel(csFiles_gt), vcDir12, nChans1, sRateHz1);        
+            
+        % raw.mda
+        if ~exist_file_(fullfile(vcDir_out1, 'raw.mda'))
+            mnWav1 = h5read(csFiles_h5{iFile},'/data');
+            mnWav1 = mnWav1(:,sample_offset+1:end);        
+        else
+            mnWav1 = [];
+        end
+        export_spikeforest_(vcDir_out1, mnWav1, mrSiteXY1, S_json1, mrGt1);        
+    catch
+        disp(lasterr());
+    end  
+end %for
+
 end %func

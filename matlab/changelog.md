@@ -3,6 +3,21 @@ IronClust, written by J. James Jun, Flatiron Institute, Simons Foundation
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [4.4.1] - 2019-2-22
+### Added
+- GUI cluster splitting based on the waveform feature (contributed by Zach Sperry)
+  - This feature is enabled when a user selects `manual` splitting and `Waveform` projection.
+  - Currently selects the peak channel and a user can draw a line to group spikes.
+  - Future version will allow user to select a channel using arrow keys.
+- ViSAPy validation importer added (used by YASS paper)
+  - `irc convert-mda-yass [input_dir] [output_dir]`
+ 
+### Fixed
+- SpikeForest interface works correctly for a float32 (single) type
+  - It correctly reads `scale_factor` field from `params.json` file used in 
+    spikeforest format
+
+
 ## [4.4.0] - 2019-2-8
 ### Added
 - Splitting in the PSTH window
