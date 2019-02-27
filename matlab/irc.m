@@ -28351,10 +28351,16 @@ end %func
 
 
 %--------------------------------------------------------------------------
+% 2/27/2019 JJJ: catches searchpath_ error due to lack of
+% `convertStringsToChars` func (not available prior to R2017b)
 % search for path
 function flag = searchpath_(varargin)
 if nargin > 0
-    [varargin{:}] = convertStringsToChars(varargin{:});
+    try
+        [varargin{:}] = convertStringsToChars(varargin{:});
+    catch
+        fprintf(2, '`convertStringsToChars` failed\n');
+    end
 end
 
 narginchk(1, Inf);
