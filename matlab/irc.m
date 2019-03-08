@@ -63,7 +63,7 @@ switch lower(vcCmd)
     case 'import-h5', import_h5_(vcArg1);
     case 'import-jrc1', import_jrc1_(vcArg1);
     case 'export-jrc1', export_jrc1_(vcArg1);
-    case 'convert-mda', convert_mda_(vcArg1);
+    case 'convert-mda', convert_mda_(vcArg1, vcArg2, vcArg3, vcArg4);
         
     % two arguments
     case 'makeprb', makeprb_(vcArg1, vcArg2); return;
@@ -2957,16 +2957,16 @@ elseif isfield(S, 'viClu') && isfield(S, 'viTime')
 elseif isfield(S, 'viClu') && isfield(S, 'viSpk')
     S_gt.viTime = S.viSpk;    
     S_gt.viClu = S.viClu;    
-else
+elseif isfield(S, 'gtTimes')
     % Convert Nick's format to IronClust fomat
-    if isfield(S, 'gtTimes')
-        S_gt.viTime = cell2mat_(S.gtTimes');
-        S_gt.viClu = cell2mat_(arrayfun(@(i)ones(size(S.gtTimes{i}))*i, 1:numel(S.gtTimes), 'UniformOutput', 0)');
-    else
-        error('no field found.');
-    end
+    S_gt.viTime = cell2mat_(S.gtTimes');
+    S_gt.viClu = cell2mat_(arrayfun(@(i)ones(size(S.gtTimes{i}))*i, 1:numel(S.gtTimes), 'UniformOutput', 0)');
     [S_gt.viTime, ix] = sort(S_gt.viTime, 'ascend');
     S_gt.viClu = S_gt.viClu(ix);
+elseif isfield(S, 'gtRes') && isfield(S, 'gtClu') 
+    % kilosort eMouse format
+    S_gt.viTime = int32(S.gtRes);
+    S_gt.viClu = int32(S.gtClu);
 end
 if ~isempty(get_(P, 'tlim_load'))
     nSamples = double(S_gt.viTime(end));
@@ -17049,7 +17049,7 @@ end %func
 %--------------------------------------------------------------------------
 function plot_drift_(P)
 
-iShank_show = get_set_(P, 'iShank_show', 1);
+iShank_show = get_set_(P, 'iShank_show', 1); % use tabs
 vcMode_drift = get_set_(P, 'vcMode_drift', 'y'); % {'tay', 'xy', 'xya', 'x', 'y', 'gt'}
 vcMode_com = get_set_(P, 'vcMode_com', 'fet'); % {'fet', 'filt', 'raw', 'std'}
 % Compute spike position and plot drift profile
@@ -22243,13 +22243,18 @@ end %func
 
 
 %--------------------------------------------------------------------------
+% 3/8/2019 JJJ: added vcFile_out
 % Convert existing format to mda format and put in the directory
-function convert_mda_(vcFile_in)
+function convert_mda_(vcFile_in, vcFile_out, viSite, tLim)
 % Usage
 % -----
 % export_mda_(myfile.prm)
 % export_mda_(myfile.batch)
 % mda file exported to where .prm files exist
+
+if nargin<2, vcFile_out = ''; end
+if nargin<3, viSite = []; else, viSite = str2num_(viSite); end
+if nargin<4, tLim = []; else, tLim = str2num_(tLim); end
 
 fOverwrite_raw_mda = 1;
 % if nargin<2, vcDir_out = ''; end
@@ -22272,9 +22277,18 @@ for iFile = 1:numel(csFile_prm)
         continue;
     end
     P_ = loadParam_(vcFile_prm_, 0);
-    
-    % create a folder by the prm name
-    vcDir1 = strrep(vcFile_prm_, '.prm', ''); % full path location
+    nLim_ = round(tLim * P_.sRateHz);
+    if isempty(vcFile_out)
+        % create a folder by the prm name
+        vcDir1 = strrep(vcFile_prm_, '.prm', ''); % full path location
+    else
+        % create a folder 
+        if numel(csFile_prm) == 1
+            vcDir1 = vcFile_out;
+        else
+            vcDir1 = fullfile(vcFile_out, sprintf('%d', iFile));
+        end
+    end
     mkdir_(vcDir1);
     
     % Exclude sites if viSiteZero not empty
@@ -22293,14 +22307,15 @@ for iFile = 1:numel(csFile_prm)
         else
             mnWav = mnWav(:, P_.viSite2Chan)';
         end
+        mnWav = trim_wav_(mnWav, viSite, nLim_);
         writemda_(mnWav, vcFile_raw_mda, fOverwrite_raw_mda);
     end
     
     % export .prm to geom.csv
-    prb2geom_(P_.mrSiteXY, fullfile(vcDir1, 'geom.csv'), 0);
+    prb2geom_(P_.mrSiteXY, fullfile(vcDir1, 'geom.csv'), 0, viSite);
     
     % export ground truth
-    S_gt_ = load_(get_(P_, 'vcFile_gt'));
+    S_gt_ = load_gt_(get_(P_, 'vcFile_gt'));
     if ~isempty(S_gt_)
         if ~isfield(S_gt_, 'viSite')
             iSite_gt = [];
@@ -22310,7 +22325,7 @@ for iFile = 1:numel(csFile_prm)
                 S_gt_.viSite = repmat(int32(iSite_gt), size(S_gt_.viTime));
             end
         end
-        gt2mda_(S_gt_, fullfile(vcDir1, 'firings_true.mda'));        
+        gt2mda_(S_gt_, fullfile(vcDir1, 'firings_true.mda'), nLim_);
     end
     
     % Write to params.json
@@ -22323,6 +22338,26 @@ for iFile = 1:numel(csFile_prm)
     
     fprintf('\n');
 end %for
+end %func
+
+
+%--------------------------------------------------------------------------
+function mnWav = trim_wav_(mnWav, viSite, nLim)
+if ~isempty(nLim)
+    viTime = max(nLim(1),1):min(nLim(end),size(mnWav,2));
+else
+    viTime = [];
+end
+if ~isempty(viSite) && ~isempty(viTime)
+    mnWav = mnWav(viSite, viTime);
+elseif isempty(viSite) && ~isempty(viTime)
+    mnWav = mnWav(:, viTime);
+elseif ~isempty(viSite) && isempty(viTime)
+    mnWav = mnWav(viSite, :);
+else % both are not empty
+    return;
+end
+
 end %func
 
 
@@ -22436,13 +22471,16 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function S_gt = gt2mda_(vcFile_gt, vcFile_firings)
+% Mar 8 2019 JJJ: export subset of time by specifying nLim
+function S_gt = gt2mda_(vcFile_gt, vcFile_firings, nLim)
 % Usages
 % -----
 % gt2mda_(vcFile_gt, vcFile_firings)
 % gt2mda_(S_gt, vcFile_firings)
 
 if nargin<2, vcFile_firings = ''; end
+if nargin<3, nLim = []; end
+
 if isstruct(vcFile_gt)
     [vcFile_gt, S_gt] = deal('', vcFile_gt);
 else
@@ -22456,7 +22494,12 @@ mr(:,2)=S_gt.viTime(:); mr(:,3)=S_gt.viClu(:);
 if isempty(vcFile_firings)
     vcFile_firings = strrep(vcFile_gt, '.mat', '_firings.mda');
 end
-
+if ~isempty(nLim)
+    % set export time range
+    vlKeep = S_gt.viTime >= nLim(1) & S_gt.viTime <= nLim(end);
+    mr = mr(vlKeep,:);
+    mr(:,2) = mr(:,2) - nLim(1) + 1;
+end
 writemda_(double(mr'), vcFile_firings); % must be transposed
 fprintf('Output to %s\n', vcFile_firings);
 end %func
@@ -23066,12 +23109,13 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function vcFile_geom = prb2geom_(vcFile_prb, vcFile_geom, fShowPrb)
+function vcFile_geom = prb2geom_(vcFile_prb, vcFile_geom, fShowPrb, viSite)
 % vcFile_geom = prb2geom_(vcFile_prb, vcFile_geom)
 % vcFile_geom = prb2geom_(mrSiteXY, vcFile_geom)
 
 if nargin < 2, vcFile_geom = ''; end
 if nargin < 3, fShowPrb = 1; end
+if nargin < 4, viSite = []; end
 
 if ischar(vcFile_prb)
     if ~exist_file_(vcFile_prb, 1), vcFile_geom = ''; return; end
@@ -23084,6 +23128,7 @@ else
     vcFile_prb = '';   
     fShowPrb = 0;
 end
+if ~isempty(viSite), mrSiteXY = mrSiteXY(viSite,:); end
 csvwrite(vcFile_geom, mrSiteXY);
 fprintf('Created %s from %s\n', vcFile_geom, vcFile_prb);
 if fShowPrb, edit_(vcFile_geom); end
@@ -23536,7 +23581,8 @@ miSort_drift = miSort_drift(1:nSort_drift,:);
 if nargout==0
     figure; imagesc(mrDist_drift); set(gcf,'Name', P.vcFile_prm);
     figure; imagesc(mrSort_drift); set(gcf,'Name', P.vcFile_prm);
-    figure; imagesc(mrSort_drift(1:nSort_drift,:)); set(gcf,'Name', P.vcFile_prm);
+    hold on; plot([0, size(mrSort_drift,1)], repmat(nSort_drift,1,2), 'r-');
+%     figure; imagesc(mrSort_drift(1:nSort_drift,:)); set(gcf,'Name', P.vcFile_prm);
 end
 fprintf('\n\ttook %0.1fs\n', toc(t1));
 end %func
