@@ -3,6 +3,15 @@ IronClust, written by J. James Jun, Flatiron Institute, Simons Foundation
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [4.4.2] - 2019-2-22
+### Fixed
+- Filtering and detection operation became more GPU-memory efficient.
+
+### Changed
+- Default parameter changed: `vcFilter = 'bandpass';`
+  - previous value was `vcFilter = 'ndiff';`
+
+
 ## [4.4.1] - 2019-2-22
 ### Added
 - GUI cluster splitting based on the waveform feature (contributed by Zach Sperry)

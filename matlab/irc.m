@@ -7956,23 +7956,24 @@ end %func
 
 
 %--------------------------------------------------------------------------
+% 3/11/2019 JJJ: mnWav_raw can be in CPU
 function [tnWav_raw, tnWav_spk, viTime_spk] = mn2tn_wav_(mnWav_raw, mnWav_spk, viSite_spk, viTime_spk, P)
 nSpks = numel(viTime_spk);
 nSites = numel(P.viSite2Chan);
 spkLim_wav = P.spkLim;
 spkLim_raw = P.spkLim_raw;
 nSites_spk = (P.maxSite * 2) + 1;
-tnWav_raw = zeros(diff(spkLim_raw) + 1, nSites_spk, nSpks, 'like', mnWav_raw);
-tnWav_spk = zeros(diff(spkLim_wav) + 1, nSites_spk, nSpks, 'like', mnWav_spk);
 
 % Realignment parameters
 fRealign_spk = get_set_(P, 'fRealign_spk', 0); %0,1,2
-viTime_spk = gpuArray_(viTime_spk, isGpu_(mnWav_raw));
-viSite_spk = gpuArray_(viSite_spk, isGpu_(mnWav_raw));
+% viTime_spk = gpuArray_(viTime_spk, fGpu);
+% viSite_spk = gpuArray_(viSite_spk, fGpu);
 if isempty(viSite_spk)
     tnWav_raw = permute(mr2tr3_(mnWav_raw, spkLim_raw, viTime_spk), [1,3,2]);
     tnWav_spk = permute(mr2tr3_(mnWav_spk, spkLim_wav, viTime_spk), [1,3,2]);
 else
+    tnWav_raw = zeros(diff(spkLim_raw) + 1, nSites_spk, nSpks, 'like', mnWav_raw);
+    tnWav_spk = zeros(diff(spkLim_wav) + 1, nSites_spk, nSpks, 'like', mnWav_spk);
     for iSite = 1:nSites
         viiSpk11 = find(viSite_spk == iSite);
         if isempty(viiSpk11), continue; end
@@ -11558,12 +11559,15 @@ if isempty(viTime), tr=[]; return; end
 [N, M] = size(mr);
 if ~isempty(viSite), M = numel(viSite); end
 if iscolumn(viTime), viTime = viTime'; end
-
+if isGpu_(mr)
+    [viTime, viSite] = deal(gpuArray_(viTime), gpuArray_(viSite)); 
+else
+    [viTime, viSite] = deal(gather_(viTime), gather_(viSite)); 
+end
 viTime0 = [spkLim(1):spkLim(end)]'; %column
 miRange = bsxfun(@plus, int32(viTime0), int32(viTime));
 miRange = min(max(miRange, 1), N);
 miRange = miRange(:);
-
 if isempty(viSite)
     tr = mr(miRange,:);
 else
@@ -15627,18 +15631,17 @@ if get_set_(P, 'fSmooth_spatial', 0)
     mnWav1 = spatial_smooth_(mnWav1, P);
 end
 % [mnWav2, vnWav11, mnWav1, P.fGpu] = wav_preproces_(mnWav1, P);
-mnWav1_ = mnWav1; % keep a copy in CPU
 try        
-    [mnWav1, P.fGpu] = gpuArray_(mnWav1, P.fGpu);
-    if P.fft_thresh>0, mnWav1 = fft_clean_(mnWav1, P); end
-    [mnWav2, vnWav11] = filt_car_(mnWav1, P);    
+    [mnWav1_, P.fGpu] = gpuArray_(mnWav1, P.fGpu);
+    if P.fft_thresh>0, mnWav1_ = fft_clean_(mnWav1_, P); end
+    [mnWav2, vnWav11] = filt_car_(mnWav1_, P);    
+    mnWav1 = gather_(mnWav1_); % process raw recordings in CPU
+    mnWav1_ = []; % remove from GPU memory 
 catch % GPU failure
     P.fGpu = 0;
-    mnWav1 = mnWav1_;
     if P.fft_thresh>0, mnWav1 = fft_clean_(mnWav1, P); end
     [mnWav2, vnWav11] = filt_car_(mnWav1, P);
 end
-mnWav1_ = []; %remove from memory
 
 
 %-----
@@ -15705,8 +15708,18 @@ if ~isempty(vcFilter_feature)
     [mnWav2, nShift_post] = filter_detect_(mnWav1, P, vcFilter_feature); % pass raw trace
 end
 
-viSite_spk_ = gpuArray_(viSite_spk, P.fGpu);
-[tnWav_spk_raw, tnWav_spk, viTime_spk] = mn2tn_wav_(mnWav1, mnWav2, viSite_spk_, viTime_spk, P); fprintf('.');
+try
+    viSite_spk_ = gpuArray_(viSite_spk, P.fGpu);
+    [tnWav_spk_raw, tnWav_spk, viTime_spk] = mn2tn_wav_(mnWav1, mnWav2, viSite_spk_, viTime_spk, P);
+catch
+    viSite_spk_ = viSite_spk;
+    P.fGpu = 0;
+    mnWav2 = gather_(mnWav2);
+    [tnWav_spk_raw, tnWav_spk, viTime_spk] = mn2tn_wav_(mnWav1, mnWav2, viSite_spk_, viTime_spk, P); 
+end
+tnWav_spk_raw = gather_(tnWav_spk_raw);
+fprintf('.');
+
 if nFet_use >= 2
     viSite2_spk = find_site_spk23_(tnWav_spk, viSite_spk_, P);
     tnWav_spk2 = mn2tn_wav_spk2_(mnWav2, viSite2_spk, viTime_spk, P);
@@ -15728,7 +15741,6 @@ if get_set_(P, 'fCancel_overlap', 0)
     end
 end
 
-tnWav_spk_raw = gather_(tnWav_spk_raw);
 assert_(nSite_use >0, 'nSites_use = maxSite*2+1 - nSites_ref must be greater than 0');
 switch nFet_use
     case 3
@@ -18653,7 +18665,12 @@ else
     end
 end
 vcFile_meta = ircpath_(vcFile_meta, 1);
-nChans = numel(get_(file2struct_(find_prb_(vcFile_prb)), 'channels')); % make a guess
+S_prb = file2struct_(find_prb_(vcFile_prb));
+if isfield(S_prb, 'nChans')
+    nChans = S_prb.nChans;
+else
+    nChans = max(get_(S_prb, 'channels')); % make a guess
+end
 P_meta = read_meta_file_(vcFile_meta, nChans);
 if isempty(P_meta), P=[]; return; end
 
@@ -21440,8 +21457,8 @@ end %func
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_(vcFile_prm)
 if nargin<1, vcFile_prm = ''; end
-vcVer = 'v4.4.1';
-vcDate = '2/22/2019';
+vcVer = 'v4.4.2';
+vcDate = '3/11/2019';
 vcHash = file2hash_();
 
 if nargout==0
@@ -27071,6 +27088,7 @@ end %func
 
 
 %--------------------------------------------------------------------------
+% 3/11/2019 JJJ: GPU performance improved
 % 10/15/2018 JJJ: Modified from ms_bandpass_filter (MountainLab) for
 % memory-access efficiency
 % https://github.com/magland/mountainlab
@@ -27085,10 +27103,12 @@ if isempty(freqLim), mrWav_filt = mrWav; return; end
 
 if fGpu
     try mrWav_filt = zeros(size(mrWav), class_(mrWav), 'gpuArray');
-    catch, fGpu = 0;
-    end
+    catch, fGpu = 0; end
 end
-if ~fGpu, mrWav_filt = zeros(size(mrWav), 'like', mrWav); end
+if ~fGpu
+    mrWav = gather_(mrWav); 
+    mrWav_filt = zeros(size(mrWav), 'like', mrWav);
+end
 fh_filt = @(x,f)real(ifft(bsxfun(@times, fft(single(x)), f)));
 n_prev = nan;
 fprintf('Running ms_bandpass_filter\n\t'); t1=tic;
@@ -27120,7 +27140,7 @@ for iStart = 1:nSkip:nT
     mrWav_filt(iStart:iEnd,:) = mrWav1(nPad+1:end-nPad,:);
     fprintf('.');
 end
-mrWav_filt = gather_(mrWav_filt);
+if ~isGpu_(mrWav), mrWav_filt = gather_(mrWav_filt); end
 fprintf('\n\ttook %0.1fs (fGpu=%d)\n', toc(t1), fGpu);
 end %func
 

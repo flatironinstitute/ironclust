@@ -3,7 +3,7 @@
 
 vcDataType = 'int16'; % raw data format
 sRateHz = 20000; % sampling rate
-vcFilter = 'ndiff';
+vcFilter = 'bandpass';
 nDiff_filt = 3; % 4 saturates for int16
 
 

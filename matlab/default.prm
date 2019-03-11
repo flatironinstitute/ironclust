@@ -7,7 +7,7 @@ sort_file_merge = 1;        % Sort files by the 0: alphabetical order, 1: metafi
 vcFile_prm = '';            % Current parameter file path (.prm) if left empty
 template_file = '';         % Template parameter file path (.prm). Parameters in this file override the default parameter file (default.prm), but get overridden is by the parameter file.
 probe_file = '';            % Probe file to use (.prb). Default search location: prb\
-nChans = 120;               % # channels stored
+nChans = 128;               % # channels stored
 vcDataType = 'int16';       % Raw data format. Choices: {'int16', 'uint16', 'int32', 'uint32', 'single', 'double'}
 sRateHz = 25000;            % Sampling rate (Hz)
 uV_per_bit = 1;             % Bit scaling factor (uV/bit)
@@ -51,7 +51,7 @@ fText = 1;                  % Show spike count per unit (*, press 'n' to toggle 
 
 % #Pre-processing (run "jrc spikesort" after change)
 tlim_load = [];             % Time range to load in sec (uses all time range if set to empty)
-vcFilter = 'ndiff';         % {'ndiff', 'sgdiff', 'bandpass', 'fir1', 'user', 'fftdiff', 'none'}
+vcFilter = 'bandpass';         % {'ndiff', 'sgdiff', 'bandpass', 'fir1', 'user', 'fftdiff', 'none'}
 nDiff_filt = 3;			    % Differentiation filter for vcFilter='sgdiff', ignored otherwise. Set to [] to disable. 2n+1 samples used for centered differentiation
 freqLim = [300, 6000];      % Frequency cut-off limit for vcFilter='bandpass', ignored otherwise. to use high-pass set to [f_lo, nan], to use low-pass set to [nan, f_hi]
 freqLim_width = [100, 1000]; % Frequency transition width for the higher filter cutoff when 'bandpass' is used
