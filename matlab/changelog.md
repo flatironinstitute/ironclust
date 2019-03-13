@@ -3,6 +3,15 @@ IronClust, written by J. James Jun, Flatiron Institute, Simons Foundation
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [4.4.3] - 2019-3-13
+### Added
+- `irc convert-h5-mda recording.h5` works on Matthias Henning lab format
+
+### Changed
+- Drift correction now uses centroid vs amplitude histogram
+  - Previously used channel vs amplitude histogram (quantized by electrodes)
+
+
 ## [4.4.2] - 2019-2-22
 ### Fixed
 - Filtering and detection operation became more GPU-memory efficient.

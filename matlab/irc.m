@@ -21457,7 +21457,7 @@ end %func
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_(vcFile_prm)
 if nargin<1, vcFile_prm = ''; end
-vcVer = 'v4.4.2';
+vcVer = 'v4.4.3';
 vcDate = '3/11/2019';
 vcHash = file2hash_();
 
@@ -22157,11 +22157,50 @@ end
 
 
 %--------------------------------------------------------------------------
+% 3/13/19 JJJ: Hennig lab format
+function [mrWav, S_meta, S_gt, mrSiteXY] = load_h5_hennig_(vcFile_h5, fRead_bin)
+if nargin<2, fRead_bin = 1; end
+
+try
+    if fRead_bin
+        mrWav = single(h5read(vcFile_h5, '/recordings'));
+    else
+        mrWav = [];
+    end
+    mrSiteXY = h5read(vcFile_h5, '/channel_positions');
+    mrSiteXY = double(mrSiteXY(2:3,:)');
+    json_info = h5read(vcFile_h5, '/info');
+    S_info = jsondecode(json_info{1});
+    
+    S_meta = struct('sRateHz', S_info.recordings.fs, ...
+        'padpitch', S_info.electrodes.pitch, 'nChans', size(mrWav,2));
+    
+    % build S_gt
+    nClu_gt = S_info.recordings.n_neurons;
+    cviTime_clu = arrayfun(...
+        @(iClu_gt)h5read(vcFile_h5, sprintf('/spiketrains/%d/times', iClu_gt)), ...
+        0:nClu_gt-1, 'UniformOutput', 0);
+    cviTime_clu = cellfun(@(x)int32(ceil(x*S_meta.sRateHz)), cviTime_clu, 'UniformOutput', 0);
+    vnSpk_clu = cellfun(@numel, cviTime_clu);    
+    viClu = cell2mat_(arrayfun(@(iClu)repmat(iClu, 1, vnSpk_clu(iClu)), int32(1:numel(vnSpk_clu)), 'UniformOutput', 0))';
+    viTime = cell2mat_(cviTime_clu(:));
+    S_gt = makeStruct_(viClu, viTime);
+catch
+    [mrWav, S_meta, S_gt, mrSiteXY] = deal([]);
+end
+end %func
+
+
+%--------------------------------------------------------------------------
 % 08/20/18 JJJ: Import Boyden Format (Brian Allen Groundtruth)
 % Don't write to file
-function [mrWav, S_meta, S_gt] = load_h5_(vcFile_h5, fRead_bin)
+function [mrWav, S_meta, S_gt, mrSiteXY] = load_h5_(vcFile_h5, fRead_bin)
 if nargin<2, fRead_bin = 1; end
 max_bursting_index = 2;
+
+% matthias lab format    
+[mrWav, S_meta, S_gt, mrSiteXY] = load_h5_hennig_(vcFile_h5, fRead_bin);
+if ~isempty(S_meta), return; end    
 
 [vcDir_, vcFile_, vcExt] = fileparts(vcFile_h5);
 vcFile_raw = fullfile(vcDir_, 'Recordings', [vcFile_, '_raw.h5']);
@@ -22183,8 +22222,9 @@ probe_file = sprintf('boyden%d.prb', prod(probelayout));
 try viSiteZero = h5readatt(vcFile_h5, '/','badchannels'); catch, viSiteZero = []; end
 viSiteZero = viSiteZero(:)';
 S_meta = makeStruct_(uV_per_bit, probe_file, viSiteZero, nChans, probelayout, sRateHz, padpitch);
+mrSiteXY = make_mrSiteXY_(probelayout, padpitch);
 
-% Write _gt.mat file
+% build S_Gt
 try
     viTime_gt = ceil(h5read(vcFile_spikes, '/derivspiketimes') * sRateHz_gt); 
     viBurst_gt = h5read(vcFile_spikes, '/burstindex');
@@ -22215,7 +22255,7 @@ for iArg = 1:nArgs
     try
         varargout{iArg} = h5readatt(vcFile_h5, '/', varargin{iArg+1});
     catch
-        varargout{i} = [];
+        varargout{iArg} = [];
     end
 end
 end %func
@@ -23655,12 +23695,12 @@ miSort_drift = miSort_drift(1:nSort_drift,:);
 
 % if nargout>=4, viSort_drift = hclust_reorder_(mrDist_drift); end
 
-if nargout==0
+%if nargout==0
     figure; imagesc(mrDist_drift); set(gcf,'Name', P.vcFile_prm);
     figure; imagesc(mrSort_drift); set(gcf,'Name', P.vcFile_prm);
     hold on; plot([0, size(mrSort_drift,1)], repmat(nSort_drift,1,2), 'r-');
 %     figure; imagesc(mrSort_drift(1:nSort_drift,:)); set(gcf,'Name', P.vcFile_prm);
-end
+%end
 fprintf('\n\ttook %0.1fs\n', toc(t1));
 end %func
 
@@ -24715,8 +24755,8 @@ for iFile = 1:numel(csFiles_h5)
     vcFile_mda_ = fullfile(vcDir_out_, 'raw.mda');
     
     fRead_ = ~exist_file_(vcFile_mda_);
-    [mrWav_, S_meta_, S_gt_] = load_h5_(vcFile_h5_, fRead_);    
-    mrSiteXY_ = meta2geom_(S_meta_);
+    
+    [mrWav_, S_meta_, S_gt_, mrSiteXY_] = load_h5_(vcFile_h5_, fRead_);    
 
     % Exclude sites if viSiteZero not empty    
     viSiteZero = get_(S_meta_, 'viSiteZero');
@@ -24745,11 +24785,12 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function mrSiteXY = meta2geom_(S_meta)
+% 3/13/2019 JJJ: renamed from meta2geom_
+function mrSiteXY = make_mrSiteXY_(probelayout, padpitch)
 % Convert meta struct to siteXY coordinates
-nChans = prod(S_meta.probelayout);
-[ny, nx] = deal(S_meta.probelayout(1), S_meta.probelayout(2));
-[dy, dx] = deal(S_meta.padpitch(1), S_meta.padpitch(2));
+nChans = prod(probelayout);
+[ny, nx] = deal(probelayout(1), probelayout(2));
+[dy, dx] = deal(padpitch(1), padpitch(2));
 mrSiteXY = zeros(nChans, 2);
 mrSiteXY(:,1) = repmat((0:nx-1)'*dx, [ny,1]);
 mrSiteXY(:,2) = reshape(repmat((0:ny-1)*dy, [nx,1]), nChans,1);
