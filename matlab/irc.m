@@ -178,7 +178,8 @@ if ~exist_file_(vcFile_prm, 1), return; end
 P = loadParam_(vcFile_prm, 0); 
 if isempty(P), return; end    
 fError = 0;
-switch lower(vcCmd)    
+switch lower(vcCmd)  
+    case 'localize', localize_(P);    
     case 'manual-gt', manual_(P, 'groundtruth'); return;
     case 'plot-clupairs', plot_clu_pairs_(P);
     case 'preview', preview_(P); 
@@ -195,7 +196,7 @@ switch lower(vcCmd)
         detect_(P); sort_(P, 0); describe_(P.vcFile_prm); manual_(P); return;      
     case {'spikesort', 'detectsort', 'detect-sort', 'spikesort-verify', 'spikesort-validate', 'spikesort-manual', 'detectsort-manual'}
         run_irc_(P);
-    case 'gtsort'
+    case {'gtsort', 'gtsort-validate'}
         fprintf('Performing "irc detect" using groundtruth, and "irc sort" operations.\n');
         S_gt = load_gt_(P.vcFile_gt);
         if isempty(S_gt)
@@ -2949,6 +2950,19 @@ function S_gt = load_gt_(vcFile_gt, P)
 if nargin<2, P = get0_('P'); end
 if ~exist_file_(vcFile_gt), S_gt=[]; return; end
 S = load(vcFile_gt);
+vcFile_gt1 = strrep(vcFile_gt, '_gt.mat', '_gt1.mat');
+if exist_file_(vcFile_gt1)
+    % fix viSite_clu if needs to
+    S_gt1 = load(vcFile_gt1);
+    viSite_gt = get_(S, 'viSite');
+    nSites_gt = numel(unique(viSite_gt));
+    nSites_gt1 = numel(unique(get_(S_gt1, 'viSite_clu')));
+    if nSites_gt <=1 && nSites_gt1 > 1
+        % update viSite
+        S.viSite = int32(S_gt1.viSite_clu(S.viClu));
+        fprintf('load_gt_: viSite subsituted with real cluster max channel from %s\n', vcFile_gt1);
+    end
+end
 if isfield(S, 'S_gt')
     S_gt = S.S_gt;  
 elseif isfield(S, 'Sgt')
@@ -22125,9 +22139,19 @@ function mn1 = ndiff_(mn, nDiff_filt)
 
 if nDiff_filt==0, return; end
 mn1 = zeros(size(mn), 'like', mn);
-mn1(1:end-1,:) = diff(mn);
-for i = 2:nDiff_filt
-    mn1(i:end-i,:) = 2*mn1(i:end-i,:) + (mn(i*2:end,:)-mn(1:end-i*2+1,:));
+switch ndims(mn)
+    case 2
+        mn1(1:end-1,:) = diff(mn);
+        for i = 2:nDiff_filt
+            mn1(i:end-i,:) = 2*mn1(i:end-i,:) + (mn(i*2:end,:)-mn(1:end-i*2+1,:));
+        end
+    case 3
+        mn1(1:end-1,:,:) = diff(mn);
+        for i = 2:nDiff_filt
+            mn1(i:end-i,:,:) = 2*mn1(i:end-i,:,:) + (mn(i*2:end,:,:)-mn(1:end-i*2+1,:,:));
+        end
+    otherwise
+        error('ndiff_; unsupported dims');
 end
 end %func
 
@@ -29647,5 +29671,108 @@ for iFile = 1:numel(csFiles_gt)
         disp(lasterr());
     end  
 end %for
+
+end %func
+
+
+%--------------------------------------------------------------------------
+% 3/19/2019 JJJ: localize monopole
+function mrPos_spk = localize_(P)
+global tnWav_spk
+% nAve_localize = 4;
+nFet_localize = 3;
+% nSites_fit = min(size(tnWav_spk,2), 15); % todo :determine 50 um radius
+mrDist_site = pdist2(P.mrSiteXY, P.mrSiteXY);
+maxDist_site_um = get_set_(P, 'maxDist_site_um', 50);
+nSites_fit = median(sum(mrDist_site < maxDist_site_um));
+nSites_fit = min(nSites_fit, 15);
+
+if ~is_detected_(P)
+    detect_(P); 
+else
+    [S0, P] = load_cached_(P); 
+end
+
+% create a grid
+mrPos_site = [P.mrSiteXY, zeros(size(P.mrSiteXY,1), 1)];
+% vrMin_site = min(mrPos_site);
+% vrMax_site = max(mrPos_site);
+% vrRange_site = vrMax_site - vrMin_site;
+% vrX_field = vrMin_site(1) + vrRange_site(1) * linspace(-.2, 1.2, 100);
+% vrY_field = vrMin_site(2) + vrRange_site(2) * linspace(-.2, 1.2, 100);
+% vrZ_field = linspace(.1, 10, 10);
+% [xx,yy,zz] = meshgrid(vrX_field, vrY_field, vrZ_field);
+% mrPos_field = [xx(:), yy(:), zz(:)];
+% nFet = size(trFet_spk,1) / P.nPcPerChan;
+% mrPv = double(S0.mrPv_global(:,1:nFet_localize));
+
+nSamples_spk = size(tnWav_spk,1);
+% model fit localization. compare with CM method
+viSites_fit = 1:nSites_fit;
+trWav_spk = single(tnWav_spk(:,viSites_fit, :));
+% trWav_spk = ndiff_(trWav_spk, 3);
+mrWav_spk1 = reshape(trWav_spk(:,:,1:4:end), nSamples_spk, []);
+[mrPv,~,c] = pca(mrWav_spk1', 'NumComponents', nFet_localize, 'Centered', false);
+
+nSites = numel(S0.cviSpk_site);
+nSpk = size(tnWav_spk, 3);
+[mrPos_spk] = deal(zeros(nSpk, 3));
+[vrError_spk, vrSource_spk, vrAmp_spk] = deal(zeros(nSpk, 1));
+
+t1 = tic;
+fprintf('localize_: computing monopole locations:\n\t');
+for iSite = 1:nSites
+    try
+        viSpk1 = S0.cviSpk_site{iSite};
+        if isempty(viSpk1), continue; end
+%         viSpk2 = S0.cviSpk2_site{iSite};    
+        viSite1 = P.miSites(viSites_fit,iSite);
+%         [n1, n12] = deal(numel(viSpk1), numel(viSpk1) + numel(viSpk2));   
+        
+        switch 1
+            case 2
+                mrFet1 = sum(mrWav1 .* zscore(mrWav1)); % project by its mean, normalized template
+            case 1
+                mrWav1 = reshape(trWav_spk(:,:,viSpk1), nSamples_spk, []);
+                trFet1 = permute(reshape(mrPv' * mrWav1, nFet_localize, [], numel(viSpk1)), [2,3,1]);
+                mrFet1 = trFet1(:,:,1);
+        end %switch
+        mrPos_site1 = mrPos_site(viSite1,:);
+        xyz0 = mrPos_site(iSite,:);
+        xyz0(3) = .01;
+%         [mrPos_spk(viSpk1,:), vrError_spk(viSpk1)] = localize_monopole(mrPos_site1, mrPos_field, trFet1, nAve_localize);
+        [mrPos_spk(viSpk1,:), vrSource_spk(viSpk1), vrError_spk(viSpk1)] = search_monopole(mrPos_site1(2:end,:), mrFet1(2:end,:), xyz0, 10);
+        vrAmp_spk(viSpk1) = sqrt(sum(trFet1(:,:,1).^2));
+%         [mrPos1_spk(viSpk1,:), mrPos2_spk(viSpk2,:)] = deal(mrPos12(1:n1,:), mrPos12(n1+1:end,:));
+%         [vrSource1_spk(viSpk1), vrSource2_spk(viSpk2)] = deal(vrError12(1:n1), vrError12(n1+1:end));
+    catch
+        disp(lasterr());
+    end
+    fprintf('.');
+end %for
+% vrSource_spk = (vrSource1_spk.^2 + vrSource2_spk.^2);
+% mrPos_spk = (vrSource1_spk.^2.*mrPos1_spk + vrSource2_spk.^2.*mrPos2_spk) ./ vrSource_spk;
+fprintf('\n\ttook %0.1fs\n', toc(t1));
+% disp(quantile(vrError_spk, .9));
+% figure; plot(sort(vrError_spk)); ylabel('Error'); 
+
+% fh = @()eval('axis([-100 100 -100 100 0 1]); axis square; view(2);');
+
+viMap_clu = [1, randperm(S0.S_clu.nClu)+1];
+viColor_clu = viMap_clu(S0.S_clu.viClu+1) - 1;
+% figure; h = scatter3(mrPos_spk(:,1), mrPos_spk(:,2), sqrt(vrAmp_spk), 5, viColor_clu, 'o', 'filled'); %fh();
+figure; h = scatter(mrPos_spk(:,1), mrPos_spk(:,2), 5, viColor_clu, 'o', 'filled'); title('monopole fit');
+figure; h = scatter(S0.mrPos_spk(:,1), S0.mrPos_spk(:,2), 5, viColor_clu, 'o', 'filled'); title('cm');
+
+
+% set(gcf,'KeyPressFcn', @(h)
+% figure; plot3(mrPos2_spk(:,1), mrPos2_spk(:,2), mrPos2_spk(:,3), '.', 'MarkerSize', 2); fh();
+% figure; plot3(mrPos_spk(:,1), mrPos_spk(:,2), mrPos_spk(:,3), '.', 'MarkerSize', 2); fh();
+
+% figure; plot3(mrPos_spk(:,1), mrPos_spk(:,2), mrPos_spk(:,3), '.');
+
+% figure; scatter3(S0.mrPos_spk(:,1), S0.mrPos_spk(:,2), sqrt(vrSource_spk), 2, viColor_clu, 'o', 'filled'); %fh();
+% color using ground truth 
+
 
 end %func
