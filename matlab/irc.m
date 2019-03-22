@@ -3802,7 +3802,7 @@ if fRemove_duplicate && size(S_clu.tmrWav_spk_clu,3)>1
     vlKeep_clu = vrDist_clu <= P.maxDist_site_um;    
     if ~all(vlKeep_clu)
         S_clu = S_clu_keep_(S_clu, vlKeep_clu); 
-        fprintf('%d duplicate units removed\n', sum(~vlKeep_clu));e
+        fprintf('%d duplicate units removed\n', sum(~vlKeep_clu));
     end    
 end
 end %func

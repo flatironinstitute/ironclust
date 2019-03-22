@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
   - the peak channel location is determined based on the waveform amplitude divided by detection threshold'
 - Crash is averted if only one cluster is found
 
+
 ## [4.4.3] - 2019-3-13
 ### Added
 - `irc convert-h5-mda recording.h5` works on Matthias Henning lab format
