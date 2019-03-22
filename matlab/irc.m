@@ -233,11 +233,11 @@ switch lower(vcCmd)
         catch
             error('Probe file not found: %s', P.probe_file);
         end
-    case 'export-spk'
-        S0 = get(0, 'UserData');
-        trSpkWav = load_bin_(strrep(P.vcFile_prm, '.prm', '_spkwav.jrc'), 'int16', S0.dimm_spk);
-        assignWorkspace_(trSpkWav);        
-    case 'export-raw'
+%     case 'export-spkwav'
+%         S0 = get(0, 'UserData');
+%         trSpkWav = load_bin_(strrep(P.vcFile_prm, '.prm', '_spkwav.jrc'), 'int16', S0.dimm_spk);
+%         assignWorkspace_(trSpkWav);        
+    case 'export-spkraw'
         S0 = get(0, 'UserData');
         trWav_raw = load_bin_(strrep(P.vcFile_prm, '.prm', '_spkraw.jrc'), 'int16', S0.dimm_spk);
         assignWorkspace_(trWav_raw);  
@@ -3796,15 +3796,29 @@ end
 S_clu = S_clu_wav_(S_clu);
 S_clu.mrWavCor = S_clu_wavcor_(S_clu, P);  
 
-if fRemove_duplicate
-    [~,viSite_min_clu] = min(min(S_clu.tmrWav_spk_clu),[],2);
+if fRemove_duplicate && size(S_clu.tmrWav_spk_clu,3)>1
+    viSite_min_clu = find_peakSite_snr_clu_(S_clu.tmrWav_spk_clu); 
     vrDist_clu = sqrt(sum((P.mrSiteXY(S_clu.viSite_clu,:) - P.mrSiteXY(viSite_min_clu,:)).^2, 2));
-    vlKeep_clu = vrDist_clu < P.maxDist_site_um;    
+    vlKeep_clu = vrDist_clu <= P.maxDist_site_um;    
     if ~all(vlKeep_clu)
         S_clu = S_clu_keep_(S_clu, vlKeep_clu); 
-        fprintf('%d duplicate units removed\n', sum(~vlKeep_clu));
+        fprintf('%d duplicate units removed\n', sum(~vlKeep_clu));e
     end    
 end
+end %func
+
+
+%--------------------------------------------------------------------------
+% 3/22/19 JJJ: return most negative site
+% normalize amplitudes by channel baseline noise
+function viSite_min = find_peakSite_snr_clu_(trWav_clu)
+%     [~,viSite_min_clu] = min(min(S_clu.tmrWav_spk_clu),[],2);    
+
+mrMin_clu = squeeze_(min(trWav_clu));
+vrThresh_site = get0_('vrThresh_site');
+mrMin_clu = double(mrMin_clu) ./ double(vrThresh_site(:));
+mrMin_clu(vrThresh_site==0,:) = nan;
+[~,viSite_min] = min(mrMin_clu);
 end %func
 
 
@@ -11244,8 +11258,13 @@ end %func
 % 11/10/17: Removed recursive saving
 % 9/29/17 Updating the version number when saving IronClust
 function S0 = save0_(vcFile_mat, fSkip_fig)
+if nargin<1, vcFile_mat = []; end
 if nargin<2, fSkip_fig = 0; end
 % save S0 structure to a mat file
+if isempty(vcFile_mat)
+    P = get0_('P');
+    vcFile_mat = strrep(P.vcFile_prm, '.prm', '_jrc.mat');
+end
 try    
     fprintf('Saving 0.UserData to %s...\n', vcFile_mat);
     warning off;
@@ -17860,8 +17879,9 @@ for i=1:numel(csNames)
                 switch iDimm
                     case 1, val = val(viKeep,:);
                     case 2, val = val(:,viKeep);
-                    otherwise
-                        disperr_('struct_select_: invalid iDimm');
+                    case 3
+                        val = val(:,:,viKeep);
+                    otherwise,disperr_('struct_select_: invalid iDimm');
                 end
             case 3
                 switch iDimm
@@ -21202,10 +21222,13 @@ end %func
 
 
 %--------------------------------------------------------------------------
+% 3/22/19 JJJ: Merged Zach's changes
 % 9/19/17 JJJ: Created for SPARC
-function plot_aux_rate_(fSelectedUnit)
+function plot_aux_rate_(fSelectedUnit, fNewFig)
 % Aux channel vs. rate
 if nargin<1, fSelectedUnit = 0; end %plot all
+if nargin<2, fNewFig = 0; end % added by Zach
+
 [P, S_clu, iCluCopy] = get0_('P', 'S_clu', 'iCluCopy');
 P = loadParam_(P.vcFile_prm);
 
@@ -21471,8 +21494,8 @@ end %func
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_(vcFile_prm)
 if nargin<1, vcFile_prm = ''; end
-vcVer = 'v4.4.3';
-vcDate = '3/11/2019';
+vcVer = 'v4.4.4';
+vcDate = '3/22/2019';
 vcHash = file2hash_();
 
 if nargout==0
@@ -29677,7 +29700,7 @@ end %func
 
 %--------------------------------------------------------------------------
 % 3/19/2019 JJJ: localize monopole
-function mrPos_spk = localize_(P)
+function mrPos_fit_spk = localize_(P)
 global tnWav_spk
 % nAve_localize = 4;
 nFet_localize = 3;
@@ -29716,54 +29739,65 @@ mrWav_spk1 = reshape(trWav_spk(:,:,1:4:end), nSamples_spk, []);
 
 nSites = numel(S0.cviSpk_site);
 nSpk = size(tnWav_spk, 3);
-[mrPos_spk] = deal(zeros(nSpk, 3));
-[vrError_spk, vrSource_spk, vrAmp_spk] = deal(zeros(nSpk, 1));
+[mrPos_fit_spk, vrAmp_fit_spk, vrError_spk] = get_(S0, 'mrPos_fit_spk', 'vrAmp_fit_spk', 'vrError_spk');
+mrPos_fit_spk = [];
+try
+    if isempty(mrPos_fit_spk)
+        t1 = tic;
+        [mrPos_fit_spk] = deal(zeros(nSpk, 3));
+        [vrError_spk, vrSource_spk, vrAmp_fit_spk] = deal(zeros(nSpk, 1));
+        fprintf('localize_: computing monopole locations:\n\t');
+        for iSite = 1:nSites
+            viSpk1 = S0.cviSpk_site{iSite};
+            if isempty(viSpk1), continue; end
+    %         viSpk2 = S0.cviSpk2_site{iSite};    
+            viSite1 = P.miSites(viSites_fit,iSite);
+    %         [n1, n12] = deal(numel(viSpk1), numel(viSpk1) + numel(viSpk2));   
 
-t1 = tic;
-fprintf('localize_: computing monopole locations:\n\t');
-for iSite = 1:nSites
-    try
-        viSpk1 = S0.cviSpk_site{iSite};
-        if isempty(viSpk1), continue; end
-%         viSpk2 = S0.cviSpk2_site{iSite};    
-        viSite1 = P.miSites(viSites_fit,iSite);
-%         [n1, n12] = deal(numel(viSpk1), numel(viSpk1) + numel(viSpk2));   
-        
-        switch 1
-            case 2
-                mrFet1 = sum(mrWav1 .* zscore(mrWav1)); % project by its mean, normalized template
-            case 1
-                mrWav1 = reshape(trWav_spk(:,:,viSpk1), nSamples_spk, []);
-                trFet1 = permute(reshape(mrPv' * mrWav1, nFet_localize, [], numel(viSpk1)), [2,3,1]);
-                mrFet1 = trFet1(:,:,1);
-        end %switch
-        mrPos_site1 = mrPos_site(viSite1,:);
-        xyz0 = mrPos_site(iSite,:);
-        xyz0(3) = .01;
-%         [mrPos_spk(viSpk1,:), vrError_spk(viSpk1)] = localize_monopole(mrPos_site1, mrPos_field, trFet1, nAve_localize);
-        [mrPos_spk(viSpk1,:), vrSource_spk(viSpk1), vrError_spk(viSpk1)] = search_monopole(mrPos_site1(2:end,:), mrFet1(2:end,:), xyz0, 10);
-        vrAmp_spk(viSpk1) = sqrt(sum(trFet1(:,:,1).^2));
-%         [mrPos1_spk(viSpk1,:), mrPos2_spk(viSpk2,:)] = deal(mrPos12(1:n1,:), mrPos12(n1+1:end,:));
-%         [vrSource1_spk(viSpk1), vrSource2_spk(viSpk2)] = deal(vrError12(1:n1), vrError12(n1+1:end));
-    catch
-        disp(lasterr());
+            switch 3
+                case 3
+                    trWav1 = ndiff_(trWav_spk(:,:,viSpk1), 3);
+                    mrFet1 = squeeze_(max(abs(trWav1)));
+                case 2
+                    trWav1 = trWav_spk(:,:,viSpk1);
+                    trWav_mean_spk = zscore(mean(trWav1, 2));
+                    mrFet1 = squeeze_(sum(trWav1 .* trWav_mean_spk)); % project by its mean, normalized template
+                case 1
+                    mrWav1 = reshape(trWav_spk(:,:,viSpk1), nSamples_spk, []);
+                    trFet1 = permute(reshape(mrPv' * mrWav1, nFet_localize, [], numel(viSpk1)), [2,3,1]);
+                    mrFet1 = trFet1(:,:,1);
+            end %switch
+            mrPos_site1 = mrPos_site(viSite1,:);
+            xyz0 = mrPos_site(iSite,:);
+            xyz0(3) = .01;
+    %         [mrPos_spk(viSpk1,:), vrError_spk(viSpk1)] = localize_monopole(mrPos_site1, mrPos_field, trFet1, nAve_localize);
+            [mrPos_fit_spk(viSpk1,:), vrSource_spk(viSpk1), vrError_spk(viSpk1)] = search_monopole(mrPos_site1(2:end,:), mrFet1(2:end,:), xyz0, 30);
+            vrAmp_fit_spk(viSpk1) = sqrt(sum(mrFet1.^2));
+    %         [mrPos1_spk(viSpk1,:), mrPos2_spk(viSpk2,:)] = deal(mrPos12(1:n1,:), mrPos12(n1+1:end,:));
+    %         [vrSource1_spk(viSpk1), vrSource2_spk(viSpk2)] = deal(vrError12(1:n1), vrError12(n1+1:end));
+            fprintf('.');
+        end %for
+        S0 = set0_(mrPos_fit_spk, vrError_spk, vrSource_spk);
+        save0_();
+        fprintf('\n\ttook %0.1fs\n', toc(t1));
     end
-    fprintf('.');
-end %for
+catch
+    disp(lasterr());
+end
 % vrSource_spk = (vrSource1_spk.^2 + vrSource2_spk.^2);
 % mrPos_spk = (vrSource1_spk.^2.*mrPos1_spk + vrSource2_spk.^2.*mrPos2_spk) ./ vrSource_spk;
-fprintf('\n\ttook %0.1fs\n', toc(t1));
 % disp(quantile(vrError_spk, .9));
 % figure; plot(sort(vrError_spk)); ylabel('Error'); 
 
-% fh = @()eval('axis([-100 100 -100 100 0 1]); axis square; view(2);');
-
+fh = @()eval('axis([-100 100 -100 100 0 1]); axis square; view(2);');
+rng(0);
 viMap_clu = [1, randperm(S0.S_clu.nClu)+1];
 viColor_clu = viMap_clu(S0.S_clu.viClu+1) - 1;
-% figure; h = scatter3(mrPos_spk(:,1), mrPos_spk(:,2), sqrt(vrAmp_spk), 5, viColor_clu, 'o', 'filled'); %fh();
-figure; h = scatter(mrPos_spk(:,1), mrPos_spk(:,2), 5, viColor_clu, 'o', 'filled'); title('monopole fit');
-figure; h = scatter(S0.mrPos_spk(:,1), S0.mrPos_spk(:,2), 5, viColor_clu, 'o', 'filled'); title('cm');
-
+% figure; h = scatter3(mrPos_fit_spk(:,1), mrPos_fit_spk(:,2), sqrt(std(vrAmp_fit_spk)./vrAmp_fit_spk), 5, viColor_clu, 'o', 'filled'); fh();
+% figure; h = scatter(mrPos_spk(:,1), mrPos_spk(:,2), 5, viColor_clu, 'o', 'filled'); title('monopole fit'); axis([-100 100 -100 100]);
+% figure; h = scatter(S0.mrPos_spk(:,1), S0.mrPos_spk(:,2), 5, viColor_clu, 'o', 'filled'); title('cm'); axis([-100 100 -100 100]);
+% figure; h = scatter(mrPos_fit_spk(:,1), mrPos_fit_spk(:,2), 5, viColor_clu, 'o', 'filled'); title('monopole fit'); axis([-100 100 -100 100]);
+% figure; h = scatter(S0.mrPos_spk(:,1), S0.mrPos_spk(:,2), 5, viColor_clu, 'o', 'filled'); title('cm'); axis([-100 100 -100 100]);
 
 % set(gcf,'KeyPressFcn', @(h)
 % figure; plot3(mrPos2_spk(:,1), mrPos2_spk(:,2), mrPos2_spk(:,3), '.', 'MarkerSize', 2); fh();
@@ -29771,8 +29805,12 @@ figure; h = scatter(S0.mrPos_spk(:,1), S0.mrPos_spk(:,2), 5, viColor_clu, 'o', '
 
 % figure; plot3(mrPos_spk(:,1), mrPos_spk(:,2), mrPos_spk(:,3), '.');
 
-% figure; scatter3(S0.mrPos_spk(:,1), S0.mrPos_spk(:,2), sqrt(vrSource_spk), 2, viColor_clu, 'o', 'filled'); %fh();
+figure; scatter3(S0.mrPos_spk(:,1), S0.mrPos_spk(:,2), sqrt(vrAmp_fit_spk), 2, viColor_clu, 'o', 'filled'); %fh();
 % color using ground truth 
-
-
+if 0
+    vlPlot = (vrError_spk > quantile(vrError_spk,.8));
+    figure; hold on;
+    h1 = scatter(mrPos_fit_spk(vlPlot,1), mrPos_fit_spk(vlPlot,2), 5, viColor_clu(vlPlot), '*', 'filled'); title('bad fit'); axis([-100 100 -100 100]);
+    h2 = scatter(mrPos_fit_spk(~vlPlot,1), mrPos_fit_spk(~vlPlot,2), 5, viColor_clu(~vlPlot), 'o'); title('good fit'); axis([-100 100 -100 100]);
+end
 end %func

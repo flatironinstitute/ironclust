@@ -3,6 +3,12 @@ IronClust, written by J. James Jun, Flatiron Institute, Simons Foundation
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [4.4.4] - 2019-3-22
+### Fixed
+- `fRemove_duplicate` works correctly for channels with different noise baseline
+  - the peak channel location is determined based on the waveform amplitude divided by detection threshold'
+- Crash is averted if only one cluster is found
+
 ## [4.4.3] - 2019-3-13
 ### Added
 - `irc convert-h5-mda recording.h5` works on Matthias Henning lab format

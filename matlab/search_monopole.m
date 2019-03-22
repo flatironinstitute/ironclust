@@ -1,20 +1,24 @@
 % goal: minimize cosine distance 
 % apply fminbnd from the max position
 % return strength
-function [mrPos_spk, vrSource_spk, vrErr_spk] = search_monopole(mrPos_site, trFet, xyz0, iFet, MaxIter)
+function [mrPos_spk, vrSource_spk, vrErr_spk] = search_monopole(mrPos_site, mrObs, xyz0, MaxIter)
 % try excluding the nearest electrode
-if nargin<4, iFet = 1; end
-if nargin<5, MaxIter = 30; end
+% if nargin<4, iFet = 1; end
+% if nargin<5, MaxIter = 30; end
 
 
 
 % initial position
-fh_forward = @(xyz)1./pdist2(xyz, mrPos_site);
-switch 1
+fh_cos = @(x,y)1-sum(x.*y); %assume normalized
+fh_norm = @(x)x./sqrt(sum(x.^2));
+fh_forward = @(xyz)fh_norm(1./pdist2(xyz, mrPos_site));
+switch 3
+    case 3, fh_err = @(xyz, obs)fh_cos(fh_forward(xyz), obs);
     case 2, fh_err = @(xyz, obs)pdist2(fh_forward(xyz), obs, 'correlation');
     case 1, fh_err = @(xyz, obs)pdist2(fh_forward(xyz), obs, 'cosine');
 end
-mrObs = double(abs(trFet(:,:,iFet)));
+mrObs = double(abs(mrObs));
+mrObs = mrObs ./ sqrt(sum(mrObs.^2)); % normalize output
 
 % xyz0 = [mrPos_site(1,1), mrPos_site(1,2), 1];
 nSpk = size(mrObs,2);
@@ -43,28 +47,60 @@ nSpk = size(mrObs,2);
 % use fitting 
 % tic
 mrPos_spk = zeros(3, nSpk);
-% mrPos_spk=mrPos_spk';
 vrErr_spk = zeros(nSpk,1);
-parfor iSpk = 1:nSpk
-% iSpk = 1;
-    obs_ = mrObs(:,iSpk);
-%     switch 1
-%         case 1, [~,imax_] = max(obs_); xyz0_ = mrPos_site(imax_,:); xyz0_(3) = .1;
-% %         case 2, xyz0_ = mrPos_spk(:,iSpk)';
-%     end
-%     
-    [mrPos_spk(:,iSpk), vrErr_spk(iSpk)] = fminsearch(@(xyz)fh_err(xyz,obs_'), xyz0, struct('Display', 'off', 'MaxIter', MaxIter, 'TolFun', .01));
-%     mrPos(:,iSpk) = lsqnonneg(, mrObs(:,iSpk))
-%     fprintf('.');
-end
-% toc
+S_opt = struct('Display', 'off', 'MaxIter', MaxIter, 'TolFun', .01);
+switch 1
+    case 2
+        fh_search = @(obs_)fminunc(@(xyz)fh_err(xyz,obs_'), xyz0, S_opt);
+        parfor iSpk = 1:nSpk
+            [mrPos_spk(:,iSpk), vrErr_spk(iSpk)] = fh_search(mrObs(:,iSpk));
+        end
+    case 1        
+        fh_search = @(obs_)fminsearch(@(xyz)fh_err(xyz,obs_'), xyz0, S_opt);
+        parfor iSpk = 1:nSpk
+            [mrPos_spk(:,iSpk), vrErr_spk(iSpk)] = fh_search(mrObs(:,iSpk));
+        end
+%     case 2
+%         fh_search = @(obs_)fminsearch(@(xyz)fh_err(xyz,obs_'), gpuArray(double(xyz0)), S_opt);              
+%         mrObs = gpuArray(double(mrObs));
+%         [mrPos_spk, vrErr_spk] = arrayfun(@(i)fh_search(mrObs(:,i)), 1:size(mrObs,2));
+%         toc
+%         [mrPos_spk, vrErr_spk] = arrayfun(@fh_search, mrObs);
+end %switch
 mrPos_spk=mrPos_spk';
-
 vrSource_spk = sqrt(abs(sum(mrObs.^2) ./ sum(1./pdist2(mrPos_site, mrPos_spk, 'squaredeuclidean'))))';
 
+% redo poor fit and fit two sources and take stronger 
+if 0
+    thresh_error = .08;
+    viSelect = find(vrErr_spk>thresh_error);
+    [mrPos_spk(viSelect,:), vrErr_spk(viSelect)] = fit_two_monopoles_(mrObs(:,viSelect), mrPos_site, xyz0, S_opt);
+end
 mrPos_spk(:,3) = abs(mrPos_spk(:,3));
 % vrErr_spk = 1./vrErr_spk;
 
+end %func
+
+
+%--------------------------------------------------------------------------
+function [mrPos_spk1, vrErr_spk1] = fit_two_monopoles_(mrObs1, mrPos_site, xyz0, S_opt)
+nSpk1 = size(mrObs1,2);
+mrPos_spk1 = zeros(3, nSpk1);
+vrErr_spk1 = zeros(nSpk1,1);
+
+fh_forward1 = @(xyzxyzp)1./pdist2(xyzxyzp(1:3), mrPos_site) + xyzxyzp(7)./pdist2(xyzxyzp(4:6), mrPos_site);
+fh_err1 = @(xyz12p, obs)pdist2(fh_forward1(xyz12p), obs, 'cosine'); % todo: speed up cosine distance calculation
+fh_search1 = @(obs_)fminsearch(@(xyzxyzp)fh_err1(xyzxyzp,obs_'), [xyz0, xyz0, 1], S_opt);
+
+parfor iSpk1 = 1:nSpk1
+    [y_, vrErr_spk1(iSpk1)] = fh_search1(mrObs1(:,iSpk1));
+    if y_(end) > 1
+        mrPos_spk1(:,iSpk1) = y_(4:6);
+    else
+        mrPos_spk1(:,iSpk1) = y_(1:3);
+    end
+end
+mrPos_spk1 = mrPos_spk1';
 end %func
 
 
