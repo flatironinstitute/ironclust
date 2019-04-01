@@ -6,19 +6,26 @@ function [mrPos_spk, vrSource_spk, vrErr_spk] = search_monopole(mrPos_site, mrOb
 % if nargin<4, iFet = 1; end
 % if nargin<5, MaxIter = 30; end
 
+% thresh_error = .05;
+thresh_error = [];
+
+% problem based optimization
 
 
 % initial position
-fh_cos = @(x,y)1-sum(x.*y); %assume normalized
-fh_norm = @(x)x./sqrt(sum(x.^2));
-fh_forward = @(xyz)fh_norm(1./pdist2(xyz, mrPos_site));
-switch 3
-    case 3, fh_err = @(xyz, obs)fh_cos(fh_forward(xyz), obs);
-    case 2, fh_err = @(xyz, obs)pdist2(fh_forward(xyz), obs, 'correlation');
-    case 1, fh_err = @(xyz, obs)pdist2(fh_forward(xyz), obs, 'cosine');
-end
+% fh_cos = @(x,y)1-sum(x.*y); %assume normalized
+fh_normalize = @(x)x./sqrt(sum(x.^2));
+fh_norm = @(x)sqrt(sum(x.^2));
+% fh_forward = @(xyz)fh_normalize(1./pdist2(xyz, mrPos_site));
+% switch 3
+%     case 3, fh_err = @(xyz, obs)fh_cos(fh_forward(xyz), obs);
+%     case 2, fh_err = @(xyz, obs)pdist2(fh_forward(xyz), obs, 'correlation');
+%     case 1, fh_err = @(xyz, obs)pdist2(fh_forward(xyz), obs, 'cosine');
+% end
 mrObs = double(abs(mrObs));
 mrObs = mrObs ./ sqrt(sum(mrObs.^2)); % normalize output
+mrObs_inv_norm = fh_normalize(1./mrObs);
+mrObs_sq_inv_norm = fh_normalize(1./mrObs.^2);
 
 % xyz0 = [mrPos_site(1,1), mrPos_site(1,2), 1];
 nSpk = size(mrObs,2);
@@ -49,16 +56,39 @@ nSpk = size(mrObs,2);
 mrPos_spk = zeros(3, nSpk);
 vrErr_spk = zeros(nSpk,1);
 S_opt = struct('Display', 'off', 'MaxIter', MaxIter, 'TolFun', .01);
-switch 1
-    case 2
-        fh_search = @(obs_)fminunc(@(xyz)fh_err(xyz,obs_'), xyz0, S_opt);
+switch 6
+    case 6
+        fh_forward1 = @(xyz)fh_normalize(sum((mrPos_site-xyz)'.^2));
+        parfor iSpk = 1:nSpk
+            [mrPos_spk(:,iSpk), vrErr_spk(iSpk)] = fminsearch(@(xyz)1-fh_forward1(xyz) * mrObs_sq_inv_norm(:,iSpk), xyz0, S_opt);
+        end
+    case 5
+        fh_forward1 = @(xyz)(1./sqrt(sum((mrPos_site-xyz)'.^2)));
+        fh_penalty1 = @(xyz)sum(abs(xyz-xyz0)) * 1e-12;
+        parfor iSpk = 1:nSpk
+            [mrPos_spk(:,iSpk), vrErr_spk(iSpk)] = fminsearch(@(xyz)fh_penalty1(xyz) - fh_forward1(xyz) * mrObs(:,iSpk), xyz0, S_opt);
+        end
+    case 4
+        fh_forward1 = @(xyz)fh_normalize(1./sqrt(sum((mrPos_site-xyz)'.^2)));
+        parfor iSpk = 1:nSpk
+            [mrPos_spk(:,iSpk), vrErr_spk(iSpk)] = fminsearch(@(xyz)1-fh_forward1(xyz) * mrObs(:,iSpk), xyz0, S_opt);
+        end
+    case 3
+        fh_search = @(obs_)fmincon(@(xyz)fh_err(xyz,obs_'), xyz0, [1 1 1], 1000);
         parfor iSpk = 1:nSpk
             [mrPos_spk(:,iSpk), vrErr_spk(iSpk)] = fh_search(mrObs(:,iSpk));
         end
-    case 1        
-        fh_search = @(obs_)fminsearch(@(xyz)fh_err(xyz,obs_'), xyz0, S_opt);
+    case 2
+        fh_search = @(obs_)fminunc(@(xyz)fh_err(xyz,obs_'), xyz0, S_opt);
+        S_opt = struct('Display', 'off', 'MaxIter', MaxIter*2, 'TolFun', .01);
+        tic
         parfor iSpk = 1:nSpk
             [mrPos_spk(:,iSpk), vrErr_spk(iSpk)] = fh_search(mrObs(:,iSpk));
+        end
+        toc
+    case 1
+        parfor iSpk = 1:nSpk
+            [mrPos_spk(:,iSpk), vrErr_spk(iSpk)] = fminsearch(@(xyz)fh_err(xyz,mrObs(:,iSpk)'), xyz0, S_opt);    
         end
 %     case 2
 %         fh_search = @(obs_)fminsearch(@(xyz)fh_err(xyz,obs_'), gpuArray(double(xyz0)), S_opt);              
@@ -71,10 +101,14 @@ mrPos_spk=mrPos_spk';
 vrSource_spk = sqrt(abs(sum(mrObs.^2) ./ sum(1./pdist2(mrPos_site, mrPos_spk, 'squaredeuclidean'))))';
 
 % redo poor fit and fit two sources and take stronger 
-if 0
-    thresh_error = .08;
-    viSelect = find(vrErr_spk>thresh_error);
-    [mrPos_spk(viSelect,:), vrErr_spk(viSelect)] = fit_two_monopoles_(mrObs(:,viSelect), mrPos_site, xyz0, S_opt);
+if ~isempty(thresh_error)
+    viSelect1 = find(vrErr_spk>thresh_error);
+    [mrPos_spk1, vrErr_spk1] = deal(mrPos_spk(viSelect1,:), vrErr_spk(viSelect1));
+    [mrPos_spk2, vrErr_spk2] = fit_two_monopoles_(mrObs(:,viSelect1), mrPos_site, xyz0, S_opt);
+    viiReplace = find(vrErr_spk2 < vrErr_spk1);
+    viReplace1 = viSelect1(viiReplace);
+    mrPos_spk(:,viReplace1) = mrPos_spk2(:,viiReplace);
+    vrErr_spk(viReplace1) = vrErr_spk2(viiReplace);
 end
 mrPos_spk(:,3) = abs(mrPos_spk(:,3));
 % vrErr_spk = 1./vrErr_spk;
