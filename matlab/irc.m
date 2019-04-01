@@ -973,7 +973,7 @@ elseif isinf(nSites_spk)
     miSites_spk = repmat(int32(1:nSites_spk)', [1,nSpk]);
 end
 
-mrVp = squeeze_(trFet_spk(1:nSites_spk,1,:)) .^ 2;
+mrVp = squeeze_(trFet_spk(1:nSites_spk,1,:),2) .^ 2;
 vrVp = sum(mrVp);
 
 mrX_spk = reshape(P.mrSiteXY(miSites_spk,1), size(miSites_spk));
@@ -19092,6 +19092,7 @@ switch lower(vcExt)
         makeprm_template_(vcFile_bin, vcFile_prb, vcFile_template);
     case '.ns5'
         [vcFile_prm, P] = import_nsx_(vcFile_bin, vcFile_prb, vcFile_template);
+    case '.yaml'
 end
 set(0, 'UserData', []); %clear memory
 
@@ -21562,8 +21563,8 @@ end %func
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_(vcFile_prm)
 if nargin<1, vcFile_prm = ''; end
-vcVer = 'v4.4.4';
-vcDate = '3/22/2019';
+vcVer = 'v4.4.6';
+vcDate = '4/1/2019';
 vcHash = file2hash_();
 
 if nargout==0

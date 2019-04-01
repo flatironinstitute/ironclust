@@ -1,0 +1,18 @@
+% Order of the probe sites in the recording file
+channels = 1:64;
+
+% Site location in micrometers (x and y)
+geometry = zeros(numel(channels), 2);
+viHalf = 0:(numel(channels)/2-1);
+geometry(1:2:end,2) = viHalf * 20;
+geometry(2:2:end,2) = geometry(1:2:end,2);
+geometry(1:4:end,1) = 43; %0 before
+geometry(2:4:end,1) = 11; %32 before
+geometry(3:4:end,1) = 57;  %16 before
+geometry(4:4:end,1) = 27; %48 before
+
+% Recording contact pad size in micrometers. Height x width
+pad = [12 12];
+
+% Default prm
+um_per_pix = 20;

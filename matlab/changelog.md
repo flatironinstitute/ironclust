@@ -3,6 +3,22 @@ IronClust, written by J. James Jun, Flatiron Institute, Simons Foundation
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [4.4.6] - 2019-4-1
+### Fixed
+- Singular dimension error fixed when no adjacent channel is found per spiking event
+  - `squeeze_` function explicitly takes which dimension to squeeze
+
+
+## [4.4.5] - 2019-4-1
+### Added
+- Fast plot of large dataset is implemented in `fastplot.m`
+  - It uses x-axis crop subsampling to reduce the number of points to be plotted
+  - It supports multiplot and amplitude rescaling
+- `irc convert-mda-english` GUI tool
+  - It is used to export paired recording groundtruth from Dan English's dataset
+  - The settings are stored in `dan_english.cfg`
+
+
 ## [4.4.4] - 2019-3-22
 ### Fixed
 - `fRemove_duplicate` works correctly for channels with different noise baseline
