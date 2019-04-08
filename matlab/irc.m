@@ -5454,7 +5454,11 @@ end %func
 function out = inputdlg_num_(vcGuide, vcVal, vrVal)
 csAns = inputdlg_(vcGuide, vcVal, 1, {num2str(vrVal)});
 try
-    out = str2num(csAns{1});
+    if isempty(csAns{1})
+        out = [];
+    else
+        out = str2num(csAns{1});
+    end
 catch
     out = nan;
 end
@@ -19632,8 +19636,9 @@ end %func
 
 %---------------------------------------------------------------------------
 % 8/2/17 JJJ: Test and documentation
-function vcStr = field2str_(val)
+function vcStr = field2str_(val, fDoubleQuote)
 % convert a value to a strong
+if nargin<2, fDoubleQuote = false; end
 
 switch class(val)
     case {'int', 'int16', 'int32', 'uint16', 'uint32'}
@@ -19644,7 +19649,11 @@ switch class(val)
             if mod(val(1),1)==0, vcFormat = '%d'; end
         end
     case 'char'
-        vcStr = sprintf('''%s''', val); 
+        if fDoubleQuote
+            vcStr = sprintf('"%s"', val);
+        else
+            vcStr = sprintf('''%s''', val);
+        end
         return;
     case 'cell'
         vcStr = '{';
@@ -22645,7 +22654,7 @@ if nargin<2, vcFile_json = ''; end
 csName = fieldnames(S);
 vcStr = '{';
 for iField = 1:numel(csName)
-    vcStr_ = sprintf('\t"%s": %s', csName{iField}, field2str_(S.(csName{iField})));
+    vcStr_ = sprintf('\t"%s": %s', csName{iField}, field2str_(S.(csName{iField}),true));
     if iField < numel(csName)
         vcStr = sprintf('%s\n%s,', vcStr, vcStr_);
     else
@@ -27725,7 +27734,6 @@ detect_(P); sort_(P, 0); describe_(P.vcFile_prm);
 end %func
 
 
-
 %--------------------------------------------------------------------------
 function update_menu_trials_(mh_trials)
 % Usages
@@ -28853,6 +28861,23 @@ end %func
 
 
 %--------------------------------------------------------------------------
+function [vcFile_true, vcFile_json] = export_spikeforest_intra_(vcDir_out1, S_intra, S_json)
+% create raw_true.mda file 
+
+vcFile_true = fullfile(vcDir_out1, 'raw_true.mda');
+vcFile_json = fullfile(vcDir_out1, 'params_true.json');
+
+% write meta
+S_true_json = struct('samplerate', S_json.samplerate, 'scale_factor', 1, 'filter', S_intra.vcLabel, 'unit', 'uV');
+struct2json_(S_true_json, vcFile_json);
+
+vrWav_intra = single(S_intra.vrWav_filt) * single(-1 * S_json.scale_factor);
+% write firings_true.mda
+writemda_(vrWav_intra, vcFile_true);
+end %func
+    
+    
+%--------------------------------------------------------------------------
 % 1/9/2019 JJJ: export to spikeforest format
 % save raw.mda, geom.csv, params.json, firings_true.mda
 function export_spikeforest_(vcDir_out1, mnWav1, mrSiteXY1, S_json1, mrGt1)
@@ -28894,6 +28919,101 @@ end %func
 
 %--------------------------------------------------------------------------
 % assume one GT per recording
+function summarize_recording_(vcDir_study, vcFile_recording)
+% K:\spikeforest\irc_out\paired_recordings\neuronexus32c
+% todo: support firings_true.mda files 
+fUseCache = 0;
+
+[~, vcRec] = fileparts(fileparts(vcFile_recording));
+[csDir_full, csDir_rec] = subdir_(vcDir_study);
+iRec = find(cellfun(@(x)contains(x, vcRec), csDir_rec));
+iRec = iRec(1);
+
+% load S_gt1
+vcDir1 = csDir_full{iRec};
+vcFile_gt1 = fullfile(vcDir1, 'raw_geom_gt1.mat');
+vcFile_gt_mda1 = fullfile(vcDir1, 'firings_true.mda');
+if exist_file_(vcFile_gt1) && fUseCache
+    S_gt1 = load(vcFile_gt1);
+elseif exist_file_(vcFile_gt_mda1)        
+    S_gt1 = mda2gt1_(vcFile_gt_mda1);
+    struct_save_(S_gt1, vcFile_gt1);
+else
+    disperr_('groundtruth file not found');
+end
+
+% display info
+[vpp1, vmin1, snr_rms1, snr_min1, nSpk1, iSite1] = ...
+    struct_get_(S_gt1, 'vrVpp_clu', 'vrVmin_clu', 'vrSnr_sd_clu', 'vrSnr_min_clu', 'vnSpk_clu', 'viSite_clu');
+snr_pp1 = snr_min1 * vpp1/vmin1;    
+vnoise1 = mean(S_gt1.vrVrms_site); 
+dimm1 = size(S_gt1.trWav_clu);
+[nSamples1, nSites1] = deal(dimm1(1), dimm1(2));
+
+% load intracellular traces
+vrWav_int = readmda_(fullfile(vcDir1, 'raw_true.mda'));
+S_true = loadjson_(fullfile(vcDir1, 'params_true.json'));
+spkLim = [1, nSamples1] - round(nSamples1/2);
+mrWav_int_spk = vr2mr3_(vrWav_int, S_gt1.viTime, spkLim);
+t_dur1 = numel(vrWav_int) / S_true.samplerate;
+vrWav_int_spk = mean(mrWav_int_spk,2);
+noise_int = mad_nonzero_(vrWav_int, 0) / .6745;
+peak_int = mean(mrWav_int_spk(spkLim(2)+1,:));
+snr_int = peak_int / noise_int;
+
+% build message
+csMsg = {};
+csMsg{end+1} = sprintf('# Recording info');
+csMsg{end+1} = sprintf('  File name: %s', vcRec);
+csMsg{end+1} = sprintf('  site count: %d', nSites1);
+csMsg{end+1} = sprintf('  ADC sampling rate: %0.1f Hz', S_true.samplerate);
+csMsg{end+1} = sprintf('  scale factor: %0.4f uV/bit', S_true.scale_factor);
+csMsg{end+1} = sprintf('  exported duration: %0.1f sec', t_dur1);
+csMsg{end+1} = sprintf('  Number of spikes: %d', nSpk1);
+csMsg{end+1} = sprintf('# Extracellular info');
+csMsg{end+1} = sprintf('  SNR Vpp: %0.4f', snr_pp1);
+csMsg{end+1} = sprintf('  SNR Vp: %0.4f', snr_min1);
+csMsg{end+1} = sprintf('  noise: %0.1f uV', vnoise1);
+csMsg{end+1} = sprintf('  peak: %0.1f uV', vpp1);
+csMsg{end+1} = sprintf('  peak-to-peak: %0.1f uV', vmin1);
+csMsg{end+1} = sprintf('# Intracellular info');
+csMsg{end+1} = sprintf('  SNR Vp: %0.4f', snr_int);
+csMsg{end+1} = sprintf('  noise (site average): %0.1f uV', noise_int);
+csMsg{end+1} = sprintf('  peak (spike average): %0.1f uV', peak_int);
+csMsg{end+1} = sprintf('  Filter: %s', S_true.filter);
+csMsg = {cell2str2vc_(csMsg)};
+disp_cs_(csMsg);
+
+% create a window and display info
+vcTitle_fig = ['Paired recording viewer: ', vcRec];
+hFig = create_figure_('Fig_paired_recording', [.5 0 .5 1], vcTitle_fig, 0, 1); 
+hText  = uicontrol(hFig, 'Style','text','String','',...
+           'Unit', 'Normalized', 'OuterPosition', [.8 .5 .2 .5], ...
+           'HorizontalAlignment', 'left', 'BackgroundColor','w');
+hText.String = csMsg;
+hAx1 = axes(hFig, 'OuterPosition', [0 .8 .8 .2]); 
+hAx2 = axes(hFig, 'OuterPosition', [0 0 .8 .8]); 
+vrT_plot = (spkLim(1):spkLim(2)) / S_true.samplerate * 1000;
+plot(hAx1, vrT_plot, vrWav_int_spk); 
+plot(hAx2, vrT_plot, S_gt1.trWav_clu);
+legend(hAx2, arrayfun(@(x)sprintf('Chan %d', x), 1:nSites1, 'UniformOutput', 0));
+grid(hAx1, 'on');
+grid(hAx2, 'on');
+linkaxes([hAx1, hAx2], 'x');
+xylabel_(hAx1, 'time (ms)','V_int (uV)','Intracellular average spike waveform'); % all subsampled
+xylabel_(hAx2, 'time (ms)','V_ext (uV)','Extracellular average spike waveforms');    
+
+% save recording summary
+drawnow;
+vcFile_png = fullfile(vcDir1, sprintf('%s_summary.png', vcRec));
+saveas(hFig, vcFile_png);
+msgbox_(['Saved to ', vcFile_png]);
+disp(['Saved to ', vcFile_png]);
+end %func
+
+
+%--------------------------------------------------------------------------
+% assume one GT per recording
 function vcFile_tbl = summarize_study_(vcDir_study)
 % K:\spikeforest\irc_out\paired_recordings\neuronexus32c
 % todo: support firings_true.mda files 
@@ -28901,7 +29021,7 @@ function vcFile_tbl = summarize_study_(vcDir_study)
 [csDir_full, csDir_rec] = subdir_(vcDir_study);
 
 nRec = numel(csDir_full);
-[vnSpikes, vr_snr_pp, vr_snr_min, vr_snr_rms, vrVpp, vrVmin, viSite] = deal(zeros(nRec,1));
+[vnSpikes, vr_snr_pp, vr_snr_min, vr_snr_rms, vrVpp, vrVmin, vrNoise, viSite] = deal(zeros(nRec,1));
 % generate a table output
 for iRec = 1:nRec
     vcDir1 = csDir_full{iRec};
@@ -28917,12 +29037,13 @@ for iRec = 1:nRec
     end
     [vpp1, vmin1, snr_rms1, snr_min1, nSpk1, iSite1] = ...
         struct_get_(S_gt1, 'vrVpp_clu', 'vrVmin_clu', 'vrSnr_sd_clu', 'vrSnr_min_clu', 'vnSpk_clu', 'viSite_clu');
-    snr_pp1 = snr_min1 * vpp1/vmin1;
-    [vnSpikes(iRec), vr_snr_pp(iRec), vr_snr_min(iRec), vr_snr_rms(iRec), vrVpp(iRec), vrVmin(iRec), viSite(iRec)] = ...
-        deal(nSpk1, snr_pp1, snr_min1, snr_rms1, vpp1, vmin1, iSite1);
+    snr_pp1 = snr_min1 * vpp1/vmin1;    
+    vnoise1 = mean(S_gt1.vrVrms_site); 
+    [vnSpikes(iRec), vr_snr_pp(iRec), vr_snr_min(iRec), vr_snr_rms(iRec), vrVpp(iRec), vrVmin(iRec), vrNoise(iRec), viSite(iRec)] = ...
+        deal(nSpk1, snr_pp1, snr_min1, snr_rms1, vpp1, vmin1, vnoise1, iSite1);
 end %for
-tbl_study = table(csDir_rec(:), vnSpikes, vr_snr_pp, vr_snr_min, vr_snr_rms, vrVpp, vrVmin, viSite, ...
-    'VariableNames', {'Recording', 'nSpikes', 'snr_pp', 'snr_min', 'snr_rms', 'Vpp_uV', 'Vmin_uV', 'site_peak'});
+tbl_study = table(csDir_rec(:), vnSpikes, vr_snr_pp, vr_snr_min, vr_snr_rms, vrVpp, vrVmin, vrNoise, viSite, ...
+    'VariableNames', {'Recording', 'nSpikes', 'snr_pp', 'snr_min', 'snr_rms', 'Vpp_uV', 'Vmin_uV', 'noise_uV', 'site_peak'});
 tbl_study = sortrows(tbl_study, 'snr_pp', 'ascend');
 disp(tbl_study);
 vcFile_tbl = fullfile(vcDir_study, 'summary_study.xlsx');
@@ -29001,18 +29122,7 @@ min_spikes = 30;
 % S_json = struct('spike_sign', -1); % base setting
 % vcDataType = 'int16';
 vcFile_mat = fullfile(vcDir_out, 'settings_crcns.mat');
-if exist_file_(vcFile_mat)
-    S_mat = load(vcFile_mat);
-    table_data = struct_get_(S_mat, 'table_data');
-    vnSpikes_crcns = S_mat.vnSpikes_crcns;
-else
-    [vnSpikes_crcns, ~] = count_spikes_crcns_(csFiles_dat);
-    mkdir_(vcDir_out);
-    save(vcFile_mat, 'vnSpikes_crcns');
-    table_data = [];
-end
-csFiles_dat = csFiles_dat(vnSpikes_crcns >= min_spikes);
-
+table_data = load_table_paired_(vcFile_mat, csFiles_dat, min_spikes);
 S_fig = struct('vcFile_mat', vcFile_mat, 'vcDir_out', vcDir_out);
 hFig = create_gui_crcns_(csFiles_dat, table_data, S_fig);   
 end %func
@@ -29030,6 +29140,11 @@ S_fig = hFig.UserData;
 csFiles_dat = hTbl.Data(:,1);
 cLim_incl = hTbl.Data(:,3);
 cChan_ext = hTbl.Data(:,4);
+try
+    vcFile_prb = hTbl.Data(:,5);
+catch
+    vcFile_prb = '';
+end
 
 vcFile_dat1 = csFiles_dat{iFile};
 [vcDir_, vcDir12] = fileparts(vcFile_dat1);
@@ -29037,17 +29152,23 @@ vcFile_dat1 = csFiles_dat{iFile};
 vcDir_out1 = fullfile(vcDir_out, sprintf('%s_%s', vcDir11, vcDir12));
 
 switch lower(h.Label)
-    case 'convert and next'
+    case {'convert and next', 'convert'}
         figure_wait_(1, hFig);
         try
             mrLim_incl1 = str2num_(cLim_incl{iFile});
             viChan_ext1 = str2num_(cChan_ext{iFile});
-            export_spikeforest_crcns_(vcFile_dat1, vcDir_out1, mrLim_incl1, viChan_ext1);   
-            msgbox_(sprintf('Exported to %s.\n Advancing to next', vcFile_dat1), 1);
+            export_spikeforest_crcns_(vcFile_dat1, vcDir_out1, mrLim_incl1, viChan_ext1);               
         catch
             errordlg(lasterr());
+            return;
         end
         figure_wait_(0, hFig);
+        if strcmpi(h.Label, 'convert')
+            msgbox_(sprintf('Exported to %s', vcFile_dat1), 1);
+            return; 
+        else
+            msgbox_(sprintf('Exported to %s\n Advancing to next', vcFile_dat1), 1);
+        end
         
     case 'skip and next'
         set_table_(hTbl, iFile, 2, false);
@@ -29066,6 +29187,11 @@ switch lower(h.Label)
         vcFile_summary = summarize_study_(S_cfg.vcDir_out);
         winopen_(vcFile_summary);
         return;
+        
+    case 'summarize recording'
+        S_cfg = file2struct_('dan_english.cfg');
+        summarize_recording_(S_cfg.vcDir_out, vcFile_dat1);
+        return;        
         
     otherwise, return;
 end %switch
@@ -29110,13 +29236,23 @@ end %func
 
 %--------------------------------------------------------------------------
 % 3/29/2019 JJJ: convert to english format
-function S_mda = export_spikeforest_english_(vcFile_rhd1, vcDir_out1, mrLim_incl1, viChan_ext1)
+function S_mda = export_spikeforest_english_(vcFile_rhd1, vcDir_out1, mrLim_incl1, viSite_ext1)
+% S_mda = export_spikeforest_english_(vcFile_rhd1, vcDir_out1, mrLim_incl1, viChan_ext1)
+% S_mda = export_spikeforest_english_(vcFile_rhd1, vcDir_out1, mrLim_incl1, vcFile_prb)
+
 if nargin<2, vcDir_out1 = []; end
 if nargin<3, mrLim_incl1 = []; end
-if nargin<4, viChan_ext1 = []; end
+if nargin<4, viSite_ext1 = []; end
 
 S_cfg = file2struct_(ircpath_('dan_english.cfg'));
-S_prb = load_prb_(S_cfg.vcFile_probe);
+if ~ischar(viSite_ext1) || isempty(viSite_ext1)
+    vcFile_probe = S_cfg.vcFile_probe;
+    S_prb = load_prb_(vcFile_probe);    
+else
+    vcFile_probe = viSite_ext1;
+    S_prb = load_prb_(vcFile_probe);
+    viSite_ext1 = 1:numel(S_prb.viSite2Chan);
+end
 mrSiteXY = S_prb.mrSiteXY;
 [vcFile_dat1, vcFile_meta, S_meta1] = rhd2bin_(vcFile_rhd1);
 [nChans1, sRateHz1, vcDataType, uV_per_bit] = get_(S_meta1, 'nChans', 'sRateHz', 'vcDataType', 'uV_per_bit');
@@ -29129,7 +29265,7 @@ end
 iChan_intra = get_set_(S_cfg, 'iChan_intra', nChans1);
 vnWav_int = mnWav_ext(iChan_intra,:)';
 mnWav_ext = mnWav_ext(S_prb.viSite2Chan,:);
-if ~isempty(viChan_ext1), mnWav_ext = mnWav_ext(viChan_ext1,:); end
+if ~isempty(viSite_ext1), mnWav_ext = mnWav_ext(viSite_ext1,:); end
 
 % load stim
 viChan_stim = get_set_(S_cfg, 'viChan_stim', 1);
@@ -29149,10 +29285,25 @@ catch
 end
 
 S_json = struct('spike_sign', -1, 'samplerate', sRateHz1, 'scale_factor', uV_per_bit);
-csMsg = {};
 t_dur1 = filesize_(vcFile_dat1) / nChans1 / sRateHz1 / bytesPerSample_(vcDataType); 
-csMsg{end+1} = sprintf('channel_count: %d\nt_dur1: %0.1fs\nsRateHz: %0.1f\nscale_factor: %0.4f\nprobe: %s', ...
-    nChans1, t_dur1, sRateHz1, uV_per_bit, S_cfg.vcFile_probe);
+if isa(vnWav_int, 'int16')
+    rSaturation = mean(vnWav_int == int16(2^15-1) | vnWav_int == int16(-2^15));
+elseif isa(vnWav_int, 'uint16')
+    rSaturation = mean(vnWav_int == uint16(2^16-1));
+else
+    rSaturation = 0;
+end
+
+% build message
+csMsg = {};
+csMsg{end+1} = sprintf('channel count: %d', nChans1);
+csMsg{end+1} = sprintf('site count: %d', size(mnWav_ext,1));
+csMsg{end+1} = sprintf('recording duration: %0.1f sec', t_dur1);
+csMsg{end+1} = sprintf('ADC sampling rate: %0.1f', sRateHz1);
+csMsg{end+1} = sprintf('scale factor: %0.4f uV/bit', uV_per_bit);
+csMsg{end+1} = sprintf('probe file: %s', vcFile_probe);
+csMsg{end+1} = sprintf('ADC saturation: %0.2f %%', rSaturation * 100);
+csMsg = {cell2str2vc_(csMsg)};
 
 spkLim_ms_intra = get_set_(S_cfg, 'spkLim_ms_intra', [-1,1]);
 spkLim1 = round(sRateHz1*spkLim_ms_intra / 1000);
@@ -29162,13 +29313,25 @@ fJuxta = get_set_(S_cfg, 'fJuxta', 1);
 % output
 S_mda = makeStruct_(mnWav_ext, vnWav_int, vnWav_stim, mrSiteXY, S_json, viSpk_gt, csMsg, S_intra, vcLabel_stim);
 if ~isempty(vcDir_out1) % write to file
+    export_spikeforest_intra_(vcDir_out1, S_intra, S_json);    
     export_spikeforest_(vcDir_out1, mnWav_ext, mrSiteXY, S_json, viSpk_gt);     
 end
 end %func
 
 
 %--------------------------------------------------------------------------
+% Convert cell string to a character arrays separated by '\n'
+function vc = cell2str2vc_(cs)
+
+vc = cell2mat(cellfun(@(x)sprintf('%s\n', x), cs, 'UniformOutput', 0));
+end %func
+
+
+%--------------------------------------------------------------------------
 function S_mda = export_spikeforest_crcns_(vcFile_dat1, vcDir_out1, mrLim_incl1, viChan_ext1)
+% S_mda = export_spikeforest_crcns_(vcFile_dat1, vcDir_out1, mrLim_incl1, viChan_ext1)
+% S_mda = export_spikeforest_crcns_(vcFile_dat1, vcDir_out1, mrLim_incl1, vcFile_prb)
+
 if nargin<2, vcDir_out1 = []; end
 if nargin<3, mrLim_incl1 = []; end
 if nargin<4, viChan_ext1 = []; end
@@ -29256,46 +29419,52 @@ csMsg{end+1} = sprintf('channel group 3:\n    %s', sprintf('%d,', viSite2chan3))
 vcLabel_stim = 'Current stim';
 S_mda = makeStruct_(mnWav_ext, vnWav_int, vnWav_stim, mrSiteXY, S_json, viSpk_gt, csMsg, S_intra, vcLabel_stim);
 if ~isempty(vcDir_out1) % write to file
+    export_spikeforest_intra_(vcDir_out1, vnWav_int, S_intra);
     export_spikeforest_(vcDir_out1, mnWav_ext, mrSiteXY, S_json, viSpk_gt);     
 end
 end %func
         
 
 %--------------------------------------------------------------------------
+function cs = pad_cs_(cs, vnSpace)
+for i=1:numel(cs)
+    vc1 = cs{i};
+    n1 = vnSpace(i) - numel(vc1);
+    if n1 > 0
+        cs{i} = [vc1, repmat(' ', 1, n1)];
+    end
+end %for
+end %func
+
+
+%--------------------------------------------------------------------------
 function hFig = create_gui_crcns_(csFiles_dat, table_data, S_fig)
-if nargin<2, table_data = {}; end
 if nargin<3, S_fig = []; end
 
-hFig = create_figure_('Fig_crcns', [.5 0 .5 1], 'crcns data selector', 0, 1); 
+hFig = create_figure_('Fig_crcns', [0 0 .5 1], 'Paired recording selector', 0, 1); 
 
 % create table
 nFiles = numel(csFiles_dat);
-csColumnName = {['File', blanks(100)], 'Convert', ['Include time', blanks(100)], ['Include Chan (Vext)', blanks(20)]};
-vlEditable = [false, true, false, true];
+csColumnName = pad_cs_({'File', 'Convert', 'Include time', 'Include Chan (Vext)', 'Probe file'}, [120, 0, 100, 20, 20]);
+vlEditable = [false, true, false, true, true];
 cData = cell(nFiles, numel(csColumnName)); 
-if isempty(table_data)           
-    cData(:,1) = csFiles_dat(:);
-    cData(:,2) = arrayfun(@(x)true, 1:nFiles, 'UniformOutput', 0);
-    cData(:,3) = {''};
-    cData(:,4) = {''};
-else
-    nCol = min(size(cData,2), size(table_data,2));
-    nRow = min(size(cData,1), size(table_data,1));
-    cData(1:nRow,1:nCol) = table_data(1:nRow,1:nCol);
-end
+nCol = min(size(cData,2), size(table_data,2));
+nRow = min(size(cData,1), size(table_data,1));
+cData(1:nRow,1:nCol) = table_data(1:nRow,1:nCol);
+
 hTbl = uitable(hFig, 'Data', cData, ...
     'ColumnEditable', vlEditable, 'ColumnName', csColumnName, ...
     'Unit', 'Normalized','OuterPosition',[0 .8 .8 .2]);
-hText  = uicontrol('Style','text','String','',...
+hText  = uicontrol(hFig, 'Style','text','String','',...
            'Unit', 'Normalized', 'OuterPosition', [.8 .8 .2 .2], ...
            'HorizontalAlignment', 'left', 'BackgroundColor','w');
 hText.String = {'Click on a file name to plot'}; % display meta
 
 % create axes
-hAx1 = axes('OuterPosition', [0 .7 1 .1]); xylabel_(hAx1, 't','V_int','V_int'); % all subsampled
-hAx2 = axes('OuterPosition', [0 .6 1 .1]); xylabel_(hAx2, 't','dV_int/dt','dV_int/dt');    
-hAx3 = axes('OuterPosition', [0 .5 1 .1]); xylabel_(hAx3, 't','I_int', 'I_int');
-hAx4 = axes('OuterPosition', [0 0 1 .5]); xylabel_(hAx4, 't','V_ext','V_ext (Change scale using UP/DOWN arrows)');
+hAx1 = axes(hFig, 'OuterPosition', [0 .7 1 .1]); xylabel_(hAx1, 't','V_int','V_int'); % all subsampled
+hAx2 = axes(hFig, 'OuterPosition', [0 .6 1 .1]); xylabel_(hAx2, 't','dV_int/dt','dV_int/dt');    
+hAx3 = axes(hFig, 'OuterPosition', [0 .5 1 .1]); xylabel_(hAx3, 't','I_int', 'I_int');
+hAx4 = axes(hFig, 'OuterPosition', [0 0 1 .5]); xylabel_(hAx4, 't','V_ext','V_ext (Change scale using UP/DOWN arrows)');
 S_fig = struct_append_(S_fig, makeStruct_(hTbl, hAx1, hAx2, hAx3, hAx4, hText));
 hFig.UserData = S_fig;
 
@@ -29303,10 +29472,11 @@ hFig.UserData = S_fig;
 set(hFig, 'MenuBar', 'none'); 
 mh_convert = uimenu_(hFig,'Label','Action'); 
 uimenu_(mh_convert,'Label', 'convert and next', 'Callback', @cbf_menu_crcns_);
-% uimenu_(mh_convert,'Label', 'convert all', 'Callback', @cbf_menu_crcns_);
+uimenu_(mh_convert,'Label', 'convert', 'Callback', @cbf_menu_crcns_);
 uimenu_(mh_convert,'Label', 'skip and next', 'Callback', @cbf_menu_crcns_);
 uimenu_(mh_convert,'Label', 'open output', 'Callback', @cbf_menu_crcns_);
 uimenu_(mh_convert,'Label', 'summarize study', 'Callback', @cbf_menu_crcns_);
+uimenu_(mh_convert,'Label', 'summarize recording', 'Callback', @cbf_menu_crcns_);
 
 % add call back functions 
 hTbl.CellSelectionCallback = @cbf_table_crcns_;
@@ -29344,8 +29514,13 @@ S_fig1 = hFig.UserData;
     struct_get_(S_fig1, 'hAx1', 'hAx2', 'hAx3', 'hAx4', 'hText');
 cellfun(@(x)cla(x), {hAx1, hAx2, hAx3, hAx4});
 cellfun(@(x)hold(x, 'on'), {hAx1, hAx2, hAx3, hAx4});
-
-S_mda = export_spikeforest_crcns_(vcFile_dat1);
+try
+    vcFile_prb = hTbl.Data{iFile,5};
+catch
+    vcFile_prb = []; 
+end
+S_mda = export_spikeforest_crcns_(vcFile_dat1, [], [], vcFile_prb);
+% set_userdata_(hFig, S_mda);
 
 [mnWav_ext, vnWav_int, vnWav_stim, mrSiteXY, S_json, viSpk_gt, csMsg, S_intra] = ...
     struct_get_(S_mda, 'mnWav_ext', 'vnWav_int', 'vnWav_stim', 'mrSiteXY', 'S_json', ...
@@ -29937,20 +30112,172 @@ end %func
 
 
 %--------------------------------------------------------------------------
+% multiply spikes by spikes
+function mr12 = tr2mr_mtimes_(tr1, tr2)
+dimm1 = size(tr1);
+dimm2 = size(tr2);
+mr12 = zeros(dimm1(2)*dimm2(2), dimm1(3), 'single');
+for iSpk = 1:dimm1(3)
+%     mr1_ = tr1(:,:,iSpk)' * tr2(:,:,iSpk);
+    vr_ = tr1(:,:,iSpk)' * tr2(:,:,iSpk);
+    mr12(:,iSpk) = vr_(:);
+end %for
+
+end %func
+
+
+%--------------------------------------------------------------------------
+function mrPos_spk = com_mr_(mrPos, mrV, exponent)
+if nargin<3, exponent = 1; end
+if exponent == 1
+    mrV2 = abs(mrV)';
+else
+    mrV2 = abs(mrV.^exponent)';
+end
+vrV2 = sum(mrV2,2);
+
+if size(mrPos,2) > 1
+    vrX = mrPos(:,1)';
+    vrY = mrPos(:,2)';
+    mrPos_spk = [sum(mrV2 .* vrX,2)./vrV2, sum(mrV2 .* vrY,2)./vrV2];
+else
+    vrX = mrPos(:,1)';
+    mrPos_spk = sum(mrV2 .* vrX,2)./vrV2;
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+function trWav1 = pca_clean_(trWav, nPc)
+nChans = size(trWav,2);
+switch 2
+    case 2
+         % global channel pca
+         [a,b,c] = pca(reshape(trWav,size(trWav,1),[])', 'Centered', 0, 'NumComponents', nPc);   
+         trWav1 = reshape(a*b', size(trWav));         
+    case 1        
+        % individual channel pca
+        trWav1 = permute(trWav, [1,3,2]);
+        try
+            parfor iChan = 1:nChans
+                [a,b] = pca(trWav1(:,:,iChan)', 'Centered', 0, 'NumComponents', nPc);   
+                trWav1(:,:,iChan) = a*b'; % denoised version
+            end
+        catch
+            for iChan = 1:nChans
+                [a,b] = pca(trWav1(:,:,iChan)', 'Centered', 0, 'NumComponents', nPc);   
+                trWav1(:,:,iChan) = a*b'; % denoised version
+            end
+        end
+        trWav1 = permute(trWav1, [1,3,2]);
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+function mrFet = tr2slope_(trWav, nDiff, nlim, nPc)
+dimm = size(trWav);
+[nSamples, nSites, nSpk] = deal(dimm(1), dimm(2), dimm(3));
+% trWav1 = ndiff_(trWav, nDiff); % diff filter
+% trWav1 = sgfilt_(ndiff_(trWav, 5), nDiff); % diff filter
+% trWav1 = sgfilt_(ndiff_(trWav, 5), nDiff); % diff filter
+
+switch 2
+    case 2
+        trWav1 = ndiff_(trWav, nDiff);
+        [~, imin1] = min(mean(mean(trWav1,3),2)); 
+        vi1 = max(1, imin1+nlim(1)):min(nSamples, imin1+nlim(end));
+        trWav2 = pca_clean_(trWav1(vi1,:,:), nPc);
+    case 1        
+        [~, imin1] = min(mean(mean(trWav,3),2)); 
+        vi1 = max(1, imin1+nlim(1)):min(nSamples, imin1+nlim(end));
+        trWav1 = trWav(vi1,:,:);
+        trWav2 = ndiff_(pca_clean_(trWav1, nPc), nDiff); % diff filter
+end %switch
+
+% restrict search domain
+nSamples1 = numel(vi1);
+
+% denoise and slope
+
+% trWav2 = pca_clean_(trWav2, 5);
+
+% extract peak slope (summed)
+[~, vimin_spk] = min(mean(trWav2,2));                          
+vimin_spk = squeeze(vimin_spk);
+
+mrFet = reshape(permute(trWav2, [2,3,1]), nSites, []);
+mrFet = mrFet(:, sub2ind([nSpk, nSamples1], 1:nSpk, vimin_spk'));
+end %func
+
+
+%--------------------------------------------------------------------------
 % 3/19/2019 JJJ: localize monopole
-function mrPos_fit_spk = localize_(P)
+function mrPos_spk = localize_(P)
+global tnWav_raw
+
+% localize in the physical space
+S0 = get0_();
+switch 1
+    case 2
+        mrPos_spk = localize_monopole_diff(P, S0.viSite_spk, tnWav_raw, 6, .5);
+    case 1
+        mrPos_spk = localize_moment(P, S0.viSite_spk, tnWav_raw, 6, logspace(-1,0,3));
+end %switch
+        
+fUseGt = 1;
+rng(0);
+if fUseGt
+    S_gt = load_gt_(P.vcFile_gt);
+    viClu = S_gt.viClu;
+else
+    viClu = S0.S_clu.viClu;
+end
+viMap_clu = [1, randperm(S0.S_clu.nClu)+1];
+viColor_clu = viMap_clu(viClu+1) - 1;
+nSpk = size(S0.mrPos_spk,1);
+switch 5
+    case 5
+        viiPlot = find(S_gt.viSite > 10 & S_gt.viSite < 20);
+    case 4
+        viiPlot = 1:round(nSpk/32);
+    case 3
+        viiPlot = find(viClu<20);
+    case 2
+        viiPlot = find(viClu==20);
+    case 1
+        viiPlot = 1:nSpk;
+end
+
+figure; 
+for iPlot = 1:size(mrPos_spk,1)
+    subplot(3,2,iPlot); 
+    scatter(1:numel(viiPlot), mrPos_spk(iPlot,viiPlot), 2, viColor_clu(viiPlot), 'o', 'filled');
+end
+
+figure; scatter(mrPos_spk(1,viiPlot), mrPos_spk(3,viiPlot), 2, viColor_clu(viiPlot), 'o', 'filled');
+
+end %func
+
+
+
+%--------------------------------------------------------------------------
+% 3/19/2019 JJJ: localize monopole
+function mrPos_fit_spk = localize1_(P)
 global tnWav_spk tnWav_raw
 % nAve_localize = 4;
 nFet_localize = 3;
 fUseCached = 0;
 fUseGt = 1;
+nSites_max = [];
 
 % nSites_fit = min(size(tnWav_spk,2), 15); % todo :determine 50 um radius
 mrDist_site = pdist2(P.mrSiteXY, P.mrSiteXY);
-maxDist_site_um = get_set_(P, 'maxDist_site_spk_um', 100);
+maxDist_site_um = 50; %get_set_(P, 'maxDist_site_spk_um', 50);
 nSites_fit = median(sum(mrDist_site < maxDist_site_um));
-nSites_fit = min(nSites_fit, 15);
-
+if ~isempty(nSites_max)
+    nSites_fit = min(nSites_fit, nSites_max);
+end
 if ~is_detected_(P)
     detect_(P); 
 else
@@ -29965,7 +30292,6 @@ nSamples_raw = size(tnWav_raw, 1);
 viSites_fit = 1:nSites_fit;
 if 0
     trWav_spk = single(tnWav_spk(:,viSites_fit, :));
-    % trWav_spk = ndiff_(trWav_spk, 3);
     mrWav_spk1 = reshape(trWav_spk(:,:,1:4:end), nSamples_spk, []);
     [mrPv,~,c] = pca(mrWav_spk1', 'NumComponents', nFet_localize, 'Centered', false);
 end
@@ -29982,16 +30308,71 @@ try
         for iSite = 1:nSites
             viSpk1 = S0.cviSpk_site{iSite};
             if isempty(viSpk1), continue; end
-    %         viSpk2 = S0.cviSpk2_site{iSite};    
             viSite1 = P.miSites(viSites_fit,iSite);
-            switch 4
+            switch 10
+                case 10                    
+                    trWav_spk1 = single(tnWav_raw(:,viSites_fit,viSpk1));
+                    mrFet1 = tr2slope_(trWav_spk1, 3, [-5,5], 3);
+                    mrFet1 = abs(mrFet1);
+                    mrPos_site1 = mrPos_site(viSite1,:);     
+                    mrPos_fit_spk(viSpk1,1:2) = com_mr_(mrPos_site1, mrFet1, .5);
+                    switch 4
+                        case 4
+                            mrPos_fit_spk(viSpk1,3) = com_mr_(mrPos_site1(:,2), mrFet1, 1);
+                        case 3
+                            mrPos_fit_spk(viSpk1,1) = com_mr_(mrPos_site1(:,1), mrFet1);
+                            mrPos_fit_spk(viSpk1,3) = com_mr_(mrPos_site1(:,2), mrFet1, .5);
+                        case 2
+                            mrD_spk1 = pdist2(mrPos_site(:,1:2), mrPos_spk);
+                            mrPos_fit_spk(viSpk1,3) = mean(mrFet1 .* mrD_spk1);
+                        case 1
+                            [mrPos_fit_spk(viSpk1,3)] = fit_ampl_depth_(mrPos_site1, mrPos_fit_spk(viSpk1,1:2), abs(mrFet1));
+                    end
+                    continue;                    
+                case 9                    
+                    trWav_spk1 = single(tnWav_raw(:,viSites_fit,viSpk1));
+                    mrFet1 = tr2slope_(trWav_spk1, 3, [-5,5], 3);
+                    mrFet1 = abs(mrFet1);
+                case 8
+                    trWav_spk1 = single(tnWav_raw(:,viSites_fit,viSpk1));
+                    trWav_ = ndiff_(trWav_spk1, 3); % diff filter
+                    [~, imin1] = min(mean(mean(trWav_,3),2));                   
+                    viWav_spk = max(1, imin1-10):min(nSamples_raw, imin1+10);
+                    trWav1_ = trWav_(viWav_spk(3:end),:,:);
+                    trWav2_ = trWav_(viWav_spk(1:end-2),:,:);
+                    mrFet1 = squeeze_(mean(trWav1_ .* trWav2_),1);   
+                    mrPos_fit_spk(viSpk1,1:2) = com_mr_(mrPos_site(viSite1,:), mrFet1);
+                    continue;
+                case 7 % pass the full site pariwise correlation
+                    trWav_spk1 = single(tnWav_raw(:,viSites_fit,viSpk1));
+                    trWav_ = ndiff_(trWav_spk1, 3); % diff filter
+                    [~, imin1] = min(mean(mean(trWav_,3),2));                   
+                    viWav_spk = max(1, imin1-10):min(nSamples_raw, imin1+10);
+                    trWav1_ = trWav_(viWav_spk(3:end),:,:);
+                    trWav2_ = trWav_(viWav_spk(1:end-2),:,:);
+                    mrFet1 = tr2mr_mtimes_(trWav1_, trWav2_);
+                case 6 % pass the center site correlation
+                    trWav_spk1 = single(tnWav_raw(:,viSites_fit,viSpk1));
+                    trWav_ = ndiff_(trWav_spk1, 3); % diff filter
+                    [~, imin1] = min(mean(mean(trWav_,3),2));                   
+                    viWav_spk = max(1, imin1-10):min(nSamples_raw, imin1+10);
+                    mrWav1_ = trWav_(viWav_spk(3:end),1,:);
+                    trWav2_ = trWav_(viWav_spk(1:end-2),:,:);
+                    mrFet1 = squeeze_(mean(mrWav1_ .* trWav2_),1);                    
+                case 5 % pass the time delay correlation
+                    trWav_spk1 = single(tnWav_raw(:,viSites_fit,viSpk1));
+                    trWav_ = ndiff_(trWav_spk1, 3); % diff filter
+                    [~, imin1] = min(mean(mean(trWav_,3),2));                   
+                    viWav_spk = max(1, imin1-5):min(nSamples_raw, imin1+5);
+                    trWav1_ = trWav_(viWav_spk(3:end),:,:);
+                    trWav2_ = trWav_(viWav_spk(1:end-2),:,:);
+                    mrFet1 = sqrt(abs(squeeze_(mean(trWav1_ .* trWav2_),1)));                    
                 case 4                    
                     trWav_spk1 = single(tnWav_raw(:,viSites_fit,viSpk1));
-                    trWav1 = ndiff_(trWav_spk1, 5);
-
+                    trWav1 = ndiff_(trWav_spk1, 3);
                     [~, imin1] = min(mean(mean(trWav_spk1,3),2));
                     viWav_spk = max(1, imin1-10):min(nSamples_raw, imin1+10);
-                    mrFet1 = squeeze_(max(abs(trWav1(viWav_spk,:,:))));
+                    mrFet1 = squeeze_(min(trWav1(viWav_spk,:,:)));
                 case 3
                     trWav1 = ndiff_(trWav_spk(:,:,viSpk1), 3);
                     mrFet1 = squeeze_(max(abs(trWav1)));
@@ -30008,15 +30389,18 @@ try
             xyz0 = mrPos_site(iSite,:);
             xyz0(3) = .01;
     %         [mrPos_spk(viSpk1,:), vrError_spk(viSpk1)] = localize_monopole(mrPos_site1, mrPos_field, trFet1, nAve_localize);
+            switch 1
+                case 2, iSite_start = 2;
+                case 1, iSite_start = 1;
+            end
             [mrPos_fit_spk(viSpk1,:), vrSource_fit_spk(viSpk1), vrError_fit_spk(viSpk1)] = ...
-                search_monopole(mrPos_site1(2:end,:), mrFet1(2:end,:), xyz0, 40);
-            vrAmp_fit_spk(viSpk1) = sqrt(sum(mrFet1.^2));
-    %         [mrPos1_spk(viSpk1,:), mrPos2_spk(viSpk2,:)] = deal(mrPos12(1:n1,:), mrPos12(n1+1:end,:));
-    %         [vrSource1_spk(viSpk1), vrSource2_spk(viSpk2)] = deal(vrError12(1:n1), vrError12(n1+1:end));
+                search_monopole(mrPos_site1(iSite_start:end,:), mrFet1(iSite_start:end,:), xyz0, 20);
+            vrAmp_fit_spk(viSpk1) = sqrt(sum(mrFet1.^2));                    
             fprintf('.');
         end %for
+        fprintf('\n\t');
         S0 = set0_(mrPos_fit_spk, vrError_fit_spk, vrSource_fit_spk);
-        save0_();
+%         save0_();
         fprintf('\n\ttook %0.1fs\n', toc(t1));
     end
 catch
@@ -30037,32 +30421,26 @@ else
 end
 viMap_clu = [1, randperm(S0.S_clu.nClu)+1];
 viColor_clu = viMap_clu(viClu+1) - 1;
-% figure; h = scatter3(mrPos_fit_spk(:,1), mrPos_fit_spk(:,2), sqrt(std(vrAmp_fit_spk)./vrAmp_fit_spk), 5, viColor_clu, 'o', 'filled'); fh();
-% figure; h = scatter(mrPos_spk(:,1), mrPos_spk(:,2), 5, viColor_clu, 'o', 'filled'); title('monopole fit'); axis([-100 100 -100 100]);
-% figure; h = scatter(S0.mrPos_spk(:,1), S0.mrPos_spk(:,2), 5, viColor_clu, 'o', 'filled'); title('cm'); axis([-100 100 -100 100]);
-% figure; h = scatter(mrPos_fit_spk(:,1), mrPos_fit_spk(:,2), 5, viColor_clu, 'o', 'filled'); title('monopole fit'); axis([-100 100 -100 100]);
-% figure; h = scatter(S0.mrPos_spk(:,1), S0.mrPos_spk(:,2), 5, viColor_clu, 'o', 'filled'); title('cm'); axis([-100 100 -100 100]);
-
-% set(gcf,'KeyPressFcn', @(h)
-% figure; plot3(mrPos2_spk(:,1), mrPos2_spk(:,2), mrPos2_spk(:,3), '.', 'MarkerSize', 2); fh();
-% figure; plot3(mrPos_spk(:,1), mrPos_spk(:,2), mrPos_spk(:,3), '.', 'MarkerSize', 2); fh();
-
-% figure; plot3(mrPos_spk(:,1), mrPos_spk(:,2), mrPos_spk(:,3), '.');
-
-% figure; scatter3(S0.mrPos_spk(:,1), S0.mrPos_spk(:,2), sqrt(vrAmp_fit_spk), 2, viColor_clu, 'o', 'filled'); %fh();
 nSpk = size(S0.mrPos_spk,1);
-%figure; scatter(1:nSpk, S0.mrPos_spk(:,2), 4, viColor_clu, 'o', 'filled'); %fh();
-switch 2
+switch 3
+    case 3
+        viiPlot = find(viClu<20);
     case 2
         viiPlot = find(viClu==20);
     case 1
         viiPlot = 1:nSpk;
 end
-mrPos_spk = mrPos_fit_spk;
-% mrPos_spk = S0.mrPos_spk;
-figure; scatter3(1:numel(viiPlot), mrPos_spk(viiPlot,2), mrPos_spk(viiPlot,1), 4, viColor_clu(viiPlot), 'o', 'filled');  %axis vis3d
-view(2); ylim([150 250])
-% figure; scatter3(1:numel(viiPlot), mrPos_spk(viiPlot,2), mrPos_spk(viiPlot,3), 4, viColor_clu(viiPlot), 'o', 'filled');  %axis vis3d
+if 0
+    figure; scatter3(1:numel(viiPlot), mrPos_fit_spk(viiPlot,2), mrPos_fit_spk(viiPlot,1), 4, viColor_clu(viiPlot), 'o', 'filled');  %axis vis3d
+    figure; scatter3(1:numel(viiPlot), mrPos_fit_spk(viiPlot,2), mrPos_fit_spk(viiPlot,3), 4, viColor_clu(viiPlot), 'o', 'filled');  %axis vis3d
+    view(2); ylim([0 600])
+end
+% figure; scatter(1:numel(viiPlot), S0.mrPos_spk(viiPlot,2), 2, viColor_clu(viiPlot), 'o', 'filled');  ylim([0 600]); title('cm');
+figure; 
+subplot 311; scatter(1:numel(viiPlot), mrPos_fit_spk(viiPlot,1), 2, viColor_clu(viiPlot), 'o', 'filled');  ylim([20 60]); title('fit-x');
+subplot 312; scatter(1:numel(viiPlot), mrPos_fit_spk(viiPlot,2), 2, viColor_clu(viiPlot), 'o', 'filled');  ylim([0 600]); title('fit-y');
+subplot 313; scatter(1:numel(viiPlot), mrPos_fit_spk(viiPlot,3), 2, viColor_clu(viiPlot), 'o', 'filled');  ylim([0 150]); title('fit-z');
+
 
 % color using ground truth 
 if 0
@@ -30090,16 +30468,61 @@ if isempty(vcDir_out)
 end
 csFiles_rhd = arrayfun(@(x)fullfile(x.folder, x.name), ...
     dir(fullfile(vcDir_in, '/**/*.rhd')), 'UniformOutput', 0);
-
+csFiles_rhd = flipud(csFiles_rhd); % put new files first
 vcFile_mat = fullfile(vcDir_out, 'settings_english.mat');
-if exist_file_(vcFile_mat)
-    S_mat = load(vcFile_mat);
-    table_data = struct_get_(S_mat, 'table_data');
-else
-    mkdir_(vcDir_out);
-    table_data = [];   
-    save(vcFile_mat, 'table_data');
-end
+table_data = load_table_paired_(vcFile_mat, csFiles_rhd);
+
 S_fig = struct('vcFile_mat', vcFile_mat, 'vcDir_out', vcDir_out);
 hFig = create_gui_crcns_(csFiles_rhd, table_data, S_fig);   
 end %func
+
+
+%--------------------------------------------------------------------------
+% append new files to the table
+function [table_data, vnSpikes_crcns] = load_table_paired_(vcFile_mat, csFiles_rhd, min_spikes)
+% # Usages
+% [table_data] = load_table_paired_(vcFile_mat, csFiles_rhd)
+%    for dan english dataset
+% [table_data, vnSpikes_crcns] = load_table_paired_(vcFile_mat, csFiles_dat, min_spikes)
+%    for crcns dataset
+% see also create_gui_crcns_
+
+if nargin<3, min_spikes = []; end
+nCols = 5;
+
+% initialize table_data
+table_data = cell(numel(csFiles_rhd), nCols);
+table_data(:,1) = csFiles_rhd(:);
+table_data(:,2) = {true};
+table_data(:,3) = {''};
+table_data(:,4) = {''};
+table_data(:,5) = {''};
+
+if exist_file_(vcFile_mat)
+    S_mat = load(vcFile_mat);
+    table_data_old = struct_get_(S_mat, 'table_data');
+    [~,viA] = ismember(table_data_old(:,1), csFiles_rhd);
+    table_data(viA,1:size(table_data_old,2)) = table_data_old;    
+%     vnSpikes_crcns = get_(S_mat, 'vnSpikes_crcns');
+    if isempty(min_spikes), return; end
+else
+    vnSpikes_crcns = [];
+end
+
+if ~isempty(min_spikes)
+    if isempty(vnSpikes_crcns)
+        [vnSpikes_crcns, ~] = count_spikes_crcns_(csFiles_rhd);
+    end
+    table_data = table_data(vnSpikes_crcns >= min_spikes,:);
+end
+
+if ~exist_file_(vcFile_mat)
+    [vcDir_out,~,~] = fileparts(vcFile_mat);
+    mkdir_(vcDir_out); % create a directory if doesn't exist
+    if isempty(vnSpikes_crcns)
+        save(vcFile_mat, 'table_data');
+    else
+        save(vcFile_mat, 'table_data', 'vnSpikes_crcns');
+    end
+end
+end % func

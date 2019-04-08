@@ -84,11 +84,7 @@ if ~fDraw
         xlim0 = [min(min(vrX1_), min(vrX2_))-eps(), max(max(vrX1_), max(vrX2_))+eps()];
         ylim0 = [min(min(vrY1_), min(vrY2_))-eps(), max(max(vrY1_), max(vrY2_))+eps()];
     end    
-    if isempty(scale)
-        S_line1 = struct('vrX', vrX1, 'vrY', vrY1, 'fastplot', 1);
-    else
-        S_line1 = struct('vrX', vrX1, 'vrY', vrY1, 'fastplot', 1, 'scale', scale, 'dimm', dimm);
-    end
+    S_line1 = struct('vrX', vrX1, 'vrY', vrY1, 'fastplot', 1, 'scale', scale, 'dimm', dimm);
     hLine1.UserData = S_line1;
     if ~isempty(hLine2)        
         hLine2.UserData = struct('vrX', vrX2, 'vrY', vrY2, 'fastplot', 1);
@@ -115,10 +111,11 @@ else
         [vrX2, vrY2] = deal([]);
     end
     [vrX1_, vrY1_, vrX2_, vrY2_] = filter_lim_(vrX1, vrY1, vrX2, vrY2, xlim1);    
-    [vrX1_, vrY1_, vrX2_, vrY2_] = subsample_(vrX1_, vrY1_, vrX2_, vrY2_, nPoints_max);    
+    [vrX1_, vrY1_, vrX2_, vrY2_, ~, scale, dimm] = subsample_(vrX1_, vrY1_, vrX2_, vrY2_, nPoints_max);    
     if ~isempty(hLine1)
         try
-            set(hLine1, 'XData', vrX1_, 'YData', vrY1_); 
+            set(hLine1, 'XData', vrX1_, 'YData', vrY1_);
+            set_userdata_(hLine1, 'scale', scale, 'dimm', dimm);
         catch
             disp(lasterr());
         end
@@ -133,6 +130,34 @@ if isempty(hLine2)
 else
     vh = [hLine1, hLine2];
 end    
+end %func
+
+
+%--------------------------------------------------------------------------
+function S_userdata = set_userdata_(varargin)
+% Usage
+% -----
+% S_userdata = set_userdata_(h, val)
+% S_userdata = set_userdata_(h, name1, val1, name2, val2, ...)
+h = varargin{1};
+S_userdata = get(h, 'UserData');
+if nargin==2
+    [val, vcName] = deal(varargin{2}, inputname(2));
+    try
+        S_userdata.(vcName) = val;
+    catch
+        disp(lasterr());
+    end
+elseif nargin>2
+    
+    for iArg_in = 2:2:nargin
+        [vcName1, val1] = deal(varargin{iArg_in}, varargin{iArg_in+1});
+        S_userdata.(vcName1) = val1;
+    end %for
+else
+    return;
+end
+set(h, 'UserData', S_userdata);
 end %func
 
 
