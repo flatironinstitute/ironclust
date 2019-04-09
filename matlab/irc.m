@@ -747,6 +747,11 @@ function [maxAmp, mrAmp_prev] = change_amp_(event, maxAmp, varargin)
 % if nargin<3, hPlot=[]; end
 factor = sqrt(2);
 if key_modifier_(event, 'shift'), factor = factor ^ 4; end
+if isempty(maxAmp)
+    vhLine = varargin(:);
+    vhLine = vhLine(~isempty_(vhLine));
+    maxAmp = get_userdata_(vhLine{1}, 'scale');
+end
 mrAmp_prev = maxAmp;
 if strcmpi(event.Key, 'uparrow')
     maxAmp = maxAmp / factor;
@@ -759,7 +764,35 @@ for iPlot = 1:numel(varargin)
     catch            
     end
 end
-% handle_fun_(@rescale_plot_, hPlot, maxAmp);
+end %func
+
+
+%--------------------------------------------------------------------------
+function rescale_multiplot_(varargin)
+% rscale_multiplot_(event, hLine1, hLine2, ...)
+
+event = varargin{1};
+factor = sqrt(2);
+if key_modifier_(event, 'shift'), factor = factor ^ 4; end
+hAx = [];
+for iPlot = 1:nargin-1
+    try
+        hLine1 = varargin{iPlot+1};
+        if isempty(hLine1), continue; end
+        mrAmp_prev1 = get_userdata_(hLine1, 'scale');
+        if strcmpi(event.Key, 'uparrow')
+            maxAmp1 = mrAmp_prev1 / factor;
+        elseif strcmpi(event.Key, 'downarrow')
+            maxAmp1 = mrAmp_prev1 * factor;
+        end
+        multiplot(hLine1, maxAmp1);
+        hAx = get(hLine1, 'Parent');
+    catch            
+    end
+end
+if ~isempty(hAx)
+    title_(hAx, sprintf('Scale: %0.1f uV', maxAmp1));
+end
 end %func
 
 
@@ -783,7 +816,7 @@ if nargin<2, fVerbose = 0; end
 S_cfg = file2struct_(ircpath_('default.cfg'));
 if exist_file_(ircpath_('user.cfg'))
     S_cfg1 = file2struct_(ircpath_('user.cfg')); %override
-    S_cfg = struct_merge_(S_cfg, S_cfg1, {'path_dropbox', 'path_backup', 'default_prm'});
+    S_cfg = struct_merge_(S_cfg, S_cfg1); %, {'path_dropbox', 'path_backup', 'default_prm'});
     if fVerbose, fprintf('Configuration loaded from user.cfg\n'); end
 else
     if fVerbose, fprintf('Configuration loaded from default.cfg\n'); end
@@ -2194,34 +2227,31 @@ if nargin<2, vcDataType = []; end
 if nargin<3, dimm = []; end
 if nargin<4, header = 0; end
 if isempty(vcDataType), vcDataType = 'int16'; end
+
 mnWav = [];
+switch numel(dimm)
+    case 0, nChans = 1;
+    case 1, nChans = dimm;
+end
+fTranspose_bin = 1;
 
 if ischar(vcFile)
     if matchFileEnd_(vcFile, '.prm')
         vcFile_prm = vcFile;    
         if ~exist_file_(vcFile_prm, 1), return; end        
-        P = loadParm_(vcFile_prm);
-        [vcFile, vcDataType, header] = deal(P.vcFile, P.vcDataType, P.header);
-        nBytes_file = filesize_(vcFile);
-        nSamples_file = floor((nBytes_file - header) / bytesPerSample_(vcDataType));
-        if P.fTranspose_bin
-            dimm = [P.nChans, nSamples];
-        else
-            dimm = [nSamples, P.nChans];
-        end
+        P = loadParam_(vcFile_prm);
+        [vcFile, vcDataType, header, nChans, fTranspose_bin] = ...
+            struct_get_(P, 'vcFile', 'vcDataType', 'header_offset', 'nChans', 'fTranspose_bin');
     end
-    fid = []; 
     if ~exist_file_(vcFile, 1), return; end
-    fid = fopen(vcFile, 'r');
+    [fid, nBytes_file] = fopen_(vcFile, 'r');
     if header>0, fseek(fid, header, 'bof'); end
     if numel(dimm) < 2
-        S_file = dir(vcFile);
-        if numel(S_file)~=1, return; end % there must be one file
-        nData = floor((S_file(1).bytes - header) / bytesPerSample_(vcDataType));
-        if isempty(dimm)
-            dimm = [nData, 1]; %return column
-        elseif numel(dimm) == 1
-            dimm = [dimm(1), floor(nData/dimm(1))];
+        nSamples = floor((nBytes_file - header) / bytesPerSample_(vcDataType) / nChans);
+        if fTranspose_bin
+            dimm = [nChans, nSamples]; %return column
+        else
+            dimm = [nSamples, nChans]; %return column
         end
     end
 else % fid directly passed
@@ -2233,7 +2263,7 @@ try
     mnWav = fread_(fid, dimm, vcDataType);
     if ischar(vcFile)
         fclose(fid);
-        fprintf('Loading %s took %0.1fs\n', vcFile, toc(t1)); 
+%         fprintf('Loading %s took %0.1fs\n', vcFile, toc(t1)); 
     end
 catch
     disperr_();
@@ -5596,6 +5626,8 @@ auto_scale_proj_time_(S0);
 figure_wait_(0, hFig_wait);
 
 plot_raster_(S0); %psth
+plot_aux_rate_();
+clust_comp_all_chan_();
 end
 
 
@@ -5873,7 +5905,7 @@ if isempty(S_fig) % initialize
     S_fig.hAx = axes_new_(hFig);
     set(S_fig.hAx, 'Position', [.05 .05 .9 .9], 'XLimMode', 'manual', 'YLimMode', 'manual'); 
     grid(S_fig.hAx, 'on');    
-    S_fig.vcTitle = 'Scale: %0.1f uV; [H]elp; [Left/Right]:Select cluster; (Sft)[Up/Down]:scale; [M]erge; [S]plit auto; [D]elete; [A]:Resample spikes; [P]STH; [Z]oom; in[F]o; [Space]:Find similar';
+    S_fig.vcTitle = '%0.1f uV; [H]elp; (Sft)[Up/Down]; (Sft)[Left/Right]; [M]erge; [S]plit; [D]elete; [A]:Resample; [P]STH; [Z]oom; [Space]:Match';
     xylabel_(S_fig.hAx, 'Cluster #', 'Site #', sprintf(S_fig.vcTitle, S_fig.maxAmp));
 
     set(hFig, 'KeyPressFcn', @keyPressFcn_FigWav_, 'CloseRequestFcn', @exit_manual_, 'BusyAction', 'cancel');
@@ -5977,6 +6009,7 @@ uimenu_(mh_view,'Label', 'Show raw waveform', 'Callback', @(h,e)raw_waveform_(h)
     'Checked', ifeq_(get_(P, 'fWav_raw_show'), 'on', 'off'));
 %uimenu_(mh_view,'Label', 'Threshold by sites', 'Callback', @(h,e)keyPressFcn_thresh_(hFig, 'n'));
 % uimenu_(mh_view,'Label', '.prm file', 'Callback', @edit_prm_);
+uimenu_(mh_view,'Label', 'Show averaged waveforms on all channels','Callback', @(h,e)clust_comp_all_chan_(1));
 uimenu_(mh_view,'Label', 'Reset window positions', 'Callback', @reset_position_);
 
 mh_proj = uimenu_(hFig,'Label','Projection'); 
@@ -6068,7 +6101,7 @@ try
     fExit = save_manual_(P);
     if ~fExit, return; end 
     if ~isfield(S0, 'csFig')
-        S0.csFig = {'FigPos', 'FigMap', 'FigTime', 'FigWav', 'FigWavCor', 'FigProj', 'FigRD', 'FigCorr', 'FigIsi', 'FigHist'};
+        S0.csFig = {'FigPos', 'FigMap', 'FigTime', 'FigWav', 'FigWavCor', 'FigProj', 'FigRD', 'FigCorr', 'FigIsi', 'FigHist', 'FigClust', 'FigAux'};
     end
     delete_multi_(get_fig_all_(S0.csFig), src);
     close_(get_fig_('FigTrial'), get_fig_('FigTrial_b'), get_fig_('FigAux'));    
@@ -7651,6 +7684,9 @@ S0 = keyPressFcn_cell_(get_fig_cache_('FigWav'), {'j','t','c','i','v','e','f'}, 
 auto_scale_proj_time_(S0);
 set(0, 'UserData', S0);
 plot_raster_(S0);
+plot_aux_rate_();
+clust_comp_all_chan_(); 
+
 figure_wait_(0, hFig_wait);
 end %func
 
@@ -8447,15 +8483,20 @@ if floor(selXRange(1))<1
     selXRange(1)=1;
 end
 
-%calculate intersections
-selLineSlope=(selYRange(2)-selYRange(1))/(selXRange(2)-selXRange(1));
-selLineInt=selYRange(2)-selLineSlope*selXRange(2);
-selLineInterpX=floor(selXRange(1)):ceil(selXRange(2));
-selLineInterp=selLineInterpX*selLineSlope+selLineInt;
-selWave=wav1(floor(selXRange(1)):ceil(selXRange(2)),:);
-selWave=selWave-repmat(selLineInterp',[1,size(selWave,2)]);
-cross=diff(sign(selWave))~=0;
-spkIn=sum(cross)~=0;
+%calculate intersections (for non-vertical lines)
+if range(selXRange)>1
+    selLineSlope=(selYRange(2)-selYRange(1))/(selXRange(2)-selXRange(1));
+    selLineInt=selYRange(2)-selLineSlope*selXRange(2);
+    selLineInterpX=floor(selXRange(1)):ceil(selXRange(2));
+    selLineInterp=selLineInterpX*selLineSlope+selLineInt;
+    selWave=wav1(floor(selXRange(1)):ceil(selXRange(2)),:);
+    selWave=selWave-repmat(selLineInterp',[1,size(selWave,2)]);
+    cross=diff(sign(selWave))~=0;
+    spkIn=sum(cross)~=0;
+else
+    selWave=wav1(round(mean(selXRange(1))),:);
+    spkIn=selWave<max(selYRange)&selWave>min(selYRange);
+end
 
 %plot split preview
 hold(hAx, 'on');
@@ -12779,6 +12820,13 @@ end %func
 
 
 %--------------------------------------------------------------------------
+function settings_aux_(h,e)
+ui_update_prm_('*_aux_trial');
+plot_aux_rate_();
+end %func
+
+
+%--------------------------------------------------------------------------
 % 2/7/2019 JJJ: convert index to binary vector
 function vl = index2logical_(viTime, sRateHz, binsize_sec, nLen)
 % nLen: length of the vector vl (optional)
@@ -12794,6 +12842,57 @@ end %func
 
 %--------------------------------------------------------------------------
 function plot_psth_clu_(viTime_clu, vrTime_trial, P, hAx, vcColor)
+if read_cfg_('fZach')
+    try
+        plot_psth_clu_zach_(viTime_clu, vrTime_trial, P, hAx, vcColor);
+        return;
+    catch
+        disperr_('plot_psth_clu_: fZach failed');
+    end
+else
+    plot_psth_clu__(viTime_clu, vrTime_trial, P, hAx, vcColor);
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+function plot_psth_clu_zach_(viTime_clu, vrTime_trial, P, hAx, vcColor)
+if nargin<4, hAx=gca; end
+if nargin<5, vcColor = 'k'; end
+
+sRateHz_psth = get_set_(P, 'sRateHz_psth', 1000); % psth sampling rate, 1000 Hz
+
+[tlim_psth, tbin] = deal(P.tlim_psth, P.tbin_psth);
+nlim_psth = round(tlim_psth * sRateHz_psth);
+nTime_psth = ceil(max(vrTime_trial) * sRateHz_psth) + nlim_psth(end) + 1;
+ml_trial_ms = vr2mr2_(index2logical_(viTime_clu, P.sRateHz, 1/sRateHz_psth, nTime_psth), ...
+    ceil(vrTime_trial * sRateHz_psth), nlim_psth);
+[viCol_, ~] = ind2sub(size(ml_trial_ms), find(ml_trial_ms));
+vrSpike_trial = viCol_ / sRateHz_psth + tlim_psth(1);
+tPsthPlot = tlim_psth(1):tbin:tlim_psth(2);
+[vnCnt, vrTimePlot] = hist(vrSpike_trial, tPsthPlot);
+vrRate = vnCnt / tbin / numel(vrTime_trial);
+vDist=fitdist(vrSpike_trial(~isoutlier(vrSpike_trial)),'normal');
+
+bar_(hAx, vrTimePlot, vnCnt, 1, 'EdgeColor', 'none', 'FaceColor', vcColor);
+vrXTick = tlim_psth(1):(P.xtick_psth):tlim_psth(2);
+set(hAx, 'XTick', vrXTick, 'XTickLabel', []);
+grid(hAx, 'on');
+hold(hAx, 'on'); 
+scaledNormVDist = pdf(vDist,tPsthPlot)*mean(vrRate);
+plot(hAx,tPsthPlot,scaledNormVDist,'r-')
+hAxYLim = get(hAx,'YLim');
+t=text(vDist.mu,mean([hAxYLim(2) max(scaledNormVDist)]),[num2str(round(vDist.mu,3)), '+/-' num2str(round(vDist.sigma,3))]);
+set(t,'HorizontalAlignment','center')
+set(t,'Parent',hAx)
+plot_(hAx, [0 0], get(hAx,'YLim'), 'r-');
+ylabel(hAx, 'Rate (Hz)');
+xlim_(hAx, P.tlim_psth);
+end
+
+
+%--------------------------------------------------------------------------
+function plot_psth_clu__(viTime_clu, vrTime_trial, P, hAx, vcColor)
 if nargin<4, hAx=gca; end
 if nargin<5, vcColor = 'k'; end
 
@@ -18971,7 +19070,8 @@ else
     return;
 end
 for iFile = 1:numel(csFile_prm)
-    csFiles_del = strrep(csFile_prm{iFile}, '.prm', {'_jrc.mat', '_spkraw.jrc', '_spkwav.jrc', '_spkfet.jrc', '_log.mat', '_gt1.mat'});
+    csFiles_del = strrep(csFile_prm{iFile}, '.prm', ...
+        {'_jrc.mat', '_spkraw.jrc', '_spkwav.jrc', '_spkfet.jrc', '_log.mat', '_gt1.mat'});
     delete_files_(csFiles_del);    
 end
 end %func
@@ -20651,7 +20751,7 @@ if iscell(P_update)
 elseif ischar(P_update)
     vcFilter = P_update;
     csFields = struct_fields_(P, vcFilter);
-    vcUpdate = load_txt_(P.vcFile_prm, csFields);
+    vcUpdate = load_txt_(P.vcFile_prm, csFields, P);
 else
     vcUpdate = struct2str_(P_update);
 end
@@ -20675,7 +20775,7 @@ end %func
 
 %--------------------------------------------------------------------------
 % 12/11/18 JJJ: Created
-function vcLines = load_txt_(vcFile_txt, csFields)
+function vcLines = load_txt_(vcFile_txt, csFields, P)
 % Usages
 % -----
 % vcLines = load_txt_(vcFile_txt)
@@ -20688,16 +20788,24 @@ function vcLines = load_txt_(vcFile_txt, csFields)
 
 if nargin<2, csFields = {}; end
 if ischar(csFields), csFields = {csFields}; end
+if nargin<3, P = []; end
 
-csLines = filter_lines_(file2lines_(vcFile_txt), csFields);
-vcLines = cell2mat(cellfun(@(s)sprintf('%s\n',s), csLines(:)', 'UniformOutput', 0));
-vcLines = strtrim(vcLines);
+[csLines, csFields_missing] = filter_lines_(file2lines_(vcFile_txt), csFields);
+vcLines = cellstr2vc_(csLines);
+if ~isempty(csFields_missing) && ~isempty(P)
+    % fill the missing values from csLines
+    vcLines1 = struct2str_(struct_copy_(P, csFields_missing{:}));
+    vcLines = [vcLines, vcLines1];
+end
+% vcLines = cell2mat(cellfun(@(s)sprintf('%s\n',s), csLines(:)', 'UniformOutput', 0));
+vcLines = strtrim_(vcLines);
 end %func
 
 
 %--------------------------------------------------------------------------
 % 12/11/18 JJJ: Created
-function csLines3 = filter_lines_(csLines, csFields)
+function [csLines3, csFields_missing] = filter_lines_(csLines, csFields)
+
 % strip comments and white spaces
 csLines1 = cellfun(@strtrim, csLines, 'UniformOutput', 0);
 csLines1 = csLines1(cellfun(@(x)~isempty(x), csLines1));
@@ -20706,6 +20814,7 @@ csLines2 = cellfun(@(x)strtrim(strtok(x, '%')), csLines1, 'UniformOutput', 0);
 
 csNames1 = cellfun(@(x)strtrim(strtok(x, '=')), csLines1, 'UniformOutput', 0);
 csLines3 = csLines2(ismember(csNames1, csFields));
+csFields_missing = csFields(~ismember(csFields, csNames1));
 end %func
 
 
@@ -21255,9 +21364,12 @@ end %func
 
 %--------------------------------------------------------------------------
 % 9/19/17 JJJ: Created for SPARC
-function plot_aux_corr_(mrRate_clu, vrWav_aux, vrCorr_aux_clu, vrTime_aux, iCluPlot, vcLabel_aux)
-if nargin<5, iCluPlot = []; end
-if nargin<6, vcLabel_aux = ''; end
+function plot_aux_corr_(hFig, S_aux)
+% mrRate_clu, vrWav_aux, vrCorr_aux_clu, vrTime_aux, iCluPlot, vcLabel_aux
+[mrRate_clu, vrWav_aux, vrCorr_aux_clu, vrTime_aux, iCluPlot, vcLabel_aux] = ...
+    struct_get_(S_aux, 'mrRate_clu', 'vrWav_aux', 'vrCorr_aux_clu', 'vrTime_aux', 'iCluPlot', 'vcLabel_aux');
+% if nargin<6, iCluPlot = []; end
+% if nargin<7, vcLabel_aux = ''; end
 
 % show the firing rate and plot the 
 [vrCorr_srt, viSrt] = sort(vrCorr_aux_clu, 'descend');
@@ -21271,31 +21383,38 @@ if ~isempty(iCluPlot)
    nClu_show = 1;
    viSrt = iCluPlot;
 end
-    
-hFig = create_figure_('FigAux', [.5 0 .5 1], P.vcFile_prm,1,1);
+clf(hFig);
+% add menu for changing the setting
+
 hTabGroup = uitabgroup(hFig);
 for iClu1 = 1:nClu_show
     iClu = viSrt(iClu1);
     htab1 = uitab(hTabGroup, 'Title', sprintf('Clu %d', iClu), 'BackgroundColor', 'w');    
-    ax_ = axes('Parent', htab1);
-    subplot(2, 1, 1);    
-    ax_ = plotyy(vrTime_aux, mrRate_clu(:,iClu), vrTime_aux, vrWav_aux);
-    xlabel('Time (s)');
-    ylabel(ax_(1),'Firing Rate (Hz)');
-    ylabel(ax_(2), vcLabel_aux);    
+%     ax_ = axes('Parent', htab1);
+%     subplot(2, 1, 1, ax_);    
+    hAx1 = axes('Parent', htab1, 'OuterPosition', [0 .5 1 .5]); 
+    ax1_ = plotyy(hAx1, vrTime_aux, mrRate_clu(:,iClu), vrTime_aux, vrWav_aux);
+    xlabel(hAx1, 'Time (s)');
+    ylabel(ax1_(1),'Firing Rate (Hz)');
+    ylabel(ax1_(2), vcLabel_aux);    
     iSite_ = S_clu.viSite_clu(iClu);
     vcTitle_ = sprintf('Clu %d (Site %d, Chan %d): Corr=%0.3f', ...
         iClu, iSite_, P.viSite2Chan(iSite_), vrCorr_aux_clu(iClu));
-    title(vcTitle_);
-    set(ax_, 'XLim', vrTime_aux([1,end]));
-    grid on;
+    title(hAx1, vcTitle_);
+    set(hAx1, 'XLim', vrTime_aux([1,end]));
+    grid(hAx1, 'on');
     
-    subplot(2, 1, 2);
-    plot_(vrWav_aux(1:nSubsample_aux:end), mrRate_clu(1:nSubsample_aux:end,iClu), 'k.');
-    xlabel(vcLabel_aux); 
-    ylabel('Firing Rate (Hz)');
-    grid on;
+    hAx2 = axes('Parent', htab1, 'OuterPosition', [0 0 1 .5]); 
+    plot_(hAx2, vrWav_aux(1:nSubsample_aux:end), mrRate_clu(1:nSubsample_aux:end,iClu), 'k.');
+    xlabel(hAx2, vcLabel_aux); 
+    ylabel(hAx2, 'Firing Rate (Hz)');
+    grid(hAx2, 'on');
 end %for
+
+% add settings menu
+set(hFig, 'MenuBar','None');
+mh_settings = uimenu_(hFig,'Label','Settings');
+uimenu_(mh_settings,'Label','Change settings','Callback',@(h,e)settings_aux_(h,e));
 end %func
 
 
@@ -21304,29 +21423,57 @@ end %func
 % 9/19/17 JJJ: Created for SPARC
 function plot_aux_rate_(fSelectedUnit, fNewFig)
 % Aux channel vs. rate
-if nargin<1, fSelectedUnit = 0; end %plot all
+persistent hFig fSelectedUnitLast
+
+if nargin<1, fSelectedUnit = fSelectedUnitLast; end %plot all
 if nargin<2, fNewFig = 0; end % added by Zach
 
-[P, S_clu, iCluCopy] = get0_('P', 'S_clu', 'iCluCopy');
+if isempty(fSelectedUnitLast), fSelectedUnitLast = fSelectedUnit; end
+if ~isvalid_(hFig) && ~fNewFig, return; end
+if isvalid_(hFig) && ~fSelectedUnitLast && ~fSelectedUnit, return; end
+fSelectedUnitLast = fSelectedUnit;
+
+[P, S_clu, iCluPlot] = get0_('P', 'S_clu', 'iCluCopy');
 P = loadParam_(P.vcFile_prm);
 
 % [vrWav_aux, vrTime_aux] = load_aux_(P);
 [vrWav_aux, vrTime_aux, vcLabel_aux] = load_trial_(P);
-if isempty(vrWav_aux), msgbox_('Aux input is not found'); return; end
 
+if isempty(vrWav_aux), msgbox_('Aux input is not found'); return; end
+if ~fSelectedUnit, iCluPlot = []; end
+if fNewFig
+	hFig = create_figure_('FigAux', [.5 0 .5 1], P.vcFile_prm,1,1); 
+end
 hFig_wait = figure_wait_(1);
-% mrRate_clu = clu_rate_(S_clu, [], numel(vrWav_aux));
+
+vrWav_aux = smooth_(vrWav_aux, get_set_(P, 'nSmooth_aux_trial', 500));
 mrRate_clu = clu_rate_(S_clu);
 nSamples = min(numel(vrWav_aux), size(mrRate_clu,1));
 [vrWav_aux, vrTime_aux, mrRate_clu] = ...
     deal(vrWav_aux(1:nSamples), vrTime_aux(1:nSamples), mrRate_clu(1:nSamples, :));
-
 vrCorr_aux_clu = arrayfun(@(i)corr(vrWav_aux, mrRate_clu(:,i), 'type', 'Pearson'), 1:size(mrRate_clu,2));
-if ~fSelectedUnit, iCluCopy = []; end
-plot_aux_corr_(mrRate_clu, vrWav_aux, vrCorr_aux_clu, vrTime_aux, iCluCopy, vcLabel_aux);
+S_aux = makeStruct_(mrRate_clu, vrWav_aux, vrCorr_aux_clu, vrTime_aux, iCluPlot, vcLabel_aux);
+plot_aux_corr_(hFig, S_aux);
 % assignWorkspace_(mrRate_clu, vrWav_aux, vrCorr_aux_clu, vrTime_aux);    
 % msgbox_(vcMsg);
+
 figure_wait_(0, hFig_wait);
+end %func
+
+
+%--------------------------------------------------------------------------
+function vr = smooth_(vr, nSmooth)
+if isempty(nSmooth), return; end
+if nSmooth<1, return; end
+vr = smooth(vr, nSmooth);
+end %func
+
+
+%--------------------------------------------------------------------------
+function vcFile = locate_file_(vcFile, vcFile_prm);
+if ~exist_file_(vcFile)    
+    vcFile = subs_dir_(vcFile, vcFile_prm);
+end
 end %func
 
 
@@ -21345,6 +21492,7 @@ switch S_trial.type
     case 'analog'        
         [vcFile_analog, iChan, sRateHz_trial, vcUnit, scale] = ...
             struct_get_(S_trial.value, 'vcFile', 'iChan', 'sRateHz', 'vcUnit', 'scale'); 
+        vcFile_analog = locate_file_(vcFile_analog, P.vcFile_prm);
         if ~exist_file_(vcFile_analog), return; end
         if isempty(iChan), return; end        
         [~,~,vcExt] = fileparts(vcFile_analog);
@@ -21572,8 +21720,8 @@ end %func
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_(vcFile_prm)
 if nargin<1, vcFile_prm = ''; end
-vcVer = 'v4.4.6';
-vcDate = '4/1/2019';
+vcVer = 'v4.4.7';
+vcDate = '4/8/2019';
 vcHash = file2hash_();
 
 if nargout==0
@@ -23205,6 +23353,60 @@ end %func
 
 %--------------------------------------------------------------------------
 function export_quality_(varargin)
+
+if read_cfg_('fZach')
+    try
+        export_quality_zach_(varargin{:});
+    catch
+        disperr_('export_quality_: fZach failed');    
+    end
+else
+    export_quality__(varargin{:});
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+function export_quality_zach_(varargin)
+% replaces export_quality_(varargin)
+% export_csv_(hObject, event)
+if nargin==1
+    P = varargin{1};
+    fGui = 0;
+else
+    P = get0_('P');
+    fGui = 1;
+end
+
+[S0, P] = load_cached_(P); 
+if ~isfield(S0, 'S_clu'), fprintf(2, 'File must be sorted first.\n'); return; end
+S = S0.S_clu;
+[unit_id, SNR, center_site, nSpikes, xpos, ypos, uV_min, uV_pp, IsoDist, LRatio, IsiRat, note] = ...
+    deal((1:S.nClu)', S.vrSnr_clu(:), S.viSite_clu(:), S.vnSpk_clu(:), ...
+    S.vrPosX_clu(:), S.vrPosX_clu(:), S.vrVmin_uv_clu, S.vrVpp_uv_clu, ...
+    S.vrIsoDist_clu(:), S.vrLRatio_clu(:), S.vrIsiRatio_clu(:), S.csNote_clu(:));
+%note(cellfun(@isempty, note)) = '';
+table_ = table(unit_id, SNR, center_site, nSpikes, uV_pp);
+disp(table_);
+
+vcFile_csv = subsFileExt_(P.vcFile_prm, '_quality.csv');
+writetable(table_, vcFile_csv);
+csMsg = { ...
+    sprintf('Wrote to %s. Columns:', vcFile_csv), ...
+    sprintf('\tColumn 1: unit_id: Unit ID'), ...
+    sprintf('\tColumn 2: SNR: |Vp/Vrms|; Vp: negative peak amplitude of the peak site; Vrms: SD of the Gaussian noise (estimated from MAD)'), ...
+    sprintf('\tColumn 3: center_site: Peak site number which contains the most negative peak amplitude'), ...
+    sprintf('\tColumn 4: nSpikes: Number of spikes'), ...
+    sprintf('\tColumn 8: uV_pp: peak-to-peak voltage (microvolts)'), ...
+};
+
+cellfun(@(x)fprintf('%s\n',x), csMsg);
+if fGui, msgbox_(csMsg); end
+end %func
+
+
+%--------------------------------------------------------------------------
+function export_quality__(varargin)
 % export_csv_(hObject, event)
 if nargin==1
     P = varargin{1};
@@ -27771,8 +27973,8 @@ uimenu_(mh_trials,'Label','Add analog channel', 'Callback', @(h,e)trial_add_anal
 if ~isempty(cTrials)
     %-----
     uimenu_(mh_trials, 'Label', 'All unit firing rate vs. aux. input', 'Callback', ...
-        @(h,e)plot_aux_rate_, 'Separator', 'on');
-    uimenu_(mh_trials, 'Label', 'Selected unit firing rate vs. aux. input', 'Callback', @(h,e)plot_aux_rate_(1));
+        @(h,e)plot_aux_rate_(0,1), 'Separator', 'on');
+    uimenu_(mh_trials, 'Label', 'Selected unit firing rate vs. aux. input', 'Callback', @(h,e)plot_aux_rate_(1,1));
     uimenu_(mh_trials, 'Label', 'Plot PSTH [P]', 'Callback', @(h,e)plot_psth_trial_(h,e));
     % uimenu_(mh_plot, 'Label', 'All unit firing rate vs. aux. input (zsperry)', 'Callback', @(h,e)plot_aux_rate_zsperry_());
 end
@@ -28981,7 +29183,7 @@ csMsg{end+1} = sprintf('  SNR Vp: %0.4f', snr_int);
 csMsg{end+1} = sprintf('  noise (site average): %0.1f uV', noise_int);
 csMsg{end+1} = sprintf('  peak (spike average): %0.1f uV', peak_int);
 csMsg{end+1} = sprintf('  Filter: %s', S_true.filter);
-csMsg = {cell2str2vc_(csMsg)};
+csMsg = {cellstr2vc_(csMsg)};
 disp_cs_(csMsg);
 
 % create a window and display info
@@ -29303,7 +29505,7 @@ csMsg{end+1} = sprintf('ADC sampling rate: %0.1f', sRateHz1);
 csMsg{end+1} = sprintf('scale factor: %0.4f uV/bit', uV_per_bit);
 csMsg{end+1} = sprintf('probe file: %s', vcFile_probe);
 csMsg{end+1} = sprintf('ADC saturation: %0.2f %%', rSaturation * 100);
-csMsg = {cell2str2vc_(csMsg)};
+csMsg = {cellstr2vc_(csMsg)};
 
 spkLim_ms_intra = get_set_(S_cfg, 'spkLim_ms_intra', [-1,1]);
 spkLim1 = round(sRateHz1*spkLim_ms_intra / 1000);
@@ -29321,9 +29523,9 @@ end %func
 
 %--------------------------------------------------------------------------
 % Convert cell string to a character arrays separated by '\n'
-function vc = cell2str2vc_(cs)
-
-vc = cell2mat(cellfun(@(x)sprintf('%s\n', x), cs, 'UniformOutput', 0));
+function vc = cellstr2vc_(cs)
+if isempty(cs), vc=''; return; end
+vc = cell2mat(cellfun(@(x)sprintf('%s\n', x), cs(:)', 'UniformOutput', 0));
 end %func
 
 
@@ -30526,3 +30728,94 @@ if ~exist_file_(vcFile_mat)
     end
 end
 end % func
+
+
+%--------------------------------------------------------------------------
+% 2019/04/09 JJJ: cleaned code originally craeted by Zach Sperry
+function clust_comp_all_chan_(fNewFig)
+persistent hFig
+% hFig = get_fig_('FigClust');
+if nargin<1, fNewFig=0; end
+if ~fNewFig && ~isvalid_(hFig), return ;end
+
+S0 = get0_();
+P = S0.P;
+iClu = S0.iCluCopy;
+[snr_thresh, nSamples_max, nSkip_site] = deal(3, 2^12, 2);
+
+% load raw waveforms
+vcFile_bin = locate_file_(P.vcFile, P.vcFile_prm);
+mnWav_T = load_bin_(P.vcFile_prm);
+if ~get_(P, 'fTranspose_bin'), mnWav_T=mnWav_T'; end
+try
+    mnWav_T = mnWav_T(P.viSite2Chan,:);
+catch
+    ;
+end
+if ~isempty(P.viSiteZero)
+    mnWav_T(P.viSiteZero,:) = nan;  % do not display bad sites
+end
+nSites = size(mnWav_T,1);
+
+% obtain raw spike waveforms
+iClu = S0.iCluCopy;
+viTime_spk1 = S0.viTime_spk(S0.S_clu.cviSpk_clu{iClu});
+if 0
+    viTime_spk1=viTime_spk1(viTime_spk1+50000<length(mnWav_T) & viTime_spk1>50001);
+end
+viTime_spk1 = subsample_vr_(viTime_spk1, nSamples_max);
+tnWav_spk1 = mr2tr4_(mnWav_T, P.spkLim_raw, viTime_spk1);
+mrWav_med_spk1 = single(median(tnWav_spk1,3)) * P.uV_per_bit;
+mrWav_med_spk1 = mrWav_med_spk1 - median(mrWav_med_spk1);
+vrTime_plot = (P.spkLim_raw(1):P.spkLim_raw(end)) / P.sRateHz * 1000;
+
+% plot
+if fNewFig
+    hFig = create_figure_('FigClust', [.85 0 .15 1], P.vcFile_prm, 1, 1);
+end
+clf(hFig);
+hAx = axes(hFig);
+hold(hAx, 'on');
+viSites = 1:nSites;
+maxAmp = get_userdata_(get_fig_('FigWav'), 'maxAmp');
+% separate to above and below SNR
+vrVrms_site = single(S0.vrThresh_site) / S0.P.qqFactor * P.uV_per_bit;
+vrVpp1_site = range(mrWav_med_spk1,1);
+vrSnr1_site = vrVpp1_site(:) ./ vrVrms_site(:);
+vlOver_site = vrSnr1_site > snr_thresh;
+[viSites1, viSites2] = deal(find(vlOver_site), find(~vlOver_site));
+hLine1 = multiplot(hAx, maxAmp, vrTime_plot, mrWav_med_spk1(:,viSites1), viSites1);
+set_(hLine1, 'Color', 'r');
+hLine2 = multiplot(hAx, maxAmp, vrTime_plot, mrWav_med_spk1(:,viSites2), viSites2);
+set_(hLine2, 'Color', 'k');
+
+axis(hAx, [vrTime_plot(1), vrTime_plot(end), 0, nSites+1]);
+set(hAx, 'YTick', viSites(1:nSkip_site:end));
+ylabel(hAx, 'Site #');
+xlabel(hAx, 'Time (ms)');
+grid(hAx, 'on');
+title_(hAx, sprintf('Scale: %0.1f uV', maxAmp));
+set(hFig, 'KeyPressFcn', @(h,e)rescale_multiplot_(e, hLine1, hLine2));
+
+
+% line(hAx,[0.2 0.2],[max(plot_last)+10 max(plot_last)+60],'LineWidth',2,'Color','k')
+% text(hAx,double(0.3),double(max(plot_last)+35),double(0),'50uV');
+
+end
+
+
+%--------------------------------------------------------------------------
+% transposed waveform matrix to spikes
+function tr = mr2tr4_(mr_T, spkLim, viTime)
+% mr_T: nChans x nSamples
+
+[nChans, nSamples] = size(mr_T);
+nSpk = numel(viTime);
+
+viTime0 = [spkLim(1):spkLim(end)]';
+miRange = bsxfun(@plus, int32(viTime0), int32(viTime(:)'));
+miRange = min(max(miRange, 1), nSamples);
+tr = mr_T(:, miRange(:));
+tr = reshape(tr, [nChans, numel(viTime0), numel(viTime)]);
+tr = permute(tr, [2,1,3]);
+end %func

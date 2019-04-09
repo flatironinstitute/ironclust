@@ -3,6 +3,26 @@ IronClust, written by J. James Jun, Flatiron Institute, Simons Foundation
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [4.4.8] - 2019-4-9
+### Added
+- Merged Zach Sperry's contribution on spike triggered visualization
+- Added GUI menu (view\Show averaged waveforms on all channels)
+  - It displays median waveforms on all channels for a selected cluster
+- `fZach` switch is added. It's turned off by default. 
+  - To enable, create `user.cfg` file in ironclust folder and set `fZach=1;`
+
+
+## [4.4.7] - 2019-4-8
+### Added
+- Added GUI functionalities on `irc convert-mda-english`
+  - `summarize recording` menu is added, which plots average waveforms on 
+    intracellular and extracellular channels
+  - Ability to customize probe files on the GUI table
+
+### Fixed
+- fastplot.m error fixed when plotting multiple channels
+
+
 ## [4.4.6] - 2019-4-1
 ### Fixed
 - Singular dimension error fixed when no adjacent channel is found per spiking event
