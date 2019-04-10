@@ -3,6 +3,20 @@ IronClust, written by J. James Jun, Flatiron Institute, Simons Foundation
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [4.4.9] - 2019-4-10
+### Fixed
+- `irc convert-mda-english` bugfix
+  - Intracellular time range is corrected in `summarize recording` menu
+    - It uses `spkLim_ms_gt` constant stored in `default.cfg` for the spike 
+      waveform time range in milliseconds
+  - `convert` menu correctly exports .mda files containing extracellular 
+    channels (`raw.mda`) and stores intracellular channel (`raw_true.mda`)
+    in correct dimensions (1 x nSamples).
+
+### Added
+- `ms_bandpass` filter is optimized by making efficient use of GPU memory.
+
+
 ## [4.4.8] - 2019-4-9
 ### Added
 - Merged Zach Sperry's contribution on spike triggered visualization

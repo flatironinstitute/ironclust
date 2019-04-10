@@ -3107,11 +3107,12 @@ if nSites==0, nSites = size(mnWav,2); end
 if fProcessRaw
     tnWav_raw = permute(mn2tn_gpu_(mnWav, P.spkLim_raw, viTime_spk, [], vcDataType), [1,3,2]);
 end
-P1.fGpu=0;
-[mnWav, ~] = filt_car_(mnWav, P1);
-% if fSubtract_nmean % Apply nmean CAR to ground truth spikes (previous standard)
-%     P1=P; P1.vcCommonRef = 'nmean'; mnWav = wav_car_(mnWav, P1);
-% end
+try
+    [mnWav, ~] = filt_car_(mnWav, P1);
+catch
+    P1.fGpu=0;
+    [mnWav, ~] = filt_car_(mnWav, P1);
+end
 tnWav_spk = permute(mn2tn_gpu_(mnWav, P1.spkLim, viTime_spk, [], vcDataType), [1,3,2]);
 [vrVrms_site, vrVsd_site] = mr2rms_(mnWav, 1e6);
 [vrVrms_site, vrVsd_site] = gather_(vrVrms_site * uV_per_bit, vrVsd_site * uV_per_bit);
@@ -5237,7 +5238,10 @@ if (n_pre > 0 || n_post > 0) && fTrim_pad
 end
 
 %global subtraction before 
-[mnWav2, vnWav2_mean] = wav_car_(mnWav2, P); 
+[nSamples, nChans] = size(mnWav2);
+if nChans >= get_set_(P, 'nChans_min_car', 0);
+    [mnWav2, vnWav2_mean] = wav_car_(mnWav2, P); 
+end
 end %func
 
 
@@ -21720,8 +21724,8 @@ end %func
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_(vcFile_prm)
 if nargin<1, vcFile_prm = ''; end
-vcVer = 'v4.4.7';
-vcDate = '4/8/2019';
+vcVer = 'v4.4.9';
+vcDate = '4/10/2019';
 vcHash = file2hash_();
 
 if nargout==0
@@ -27456,11 +27460,14 @@ end %func
 
 
 %--------------------------------------------------------------------------
+% 4/10/2019 JJJ: GPU memory use improved
 % 3/11/2019 JJJ: GPU performance improved
 % 10/15/2018 JJJ: Modified from ms_bandpass_filter (MountainLab) for
 % memory-access efficiency
 % https://github.com/magland/mountainlab
 function mrWav_filt = ms_bandpass_filter_(mrWav, P)
+% mrWav_filt will be placed in GPU if mrWav is in GPU if memory allows
+
 NSKIP_MAX = 2^19; % fft work length
 nPad = 300;
 [nT, nC] = size(mrWav);
@@ -27469,14 +27476,13 @@ nSkip = min(nT, NSKIP_MAX);
     struct_get_(P, 'sRateHz', 'freqLim', 'freqLim_width', 'fGpu');
 if isempty(freqLim), mrWav_filt = mrWav; return; end
 
-if fGpu
-    try mrWav_filt = zeros(size(mrWav), class_(mrWav), 'gpuArray');
-    catch, fGpu = 0; end
+try
+    mrWav_filt = zeros(size(mrWav), 'like', mrWav); 
+catch
+    mrWav_filt = zeros(size(mrWav), class_(mrWav)); 
+    fGpu = 0;
 end
-if ~fGpu
-    mrWav = gather_(mrWav); 
-    mrWav_filt = zeros(size(mrWav), 'like', mrWav);
-end
+if ~fGpu, mrWav = gather_(mrWav); end
 fh_filt = @(x,f)real(ifft(bsxfun(@times, fft(single(x)), f)));
 n_prev = nan;
 fprintf('Running ms_bandpass_filter\n\t'); t1=tic;
@@ -27505,7 +27511,12 @@ for iStart = 1:nSkip:nT
     catch
         mrWav1 = fh_filt(gather_(mrWav1), vrFilt1);  
     end
-    mrWav_filt(iStart:iEnd,:) = mrWav1(nPad+1:end-nPad,:);
+    if ~isGpu_(mrWav_filt)
+        mrWav_filt(iStart:iEnd,:) = gather_(mrWav1(nPad+1:end-nPad,:));
+    else
+        mrWav_filt(iStart:iEnd,:) = mrWav1(nPad+1:end-nPad,:);
+    end
+    mrWav1 = []; % clear memory
     fprintf('.');
 end
 if ~isGpu_(mrWav), mrWav_filt = gather_(mrWav_filt); end
@@ -29065,7 +29076,7 @@ end %func
 %--------------------------------------------------------------------------
 function [vcFile_true, vcFile_json] = export_spikeforest_intra_(vcDir_out1, S_intra, S_json)
 % create raw_true.mda file 
-
+mkdir_(vcDir_out1);
 vcFile_true = fullfile(vcDir_out1, 'raw_true.mda');
 vcFile_json = fullfile(vcDir_out1, 'params_true.json');
 
@@ -29073,7 +29084,7 @@ vcFile_json = fullfile(vcDir_out1, 'params_true.json');
 S_true_json = struct('samplerate', S_json.samplerate, 'scale_factor', 1, 'filter', S_intra.vcLabel, 'unit', 'uV');
 struct2json_(S_true_json, vcFile_json);
 
-vrWav_intra = single(S_intra.vrWav_filt) * single(-1 * S_json.scale_factor);
+vrWav_intra = single(S_intra.vrWav_filt(:)') * single(-1 * S_json.scale_factor);
 % write firings_true.mda
 writemda_(vrWav_intra, vcFile_true);
 end %func
@@ -29129,7 +29140,10 @@ fUseCache = 0;
 [~, vcRec] = fileparts(fileparts(vcFile_recording));
 [csDir_full, csDir_rec] = subdir_(vcDir_study);
 iRec = find(cellfun(@(x)contains(x, vcRec), csDir_rec));
+if isempty(iRec), errordlg('mda file is not found. Convert first'); return; end
 iRec = iRec(1);
+
+hFig_wait = figure_wait_(1);
 
 % load S_gt1
 vcDir1 = csDir_full{iRec};
@@ -29155,34 +29169,36 @@ dimm1 = size(S_gt1.trWav_clu);
 % load intracellular traces
 vrWav_int = readmda_(fullfile(vcDir1, 'raw_true.mda'));
 S_true = loadjson_(fullfile(vcDir1, 'params_true.json'));
-spkLim = [1, nSamples1] - round(nSamples1/2);
+[sRateHz, uV_per_bit, vcFilter_intra] = struct_get_(S_true, 'samplerate', 'scale_factor', 'filter');
+spkLim = round(read_cfg_('spkLim_ms_gt')/1000 * sRateHz);
 mrWav_int_spk = vr2mr3_(vrWav_int, S_gt1.viTime, spkLim);
-t_dur1 = numel(vrWav_int) / S_true.samplerate;
+t_dur1 = numel(vrWav_int) / sRateHz;
 vrWav_int_spk = mean(mrWav_int_spk,2);
 noise_int = mad_nonzero_(vrWav_int, 0) / .6745;
-peak_int = mean(mrWav_int_spk(spkLim(2)+1,:));
+peak_int = max(abs(vrWav_int_spk));
 snr_int = peak_int / noise_int;
 
 % build message
-csMsg = {};
-csMsg{end+1} = sprintf('# Recording info');
-csMsg{end+1} = sprintf('  File name: %s', vcRec);
-csMsg{end+1} = sprintf('  site count: %d', nSites1);
-csMsg{end+1} = sprintf('  ADC sampling rate: %0.1f Hz', S_true.samplerate);
-csMsg{end+1} = sprintf('  scale factor: %0.4f uV/bit', S_true.scale_factor);
-csMsg{end+1} = sprintf('  exported duration: %0.1f sec', t_dur1);
-csMsg{end+1} = sprintf('  Number of spikes: %d', nSpk1);
-csMsg{end+1} = sprintf('# Extracellular info');
-csMsg{end+1} = sprintf('  SNR Vpp: %0.4f', snr_pp1);
-csMsg{end+1} = sprintf('  SNR Vp: %0.4f', snr_min1);
-csMsg{end+1} = sprintf('  noise: %0.1f uV', vnoise1);
-csMsg{end+1} = sprintf('  peak: %0.1f uV', vpp1);
-csMsg{end+1} = sprintf('  peak-to-peak: %0.1f uV', vmin1);
-csMsg{end+1} = sprintf('# Intracellular info');
-csMsg{end+1} = sprintf('  SNR Vp: %0.4f', snr_int);
-csMsg{end+1} = sprintf('  noise (site average): %0.1f uV', noise_int);
-csMsg{end+1} = sprintf('  peak (spike average): %0.1f uV', peak_int);
-csMsg{end+1} = sprintf('  Filter: %s', S_true.filter);
+csMsg = {
+    sprintf('# Recording info');
+    sprintf('  File name: %s', vcRec);
+    sprintf('  site count: %d', nSites1);
+    sprintf('  ADC sampling rate: %0.1f Hz', sRateHz);
+    sprintf('  scale factor: %0.4f uV/bit', uV_per_bit);
+	sprintf('  exported duration: %0.1f sec', t_dur1);
+	sprintf('  Number of spikes: %d', nSpk1);
+	sprintf('# Extracellular info');
+	sprintf('  SNR Vpp: %0.4f', snr_pp1);
+	sprintf('  SNR Vp: %0.4f', snr_min1);
+	sprintf('  noise: %0.1f uV', vnoise1);
+	sprintf('  peak: %0.1f uV', vpp1);
+	sprintf('  peak-to-peak: %0.1f uV', vmin1);
+    sprintf('# Intracellular info');
+    sprintf('  SNR Vp: %0.4f', snr_int);
+	sprintf('  noise (site average): %0.1f uV', noise_int);
+    sprintf('  peak (spike average): %0.1f uV', peak_int);
+	sprintf('  Filter: %s', vcFilter_intra);
+    };
 csMsg = {cellstr2vc_(csMsg)};
 disp_cs_(csMsg);
 
@@ -29195,12 +29211,11 @@ hText  = uicontrol(hFig, 'Style','text','String','',...
 hText.String = csMsg;
 hAx1 = axes(hFig, 'OuterPosition', [0 .8 .8 .2]); 
 hAx2 = axes(hFig, 'OuterPosition', [0 0 .8 .8]); 
-vrT_plot = (spkLim(1):spkLim(2)) / S_true.samplerate * 1000;
+vrT_plot = (spkLim(1):spkLim(2)) / sRateHz * 1000;
 plot(hAx1, vrT_plot, vrWav_int_spk); 
 plot(hAx2, vrT_plot, S_gt1.trWav_clu);
-legend(hAx2, arrayfun(@(x)sprintf('Chan %d', x), 1:nSites1, 'UniformOutput', 0));
-grid(hAx1, 'on');
-grid(hAx2, 'on');
+legend(hAx2, arrayfun(@(x)sprintf('Chan %d', x), 1:nSites1, 'UniformOutput', 0), 'Location', 'southeast');
+grid_([hAx1, hAx2], 'on');
 linkaxes([hAx1, hAx2], 'x');
 xylabel_(hAx1, 'time (ms)','V_int (uV)','Intracellular average spike waveform'); % all subsampled
 xylabel_(hAx2, 'time (ms)','V_ext (uV)','Extracellular average spike waveforms');    
@@ -29211,6 +29226,7 @@ vcFile_png = fullfile(vcDir1, sprintf('%s_summary.png', vcRec));
 saveas(hFig, vcFile_png);
 msgbox_(['Saved to ', vcFile_png]);
 disp(['Saved to ', vcFile_png]);
+figure_wait_(0, hFig_wait);
 end %func
 
 
@@ -29343,7 +29359,7 @@ csFiles_dat = hTbl.Data(:,1);
 cLim_incl = hTbl.Data(:,3);
 cChan_ext = hTbl.Data(:,4);
 try
-    vcFile_prb = hTbl.Data(:,5);
+    vcFile_prb = hTbl.Data{iFile,5};
 catch
     vcFile_prb = '';
 end
@@ -29352,21 +29368,22 @@ vcFile_dat1 = csFiles_dat{iFile};
 [vcDir_, vcDir12] = fileparts(vcFile_dat1);
 [~, vcDir11] = fileparts(vcDir_);
 vcDir_out1 = fullfile(vcDir_out, sprintf('%s_%s', vcDir11, vcDir12));
-
+S_cfg = file2struct_('dan_english.cfg');
 switch lower(h.Label)
-    case {'convert and next', 'convert'}
+    case {'convert and next', 'convert', 'convert and summarize recording'}
         figure_wait_(1, hFig);
         try
             mrLim_incl1 = str2num_(cLim_incl{iFile});
-            viChan_ext1 = str2num_(cChan_ext{iFile});
-            export_spikeforest_crcns_(vcFile_dat1, vcDir_out1, mrLim_incl1, viChan_ext1);               
+            viChan_ext1 = str2num_(cChan_ext{iFile});            
+            export_spikeforest_crcns_(vcFile_dat1, vcDir_out1, mrLim_incl1, viChan_ext1, vcFile_prb);                               
         catch
             errordlg(lasterr());
             return;
         end
         figure_wait_(0, hFig);
-        if strcmpi(h.Label, 'convert')
+        if strcmpi(h.Label, 'convert') || strcmpi(h.Label, 'convert and summarize recording')
             msgbox_(sprintf('Exported to %s', vcFile_dat1), 1);
+            summarize_recording_(S_cfg.vcDir_out, vcFile_dat1);
             return; 
         else
             msgbox_(sprintf('Exported to %s\n Advancing to next', vcFile_dat1), 1);
@@ -29385,13 +29402,11 @@ switch lower(h.Label)
         return;
         
     case 'summarize study'
-        S_cfg = file2struct_('dan_english.cfg');
         vcFile_summary = summarize_study_(S_cfg.vcDir_out);
         winopen_(vcFile_summary);
         return;
         
     case 'summarize recording'
-        S_cfg = file2struct_('dan_english.cfg');
         summarize_recording_(S_cfg.vcDir_out, vcFile_dat1);
         return;        
         
@@ -29438,23 +29453,20 @@ end %func
 
 %--------------------------------------------------------------------------
 % 3/29/2019 JJJ: convert to english format
-function S_mda = export_spikeforest_english_(vcFile_rhd1, vcDir_out1, mrLim_incl1, viSite_ext1)
+function S_mda = export_spikeforest_english_(vcFile_rhd1, vcDir_out1, mrLim_incl1, viSite_ext1, vcFile_prb)
 % S_mda = export_spikeforest_english_(vcFile_rhd1, vcDir_out1, mrLim_incl1, viChan_ext1)
 % S_mda = export_spikeforest_english_(vcFile_rhd1, vcDir_out1, mrLim_incl1, vcFile_prb)
 
 if nargin<2, vcDir_out1 = []; end
 if nargin<3, mrLim_incl1 = []; end
 if nargin<4, viSite_ext1 = []; end
+if nargin<5, vcFile_prb = []; end
 
 S_cfg = file2struct_(ircpath_('dan_english.cfg'));
-if ~ischar(viSite_ext1) || isempty(viSite_ext1)
-    vcFile_probe = S_cfg.vcFile_probe;
-    S_prb = load_prb_(vcFile_probe);    
-else
-    vcFile_probe = viSite_ext1;
-    S_prb = load_prb_(vcFile_probe);
-    viSite_ext1 = 1:numel(S_prb.viSite2Chan);
+if isempty(vcFile_prb)    
+    vcFile_prb = S_cfg.vcFile_probe;
 end
+S_prb = load_prb_(vcFile_prb);
 mrSiteXY = S_prb.mrSiteXY;
 [vcFile_dat1, vcFile_meta, S_meta1] = rhd2bin_(vcFile_rhd1);
 [nChans1, sRateHz1, vcDataType, uV_per_bit] = get_(S_meta1, 'nChans', 'sRateHz', 'vcDataType', 'uV_per_bit');
@@ -29497,14 +29509,15 @@ else
 end
 
 % build message
-csMsg = {};
-csMsg{end+1} = sprintf('channel count: %d', nChans1);
-csMsg{end+1} = sprintf('site count: %d', size(mnWav_ext,1));
-csMsg{end+1} = sprintf('recording duration: %0.1f sec', t_dur1);
-csMsg{end+1} = sprintf('ADC sampling rate: %0.1f', sRateHz1);
-csMsg{end+1} = sprintf('scale factor: %0.4f uV/bit', uV_per_bit);
-csMsg{end+1} = sprintf('probe file: %s', vcFile_probe);
-csMsg{end+1} = sprintf('ADC saturation: %0.2f %%', rSaturation * 100);
+csMsg = {
+    sprintf('channel count: %d', nChans1);
+    sprintf('site count: %d', size(mnWav_ext,1));
+	sprintf('recording duration: %0.1f sec', t_dur1);
+	sprintf('ADC sampling rate: %0.1f', sRateHz1);
+	sprintf('scale factor: %0.4f uV/bit', uV_per_bit);
+	sprintf('probe file: %s', vcFile_prb);
+	sprintf('ADC saturation: %0.2f %%', rSaturation * 100)
+    };
 csMsg = {cellstr2vc_(csMsg)};
 
 spkLim_ms_intra = get_set_(S_cfg, 'spkLim_ms_intra', [-1,1]);
@@ -29515,6 +29528,7 @@ fJuxta = get_set_(S_cfg, 'fJuxta', 1);
 % output
 S_mda = makeStruct_(mnWav_ext, vnWav_int, vnWav_stim, mrSiteXY, S_json, viSpk_gt, csMsg, S_intra, vcLabel_stim);
 if ~isempty(vcDir_out1) % write to file
+    mkdir_(vcDir_out1);
     export_spikeforest_intra_(vcDir_out1, S_intra, S_json);    
     export_spikeforest_(vcDir_out1, mnWav_ext, mrSiteXY, S_json, viSpk_gt);     
 end
@@ -29530,17 +29544,17 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function S_mda = export_spikeforest_crcns_(vcFile_dat1, vcDir_out1, mrLim_incl1, viChan_ext1)
+function S_mda = export_spikeforest_crcns_(vcFile_dat1, vcDir_out1, mrLim_incl1, viChan_ext1, vcFile_prb)
 % S_mda = export_spikeforest_crcns_(vcFile_dat1, vcDir_out1, mrLim_incl1, viChan_ext1)
-% S_mda = export_spikeforest_crcns_(vcFile_dat1, vcDir_out1, mrLim_incl1, vcFile_prb)
 
 if nargin<2, vcDir_out1 = []; end
 if nargin<3, mrLim_incl1 = []; end
 if nargin<4, viChan_ext1 = []; end
+if nargin<5, vcFile_prb = []; end
 
 if matchFileExt_(vcFile_dat1, '.rhd')
     % dan english format
-    S_mda = export_spikeforest_english_(vcFile_dat1, vcDir_out1, mrLim_incl1, viChan_ext1);
+    S_mda = export_spikeforest_english_(vcFile_dat1, vcDir_out1, mrLim_incl1, viChan_ext1, vcFile_prb);
     return;
 end
 
@@ -29609,18 +29623,19 @@ switch nSites1
 end %switch          
 
 % set the 
-csMsg = {};
 t_dur1 = filesize_(vcFile_dat1) / nChans1 / sRateHz1 / bytesPerSample_(vcDataType); 
-csMsg{end+1} = sprintf('channel_count: %d\nt_dur1: %0.1fs\nsRateHz: %0.1f\nscale_factor: %0.4f', ...
-    nChans1, t_dur1, sRateHz1, scale_factor1);
-csMsg{end+1} = sprintf('channel group 1:\n    %s', sprintf('%d,', viSite2chan1));
-csMsg{end+1} = sprintf('channel group 2:\n    %s', sprintf('%d,', viSite2chan2));        
-csMsg{end+1} = sprintf('channel group 3:\n    %s', sprintf('%d,', viSite2chan3));           
-
+csMsg = {
+    sprintf('channel_count: %d\nt_dur1: %0.1fs\nsRateHz: %0.1f\nscale_factor: %0.4f', ...
+        nChans1, t_dur1, sRateHz1, scale_factor1),
+    sprintf('channel group 1:\n    %s', sprintf('%d,', viSite2chan1)),
+    sprintf('channel group 2:\n    %s', sprintf('%d,', viSite2chan2)),        
+	sprintf('channel group 3:\n    %s', sprintf('%d,', viSite2chan3)),
+    };
 % output
 vcLabel_stim = 'Current stim';
 S_mda = makeStruct_(mnWav_ext, vnWav_int, vnWav_stim, mrSiteXY, S_json, viSpk_gt, csMsg, S_intra, vcLabel_stim);
 if ~isempty(vcDir_out1) % write to file
+    mkdir_(vcDir_out1);
     export_spikeforest_intra_(vcDir_out1, vnWav_int, S_intra);
     export_spikeforest_(vcDir_out1, mnWav_ext, mrSiteXY, S_json, viSpk_gt);     
 end
@@ -29721,7 +29736,12 @@ try
 catch
     vcFile_prb = []; 
 end
-S_mda = export_spikeforest_crcns_(vcFile_dat1, [], [], vcFile_prb);
+if isempty(vcFile_prb)
+    S_cfg = file2struct_(ircpath_('dan_english.cfg'));
+    vcFile_prb = S_cfg.vcFile_probe;
+    hTbl.Data{iFile,5} = vcFile_prb;
+end
+S_mda = export_spikeforest_crcns_(vcFile_dat1, [], [], [], vcFile_prb);
 % set_userdata_(hFig, S_mda);
 
 [mnWav_ext, vnWav_int, vnWav_stim, mrSiteXY, S_json, viSpk_gt, csMsg, S_intra] = ...
@@ -29778,9 +29798,7 @@ if isempty(viChan_ext)
     set_table_(hTbl, iFile, 4, num2str_(1:size(mnWav_ext,1)));
     fSave = 1;
 end
-% hTbl.Data(:,4) = cellfun(@(x)strrep(x,'  ',' '), hTbl.Data(:,4), 'UniformOutput', 0);
 
-% mnWav_ext = single(mnWav_ext);
 fMeanSubt_ext = size(mnWav_ext,1) >= 16;
 mnWav_ext = filt_car_gpu_(mnWav_ext', fMeanSubt_ext, 1);
 

@@ -189,6 +189,7 @@ dimm = [];
 
 n = numel(viX1); % assert all points have same size
 if n <= nPoints_max
+    vi = 1:numel(viX1);
     if numel(viX1) ~= numel(vrY1)
         [viX1, vrY1, scale, dimm] = multiplot_(viX1, vrY1, scale); 
     end
