@@ -3,6 +3,11 @@ IronClust, written by J. James Jun, Flatiron Institute, Simons Foundation
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [4.5.1] - 2019-4-11
+### Changed
+- Drift correction speed and performance improved
+
+
 ## [4.5.0] - 2019-4-11
 ### Added
 - Drift correction performance improved

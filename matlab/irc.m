@@ -211,7 +211,7 @@ switch lower(vcCmd)
     case {'sort', 'cluster', 'clust', 'sort-verify', 'sort-validate', 'sort-manual'}
         sort_(P);
         describe_(P.vcFile_prm);
-    case {'auto', 'auto-verify', 'auto-manual'}
+    case {'auto', 'auto-verify', 'auto-manual', 'auto-validate'}
         auto_(P); describe_(P.vcFile_prm);
     case 'manual-test'
         manual_(P, 'debug'); manual_test_(P); return;          
@@ -993,7 +993,7 @@ end %func
 
 %--------------------------------------------------------------------------
 % 9/23/2018 JJJ: added a case when nSites_spk=inf (using alll sites)
-function mrPos_spk = spk_pos_(S0, trFet_spk, nSites_spk)
+function [mrPos_spk, vrAmp_spk] = spk_pos_(S0, trFet_spk, nSites_spk)
 if nargin<2, trFet_spk = get_spkfet_(S0.P); end
 P = S0.P;
 nSpk = size(trFet_spk,3);
@@ -1006,15 +1006,20 @@ elseif isinf(nSites_spk)
     miSites_spk = repmat(int32(1:nSites_spk)', [1,nSpk]);
 end
 
-mrVp = squeeze_(trFet_spk(1:nSites_spk,1,:),2) .^ 2;
-vrVp = sum(mrVp);
+mrVp0 = squeeze_(trFet_spk(1:nSites_spk,1,:),2);
+switch 2
+    case 3, mrVp = sqrt(abs(mrVp0));
+    case 2, mrVp = abs(mrVp0);
+    case 1, mrVp = mrVp0.^2;
+end
+vrAmp_spk = sum(mrVp);
 
 mrX_spk = reshape(P.mrSiteXY(miSites_spk,1), size(miSites_spk));
 mrY_spk = reshape(P.mrSiteXY(miSites_spk,2), size(miSites_spk));
 
 mrPos_spk = zeros(nSpk, 2, 'single');
-mrPos_spk(:,1) = sum(mrVp .* mrX_spk) ./ vrVp;
-mrPos_spk(:,2) = sum(mrVp .* mrY_spk) ./ vrVp;
+mrPos_spk(:,1) = sum(mrVp .* mrX_spk) ./ vrAmp_spk;
+mrPos_spk(:,2) = sum(mrVp .* mrY_spk) ./ vrAmp_spk;
 end %func
 
 
@@ -3326,7 +3331,7 @@ end %func
 %--------------------------------------------------------------------------
 % 10/1/2018 JJJ: template matching at the cluster outer edge using core set
 % assume all spikes come from the same site
-function S_clu = templateMatch_post_(S_clu, P)
+function S_clu = templateMatch_post__(S_clu, P)
 % global tnWav_spk
 % only for tetrode
 % if ~all(get0_('viSite_spk')==1)
@@ -3376,6 +3381,7 @@ fh_meanalign = @(vi)tr_mean_align_(single(tnWav_spk(:,:,vi)));
 fh_denoise = @(vi)tr2mr_denoise_(single(tnWav_spk(:,:,vi)));
 nSites = max(viSite_spk);
 vlCore_spk = false(size(viSite_spk));
+
 fprintf('\tComputing template\n\t'); t_template = tic;
 for iClu = 1:S_clu.nClu
     % identify spikes to recluster by segregating into core-set and outer-set     
@@ -3396,7 +3402,7 @@ for iClu = 1:S_clu.nClu
     cviSpk_out_clu{iClu} = viSpk1(~vlCore1);
     
     % create a template using core-set members
-    viiSpk1 = subsample_vr_(find(vlCore1), nTemplates);  
+    viiSpk1 = subsample_vr_(find(vlCore1), nTemplates);   % template selection
     if isempty(viiSpk1), continue; end
     trWav11 = zeros(size(tnWav_spk,1), size(tnWav_spk,2), numel(viiSpk1), 'single');
     viSite11 = viSite_spk(viSpk1(viiSpk1));
@@ -23993,7 +23999,6 @@ function [miSort_drift, cviSpk_drift, nTime_drift, viDrift_spk] = drift_similari
 %   drift_similarity_()
 % return the spikes that are correlated
 
-
 if nargin==0
     S0 = get(0, 'UserData'); 
     if isempty(S0), S0 = load('sample_sample_jrc.mat'); end % debug
@@ -24010,8 +24015,8 @@ if nTime_clu == 1 || nTime_drift == 1 % no drift correlation analysis
 end
 
 fprintf('Calculating drift similarity...'); t1 = tic;
-nQuantile_drift = get_set_(P, 'nQuantile_drift', 10);
-vrAmp_quantile = quantile(single(S0.vrAmp_spk), (0:nQuantile_drift)/nQuantile_drift);
+nAmp_drift = get_set_(P, 'nQuantile_drift', 10);
+nPos_drift = get_set_(P, 'nPos_drift', 100);
 viSite_unique = unique(S0.viSite_spk);
 nSites = numel(viSite_unique);
 nSpikes = numel(S0.viSite_spk);
@@ -24021,16 +24026,40 @@ vnSpk_bin = viSpk_bin(2:end) - viSpk_bin(1:end-1);
 viDrift_spk = cell2mat(arrayfun(@(i)repmat(int32(i), 1, vnSpk_bin(i)), 1:nTime_drift, 'UniformOutput', 0));
 
 % collect stats
-mrCount_drift = zeros(nQuantile_drift, nSites, nTime_drift, 'single');
-for iTime_drift = 1:nTime_drift
-    viSpk1 = cviSpk_drift{iTime_drift};
-    [vrAmp1, viSite1] = deal(S0.vrAmp_spk(viSpk1), S0.viSite_spk(viSpk1));
-    for iSite1 = 1:nSites
-        iSite = viSite_unique(iSite1);   
-        mrCount_drift(:,iSite1,iTime_drift) = histcounts(vrAmp1(viSite1==iSite), vrAmp_quantile);
-    end    
-end
-mrCount_drift = reshape(mrCount_drift, [], nTime_drift);
+switch 2
+    case 2 % 1D drift case        
+        switch 1
+            case 2
+                [mrPos_spk, vrAmp_spk] = spk_pos_(S0);
+                vrAmp_spk = single(vrAmp_spk(:));                
+            case 1
+                mrPos_spk = S0.mrPos_spk;
+                vrAmp_spk = single(S0.vrAmp_spk(:));
+        end
+        vrAmp_quantile = quantile(vrAmp_spk, (0:nAmp_drift)/nAmp_drift);
+        vrPos_spk = single(mrPos_spk(:,2));
+        mrCount_drift = zeros(nAmp_drift*nPos_drift, nTime_drift, 'single');
+        vrPos_quantile = quantile(vrPos_spk, (0:nPos_drift)/nPos_drift);
+        for iTime_drift = 1:nTime_drift
+            viSpk1 = cviSpk_drift{iTime_drift};
+            [vrAmp1, vrPos1] = deal(vrAmp_spk(viSpk1), vrPos_spk(viSpk1));
+            mn_ = histcounts2(vrAmp1, vrPos1, vrAmp_quantile, vrPos_quantile);
+            mrCount_drift(:,iTime_drift) = mn_(:);
+        end
+    case 1       
+        vrAmp_quantile = quantile(single(S0.vrAmp_spk), (0:nAmp_drift)/nAmp_drift);
+        mrCount_drift = zeros(nAmp_drift, nSites, nTime_drift, 'single');
+        for iTime_drift = 1:nTime_drift
+            viSpk1 = cviSpk_drift{iTime_drift};
+            [vrAmp1, viSite1] = deal(S0.vrAmp_spk(viSpk1), S0.viSite_spk(viSpk1));
+            for iSite1 = 1:nSites
+                iSite = viSite_unique(iSite1);   
+                mrCount_drift(:,iSite1,iTime_drift) = histcounts(vrAmp1(viSite1==iSite), vrAmp_quantile);
+            end    
+        end
+        mrCount_drift = reshape(mrCount_drift, [], nTime_drift);
+end %switch
+
 mrDist_drift = squareform(pdist(mrCount_drift'));
 
 [mrSort_drift, miSort_drift] = sort(mrDist_drift, 'ascend');
@@ -30944,4 +30973,165 @@ nClu_post = S_clu.nClu;
 nClu_pre = nClu;
 fprintf('\nMerged %d waveforms (%d->%d), took %0.1fs\n', nClu-nClu_post, nClu, nClu_post, toc(t_merge));
 
+end %func
+
+
+%--------------------------------------------------------------------------
+% 4/12/2019 JJJ: Template merging cluster
+% no membership reassignment, no core calculation
+function S_clu = templateMatch_post_(S_clu, P)
+% global tnWav_spk
+% only for tetrode
+% if ~all(get0_('viSite_spk')==1)
+%     fprintf(2, 'templateMatch_post_: skipped\n');
+%     return;
+% end
+fUse_raw = 0;
+nAve_knn = min(15, get_set_(P, 'knn', 30));
+
+fprintf('Template matching (post-hoc)\n'); t1=tic;
+[viClu_spk, miKnn] = struct_get_(S_clu, 'viClu', 'miKnn');
+viSite_spk = get0_('viSite_spk');
+frac_thresh = get_set_(P, 'thresh_core_knn', .75);
+nTemplates = get_set_(P, 'nTemplates_clu', 100); %P.knn;
+nShift_max = ceil(diff(P.spkLim) * P.frac_shift_merge / 2);
+viShift = -nShift_max:nShift_max;
+
+tnWav_spk = get_spkwav_(P, fUse_raw); % use raw waveform
+
+% create template (nTemplate per cluster)
+[cviSpk_in_clu, cviSpk_out_clu, ctrWav_in_clu, cviSite_in_clu] = deal(cell(S_clu.nClu, 1));
+fh_car = @(tr)tr - repmat(mean(tr,2), [1,size(tr,2),1]);
+fh_wav = @(vi)single(tnWav_spk(:,:,vi));
+switch 1
+    case 3 % knn smoothed waveform returned
+        fh_trimmean = @(vi)tr2mr_trimmean_(fh_wav(vi));
+        fh_mr = @(vi)tr2mr_mean_knn_(tnWav_spk, miKnn, viSite_spk, vi); 
+    case 2 % spatial ref
+        fh_trimmean = @(vi)tr2mr_trimmean_(fh_car(fh_wav(vi)));
+        fh_mr = @(vi)reshape(fh_car(fh_wav(vi)), [], numel(vi));        
+    case 1 
+        fh_trimmean = @(vi)tr2mr_trimmean_(fh_wav(vi));
+        fh_mr = @(vi)single(reshape(tnWav_spk(:,:,vi), [], numel(vi)));
+end
+fh_med = @(vi)single(median(tnWav_spk(:,:,vi),3));
+fh_mean = @(vi)single(mean(tnWav_spk(:,:,vi),3));
+fh_pv1 = @(vi)tr_pv1_(single(tnWav_spk(:,:,vi)));
+fh_meanalign = @(vi)tr_mean_align_(single(tnWav_spk(:,:,vi)));
+fh_denoise = @(vi)tr2mr_denoise_(single(tnWav_spk(:,:,vi)));
+nSites = max(viSite_spk);
+nDrift = get_set_(P, 'nTime_drift', 64);
+nSpk_min = get_set_(P, 'knn', 30);
+[viClu_spk, vrRho_spk] = deal(S_clu.viClu, S_clu.rho);
+fprintf('\tComputing template\n\t'); t_template = tic;
+
+
+for iClu = 1:S_clu.nClu
+    viSpk1 = find(S_clu.viClu == iClu);
+    viSpk1 = viSpk1(:);
+    viiSpk1 = round(linspace(1, numel(viSpk1), nDrift+1));
+    [vlKeep_clu1, viSite_clu1] = deal(true(nDrift, 1), zeros(nDrift,1));
+    trWav_clu1 = zeros(size(tnWav_spk,1), size(tnWav_spk,2), nDrift, 'single');
+    for iDrift = 1:nDrift
+        vii1 = viiSpk1(iDrift):viiSpk1(iDrift+1);
+        switch 3
+            case 3     
+                viSpk11 = viSpk1(vii1);
+                viSpk11 = miKnn(1:nAve_knn, viSpk11);
+                viSpk11 = viSpk11(:); % density based selection                
+                iSite11 = mode(viSite_spk(viSpk11));
+                viSpk11 = viSpk11(viSite_spk(viSpk11) == iSite11);   
+            case 2                
+                viSpk11 = miKnn(1:nAve_knn, viSpk1(vii1));
+                viSpk11 = viSpk11(:);
+                vrRho11 = vrRho_spk(viSpk11);
+                viSpk11 = viSpk11(vrRho11 > quantile(vrRho11, frac_thresh));
+                viSpk11 = viSpk11(viClu_spk(viSpk11) == iClu);
+                iSite11 = mode(viSite_spk(viSpk11));
+                viSpk11 = viSpk11(viSite_spk(viSpk11) == iSite11);
+            case 1 % find local peak
+                vrRho1 = S_clu.rho(viSpk1);
+                [~,ii11] = max(vrRho1(vii1)); % local peak
+                iSpk11 = viSpk1(vii1(ii11)); % center spike index
+                iSite11 = viSite_spk(iSpk11);
+                % find neighbors around the local peak
+                viSpk11 = miKnn(1:nAve_knn, miKnn(:,iSpk11));
+                viSpk11 = viSpk11(:);
+                viSpk11 = viSpk11(viSite_spk(viSpk11) == iSite11 & viClu_spk(viSpk11) == iClu);     
+        end
+        viSite_clu1(iDrift) = iSite11;
+        if numel(viSpk11) < nSpk_min
+            vlKeep_clu1(iDrift) = false;
+            continue;
+        end             
+        switch 1
+            case 3, mr_ = fh_pv1(viSpk11);
+            case 2, mr_ = fh_trimmean(viSpk11);
+            case 1, mr_ = mean(single(tnWav_spk(:,:,viSpk11)),3);
+        end
+        trWav_clu1(:,:,iDrift) = mr_;
+    end
+    ctrWav_in_clu{iClu} = trWav_clu1(:,:,vlKeep_clu1);
+    cviSite_in_clu{iClu} = viSite_clu1(vlKeep_clu1);
+    fprintf('.');
+end
+fprintf('\n\ttook %0.1fs\n', toc(t_template));
+
+
+% find template locations by sites
+[ctrWav_in_site, cviClu_in_site] = deal(cell(1, nSites));
+for iSite = 1:nSites
+    [ctrWav_, cviClu_] = deal(cell(1, S_clu.nClu));
+    for iClu = 1:S_clu.nClu
+        [trWav_in1, viSite_in1] = deal(ctrWav_in_clu{iClu}, cviSite_in_clu{iClu});
+        vl_ = viSite_in1==iSite;
+        if ~any(vl_), continue; end
+        ctrWav_{iClu} = trWav_in1(:,:,vl_);
+        cviClu_{iClu} = repmat(iClu, sum(vl_), 1);
+    end
+    ctrWav_in_site{iSite} = cat(3, ctrWav_{:});
+    cviClu_in_site{iSite} = cat(1, cviClu_{:});
+end
+
+
+% merge the templates: todo, faster code
+nClu = S_clu.nClu;
+fprintf('Merging templates\n\t'); t_merge=tic;
+fh_norm = @(x)bsxfun(@rdivide, x, std(x,1)*sqrt(size(x,1)));
+switch 2
+    case 2, fh_norm_tr = @(x)fh_norm(reshape(x, [], size(x,3)));
+    case 1, fh_norm_tr = @(x)fh_norm(reshape(meanSubt_(x), [], size(x,3)));
+end
+mrDist_clu = nan(S_clu.nClu, 'single');
+parfor iClu1 = 1:S_clu.nClu
+    viSite_clu1 = cviSite_in_clu{iClu1};
+    if isempty(viSite_clu1), continue; end
+    mr1_ = fh_norm_tr(ctrWav_in_clu{iClu1});
+    if 1 %shift template in time
+        mr1_ = fh_norm_tr(shift_trWav_(ctrWav_in_clu{iClu1}, viShift));
+        viSite_clu1 = repmat(viSite_clu1(:), numel(viShift), 1);
+    end
+    vrDist_clu1 = zeros(S_clu.nClu, 1, 'single');
+    for iClu2 = iClu1+1:S_clu.nClu
+        viSite2 = cviSite_in_clu{iClu2};
+        viSite12 = intersect(viSite_clu1, viSite2);
+        if isempty(viSite12), continue; end
+        mr2_ = fh_norm_tr(ctrWav_in_clu{iClu2});        
+        for iSite12_ = 1:numel(viSite12)
+            iSite12 = viSite12(iSite12_);
+            mrDist12 = mr2_(:, viSite2==iSite12)' * mr1_(:, viSite_clu1==iSite12);
+            vrDist_clu1(iClu2) = max(vrDist_clu1(iClu2), max(mrDist12(:)));
+        end
+    end
+    mrDist_clu(:, iClu1) = vrDist_clu1;
+%     fprintf('.');
+end %for
+mlWavCor_clu = mrDist_clu >= P.maxWavCor;
+viMap_clu = int32(ml2map_(mlWavCor_clu));
+vlPos = S_clu.viClu > 0;
+S_clu.viClu(vlPos) = viMap_clu(S_clu.viClu(vlPos)); %translate cluster number
+S_clu = S_clu_refresh_(S_clu);
+nClu_post = S_clu.nClu;
+nClu_pre = nClu;
+fprintf('\nMerged %d waveforms (%d->%d), took %0.1fs\n', nClu-nClu_post, nClu, nClu_post, toc(t_merge));
 end %func
