@@ -2805,7 +2805,6 @@ function validate_(P, fPlot_gt)
 
 % persistent S_gt vcFile_prm_ % tnWav_spk tnWav_gt
 % S0 = load_cached_(P, 0);
-fMergeCheck = 0; %kilosort-style validation
 fShowTable = 1;
 if nargin<2, fPlot_gt = []; end
 if ischar(P), P = loadParam_(P); end
@@ -2815,6 +2814,7 @@ if ~is_sorted_(P), sort_(P); end
 
 S_cfg = read_cfg_();
 P.snr_thresh_gt = get_(S_cfg, 'snr_thresh_gt');
+fMergeCheck = get_set_(S_cfg, 'fMergeCheck_gt', 1); %kilosort-style validation
 snr_thresh_stat = P.snr_thresh_gt / 2; % use lower so that this can be raised if needed
 fUseCache_gt = get_set_(S_cfg, 'fUseCache_gt', 1);
 
@@ -2931,7 +2931,9 @@ if isUsingBuiltinEditor_() % cluster
         csCode = file2cellstr_([mfilename(), '.m']);
         set(gcf,'UserData', makeStruct_(P, S_score, csCode));   
         vcFile_fig = filename_timestamp_(strrep(P.vcFile_prm, '.prm', '_gt.fig'));
-        save_fig_(vcFile_fig, gcf);
+        if get_set_(S_cfg, 'fSaveFig_gt', 0)
+            save_fig_(vcFile_fig, gcf);
+        end
     catch
         disperr_();
     end
@@ -3281,17 +3283,25 @@ if nargin<3, fPostCluster=1; end
 nRepeat_merge = get_set_(P, 'nRepeat_merge', 10);
 % refresh clu, start with fundamentals
 S_clu = struct_copy_(S_clu, 'rho', 'delta', 'ordrho', 'nneigh', 'P', ...
-    't_runtime', 'halo', 'viiSpk', 'trFet_dim', 'vrDc2_site', 'miKnn', 'viClu', 'icl');
+    't_runtime', 'halo', 'viiSpk', 'trFet_dim', 'vrDc2_site', 'miKnn', 'viClu', 'icl', 'S_drift');
 
 if fPostCluster, S_clu = postCluster_(S_clu, P); end
 
 S_clu = S_clu_refresh_(S_clu);
 S_clu.viClu_premerge = S_clu.viClu;
 
-if get_set_(P, 'fTemplateMatch_post', 1)
-    S_clu = templateMatch_post_(S_clu, P);
-%     S_clu = featureMatch_post_(S_clu, P);
-end
+switch 1
+    case 3
+        for iRepeat = 1:2
+            S_clu = driftMatch_post_(S_clu, P); 
+        end
+    case 2
+        S_clu = featureMatch_post_(S_clu, P);
+    case 1
+        if get_set_(P, 'fTemplateMatch_post', 1)
+            S_clu = templateMatch_post_(S_clu, P);
+        end
+end %switch
 
 % S_clu = fix_overlap_(S_clu, P); % halo detection (vlHalo)    
 % S_clu = S_clu_remove_count_(S_clu, P); %remove low-count clusters
@@ -3324,6 +3334,7 @@ function S_clu = templateMatch_post_(S_clu, P)
 %     return;
 % end
 fUse_raw = 0;
+nAve_knn = min(8, get_set_(P, 'knn', 30));
 
 fprintf('Template matching (post-hoc)\n'); t1=tic;
 [viClu, miKnn] = struct_get_(S_clu, 'viClu', 'miKnn');
@@ -3373,7 +3384,12 @@ for iClu = 1:S_clu.nClu
     viSite_clu1 = viSite_spk(viSpk1);
     miKnn_clu1 = miKnn(:,viSpk1);
     vrFracSame_spk1 = mean(viClu(miKnn_clu1) == iClu);
-    vlCore1 = vrFracSame_spk1 >= frac_thresh;
+    switch 2
+        case 2
+            vrRho1 = S_clu.rho(viSpk1);
+            vlCore1 = vrRho1 > quantile(vrRho1, frac_thresh);
+        case 1, vlCore1 = vrFracSame_spk1 >= frac_thresh;
+    end 
     vlCore_spk(viSpk1) = vlCore1;
     viSpk_clu1 = viSpk1(vlCore1);
     cviSpk_in_clu{iClu} = viSpk_clu1;
@@ -3390,12 +3406,7 @@ for iClu = 1:S_clu.nClu
         iSite11 = viSite11(ii1);
         viSpk11 = miKnn11(:,ii1);   
         if isempty(viSpk11), continue; end
-        switch 1
-            case 2
-                viSpk11 = miKnn(:, viSpk11);
-            case 1
-                viSpk11 = miKnn(1:4, viSpk11);
-        end
+        viSpk11 = miKnn(1:nAve_knn, viSpk11);
         viSpk11 = viSpk11(:);
         viSpk11 = viSpk11(viSite_spk(viSpk11) == iSite11);
         if numel(viSpk11) < P.knn
@@ -3438,7 +3449,7 @@ end
 
 % template matching step
 fprintf('\tReassigning spikes\n\t');
-switch 1
+switch 0
     case 2 % find the nearest point in the core set
         viSpk_out = find(~vlCore_spk);
         for ii1 = 1:numel(viSpk_out) 
@@ -3497,9 +3508,11 @@ switch 1
             viClu_spkout(vii_spkout1) = viClu_in1(miiClu_min1(vi_));
             fprintf('.');
         end
-    S_clu.viClu_prematch = S_clu.viClu;
-    S_clu.viClu(viSpk_out) = viClu_spkout;
-    frac_changed = mean(S_clu.viClu_prematch ~= S_clu.viClu);
+        S_clu.viClu_prematch = S_clu.viClu;
+        S_clu.viClu(viSpk_out) = viClu_spkout;
+        frac_changed = mean(S_clu.viClu_prematch ~= S_clu.viClu);
+    case 0
+        frac_changed = 0;
 end %switch
 fprintf('\n\tReassigned %0.1f%% spikes, took %0.1fs\n', frac_changed*100, toc(t1));
 
@@ -21724,8 +21737,8 @@ end %func
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_(vcFile_prm)
 if nargin<1, vcFile_prm = ''; end
-vcVer = 'v4.4.9';
-vcDate = '4/10/2019';
+vcVer = 'v4.5.0';
+vcDate = '4/11/2019';
 vcHash = file2hash_();
 
 if nargout==0
@@ -24213,6 +24226,7 @@ nSites = numel(P.viSite2Chan);
 
 [miSort_drift, cviSpk_drift, nTime_drift, viDrift_spk] = drift_similarity_(S0, P);
 mlDrift = mi2ml_drift_(miSort_drift); %gpuArray_(mi2ml_drift_(miSort_drift), P.fGpu);
+S_drift = makeStruct_(miSort_drift, cviSpk_drift, nTime_drift, viDrift_spk, mlDrift);
 
 %-----
 % Calculate Rho
@@ -24235,6 +24249,18 @@ for iSite = 1:nSites
     fprintf('.');    
 end
 fprintf('\n\ttook %0.1fs\n', toc(t1));
+
+% correct for the rho density variation
+switch 1
+    case 2
+        % normalize rho based on neighbor density
+        vrRho_drift = cellfun(@(x)quantile(vrRho(x), .5), cviSpk_drift);
+        vrRho_drift = vrRho_drift / mean(vrRho_drift);
+        for iDrift = 1:numel(cviSpk_drift)                        
+            vrRho(cviSpk_drift{iDrift}) = vrRho(cviSpk_drift{iDrift}) / vrRho_drift(iDrift);
+        end
+    case 1
+end
 
 %-----
 % Calculate Delta
@@ -24261,14 +24287,16 @@ if ~isempty(viNan_delta)
     vrDelta(viNan_delta) = max(vrDelta);
 end
 fprintf('\n\ttook %0.1fs\n', toc(t2));
+
 vrRho = vrRho / max(vrRho) / 10;     % divide by 10 to be compatible with previous version displays
+
 
 t_runtime = toc(t_func);
 trFet_dim = size(trFet_spk); %[1, size(mrFet1,1), size(mrFet1,2)]; %for postCluster
 [~, ordrho] = sort(vrRho, 'descend');
 S_clu = struct('rho', vrRho, 'delta', vrDelta, 'ordrho', ordrho, 'nneigh', viNneigh, ...
     'P', P, 't_runtime', t_runtime, 'halo', [], 'viiSpk', [], ...
-    'trFet_dim', trFet_dim, 'vrDc2_site', vrDc2_site, 'miKnn', miKnn);
+    'trFet_dim', trFet_dim, 'vrDc2_site', vrDc2_site, 'miKnn', miKnn, 'S_drift', S_drift);
 end %func
 
 
@@ -30749,6 +30777,25 @@ end % func
 
 
 %--------------------------------------------------------------------------
+function mnWav_T = load_bin_T_(P)
+vcFile_bin = locate_file_(P.vcFile, P.vcFile_prm);
+mnWav_T = load_bin_(P.vcFile_prm);
+if ~get_(P, 'fTranspose_bin'), mnWav_T=mnWav_T'; end
+if ~isempty(get_(P, 'viChanZero'))
+    mnWav_T(P.viChanZero,:) = nan;  % do not display bad sites
+end
+try
+    mnWav_T = mnWav_T(P.viSite2Chan,:);
+catch
+    ;
+end
+if ~isempty(get_(P, 'viSiteZero'))
+    mnWav_T(P.viSiteZero,:) = nan;  % do not display bad sites
+end
+ end %func
+
+
+%--------------------------------------------------------------------------
 % 2019/04/09 JJJ: cleaned code originally craeted by Zach Sperry
 function clust_comp_all_chan_(fNewFig)
 persistent hFig
@@ -30762,17 +30809,7 @@ iClu = S0.iCluCopy;
 [snr_thresh, nSamples_max, nSkip_site] = deal(3, 2^12, 2);
 
 % load raw waveforms
-vcFile_bin = locate_file_(P.vcFile, P.vcFile_prm);
-mnWav_T = load_bin_(P.vcFile_prm);
-if ~get_(P, 'fTranspose_bin'), mnWav_T=mnWav_T'; end
-try
-    mnWav_T = mnWav_T(P.viSite2Chan,:);
-catch
-    ;
-end
-if ~isempty(P.viSiteZero)
-    mnWav_T(P.viSiteZero,:) = nan;  % do not display bad sites
-end
+mnWav_T = load_bin_T_(P);
 nSites = size(mnWav_T,1);
 
 % obtain raw spike waveforms
@@ -30814,11 +30851,6 @@ xlabel(hAx, 'Time (ms)');
 grid(hAx, 'on');
 title_(hAx, sprintf('Scale: %0.1f uV', maxAmp));
 set(hFig, 'KeyPressFcn', @(h,e)rescale_multiplot_(e, hLine1, hLine2));
-
-
-% line(hAx,[0.2 0.2],[max(plot_last)+10 max(plot_last)+60],'LineWidth',2,'Color','k')
-% text(hAx,double(0.3),double(max(plot_last)+35),double(0),'50uV');
-
 end
 
 
@@ -30836,4 +30868,80 @@ miRange = min(max(miRange, 1), nSamples);
 tr = mr_T(:, miRange(:));
 tr = reshape(tr, [nChans, numel(viTime0), numel(viTime)]);
 tr = permute(tr, [2,1,3]);
+end %func
+
+
+%--------------------------------------------------------------------------
+function S_clu = driftMatch_post_(S_clu, P)
+
+[nSpikes_min, nSamples_max] = deal(30, 2^10);
+mnWav_T = load_bin_T_(P); % load full raw waveform, todo: memory optimization
+viTime_spk = get0_('viTime_spk');
+[cviSpk_drift, mlDrift] = get_(S_clu.S_drift, 'cviSpk_drift', 'mlDrift');
+[nDrift, nClu] = deal(numel(cviSpk_drift), S_clu.nClu);
+cmrWav_drift_clu = cell(nDrift, nClu);
+mnSpk_drift_clu = zeros(nDrift, nClu);
+miT0_clu = zeros(nDrift, nClu);
+nSites = size(mnWav_T,1);
+nChans_keep = min(nSites, 16);
+spkLim = P.spkLim;
+imin0_clu = 1-spkLim(1);
+
+% group spikes by depths and compute average waveform per cluster
+fprintf('driftMatch_post_:\n\t');
+t_merge=tic;
+for iDrift = 1:nDrift
+    switch 1
+        case 2, viSpk_drift1 = cviSpk_drift{iDrift};
+        case 1, viSpk_drift1 = cell2mat_(cviSpk_drift(mlDrift(:,iDrift)));
+    end
+    cviSpk_clu1 = cellfun(@(x)x(ismember(x, viSpk_drift1)), S_clu.cviSpk_clu, 'UniformOutput', 0);
+    for iClu = 1:nClu
+        viSpk_clu11 = cviSpk_clu1{iClu};
+        if numel(viSpk_clu11) < nSpikes_min, continue; end        
+        viSpk_clu11 = subsample_vr_(viSpk_clu11, nSamples_max);
+        tnWav_spk11 = mr2tr4_(mnWav_T, spkLim, viTime_spk(viSpk_clu11));
+        mnSpk_drift_clu(iDrift, iClu) = numel(viSpk_clu11);
+        switch 2
+            case 2, mrWav_spk11 = single(median(tnWav_spk11,3));
+            case 1, mrWav_spk11 = mean(single(tnWav_spk11),3);
+        end %switch
+        mrWav_spk11 = meanSubt_(mrWav_spk11);
+        [~,viSrt11] = sort(std(mrWav_spk11), 'descend'); % sort by channel noise
+        mrWav_spk11(:,viSrt11(nChans_keep+1:end)) = 0;
+        [~, miT0_clu(iDrift, iClu)] = min(mrWav_spk11(:,viSrt11(1))); % shift
+        cmrWav_drift_clu{iDrift, iClu} = mrWav_spk11;
+    end
+    fprintf('.');
+end % for
+
+% peak shift
+viA = find(miT0_clu == imin0_clu+1);
+viB = find(miT0_clu == imin0_clu-1);
+cmrWav_drift_clu(viA) = cellfun(@(x)x([2:end,end],:), cmrWav_drift_clu(viA), 'UniformOutput', 0);
+cmrWav_drift_clu(viB) = cellfun(@(x)x([1,1:end-1],:), cmrWav_drift_clu(viB), 'UniformOutput', 0);
+cmrWav_drift_clu = cellfun(@(x)zscore(x(:)), cmrWav_drift_clu, 'UniformOutput',0);
+
+% compute cluster distance and merge
+mlDrift_clu = ~cellfun(@isempty, cmrWav_drift_clu);
+mrDist_clu = zeros(nClu, nClu, 'single');
+for iClu1 = 1:nClu-1
+    for iClu2 = iClu1+1:nClu
+        viDrift12 = find(all(mlDrift_clu(:,[iClu1,iClu2]),2));
+        if isempty(viDrift12), continue; end
+        cmrWav_clu12 = cmrWav_drift_clu(viDrift12,[iClu1,iClu2]);
+        mrDist_clu(iClu2,iClu1) = max(cellfun(@(x,y)mean(x.*y), cmrWav_clu12(:,1), cmrWav_clu12(:,2)));
+    end
+end %for
+
+% merge
+mlWavCor_clu = mrDist_clu >= P.maxWavCor;
+viMap_clu = int32(ml2map_(mlWavCor_clu));
+vlPos = S_clu.viClu > 0;
+S_clu.viClu(vlPos) = viMap_clu(S_clu.viClu(vlPos)); %translate cluster number
+S_clu = S_clu_refresh_(S_clu);
+nClu_post = S_clu.nClu;
+nClu_pre = nClu;
+fprintf('\nMerged %d waveforms (%d->%d), took %0.1fs\n', nClu-nClu_post, nClu, nClu_post, toc(t_merge));
+
 end %func
