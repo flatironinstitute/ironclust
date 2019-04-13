@@ -79,7 +79,8 @@ switch lower(vcCmd)
     case 'convert-mda-juxta', convert_mda_juxta_(vcArg1, vcArg2); 
     case 'summarize-study', summarize_study_(vcArg1);
         
-    % three arguments
+    % three or more arguments
+    case 'validate-mda', validate_mda_(vcArg1, vcArg2, vcArg3);
     case 'convert-mda-mea', convert_mda_mea_(vcArg1, vcArg2, vcArg3);
     case {'makeprm', 'createprm', 'makeprm-all'}
         vcFile_prm_ = makeprm_(vcArg1, vcArg2, 1, vcArg3, vcArg4);
@@ -2796,6 +2797,44 @@ if P.fGpu
    [mrFet1_, mrFet2_, viSpk1_, viSpk2_] = multifun_(@gpuArray_, mrFet1_, mrFet2_, viSpk1_, viSpk2_);
 end
 viiSpk12_ord_ = rankorder_([viSpk1_; viSpk2_], 'ascend');
+end %func 
+
+
+%--------------------------------------------------------------------------
+function validate_mda_(firings_true, firings_out, raw_mda)
+
+vcDir_in = fileparts(raw_mda);
+vcDir_out = fileparts(firings_out);
+S_json = loadjson_(fullfile(vcDir_in, 'params.json'));
+[sRateHz] = get_(S_json, 'samplerate');
+vcFile_gt1 = strrep(firings_out, '.mda', '_gt1.mat');
+if exist_file_(vcFile_gt1)
+    S_gt = load(vcFile_gt1);
+else
+    S_gt = mda2gt1_(firings_true);
+    struct_save_(S_gt, vcFile_gt1);
+end
+nSamples_jitter = round(sRateHz / 1000); %1 ms jitter
+mrOut = int32(readmda(firings_out))';
+[viClu_spk, viTime_spk] = deal(mrOut(:,3), mrOut(:,2));
+
+fprintf('verifying cluster...\n'); 
+[mrMiss, mrFp, vnCluGt, miCluMatch, S_score] = ...
+    clusterVerify(S_gt.viClu, S_gt.viTime, viClu_spk, viTime_spk, nSamples_jitter);  %S_gt.viTime
+
+hFig = figure;
+set(hFig,'Color','w', 'Name', vcDir_out);
+[vrSnr_gt, vrAccuracy_gt, vrFp_gt, vrFn_gt] = ...
+    deal(S_gt.vrSnr_min_clu, S_score.vrAccuracy, S_score.vrFp, S_score.vrMiss);
+plot_gt_2by2_(vrSnr_gt, vrAccuracy_gt, vrFp_gt, vrFn_gt);
+
+csCode = file2cellstr_([mfilename(), '.m']);
+if exist_file_(fullfile(vcDir_out, 'raw_geom.prm'))
+    P = loadParam_(fullfile(vcDir_out, 'raw_geom.prm'));
+else
+    P = [];
+end
+set(hFig, 'UserData', makeStruct_(P, S_score, csCode));
 end %func
 
 
@@ -2859,7 +2898,13 @@ nSamples_jitter = round(P.sRateHz / 1000); %1 ms jitter
 fprintf('verifying cluster...\n'); 
 [mrMiss, mrFp, vnCluGt, miCluMatch, S_score_clu] = ...
     clusterVerify(S_gt.viClu, S_gt.viTime, S_clu.viClu, S0.viTime_spk, nSamples_jitter);  %S_gt.viTime
-if fMergeCheck, compareClustering2_(S_gt.viClu, S_gt.viTime, S_clu.viClu+1, S0.viTime_spk); end
+if fMergeCheck
+    try
+        compareClustering2_(S_gt.viClu, S_gt.viTime, S_clu.viClu+1, S0.viTime_spk); 
+    catch
+        disperr_('validate: fMergeCheck failed');
+    end
+end
 
 Sgt = S_gt; %backward compatibility
 S_score = struct_add_(S_score, mrMiss, mrFp, vnCluGt, miCluMatch, P, Sgt, S_score_clu);
@@ -3331,7 +3376,7 @@ end %func
 %--------------------------------------------------------------------------
 % 10/1/2018 JJJ: template matching at the cluster outer edge using core set
 % assume all spikes come from the same site
-function S_clu = templateMatch_post__(S_clu, P)
+function S_clu = templateMatch_post1_(S_clu, P)
 % global tnWav_spk
 % only for tetrode
 % if ~all(get0_('viSite_spk')==1)
@@ -4917,33 +4962,39 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function plot_gt_2by2_(vrVmin, vrAccuracy, vrFp, vrFn)
+function plot_gt_2by2_(vrSnr, vrAccuracy, vrFp, vrFn)
+accuracy_thresh = .8;
+snr_thresh = 5;
+
 try
     markerSize = 10;
-    fh_text = @(label,vr)sprintf('%s: %0.2f/%0.2f(%d)<%0.2f-%0.2f>', ...
-        label, nanmean(vr), nanstd(vr), sum(~isnan(vr)), quantile(vr,.25), quantile(vr,.75));
+    fh_text = @(vr)sprintf('%0.2f/%0.2f(%d)(%0.2f>S%0.1f); %0.2f-%0.2f', ...
+        nanmean(vr), nanstd(vr), sum(~isnan(vr)), mean(vr(vrSnr>snr_thresh)), snr_thresh, quantile(vr,.25), quantile(vr,.75));
 
     vcXlabel = sprintf('Amplitude (%s)', inputname(1));
     for iPlot = 1:4
         subplot(2,2,iPlot);
         switch iPlot
             case 1
-                plot_(vrVmin, vrAccuracy, '.', 'MarkerSize', markerSize); 
-                xylabel_(gca, vcXlabel, 'Accuracy', fh_text('Accuracy', vrAccuracy));
+                plot_(vrSnr, vrAccuracy, '.', 'MarkerSize', markerSize); 
+                xylabel_(gca, vcXlabel, 'Accuracy', fh_text(vrAccuracy));
             case 2
-                plot_(vrVmin, vrFp, '.', 'MarkerSize', markerSize); 
+                plot_(vrSnr, vrFp, '.', 'MarkerSize', markerSize); 
                 xylabel_(gca, vcXlabel, '');
-                xylabel_(gca, vcXlabel, 'False Positive', fh_text('False Positive', vrFp));
+                xylabel_(gca, vcXlabel, 'False Positive', fh_text(vrFp));
             case 3
-                plot_(vrVmin, vrFn, '.', 'MarkerSize', markerSize); 
-                xylabel_(gca, vcXlabel, 'False Negative', fh_text('False Negative', vrFn));
+                plot_(vrSnr, vrFn, '.', 'MarkerSize', markerSize); 
+                xylabel_(gca, vcXlabel, 'False Negative', fh_text(vrFn));
             case 4
                 plot_(vrFp, vrFn, '.', 'MarkerSize', markerSize); 
-                xylabel_(gca, 'False Positive', 'False Negative');   
+                nUnits1 = sum(vrAccuracy>=accuracy_thresh);
+                vcTitle1 = sprintf('%d units >= %0.2f accuracy', nUnits1, accuracy_thresh);
+                xylabel_(gca, 'False Positive', 'False Negative', vcTitle1);                   
                 set(gca,'XLim', [-.05, 1.05], 'XTick', 0:.2:1); 
         end %switch
         grid on;
-        set(gca,'YLim', [-.05, 1.05], 'YTick', 0:.2:1);   
+        %set(gca,'YLim', [-.05, 1.05], 'YTick', 0:.2:1);   
+        set(gca,'YLim', [0, 1], 'YTick', 0:.2:1);   
     end %for
 catch
     disperr_('plot_gt_2by2_');
@@ -9729,6 +9780,14 @@ if get_set_(P, 'f_assign_site_clu', 0)
 end
 
 switch 4
+    case 6
+        nClu_pre = numel(S_clu.icl);
+        [S_clu.viClu, S_clu.icl] = assignCluster_(S_clu.viClu, S_clu.ordrho, S_clu.nneigh, S_clu.icl);
+        viMap = S_clu_peak_merge_(S_clu, P); % merge peaks based on their waveforms
+        S_clu.viClu = map_index_(viMap, S_clu.viClu, 0);
+        S_clu = S_clu_refresh_(S_clu); % reassign cluster number?
+        nClu_rm = nClu_pre - S_clu.nClu;  
+        
     case 5
         nClu_pre = numel(S_clu.icl);
         [S_clu.viClu, S_clu.icl] = assignCluster_(S_clu.viClu, S_clu.ordrho, S_clu.nneigh, S_clu.icl);
@@ -9794,8 +9853,8 @@ switch 4
         nClu_rm = nClu_pre - S_clu.nClu;
         
 end
-fprintf('\n\ttook %0.1fs. Removed %d clusters having <%d spikes: %d->%d\n', ...
-    toc(t1), nClu_rm, P.min_count, nClu_pre, S_clu.nClu);
+fprintf('\n\ttook %0.1fs. Pre-merged %d clusters: %d->%d\n', ...
+    toc(t1), nClu_rm, nClu_pre, S_clu.nClu);
 end %func
 
 
@@ -15365,8 +15424,16 @@ end
 [S0, P] = load_cached_(P); % load cached data or from file if exists
 S_clu = get_(S0, 'S_clu');
 S_clu.P = P;
+
+t_automerge = tic;
+fprintf('Automatic merging...\n');
 [S_clu, S0] = post_merge_(S_clu, P);
+t_automerge = toc(t_automerge);
+fprintf('\n\ttook %0.1fs\n', t_automerge);
+S0.runtime_sort = S0.S_clu.t_runtime + t_automerge;
+
 S0 = clear_log_(S0);
+set(0, 'UserData', S0);
 save0_(strrep(P.vcFile_prm, '.prm', '_jrc.mat'));
 end %func
 
@@ -21743,8 +21810,8 @@ end %func
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_(vcFile_prm)
 if nargin<1, vcFile_prm = ''; end
-vcVer = 'v4.5.0';
-vcDate = '4/11/2019';
+vcVer = 'v4.5.2';
+vcDate = '4/12/2019';
 vcHash = file2hash_();
 
 if nargout==0
@@ -24016,7 +24083,8 @@ end
 
 fprintf('Calculating drift similarity...'); t1 = tic;
 nAmp_drift = get_set_(P, 'nQuantile_drift', 10);
-nPos_drift = get_set_(P, 'nPos_drift', 100);
+%nPos_drift = get_set_(P, 'nPos_drift', 100);
+nPos_drift = numel(P.viSite2Chan); % use number of sites
 viSite_unique = unique(S0.viSite_spk);
 nSites = numel(viSite_unique);
 nSpikes = numel(S0.viSite_spk);
@@ -30980,12 +31048,7 @@ end %func
 % 4/12/2019 JJJ: Template merging cluster
 % no membership reassignment, no core calculation
 function S_clu = templateMatch_post_(S_clu, P)
-% global tnWav_spk
-% only for tetrode
-% if ~all(get0_('viSite_spk')==1)
-%     fprintf(2, 'templateMatch_post_: skipped\n');
-%     return;
-% end
+
 fUse_raw = 0;
 nAve_knn = min(15, get_set_(P, 'knn', 30));
 
@@ -30998,7 +31061,10 @@ nShift_max = ceil(diff(P.spkLim) * P.frac_shift_merge / 2);
 viShift = -nShift_max:nShift_max;
 
 tnWav_spk = get_spkwav_(P, fUse_raw); % use raw waveform
-
+if 0
+    nSites_fet = P.maxSite*2+1-P.nSites_ref;
+    tnWav_spk = tnWav_spk(:,1:nSites_fet,:);
+end
 % create template (nTemplate per cluster)
 [cviSpk_in_clu, cviSpk_out_clu, ctrWav_in_clu, cviSite_in_clu] = deal(cell(S_clu.nClu, 1));
 fh_car = @(tr)tr - repmat(mean(tr,2), [1,size(tr,2),1]);
@@ -31035,6 +31101,14 @@ for iClu = 1:S_clu.nClu
     for iDrift = 1:nDrift
         vii1 = viiSpk1(iDrift):viiSpk1(iDrift+1);
         switch 3
+            case 4
+                viSpk11 = viSpk1(vii1);
+                vrRho11 = vrRho_spk(viSpk11);
+                viSpk11 = viSpk11(vrRho11 > median(vrRho11));
+                viSpk11 = miKnn(1:nAve_knn, viSpk11);
+                viSpk11 = viSpk11(:); % density based selection                
+                iSite11 = mode(viSite_spk(viSpk11));
+                viSpk11 = viSpk11(viSite_spk(viSpk11) == iSite11);   
             case 3     
                 viSpk11 = viSpk1(vii1);
                 viSpk11 = miKnn(1:nAve_knn, viSpk11);
@@ -31065,6 +31139,12 @@ for iClu = 1:S_clu.nClu
             continue;
         end             
         switch 1
+            case 7
+                tr_ = single(tnWav_spk(:,:,viSpk11));
+                mr_ = mean(tr_,3) ./ std(tr_,1,3);
+            case 6, mr_ = meanSubt_(single(median(tnWav_spk(:,:,viSpk11),3)));
+            case 5, mr_ = meanSubt_(mean(single(tnWav_spk(:,:,viSpk11)),3));
+            case 4, mr_ = single(median(tnWav_spk(:,:,viSpk11),3));
             case 3, mr_ = fh_pv1(viSpk11);
             case 2, mr_ = fh_trimmean(viSpk11);
             case 1, mr_ = mean(single(tnWav_spk(:,:,viSpk11)),3);
@@ -31076,22 +31156,6 @@ for iClu = 1:S_clu.nClu
     fprintf('.');
 end
 fprintf('\n\ttook %0.1fs\n', toc(t_template));
-
-
-% find template locations by sites
-[ctrWav_in_site, cviClu_in_site] = deal(cell(1, nSites));
-for iSite = 1:nSites
-    [ctrWav_, cviClu_] = deal(cell(1, S_clu.nClu));
-    for iClu = 1:S_clu.nClu
-        [trWav_in1, viSite_in1] = deal(ctrWav_in_clu{iClu}, cviSite_in_clu{iClu});
-        vl_ = viSite_in1==iSite;
-        if ~any(vl_), continue; end
-        ctrWav_{iClu} = trWav_in1(:,:,vl_);
-        cviClu_{iClu} = repmat(iClu, sum(vl_), 1);
-    end
-    ctrWav_in_site{iSite} = cat(3, ctrWav_{:});
-    cviClu_in_site{iSite} = cat(1, cviClu_{:});
-end
 
 
 % merge the templates: todo, faster code
@@ -31127,6 +31191,119 @@ parfor iClu1 = 1:S_clu.nClu
 %     fprintf('.');
 end %for
 mlWavCor_clu = mrDist_clu >= P.maxWavCor;
+viMap_clu = int32(ml2map_(mlWavCor_clu));
+vlPos = S_clu.viClu > 0;
+S_clu.viClu(vlPos) = viMap_clu(S_clu.viClu(vlPos)); %translate cluster number
+S_clu = S_clu_refresh_(S_clu);
+nClu_post = S_clu.nClu;
+nClu_pre = nClu;
+fprintf('\nMerged %d waveforms (%d->%d), took %0.1fs\n', nClu-nClu_post, nClu, nClu_post, toc(t_merge));
+end %func
+
+
+%--------------------------------------------------------------------------
+% 4/12/2019 JJJ: merge clusters based on cosine distance of feature vectors
+% no membership reassignment, no core calculation
+function S_clu = templateMatch_post3_(S_clu, P)
+global trFet_spk
+
+nAve_knn = min(15, get_set_(P, 'knn', 30));
+
+fprintf('Template matching (post-hoc)\n'); t1=tic;
+[viClu_spk, miKnn] = struct_get_(S_clu, 'viClu', 'miKnn');
+viSite_spk = get0_('viSite_spk');
+
+% create template
+nSites = max(viSite_spk);
+nDrift = get_set_(P, 'nTime_drift', 64);
+nSpk_min = get_set_(P, 'knn', 30);
+[viClu_spk, vrRho_spk] = deal(S_clu.viClu, S_clu.rho);
+fprintf('\tComputing template\n\t'); t_template = tic;
+switch 2
+    case 3, fh_normalize = @(x)zscore(x,1) / sqrt(size(x,1));
+    case 2, fh_normalize = @(x)x./sqrt(sum(x.^2));
+    case 1, fh_normalize = @(x)bsxfun(@rdivide, x, std(x,1)*sqrt(size(x,1)));
+end 
+
+for iClu = 1:S_clu.nClu
+    viSpk1 = find(S_clu.viClu == iClu);
+    viSpk1 = viSpk1(:);
+    viiSpk1 = round(linspace(1, numel(viSpk1), nDrift+1));
+    [vlKeep_clu1, viSite_clu1] = deal(true(nDrift, 1), zeros(nDrift,1));
+    mrFet_clu1 = zeros(size(trFet_spk,1), nDrift, 'double');
+    for iDrift = 1:nDrift
+        vii1 = viiSpk1(iDrift):viiSpk1(iDrift+1);
+        switch 3
+            case 4
+                viSpk11 = viSpk1(vii1);
+                vrRho11 = vrRho_spk(viSpk11);
+                viSpk11 = viSpk11(vrRho11 > median(vrRho11));
+                viSpk11 = miKnn(1:nAve_knn, viSpk11);
+                viSpk11 = viSpk11(:); % density based selection                
+                iSite11 = mode(viSite_spk(viSpk11));
+                viSpk11 = viSpk11(viSite_spk(viSpk11) == iSite11);   
+            case 3     
+                viSpk11 = viSpk1(vii1);
+                viSpk11 = miKnn(1:nAve_knn, viSpk11);
+                viSpk11 = viSpk11(:); % density based selection                
+                iSite11 = mode(viSite_spk(viSpk11));
+                viSpk11 = viSpk11(viSite_spk(viSpk11) == iSite11);   
+            case 2                
+                viSpk11 = miKnn(1:nAve_knn, viSpk1(vii1));
+                viSpk11 = viSpk11(:);
+                vrRho11 = vrRho_spk(viSpk11);
+                viSpk11 = viSpk11(vrRho11 > quantile(vrRho11, frac_thresh));
+                viSpk11 = viSpk11(viClu_spk(viSpk11) == iClu);
+                iSite11 = mode(viSite_spk(viSpk11));
+                viSpk11 = viSpk11(viSite_spk(viSpk11) == iSite11);
+            case 1 % find local peak
+                vrRho1 = S_clu.rho(viSpk1);
+                [~,ii11] = max(vrRho1(vii1)); % local peak
+                iSpk11 = viSpk1(vii1(ii11)); % center spike index
+                iSite11 = viSite_spk(iSpk11);
+                % find neighbors around the local peak
+                viSpk11 = miKnn(1:nAve_knn, miKnn(:,iSpk11));
+                viSpk11 = viSpk11(:);
+                viSpk11 = viSpk11(viSite_spk(viSpk11) == iSite11 & viClu_spk(viSpk11) == iClu);     
+        end
+        viSite_clu1(iDrift) = iSite11;
+        if numel(viSpk11) < nSpk_min
+            vlKeep_clu1(iDrift) = false;
+            continue;
+        end      
+        mrFet_clu1(:,iDrift) = squeeze_(mean(trFet_spk(:,1,viSpk11),3), 2);
+    end
+    cmrFet_in_clu{iClu} = fh_normalize(mrFet_clu1(:,vlKeep_clu1));
+    cviSite_in_clu{iClu} = viSite_clu1(vlKeep_clu1);
+    fprintf('.');
+end
+fprintf('\n\ttook %0.1fs\n', toc(t_template));
+
+
+% merge the templates: todo, faster code
+nClu = S_clu.nClu;
+fprintf('Merging templates\n\t'); t_merge=tic;
+mrDist_clu = nan(S_clu.nClu, 'double');
+for iClu1 = 1:S_clu.nClu
+    viSite_clu1 = cviSite_in_clu{iClu1};
+    if isempty(viSite_clu1), continue; end
+    mr1_ = cmrFet_in_clu{iClu1};
+    vrDist_clu1 = zeros(S_clu.nClu, 1, 'single');
+    for iClu2 = iClu1+1:S_clu.nClu
+        viSite2 = cviSite_in_clu{iClu2};
+        viSite12 = intersect(viSite_clu1, viSite2);
+        if isempty(viSite12), continue; end
+        mr2_ = cmrFet_in_clu{iClu2};      
+        for iSite12_ = 1:numel(viSite12)
+            iSite12 = viSite12(iSite12_);
+            mrDist12 = mr2_(:, viSite2==iSite12)' * mr1_(:, viSite_clu1==iSite12);
+            vrDist_clu1(iClu2) = max(vrDist_clu1(iClu2), max(mrDist12(:)));
+        end
+    end
+    mrDist_clu(:, iClu1) = vrDist_clu1;
+%     fprintf('.');
+end %for
+mlWavCor_clu = mrDist_clu >= .997; %P.maxWavCor;
 viMap_clu = int32(ml2map_(mlWavCor_clu));
 vlPos = S_clu.viClu > 0;
 S_clu.viClu(vlPos) = viMap_clu(S_clu.viClu(vlPos)); %translate cluster number

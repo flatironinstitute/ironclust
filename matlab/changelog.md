@@ -3,6 +3,20 @@ IronClust, written by J. James Jun, Flatiron Institute, Simons Foundation
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [4.5.2] - 2019-4-12
+### Changed
+- Drift correction performance improved by changing parameters and 
+  automated merging algorithm
+  - nPcPerChan: 2 -> 3
+  - freqLim: [300, 4000] -> [300, 5000] 
+  - merging algorithm: 
+- `run_irc.m` changed to use cached results
+
+### Added
+- `run_ksort2.m` added
+  - Usage: `run_ksort2 dir_in dir_out (params.txt)`
+
+
 ## [4.5.1] - 2019-4-11
 ### Changed
 - Drift correction speed and performance improved

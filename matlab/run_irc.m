@@ -10,42 +10,49 @@ function run_irc(vcDir_in, vcDir_out, vcFile_template)
 % vcDir_out: output directory
 % vcFile_template: template file (optional)
 
+if nargin<2, vcDir_out = ''; end
 if nargin<3, vcFile_template = ''; end
-
+if isempty(vcDir_out)
+    vcDir_out = strrep(vcDir_in, '/groundtruth/', '/irc/');
+end
 if ~isdeployed()
     source_path = fileparts(mfilename('fullpath'));
-    addpath(genpath(fullfile(source_path, '/matlab'))); 
+    addpath(genpath(fullfile(source_path)));
 end
-if nargin==1
-    vcCmd = vcDir_in;
-    fprintf('%s\n', irc(vcCmd)); 
-    return; 
-end
+% if nargin==1
+%     vcCmd = vcDir_in;
+%     fprintf('%s\n', irc(vcCmd)); 
+%     return; 
+% end
 
 irc('call', 'mkdir', {vcDir_out}); % create temp output directory
     
 % inferred from the path
-raw_fname = fullfile(vcDir_in, 'raw.mda');
-geom_fname = fullfile(vcDir_in, 'geom.csv');
 firings_out_fname = fullfile(vcDir_out, 'firings_out.mda');
-prm_fname = fullfile(vcDir_in, 'params.json');
-vcFile_gt_mda = fullfile(vcDir_in, 'firings_true.mda');
-
-vcFile_prm = irc('makeprm-mda', raw_fname, geom_fname, prm_fname, vcDir_out, vcFile_template);
-irc('clear', vcFile_prm);
-irc('run', vcFile_prm);
-irc('export-mda', vcFile_prm, firings_out_fname);
+raw_fname = fullfile(vcDir_in, 'raw.mda');
+if ~exist_file_(firings_out_fname)
+    geom_fname = fullfile(vcDir_in, 'geom.csv');
+    prm_fname = fullfile(vcDir_in, 'params.json');
+    vcFile_prm = irc('makeprm-mda', raw_fname, geom_fname, prm_fname, vcDir_out, vcFile_template);    
+    irc('clear', vcFile_prm);
+    irc('run', vcFile_prm);
+    irc('export-mda', vcFile_prm, firings_out_fname);
+    fprintf('Clustering result wrote to %s\n', firings_out_fname);
+end
 
 % create a ground truth
-try
-    irc('import-gt', vcFile_gt_mda, vcFile_prm); % assume that groundtruth file exists
-    irc('validate', vcFile_prm); % assume that groundtruth file exists
-catch
-    fprintf(2, 'Validation failed\n');
+vcFile_gt_mda = fullfile(vcDir_in, 'firings_true.mda');
+if exist_file_(vcFile_gt_mda)
+    try
+        vcFile_prm = fullfile(vcDir_out, 'raw_geom.prm');
+        irc('import-gt', vcFile_gt_mda, vcFile_prm);
+        irc('validate-mda', vcFile_gt_mda, firings_out_fname, raw_fname); % assume that groundtruth file exists
+    catch
+        fprintf(2, 'Validation failed\n');
+    end
 end
 
 % Exit
-fprintf('Clustering result wrote to %s\n', firings_out_fname);
 exit_deployed_();
 end %func
 
