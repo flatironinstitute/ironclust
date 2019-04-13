@@ -3,6 +3,14 @@ IronClust, written by J. James Jun, Flatiron Institute, Simons Foundation
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [4.5.3] - 2019-4-13
+### Added
+- `fftdiff` filter option is added (band-limited differentiator)
+  - it was set as a default for `vcFilter`
+  - `freqLim` and `freqLim_width` controls the low-pass filter cut-off
+  - high-pass filter cutoff is ignored when `fftdiff` is set.
+
+
 ## [4.5.2] - 2019-4-12
 ### Changed
 - Drift correction performance improved by changing parameters and 
