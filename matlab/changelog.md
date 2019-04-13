@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ### Changed
 - Drift correction performance improved by changing parameters and 
   automated merging algorithm
-  - nPcPerChan: 2 -> 3
+  - nPcPerChan: 1 -> 2
   - freqLim: [300, 4000] -> [300, 5000] 
   - merging algorithm: 
 - `run_irc.m` changed to use cached results
