@@ -3,6 +3,14 @@ IronClust, written by J. James Jun, Flatiron Institute, Simons Foundation
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [4.5.4] - 2019-4-15
+### Added
+- vcFilter = `wiener` is added (fft_filter.m)
+  - it's now set as default
+  - It applies high-pass filter and wiener filter
+  - low-pass limit on the `freqLim` is ignored
+
+
 ## [4.5.3] - 2019-4-13
 ### Added
 - `fftdiff` filter option is added (band-limited differentiator)

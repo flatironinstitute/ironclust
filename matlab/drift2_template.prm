@@ -1,0 +1,23 @@
+% drift_template.prm
+% James Jun, 2017 Mar 30
+
+vcFilter = 'wiener';
+qqFactor = 4.5;			% Spike detection thresold (Threshold = qqFactor*S, S = med(x-med(x))/.6745). (RQ Quiroga'04).
+freqLim = [300, 5000];
+vcCommonRef = 'none';
+vcCluster = 'drift-knn'; % drift, spacetime, drift-knn
+nQuantile_drift = 8;       % Valid if vcCluster = 'drift'; # of bins for amplitude histogram per site to find drift pairs
+nPos_Drift = 64;           % number of position bins to compute the spike count histogram
+nTime_clu = 8;
+nTime_drift = 64;           % divide to 16 drift time bins
+
+% Knn experimental 
+knn = 30;
+fWavRaw_merge = 0;          % Use raw average unit waveforms for merge when set to 1, if not use filtered waveforms.
+fSavePlot_RD = 0;           % Save the Rho-Delta plot as .png file (prefix: '_RD.png' at the end of the .prm file name)
+frac_shift_merge = .1;      % Fraction of the waveform to shift to check for merging
+maxWavCor = .99;            % merge if waveform correlation is greater than maxWavCor.
+
+maxDist_site_spk_um = 75;
+maxDist_site_um = 50;
+nPcPerChan = 2;			% number of principal components per chan.

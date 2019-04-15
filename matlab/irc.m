@@ -5267,7 +5267,8 @@ if n_pre > 0 || n_post > 0
     mnWav2 = [mnWav1_pre; mnWav2; mnWav1_post];
 end
 P.vcFilter = get_filter_(P);
-switch lower(P.vcFilter)
+vcMode = lower(P.vcFilter);
+switch vcMode
     case 'user'
         %         vnFilter_user = -[5,0,-3,-4,-3,0,5]; % sgdiff acceleration
         vnFilter_user = single(get_set_(P, 'vnFilter_user', []));
@@ -5282,24 +5283,11 @@ switch lower(P.vcFilter)
             mnWav2(:,i) = conv(mnWav2(:,i), vrFilter, 'same'); 
         end        
     case 'ndiff', mnWav2 = ndiff_(mnWav2, P.nDiff_filt);
-    case 'fftdiff', mnWav2 = fftdiff_filter_(mnWav2, P);        
-    case {'sgdiff', 'sgfilt'}
-        mnWav2 = sgfilt_(mnWav2, P.nDiff_filt);
-    case 'bandpass'
-        mnWav2 = ms_bandpass_filter_(mnWav2, P);
-%         try
-% %             mnWav2 = filtfilt_chain(single(gather_(mnWav2)), setfield(P, 'fGpu', 0));
-%         catch
-%             fprintf('GPU filtering failed. Trying CPU filtering.\n');
-%             mnWav2 = filtfilt_chain(single(mnWav2), setfield(P, 'fGpu', 0));
-%         end
-%         mnWav2 = int16(mnWav2);
-    case {'none', 'skip'} % no filter is applied
-        ;
-    case 'ndist'
-        mnWav2 = ndist_filt_(mnWav2, get_set_(P, 'ndist_filt', 5));
-    otherwise
-        error('filt_car_: invalid filter option (vcFilter=''%s'')', P.vcFilter);
+    case {'bandpass', 'fftdiff', 'banddiff', 'wiener'}, mnWav2 = fft_filter(mnWav2, P, vcMode);
+    case {'sgdiff', 'sgfilt'}, mnWav2 = sgfilt_(mnWav2, P.nDiff_filt);
+    case {'none', 'skip'}, ;% no filter is applied
+    case 'ndist', mnWav2 = ndist_filt_(mnWav2, get_set_(P, 'ndist_filt', 5));
+    otherwise, error('filt_car_: invalid filter option (vcFilter=''%s'')', vcMode);
 end  %switch
 
 % trim padding
@@ -5315,58 +5303,58 @@ end
 end %func
 
 
-%--------------------------------------------------------------------------
-function mnWav1 = fftdiff_(mnWav, P)
-    
-fGpu = isGpu_(mnWav);
-nLoads_gpu = get_set_(P, 'nLoads_gpu', 8);  % GPU load limit    
-
-% [fGpu, nLoads_gpu] = deal(0, 1); %debug
-
-nSamples = size(mnWav,1);
-[nLoad1, nSamples_load1, nSamples_last1] = partition_load_(nSamples, round(nSamples/nLoads_gpu));
-mnWav1 = zeros(size(mnWav), 'like', mnWav);    
-freqLim_ = P.freqLim / (P.sRateHz / 2);
-for iLoad = 1:nLoad1
-    iOffset = (iLoad-1) * nSamples_load1;
-    if iLoad<nLoad1
-        vi1 = (1:nSamples_load1) + iOffset;
-    else
-        vi1 = (1:nSamples_last1) + iOffset;
-    end
-    mnWav1_ = mnWav(vi1,:);
-    if fGpu % use GPU
-        try 
-            mnWav1(vi1,:) = fftdiff__(mnWav1_, freqLim_);
-        catch
-            fGpu = 0;
-        end
-    end
-    if ~fGpu % use CPU 
-        mnWav1(vi1,:) = fftdiff__(gather_(mnWav1_), freqLim_);
-    end
-end %for
-end %func
-
-
-%--------------------------------------------------------------------------
-function mnWav1 = fftdiff__(mnWav, freqLim_)
-% apply fft to diffrentiate
-% mnWav = gather_(mnWav);
-
-n = size(mnWav,1);
-% n1 = round(n/2*freqLim_(1));
-% n2 = round(n/2*diff(freqLim_));
-
-n1 = round(n/2 * freqLim_(2));
-npow2 = 2^nextpow2(n);
-% w = single([linspace(0, 1, n2), linspace(1, 0, n2)])';
-% w = [zeros(n1, 1, 'single'); w; zeros(npow2-2*n1-4*n2, 1, 'single'); -w; zeros(n1, 1, 'single')];
-% w = single(pi*1i) * w;
-w = single(pi*1i) * single([linspace(0, 1, n1), linspace(1, -1, npow2-2*n1), linspace(-1, 0, n1)]');
-mnWav1 = real(ifft(bsxfun(@times, fft(single(mnWav), npow2), w), 'symmetric'));
-mnWav1 = cast(mnWav1(1:n,:), class_(mnWav));
-end %func
+% %--------------------------------------------------------------------------
+% function mnWav1 = fftdiff_(mnWav, P)
+%     
+% fGpu = isGpu_(mnWav);
+% nLoads_gpu = get_set_(P, 'nLoads_gpu', 8);  % GPU load limit    
+% 
+% % [fGpu, nLoads_gpu] = deal(0, 1); %debug
+% 
+% nSamples = size(mnWav,1);
+% [nLoad1, nSamples_load1, nSamples_last1] = partition_load_(nSamples, round(nSamples/nLoads_gpu));
+% mnWav1 = zeros(size(mnWav), 'like', mnWav);    
+% freqLim_ = P.freqLim / (P.sRateHz / 2);
+% for iLoad = 1:nLoad1
+%     iOffset = (iLoad-1) * nSamples_load1;
+%     if iLoad<nLoad1
+%         vi1 = (1:nSamples_load1) + iOffset;
+%     else
+%         vi1 = (1:nSamples_last1) + iOffset;
+%     end
+%     mnWav1_ = mnWav(vi1,:);
+%     if fGpu % use GPU
+%         try 
+%             mnWav1(vi1,:) = fftdiff__(mnWav1_, freqLim_);
+%         catch
+%             fGpu = 0;
+%         end
+%     end
+%     if ~fGpu % use CPU 
+%         mnWav1(vi1,:) = fftdiff__(gather_(mnWav1_), freqLim_);
+%     end
+% end %for
+% end %func
+% 
+% 
+% %--------------------------------------------------------------------------
+% function mnWav1 = fftdiff__(mnWav, freqLim_)
+% % apply fft to diffrentiate
+% % mnWav = gather_(mnWav);
+% 
+% n = size(mnWav,1);
+% % n1 = round(n/2*freqLim_(1));
+% % n2 = round(n/2*diff(freqLim_));
+% 
+% n1 = round(n/2 * freqLim_(2));
+% npow2 = 2^nextpow2(n);
+% % w = single([linspace(0, 1, n2), linspace(1, 0, n2)])';
+% % w = [zeros(n1, 1, 'single'); w; zeros(npow2-2*n1-4*n2, 1, 'single'); -w; zeros(n1, 1, 'single')];
+% % w = single(pi*1i) * w;
+% w = single(pi*1i) * single([linspace(0, 1, n1), linspace(1, -1, npow2-2*n1), linspace(-1, 0, n1)]');
+% mnWav1 = real(ifft(bsxfun(@times, fft(single(mnWav), npow2), w), 'symmetric'));
+% mnWav1 = cast(mnWav1(1:n,:), class_(mnWav));
+% end %func
 
 
 %--------------------------------------------------------------------------
@@ -16326,10 +16314,7 @@ switch lower(vcMode)
 %     case 'xcov'
 %         % use nearest neighbors to compute local xcov
 %         mn1 = xcov_filt_local_(mn, P);
-    case 'bandpass'
-        mn1 = ms_bandpass_filter_(mn, P);
-    case 'fftdiff'
-        mn1 = fftdiff_filter_(mn, P);
+    case {'bandpass', 'fftdiff', 'wiener'}, mn1 = fft_filter(mn, P, vcMode);
     case 'fir1'
         n5ms = round(P.sRateHz / 1000 * 5);
         vrFilter = single(fir1_(n5ms, P.freqLim/P.sRateHz*2));
@@ -21804,8 +21789,8 @@ end %func
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_(vcFile_prm)
 if nargin<1, vcFile_prm = ''; end
-vcVer = 'v4.5.3';
-vcDate = '4/13/2019';
+vcVer = 'v4.5.4';
+vcDate = '4/15/2019';
 vcHash = file2hash_();
 
 if nargout==0
@@ -27043,7 +27028,7 @@ set(0, 'UserData', []);
 % Load waveform
 mnWav_raw = load_file_(P.vcFile, [], P);
 if get_(P, 'fft_thresh')>0, mnWav_raw = fft_clean_(mnWav_raw, P); end
-mnWav_filt = ms_bandpass_filter_(mnWav_raw, P);
+mnWav_filt = fft_filter(mnWav_raw, P, 'bandpass');
 nSites = size(P.mrSiteXY,1);
 nShanks = max(P.viShank_site);
 switch 1
@@ -27086,7 +27071,7 @@ end
 switch 2
     case 3
         P_ = setfield(P, 'freqLim', [P.freqLim(1), nan]);
-        mnWav_fet = ms_bandpass_filter_(mnWav_raw, P_);
+        mnWav_fet = fft_filter(mnWav_raw, P_, 'bandpass');
     case 2, mnWav_fet = mnWav_raw;            
     case 1, mnWav_fet = mnWav_filt;
 end
@@ -27575,104 +27560,6 @@ for iPlot1=1:nPlot1
     end
     linkaxes(vh_, 'xy');
 end % for
-end %func
-
-
-%--------------------------------------------------------------------------
-% 4/10/2019 JJJ: GPU memory use improved
-% 3/11/2019 JJJ: GPU performance improved
-% 10/15/2018 JJJ: Modified from ms_bandpass_filter (MountainLab) for
-% memory-access efficiency
-% https://github.com/magland/mountainlab
-function mrWav_filt = ms_bandpass_filter_(mrWav, P)
-% mrWav_filt will be placed in GPU if mrWav is in GPU if memory allows
-
-NSKIP_MAX = 2^19; % fft work length
-nPad = 300;
-[nT, nC] = size(mrWav);
-nSkip = min(nT, NSKIP_MAX);
-[sRateHz, freqLim, freqLim_width, fGpu] = ...
-    struct_get_(P, 'sRateHz', 'freqLim', 'freqLim_width', 'fGpu');
-if isempty(freqLim), mrWav_filt = mrWav; return; end
-
-try
-    mrWav_filt = zeros(size(mrWav), 'like', mrWav); 
-catch
-    mrWav_filt = zeros(size(mrWav), class_(mrWav)); 
-    fGpu = 0;
-end
-if ~fGpu, mrWav = gather_(mrWav); end
-fh_filt = @(x,f)real(ifft(bsxfun(@times, fft(single(x)), f)));
-n_prev = nan;
-fprintf('Running ms_bandpass_filter\n\t'); t1=tic;
-for iStart = 1:nSkip:nT
-    iEnd = min(iStart+nSkip-1, nT);
-    iStart1 = iStart - nPad;
-    iEnd1 = iEnd + nPad;
-    vi1 = iStart1:iEnd1;
-    if iStart1 < 1 % wrap the filter (reflect boundary)
-        vl_ = vi1 < 1;
-        vi1(vl_) = 2 - vi1(vl_);
-    end
-    if iEnd1 > nT % wrap the filter (reflect boundary)
-        vl_ = vi1 > nT;
-        vi1(vl_) = 2*nT - vi1(vl_);
-    end
-    [mrWav1, fGpu] = gpuArray_(mrWav(vi1,:), fGpu);
-    n1 = size(mrWav1,1);
-    if n1 ~= n_prev
-        vrFilt1 = bandpass_fft_(n1, freqLim, freqLim_width, sRateHz);
-        vrFilt1 = gpuArray_(vrFilt1, fGpu);
-        n_prev = n1;
-    end    
-    try
-        mrWav1 = fh_filt(mrWav1, vrFilt1);  
-    catch
-        mrWav1 = fh_filt(gather_(mrWav1), vrFilt1);  
-    end
-    if ~isGpu_(mrWav_filt)
-        mrWav_filt(iStart:iEnd,:) = gather_(mrWav1(nPad+1:end-nPad,:));
-    else
-        mrWav_filt(iStart:iEnd,:) = mrWav1(nPad+1:end-nPad,:);
-    end
-    mrWav1 = []; % clear memory
-    fprintf('.');
-end
-if ~isGpu_(mrWav), mrWav_filt = gather_(mrWav_filt); end
-fprintf('\n\ttook %0.1fs (fGpu=%d)\n', toc(t1), fGpu);
-end %func
-
-
-%--------------------------------------------------------------------------
-% 10/15/2018 JJJ: Modified from ms_bandpass_filter (MountainLab) 
-function filt = bandpass_fft_(N, freqLim, freqLim_width, sRateHz)
-% Usage
-% [Y, filt] = bandpass_fft_(X, freqLim, freqLim_width, sRateHz)
-% [filt] = 
-% sRateHz: sampling rate
-% freqLim: frequency limit, [f_lo, f_hi]
-% freqLim_width: frequency transition width, [f_width_lo, f_width_hi]
-[flo, fhi] = deal(freqLim(1), freqLim(2));
-[fwid_lo, fwid_hi] = deal(freqLim_width(1), freqLim_width(2));
-
-df = sRateHz/N;
-if mod(N,2)==0
-    f = df * [0:N/2, -N/2+1:-1]';
-else
-    f = df * [0:(N-1)/2, -(N-1)/2:-1]'; 
-end
-% if isa_(X, 'single'), f = single(f); end
-% if isGpu_(X), f = gpuArray_(f); end
-
-if ~isnan(flo) && ~isnan(fhi)
-    filt = sqrt((1+erf((abs(f)-flo)/fwid_lo)) .* (1-erf((abs(f)-fhi)/fwid_hi)))/2;
-elseif ~isnan(flo)
-    filt = sqrt((1+erf((abs(f)-flo)/fwid_lo))/2);
-elseif ~isnan(fhi)
-    filt = sqrt((1-erf((abs(f)-fhi)/fwid_hi))/2);
-else
-    filt = [];
-end
 end %func
 
 
@@ -29189,6 +29076,13 @@ for iFile = 1:numel(csFiles_JC)
     end    
 end %for
 
+end %func
+
+
+%--------------------------------------------------------------------------
+% 4/15/2019 JJJ: deferring to fft_filter() function
+function mn = ms_bandpass_filter_(mn, P)
+mn = fft_filter(mn, P, 'bandpass');
 end %func
 
 
@@ -31305,103 +31199,4 @@ S_clu = S_clu_refresh_(S_clu);
 nClu_post = S_clu.nClu;
 nClu_pre = nClu;
 fprintf('\nMerged %d waveforms (%d->%d), took %0.1fs\n', nClu-nClu_post, nClu, nClu_post, toc(t_merge));
-end %func
-
-
-
-%--------------------------------------------------------------------------
-% 4/12/2019 JJJ: band limited differentiator
-function filt = calc_fftdiff_(N, freqLim, freqLim_width, sRateHz)
-% Usage
-% [Y, filt] = bandpass_fft_(X, freqLim, freqLim_width, sRateHz)
-% [filt] = 
-% sRateHz: sampling rate
-% freqLim: frequency limit, [f_lo, f_hi]
-% freqLim_width: frequency transition width, [f_width_lo, f_width_hi]
-[flo, fhi] = deal(freqLim(1), freqLim(2));
-[fwid_lo, fwid_hi] = deal(freqLim_width(1), freqLim_width(2));
-
-df = sRateHz/N;
-if mod(N,2)==0
-    f = df * [0:N/2, -N/2+1:-1]';
-    n1 = N/2+1;
-else
-    f = df * [0:(N-1)/2, -(N-1)/2:-1]'; 
-    n1 = (N-1)/2+1;
-end
-n2 = numel(f)-n1;
-
-% if isa_(X, 'single'), f = single(f); end
-% if isGpu_(X), f = gpuArray_(f); end
-
-filt = [linspace(0, 2, n1), linspace(2,0,n2)]';
-if ~isnan(fhi)
-    filt = filt .* sqrt(1-erf((abs(f)-fhi)/fwid_hi));
-    filt = filt / max(filt) * 2;
-end
-end %func
-
-
-%--------------------------------------------------------------------------
-% 4/10/2019 JJJ: GPU memory use improved
-% 3/11/2019 JJJ: GPU performance improved
-% 10/15/2018 JJJ: Modified from ms_bandpass_filter (MountainLab) for
-% memory-access efficiency
-% https://github.com/magland/mountainlab
-function mrWav_filt = fftdiff_filter_(mrWav, P)
-% mrWav_filt will be placed in GPU if mrWav is in GPU if memory allows
-
-NSKIP_MAX = 2^19; % fft work length
-nPad = 300;
-[nT, nC] = size(mrWav);
-nSkip = min(nT, NSKIP_MAX);
-[sRateHz, freqLim, freqLim_width, fGpu] = ...
-    struct_get_(P, 'sRateHz', 'freqLim', 'freqLim_width', 'fGpu');
-if isempty(freqLim), mrWav_filt = mrWav; return; end
-
-try
-    mrWav_filt = zeros(size(mrWav), 'like', mrWav); 
-catch
-    mrWav_filt = zeros(size(mrWav), class_(mrWav)); 
-    fGpu = 0;
-end
-if ~fGpu, mrWav = gather_(mrWav); end
-fh_filt = @(x,f)real(ifft(bsxfun(@times, fft(single(x)), f)));
-n_prev = nan;
-fprintf('Running fftdiff_filter\n\t'); t1=tic;
-for iStart = 1:nSkip:nT
-    iEnd = min(iStart+nSkip-1, nT);
-    iStart1 = iStart - nPad;
-    iEnd1 = iEnd + nPad;
-    vi1 = iStart1:iEnd1;
-    if iStart1 < 1 % wrap the filter (reflect boundary)
-        vl_ = vi1 < 1;
-        vi1(vl_) = 2 - vi1(vl_);
-    end
-    if iEnd1 > nT % wrap the filter (reflect boundary)
-        vl_ = vi1 > nT;
-        vi1(vl_) = 2*nT - vi1(vl_);
-    end
-    [mrWav1, fGpu] = gpuArray_(mrWav(vi1,:), fGpu);
-    n1 = size(mrWav1,1);
-    if n1 ~= n_prev
-        vrFilt1 = calc_fftdiff_(n1, freqLim, freqLim_width, sRateHz);
-        vrFilt1 = gpuArray_(vrFilt1, fGpu);
-        n_prev = n1;
-    end    
-    try
-        mrWav1 = fh_filt(mrWav1, vrFilt1);  
-    catch
-        mrWav1 = fh_filt(gather_(mrWav1), vrFilt1);  
-    end
-    if ~isGpu_(mrWav_filt)
-        mrWav_filt(iStart:iEnd,:) = gather_(mrWav1(nPad+1:end-nPad,:));
-    else
-        mrWav_filt(iStart:iEnd,:) = mrWav1(nPad+1:end-nPad,:);
-    end
-    mrWav1 = []; % clear memory
-    fprintf('.');
-end
-if ~isGpu_(mrWav), mrWav_filt = gather_(mrWav_filt); end
-fprintf('\n\ttook %0.1fs (fGpu=%d)\n', toc(t1), fGpu);
 end %func
