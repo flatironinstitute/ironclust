@@ -13,12 +13,6 @@ function mrWav_filt = fft_filter(mrWav, P, vcMode)
 if nargin<3, vcMode = ''; end
 if isempty(vcMode), vcMode = 'bandpass'; end
 
-% clear the cache
-if nargout == 0
-    clear fft_wiener_
-    return;
-end
-
 NSKIP_MAX = 2^19; % fft work length
 nPad = 300;
 [nT, nC] = size(mrWav);
@@ -34,9 +28,11 @@ try
 end
 switch lower(vcMode)
     case 'bandpass', fh_filter = @fft_bandpass_;
+    case 'highpass', fh_filter = @fft_highpass_;
+    case 'lowpass', fh_filter = @fft_lowpass_;
     case {'fftdiff', 'banddiff'}, fh_filter = @fft_diff_;
     case 'wiener'
-        fft_wiener_(mrWav, P); % set persistent variable
+        fft_wiener_(mrWav, P); % build cache if not built yet
         fh_filter = @fft_wiener_;
     otherwise, error(['fftfilt_: invalid option: ', vcMode]);
 end
@@ -75,9 +71,8 @@ for iStart = 1:nSkip:nT
         mrWav_filt(iStart:iEnd,:) = mrWav1(nPad+1:end-nPad,:);
     end
     mrWav1 = []; % clear memory
-    fprintf('.');
+%     fprintf('.');
 end
-clear fft_wiener_
 if ~isGpu_(mrWav), mrWav_filt = gather_(mrWav_filt); end
 fprintf('\n\ttook %0.1fs (fGpu=%d)\n', toc(t1), fGpu);
 end %func
@@ -95,14 +90,7 @@ function filt = fft_bandpass_(N, freqLim, freqLim_width, sRateHz)
 [flo, fhi] = deal(freqLim(1), freqLim(2));
 [fwid_lo, fwid_hi] = deal(freqLim_width(1), freqLim_width(2));
 
-df = sRateHz/N;
-if mod(N,2)==0
-    f = df * [0:N/2, -N/2+1:-1]';
-else
-    f = df * [0:(N-1)/2, -(N-1)/2:-1]'; 
-end
-% if isa_(X, 'single'), f = single(f); end
-% if isGpu_(X), f = gpuArray_(f); end
+[n1, n2, f] = get_freq_(N, sRateHz);
 
 if ~isnan(flo) && ~isnan(fhi)
     filt = sqrt((1+erf((abs(f)-flo)/fwid_lo)) .* (1-erf((abs(f)-fhi)/fwid_hi)))/2;
@@ -117,41 +105,53 @@ end %func
 
 
 %--------------------------------------------------------------------------
-% 4/12/2019 JJJ: band limited differentiator
-function filt = fft_diff_(N, freqLim, freqLim_width, sRateHz)
-% Usage
-% [Y, filt] = bandpass_fft_(X, freqLim, freqLim_width, sRateHz)
-% sRateHz: sampling rate
-% freqLim: frequency limit, [f_lo, f_hi]
-% freqLim_width: frequency transition width, [f_width_lo, f_width_hi]
+function filt = fft_lowpass_(N, freqLim, freqLim_width, sRateHz)
 [flo, fhi] = deal(freqLim(1), freqLim(2));
 [fwid_lo, fwid_hi] = deal(freqLim_width(1), freqLim_width(2));
+[n1, n2, f] = get_freq_(N, sRateHz);
+filt = sqrt((1-erf((abs(f)-fhi)/fwid_hi))/2);
+end %func
 
-df = sRateHz/N;
-if mod(N,2)==0
-    f = df * [0:N/2, -N/2+1:-1]';
-    n1 = N/2+1;
-else
-    f = df * [0:(N-1)/2, -(N-1)/2:-1]'; 
-    n1 = (N-1)/2+1;
-end
-n2 = numel(f)-n1;
 
-% if isa_(X, 'single'), f = single(f); end
-% if isGpu_(X), f = gpuArray_(f); end
-
-filt = [linspace(0, 2, n1), linspace(2,0,n2)]';% [filt] = 
-
-if ~isnan(fhi)
-    filt = filt .* sqrt(1-erf((abs(f)-fhi)/fwid_hi));
-    filt = filt / max(filt) * 2;
-end
+%--------------------------------------------------------------------------
+function filt = fft_highpass_(N, freqLim, freqLim_width, sRateHz)
+[flo, fhi] = deal(freqLim(1), freqLim(2));
+[fwid_lo, fwid_hi] = deal(freqLim_width(1), freqLim_width(2));
+[n1, n2, f] = get_freq_(N, sRateHz);
+filt = sqrt((1+erf((abs(f)-flo)/fwid_lo))/2);;
 end %func
 
 
 %--------------------------------------------------------------------------
 % 4/12/2019 JJJ: band limited differentiator
-function vrFilter = fft_wiener_(N, freqLim, freqLim_width, sRateHz)
+function vrFilter_diff = fft_diff_(N, freqLim, freqLim_width, sRateHz)
+% Usage
+% [Y, filt] = bandpass_fft_(X, freqLim, freqLim_width, sRateHz)
+% sRateHz: sampling rate
+% freqLim: frequency limit, [f_lo, f_hi]
+% freqLim_width: frequency transition width, [f_width_lo, f_width_hi]
+if mod(N-1,2)==0
+    n0 = (N-1)/2;
+    vrFilter_diff = [0, linspace(0,2,n0), linspace(2,0,n0)]';
+else
+    n0 = (N-2)/2;
+    vrFilter_diff = [0, linspace(0,2,n0), 2, linspace(2,0,n0)]';
+end
+if nargin==1, return; end
+
+[flo, fhi] = deal(freqLim(1), freqLim(2));
+[fwid_lo, fwid_hi] = deal(freqLim_width(1), freqLim_width(2));
+if ~isnan(fhi)
+    [n1, n2, f] = get_freq_(N, sRateHz);
+    vrFilter_diff = vrFilter_diff .* sqrt(1-erf((abs(f)-fhi)/fwid_hi));
+    vrFilter_diff = vrFilter_diff / max(vrFilter_diff) * 2;
+end
+end %funcmr1
+
+
+%--------------------------------------------------------------------------
+% 4/12/2019 JJJ: band limited differentiator
+function vrFilter_wiener = fft_wiener_(N, freqLim, freqLim_width, sRateHz)
 % Usage
 % filt = fft_wiener_(mrWav, P)
 %   set the persistent variable
@@ -159,58 +159,66 @@ function vrFilter = fft_wiener_(N, freqLim, freqLim_width, sRateHz)
 % freqLim: frequency limit, [f_lo, f_hi]
 % freqLim_width: frequency transition width, [f_width_lo, f_width_hi]
 
-persistent mr_ P_ filt_
-if nargin==2, [mr_, P_, v] = deal(N, freqLim, []); return; end
+persistent P_ filt0_
+if nargin==2, [mr_, P_] = deal(N, freqLim); end
 
-% use cache
-if ~isempty(filt_), 
-    if N ~= numel(filt_)
-        filt_ = [];
-    else
-        vrFilter = filt_;
-        return;
+% computes the cache only if the cache is abscent
+if isempty(filt0_)
+    mr1 = single(mr_(1:end/8, :)); % make a smaller copy
+    if 1
+        mr1 = fft_filter(mr1, P_, 'highpass');
     end
-end
+    % reshape to the spike size and perform fft
+    nSamples = (diff(P_.spkLim_raw) + 1)*2; %*2;
+    mr2 = reshape_(mr1(:), nSamples);
+    mrFft = fft(mr2-mean(mr2));
+    switch 2
+        case 4, vr2 = std(mr2(3:end,:) - mr2(1:end-2,:));
+        case 3, vr2 = std(diff(mr2));
+        case 2, vr2 = std(mr2);    
+        case 1, vr2 = range(diff(mr2)); % find window containing spikes
+    end
+    threshLim = quantile(vr2, [.1, .99]);
+    switch 2
+        case 2, fh1 = @(x)mean(abs(mrFft(:,x)),2);
+        case 1, fh1 = @(x)median(abs(mrFft(:,x)),2);
+    end
+    vrFft_noise = fh1(vr2<=threshLim(1));
+    vrFft_signal = fh1(vr2>=threshLim(2));
+    switch 1
+        case 2, scale = quantile(vrFft_signal ./ vrFft_noise, 1/8);
+        case 1, scale = min(vrFft_signal(2:end)) / min(vrFft_noise(2:end));
+    end
 
-% use a cache to 
-% to do: do it channel by channel
-mr1 = single(mr_(1:end/8, :)); % make a smaller copy
-% reshape to the spike size and perform fft
-nSamples = (diff(P_.spkLim_raw) + 1)*2;
-mr2 = reshape_(mr1(:), nSamples);
-mrFft = fft(mr2-mean(mr2));
-% vrFft = abs(mean(mrFft,2));
-% vrFft = mean(abs(mrFft),2);
-% fit noise power
-% 
-switch 2
-    case 3, vr2 = std(diff(mr2));
-    case 2, vr2 = std(mr2);    
-    case 1, vr2 = range(diff(mr2)); % find window containing spikes
+    vrFft_signal = abs(vrFft_signal(:) / scale - vrFft_noise(:));
+    switch 1
+        case 2, vrFilt = vrFft_signal ./ (vrFft_signal + vrFft_noise);
+        case 1, vrFilt = vrFft_signal.^2 ./ (vrFft_signal.^2 + vrFft_noise.^2);
+    end
+    vrFilt(1) = vrFilt(end);
+    filt0_ = vrFilt;
+    fprintf(2, 'fft_filter: wiener filter recomputed `filt0_`\n');
 end
-threshLim = quantile(vr2, [.1, .99]);
-switch 2
-    case 2, fh1 = @(x)mean(abs(mrFft(:,x)),2);
-    case 1, fh1 = @(x)median(abs(mrFft(:,x)),2);
-end
-vrFft_noise = fh1(vr2<=threshLim(1));
-vrFft_signal = fh1(vr2>=threshLim(2));
-scale = min(vrFft_signal(2:end)) / min(vrFft_noise(2:end));
-vrFft_signal = abs(vrFft_signal(:) / scale - vrFft_noise(:));
-switch 1
-    case 2, vrFilt = vrFft_signal ./ (vrFft_signal + vrFft_noise);
-    case 1, vrFilt = vrFft_signal.^2 ./ (vrFft_signal.^2 + vrFft_noise.^2);
-end
-vrFilt(1) = 0; % no DC gain
-vrFilter = interp1(1:nSamples, vrFilt, linspace(1,nSamples,N), 'linear')';
+if nargout==0, return; end
+
+
+nSamples = numel(filt0_);
+vrFilter_wiener = filt_symmetrize_(interp1(1:nSamples, filt0_, linspace(1,nSamples,N), 'linear'))';
+vrFilter_wiener(1) = 0; % set zero dc gain
 
 % apply high pass filter
-if 1    
-    P_.freqLim(2) = nan;
-    vrFilter_hp = fft_bandpass_(N, P_.freqLim, P_.freqLim_width, P_.sRateHz);
-    vrFilter = vrFilter_hp(:) .* vrFilter;
+switch 2
+    case 3 %combine with diff
+        vcFilter_diff = fft_diff_(N);
+        vrFilter = vcFilter_diff .* vrFilter_wiener;
+        vrFilter = vrFilter / max(vrFilter) * 2;
+    case 2 %combine with High-pass
+        vrFilter_hp = fft_highpass_(N, P_.freqLim, P_.freqLim_width, P_.sRateHz);
+        vrFilter = vrFilter_hp(:) .* vrFilter_wiener;
+    case 1
+        vrFilter = vrFilter_wiener;
 end
-if isempty(filt_), filt_ = vrFilter; end
+filt_ = vrFilter;
 end %func
 
 
@@ -317,4 +325,44 @@ if n == (n1*n2)
 else
     mr = reshape(vr(1:(n1*n2)), n1, n2);
 end
+end %func
+
+
+%--------------------------------------------------------------------------
+function [n1, n2, f] = get_freq_(N, sRateHz)
+% [n1, n2, f] = get_freq_(N, sRateHz)
+if mod(N,2)==0
+    if nargin>=2
+        df = sRateHz/N;
+        f = df * [0:N/2, -N/2+1:-1]';
+    end
+    n1 = N/2+1;
+else
+    if nargin>=2
+        df = sRateHz/N;
+        f = df * [0:(N-1)/2, -(N-1)/2:-1]'; 
+    end
+    n1 = (N-1)/2+1;
+end
+n2 = N-n1;
+end %func
+
+
+%--------------------------------------------------------------------------
+function vrFilt1 = filt_symmetrize_(vrFilt)
+vrFilt1 = vrFilt;
+% vrFilt1(1) = 0; % no DC gain
+N = numel(vrFilt);
+if mod((N-1),2) == 0 %even
+    n1 = (N-1)/2;
+else
+    n1 = (N-2)/2;
+    vrFilt1(1+n1+1) = (vrFilt(1+n1)+vrFilt(1+n1+2))/2; %set the middle to zero
+end
+vi1 = 2:(n1+1);
+vi2 = N:-1:(N-n1+1);
+vrFilt12 = (vrFilt(vi1) + vrFilt(vi2))/2;
+vrFilt1(vi1) = vrFilt12;
+vrFilt1(vi2) = vrFilt12;
+% vrFilt1(1) = 0; % zero DC gain
 end %func

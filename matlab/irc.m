@@ -3340,7 +3340,9 @@ if fPostCluster, S_clu = postCluster_(S_clu, P); end
 S_clu = S_clu_refresh_(S_clu);
 S_clu.viClu_premerge = S_clu.viClu;
 
-switch 1
+switch 1 %1 previously 1
+    case 4
+        S_clu = graph_merge_(S_clu, P);
     case 3
         for iRepeat = 1:2
             S_clu = driftMatch_post_(S_clu, P); 
@@ -4536,7 +4538,7 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function [viMapClu, viUniq_] = ml2map_(ml)
+function [viMapClu_new, viUniq_, viMapClu] = ml2map_(ml)
 % ml: connectivity matrix to merge
 % viMapClu: old to new index
 nRepeat = 10;
@@ -4574,7 +4576,7 @@ end
 % Compact the map so the index doesn't have a gap
 viUniq_ = unique(viMapClu);
 viMap_(viUniq_) = 1:numel(viUniq_);
-viMapClu = viMap_(viMapClu);
+viMapClu_new = viMap_(viMapClu);
 end %func
 
 
@@ -9767,9 +9769,18 @@ if get_set_(P, 'f_assign_site_clu', 0)
     S_clu.viClu = assignCluster_site_(S_clu, get0_());
 end
 
+nClu_pre = numel(S_clu.icl);
 switch 4
+    case 7
+        % remove cluster centers with overlap        
+%         [S_clu.viClu, S_clu.icl] = assignCluster_([], S_clu.ordrho, S_clu.nneigh, S_clu.icl);
+%         [S_clu.viClu, S_clu.icl] = dpclus_remove_count_(S_clu.viClu, S_clu.icl, P.min_count);
+        S_clu.icl = S_clu_peak_prune_(S_clu, P);
+        [S_clu.viClu, S_clu.icl] = assignCluster_(S_clu.viClu, S_clu.ordrho, S_clu.nneigh, S_clu.icl);
+        [S_clu.viClu, S_clu.icl] = dpclus_remove_count_(S_clu.viClu, S_clu.icl, P.min_count);
+        S_clu = S_clu_refresh_(S_clu); % reassign cluster number?
+        nClu_rm = nClu_pre - S_clu.nClu;  
     case 6
-        nClu_pre = numel(S_clu.icl);
         [S_clu.viClu, S_clu.icl] = assignCluster_(S_clu.viClu, S_clu.ordrho, S_clu.nneigh, S_clu.icl);
         viMap = S_clu_peak_merge_(S_clu, P); % merge peaks based on their waveforms
         S_clu.viClu = map_index_(viMap, S_clu.viClu, 0);
@@ -9777,7 +9788,6 @@ switch 4
         nClu_rm = nClu_pre - S_clu.nClu;  
         
     case 5
-        nClu_pre = numel(S_clu.icl);
         [S_clu.viClu, S_clu.icl] = assignCluster_(S_clu.viClu, S_clu.ordrho, S_clu.nneigh, S_clu.icl);
         [S_clu.viClu, S_clu.icl] = dpclus_remove_count_(S_clu.viClu, S_clu.icl, P.min_count);
 %         viMap = S_clu_peak_merge_(S_clu, P); % merge peaks based on their waveforms
@@ -9787,12 +9797,10 @@ switch 4
         nClu_rm = nClu_pre - S_clu.nClu;        
     
     case 4
-        nClu_pre = numel(S_clu.icl);
         [S_clu.viClu, S_clu.icl] = assignCluster_(S_clu.viClu, S_clu.ordrho, S_clu.nneigh, S_clu.icl);
         [S_clu.viClu, S_clu.icl] = dpclus_remove_count_(S_clu.viClu, S_clu.icl, P.min_count);
         viMap = S_clu_peak_merge_(S_clu, P); % merge peaks based on their waveforms
         S_clu.viClu = map_index_(viMap, S_clu.viClu, 0);
-%         S_clu = S_clu_remove_count_(S_clu, P);
         S_clu = S_clu_refresh_(S_clu); % reassign cluster number?
         nClu_rm = nClu_pre - S_clu.nClu;        
     
@@ -9833,7 +9841,6 @@ switch 4
         end
         
     case 3
-        nClu_pre = numel(S_clu.icl);
         [S_clu.viClu, S_clu.icl] = assignCluster_(S_clu.viClu, S_clu.ordrho, S_clu.nneigh, S_clu.icl);
         viMap = S_clu_peak_merge_(S_clu, P); % merge peaks based on their waveforms
         S_clu.viClu = map_index_(viMap, S_clu.viClu, 0);
@@ -9901,39 +9908,6 @@ viMap = viMap(:);
 
 fprintf('S_clu_peak_merge_: %d->%d cluster centers (knn_merge_thresh=%d)\n', ...
     nClu, numel(viUniq_), knn_merge_thresh);
-
-% tnWav_spk = get_spkwav_(P);
-% S0 = get0_();
-% miKnn = S_clu.miKnn;
-% nClu = numel(S_clu.icl);
-% viSite_spk = S0.viSite_spk;
-% cvrWav_ = cell(1, nClu);
-% viSite_clu = zeros(1, nClu);
-% for iClu = 1:nClu
-%     iSpk0_ = S_clu.icl(iClu);
-%     viSpk_ = miKnn(:,iSpk0_);
-%     viSite_clu(iClu) = mode(viSite_spk(viSpk_));
-%     mrWav_ = nanmean(tnWav_full_(tnWav_spk, S0, viSpk_), 3);
-%     cvrWav_{iClu} = mrWav_(:);
-% end %for
-% mrWav_clu = cell2mat_(cvrWav_);
-% 
-% % merge waveform if close and similar
-% mrDist_clu = squareform(pdist(P.mrSiteXY(viSite_clu,:)));
-% mlMerge_clu = mrDist_clu <= P.maxDist_site_merge_um;
-% norm_ = @(x)(x-mean(x))/std(x,1);
-% corr_ = @(x,y)mean(norm_(x).*norm_(y));
-% mrCorr_clu = zeros(nClu);
-% mlUse_clu = ~isnan(mrWav_clu);
-% for iClu1 = 2:nClu
-%     viClu2 = mlMerge_clu(1:iClu1-1,iClu1);
-%     vrWav_clu1 = mrWav_clu(:,iClu1);
-%     for iClu2_ = 1:numel(viClu2)
-%         iClu2 = viClu2(iClu2_);
-%         vl_ = mlUse_clu(:,iClu1) & mlUse_clu(:,iClu2);
-%         mrCorr_clu(iClu2, iClu1) = corr_(vrWav_clu1(vl_), mrWav_clu(vl_,iClu2));
-%     end
-% end
 end %func
 
 
@@ -16418,6 +16392,7 @@ S0 = [];
 
 viTime_spk0 = viTime_spk0(:);
 viSite_spk0 = viSite_spk0(:);
+clear fft_filter % rest wiener cache
 
 if isempty(P.csFile_merge)
     if ~exist_file_(P.vcFile), P.vcFile = subsDir_(P.vcFile, P.vcFile_prm); end
@@ -16516,6 +16491,7 @@ end
 S0 = makeStruct_(P, viSite_spk, viSite2_spk, viTime_spk, vrAmp_spk, vrThresh_site, dimm_spk, ...
     cviSpk_site, cviSpk2_site, cviSpk3_site, dimm_raw, viT_offset_file, dimm_fet, nLoads, ...
     mrPv_global, vrFilt_spk, vrD_global);
+clear fft_filter % reset wiener cache
 end %func
 
 
@@ -21789,8 +21765,8 @@ end %func
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_(vcFile_prm)
 if nargin<1, vcFile_prm = ''; end
-vcVer = 'v4.5.4';
-vcDate = '4/15/2019';
+vcVer = 'v4.5.5';
+vcDate = '4/16/2019';
 vcHash = file2hash_();
 
 if nargout==0
@@ -21972,9 +21948,13 @@ if ~exist_file_(vcFile)
         vcFile = ircpath_(vcFile, 1);
     end
 end
-fprintf('Editing %s\n', vcFile);
-if ~isUsingBuiltinEditor_(), return ;end
-try edit(vcFile); catch, end
+if ~exist_file_(vcFile)
+    fprintf(2, 'File doesn not exist: %s\n', vcFile);
+else
+    fprintf('Editing %s\n', vcFile);
+    if ~isUsingBuiltinEditor_(), return ;end
+    try edit(vcFile); catch, end
+end
 end %func
 
 
@@ -24327,7 +24307,7 @@ end
 fprintf('\n\ttook %0.1fs\n', toc(t1));
 
 % correct for the rho density variation
-switch 1
+switch 2
     case 2
         % normalize rho based on neighbor density
         vrRho_drift = cellfun(@(x)quantile(vrRho(x), .5), cviSpk_drift);
@@ -30938,7 +30918,7 @@ end %func
 function S_clu = templateMatch_post_(S_clu, P)
 
 fUse_raw = 0;
-nAve_knn = min(15, get_set_(P, 'knn', 30));
+nAve_knn = min(8, get_set_(P, 'knn', 30));
 
 fprintf('Template matching (post-hoc)\n'); t1=tic;
 [viClu_spk, miKnn] = struct_get_(S_clu, 'viClu', 'miKnn');
@@ -31199,4 +31179,105 @@ S_clu = S_clu_refresh_(S_clu);
 nClu_post = S_clu.nClu;
 nClu_pre = nClu;
 fprintf('\nMerged %d waveforms (%d->%d), took %0.1fs\n', nClu-nClu_post, nClu, nClu_post, toc(t_merge));
+end %func
+
+
+%--------------------------------------------------------------------------
+% 4/16/2019 JJJ: merge using graph relations
+function S_clu = graph_merge_(S_clu, P)
+
+nAve_knn = min(8, get_set_(P, 'knn', 30));
+
+fprintf('graph merging (post-hoc)\n'); 
+t_merge = tic;
+[viClu_spk, miKnn] = struct_get_(S_clu, 'viClu', 'miKnn');
+miKnn = miKnn(1:nAve_knn,:);
+nDrift = get_set_(P, 'nTime_drift', 64);
+nSpk_min = get_set_(P, 'knn', 30);
+[viClu_spk, vrRho_spk] = deal(S_clu.viClu, S_clu.rho);
+fprintf('\tComputing neighbor overlap\n\t'); t_template = tic;
+
+% build cell matrix cm_viSpk_knn
+nClu = S_clu.nClu;
+fh_vec = @(x)x(:);
+cm_miSpk_knn = cell(nDrift, nClu);
+cviSpk_knn = cell(nDrift, nClu);
+vnSpk_clu = zeros(nClu,1);
+for iClu = 1:nClu
+    viSpk1 = find(S_clu.viClu==iClu);
+    miSpk1 = sort(miKnn(:,viSpk1));
+    viiSpk1 = round(linspace(1, numel(viSpk1), nDrift+1));
+    vnSpk_clu = numel(viSpk1);
+    %cviSpk_knn{iClu} = int32(viSpk1); %unique(miSpk1(:));
+    cviSpk_knn{iClu} = unique(miSpk1(:));
+    for iDrift = 1:nDrift
+        vii1 = viiSpk1(iDrift):viiSpk1(iDrift+1);
+        cm_miSpk_knn{iDrift, iClu} = miSpk1(:,vii1);
+    end
+end
+
+% count fraction of degree separation
+mrDist_clu = nan(nClu, 'single');
+nSites_clu = round(size(P.miSites,1)/2);
+miSites_clu = P.miSites(1:nSites_clu,S_clu.viSite_clu);
+for iClu1 = 1:nClu-1  
+    vrDist_clu1 = zeros(nClu,1, 'single');
+    viSites1 = miSites_clu(:,iClu1);
+    viSpk_knn1 = cviSpk_knn{iClu1}';
+    parfor iClu2 = iClu1+1:nClu
+        viSites2 = miSites_clu(:,iClu2);
+        if ~any(ismember(viSites2, viSites1)), continue; end
+        vrFrac2_drift = zeros(nDrift, 1, 'single');
+        for iDrift = 1:nDrift
+            miSpk2 = cm_miSpk_knn{iDrift, iClu2};
+            vi_ = 1:size(miSpk2,2);
+            switch 4
+                case 4, vr_ = arrayfun(@(i)any(ismembc(viSpk_knn1, miSpk2(:,i))), vi_);
+                case 3, vr_ = arrayfun(@(i)any(ismember(miSpk2(:,i), viSpk_knn1)), vi_);
+                case 2, vr_ = arrayfun(@(i)any(ismember(viSpk_knn1, miSpk2(:,i))), vi_);
+                case 1, vr_ = arrayfun(@(i)any(any(miSpk2(:,i) == viSpk_knn1)), vi_);
+            end
+            vrFrac2_drift(iDrift) = gather_(mean(vr_));
+        end
+        vrDist_clu1(iClu2) = max(vrFrac2_drift);       
+    end
+    mrDist_clu(:,iClu1) = vrDist_clu1;    
+    fprintf('.');
+end 
+
+mlWavCor_clu = mrDist_clu >= get_set_(P, 'frac_knn_merge', .90);
+viMap_clu = int32(ml2map_(mlWavCor_clu));
+vlPos = S_clu.viClu > 0;
+S_clu.viClu(vlPos) = viMap_clu(S_clu.viClu(vlPos)); %translate cluster number
+S_clu = S_clu_refresh_(S_clu);
+nClu_post = S_clu.nClu;
+nClu_pre = nClu;
+fprintf('\n\tMerged %d waveforms (%d->%d), took %0.1fs\n', nClu-nClu_post, nClu, nClu_post, toc(t_merge));
+end %func
+
+
+
+%--------------------------------------------------------------------------
+% 9/17/2018 JJJ: merge peaks based on their waveforms
+function icl_keep = S_clu_peak_prune_(S_clu, P) 
+
+knn_merge_thresh = get_set_(P, 'knn_merge_thresh', 1);
+vrDelta_icl = S_clu.rho(S_clu.icl);
+
+nClu = numel(S_clu.icl);
+mnKnn_icl = zeros(nClu);
+miKnn = int32(S_clu.miKnn);
+miKnn_clu = miKnn(:,S_clu.icl);
+for iClu1 = 1:nClu
+    viKnn1 = miKnn_clu(:,iClu1);
+    for iClu2 = 1:iClu1-1        
+        mnKnn_icl(iClu2,iClu1) = sum(ismember(viKnn1, miKnn_clu(:,iClu2)));
+    end
+end
+[~, vicl_keep, viMapClu] = ml2map_(mnKnn_icl >= knn_merge_thresh);
+mlMap = viMapClu(:) == vicl_keep(:)';
+mrDelta_keep = repmat(vrDelta_icl(:), [1, numel(vicl_keep)]);
+mrDelta_keep(~mlMap) = 0;
+[~, vicl_keep1] = max(mrDelta_keep); % find lagest delta per connected group
+icl_keep = S_clu.icl(vicl_keep1);
 end %func

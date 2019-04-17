@@ -3,6 +3,16 @@ IronClust, written by J. James Jun, Flatiron Institute, Simons Foundation
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [4.5.5] - 2019-4-16
+### Fixed
+- vcFilter = `wiener` option is revised
+  - The filter is symmetric in the frequency domain
+  - It's computed once and reused throughout the recording
+
+### Changed
+- Default value changed: `nPcPerChan=3`
+
+
 ## [4.5.4] - 2019-4-15
 ### Added
 - vcFilter = `wiener` is added (fft_filter.m)

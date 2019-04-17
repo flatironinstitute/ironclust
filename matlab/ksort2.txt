@@ -1,0 +1,8 @@
+samplerate=30000
+detect_sign=-1
+adjacency_radius=75
+detect_threshold=5
+merge_thresh=.98
+freq_min=150
+freq_max=6000
+pc_per_chan=3
