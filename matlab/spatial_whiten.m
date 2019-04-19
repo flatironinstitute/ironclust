@@ -8,7 +8,8 @@ persistent mrW_ miSites_
 
 if isempty(mrW_)
     miSites_ = miSites;
-    mrW_ = compute_whiten_(mrA);
+    mrW_ = compute_whiten_(mrA, miSites);
+    fprintf(2, 'spatial_whiten: computed whitening matrix\n');
 end
 if nargout==0, return; end % just compute cache and exit
 
@@ -36,24 +37,24 @@ end %func
 % assume data is mean-subtracted already
 function [mrW, miSites] = compute_whiten_(mr, miSites)
 eps = 1e-6;
+scaleproc = 100; % int16 scaling of whitened data
 
-[nSamples, nSites] = size(miSites);
-mrW = zeros(nSites, nSites, 'single');
-
+[nSamples, nSites] = size(mr);
+nSites1 = size(miSites,1);
+mrW = zeros(nSites1, 'single');
 for iSite = 1:nSites
     viSites1 = miSites(:,iSite);
     mr1 = single(mr(:,viSites1));    
     [mrE1, vrD1] = svd((mr1' * mr1) / nSamples);
     vrD1 = diag(vrD1);
-    switch 1
-        case 2, scale1=1;
-        case 1
-            scale1  = mean((vrD1+eps) ./ (vrD1+1e-6)).^.5;
+    switch 2
+        case 2, scale1 = scaleproc;
+        case 1, scale1  = mean((vrD1+eps) ./ (vrD1+1e-6)).^.5 * scaleproc;
     end
     mrW1 = mrE1 * diag(scale1./(vrD1 + eps).^.5) * mrE1';    
-    mrW(:,iSite)  = mrW1(:,1);
+    mrW(:,iSite)  = gather_(mrW1(:,1));
 end %for
-
+mrW = mrW; 
 end %func
 
 

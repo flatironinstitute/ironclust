@@ -30,7 +30,12 @@ irc('call', 'mkdir', {vcDir_out}); % create temp output directory
 % inferred from the path
 firings_out_fname = fullfile(vcDir_out, 'firings_out.mda');
 raw_fname = fullfile(vcDir_in, 'raw.mda');
-if ~exist_file_(firings_out_fname)
+if ~exist_file_(raw_fname)
+    fprintf(2, 'file does not exist: %s\n', raw_fname);
+    return;
+end
+fForceRerun = irc('call', 'read_cfg', {'fForceRerun'});
+if ~exist_file_(firings_out_fname) || fForceRerun
     geom_fname = fullfile(vcDir_in, 'geom.csv');
     prm_fname = fullfile(vcDir_in, 'params.json');
     vcFile_prm = irc('makeprm-mda', raw_fname, geom_fname, prm_fname, vcDir_out, vcFile_template);    

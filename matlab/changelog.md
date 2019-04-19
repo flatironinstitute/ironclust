@@ -3,6 +3,15 @@ IronClust, written by J. James Jun, Flatiron Institute, Simons Foundation
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [4.5.6] - 2019-4-19
+### Fixed
+- Error is resolved when using CPU (`fGpu = 0`);
+- Wiener filter kernel is corrected. now works with bandpass filter if `freqLim` is set
+  - set `freqLim=[300,nan]` to combine with a high-pass filter at 300 Hz
+  - set `freqLim=[nan,6000]` to combine with a low-pass filter at 6000 Hz
+  - set `freqLim=[300,6000]` to combine with a band-pass filter at 300-6000 Hz
+
+
 ## [4.5.5] - 2019-4-16
 ### Fixed
 - vcFilter = `wiener` option is revised
