@@ -27796,27 +27796,19 @@ fprintf('Running batch on %s\n', vcDir_in); t1=tic;
 S_cfg = read_cfg_();
 
 % Find inputdir and outputdir
-vcDir_in = path_abs_(vcDir_in);
-mkdir_(vcDir_out);
-vcDir_out = path_abs_(vcDir_out);
-[csFile_raw, csDir_in] = find_files_(vcDir_in, 'raw.mda');
-csDir_out = cellfun(@(x)strrep(x, vcDir_in, vcDir_out), csDir_in, 'UniformOutput', 0);
-
-% create task.disbatch
-vcFile_disbatch = fullfile(vcDir_out, sprintf('irc_%s.disbatch', version_()));
 if ischar(vcFile_template)
-    csFile_template = {vcFile_template};
-else
+    vcDir_in = path_abs_(vcDir_in);
+    mkdir_(vcDir_out);
+    vcDir_out = path_abs_(vcDir_out);
+    [csFile_raw, csDir_in] = find_files_(vcDir_in, 'raw.mda');
+    csDir_out = cellfun(@(x)strrep(x, vcDir_in, vcDir_out), csDir_in, 'UniformOutput', 0);
+    csLine_disbatch = cellfun(@(x,y)sprintf('run_irc %s %s %s', x, y, vcFile_template), csDir_in, csDir_out, 'UniformOutput', 0);
+elseif iscell(vcFile_template)
     csFile_template = vcFile_template;
-end
-% csLine_disbatch = {};
-% for iTemplate = 1:numel(csFile_template)
-%     vcFile_template1 = csFile_template{iTemplate};
-%     csLine_disbatch1 = cellfun(@(x,y)sprintf('run_irc %s %s %s', x, y, vcFile_template1), csDir_in, csDir_out, 'UniformOutput', 0);
-%     csLine_disbatch = cat(1, csLine_disbatch, csLine_disbatch1);
-% end
-csLine_disbatch = cellfun(@(x,y)sprintf('run_irc %s %s %s', x, y, vcFile_template), csDir_in, csDir_out, 'UniformOutput', 0);
-
+    assert(iscell(vcDir_in) && iscell(vcDir_out), 'all inputs must be the cell');
+    assert(numel(csDir_in) == numel(csDir_out) && numel(csDir_out) == numel(csFile_template), 'size must be the same');
+    csLine_disbatch = cellfun(@(x,y,z)sprintf('run_irc %s %s %s', x, y, z), csDir_in, csDir_out, csFile_template, 'UniformOutput', 0);
+end %if
 % Add start and stop
 [vcFile_start, vcFile_end] = deal(fullfile(vcDir_out, 'disbatch_start.out'), fullfile(vcDir_out, 'disbatch_end.out'));
 delete_(vcFile_start);
@@ -27830,7 +27822,8 @@ vcCmd_end = ['date ''+%Y-%m-%d %H:%M:%S'' > ', vcFile_end];
 vcCmd_barrier = '#DISBATCH BARRIER';
 csLine_disbatch = {vcCmd_start, vcCmd_barrier, csLine_disbatch{:}, vcCmd_barrier, vcCmd_end};
 
-% Write to file and launch 
+% create task.disbatch
+vcFile_disbatch = fullfile(vcDir_out, sprintf('irc_%s.disbatch', version_()));
 cellstr2file_(vcFile_disbatch, csLine_disbatch, 1);
 %vcCmd = strrep_(S_cfg.sbatch, '$taskfile', vcFile_disbatch, '$n', S_cfg.sbatch_nnodes, '$t', S_cfg.sbatch_ntasks_per_node, '$c', S_cfg.sbatch_ncpu_per_task);     
 vcCmd = strrep_(S_cfg.sbatch, '$taskfile', vcFile_disbatch, '$n', S_cfg.sbatch_nnodes, '$c', S_cfg.sbatch_ncpu_per_task);     
