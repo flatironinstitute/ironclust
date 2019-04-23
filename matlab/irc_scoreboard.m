@@ -86,19 +86,30 @@ function sbatch_mda_(csInput, csParam)
 if ischar(csParam), csParam = {csParam}; end
 if ischar(csInput), csInput = {csInput}; end
 vcDir_out = locate_('output');
-fWait = 0;
+vcDir_in = locate_('input');
+fWait = 1;
+nParams = numel(csParam);
+% run all param in parallel. create a GT if doesn't exist and run
+% validation
+fh_param = @(x)fullfile(vcDir_out, 'param', x);
 for iData = 1:numel(csInput)    
-    vcDir_in1 = locate_('input', csInput{iData});
-    fprintf('Processing %s\n', vcDir_in1);
-    for iParam = 1:numel(csParam)
-        vcParam1 = csParam{iParam};
-        vcDir_out1 = fullfile(vcDir_out, vcParam1);
-        vcFile_param1 = locate_('param', vcParam1); % resolve hash code
-        irc('sbatch-mda', vcDir_in1, vcDir_out1, vcFile_param1, fWait);
-        fprintf('\tFinished %s on %s\n', vcParam1, vcDir_in1);
-    end %for    
-    fprintf('\tFinished %s\n', vcDir_in1);
+    vcInput1 = csInput{iData};
+    fprintf('Processing %s\n', vcInput1); t1=tic;
+    csDir_rec1 = locate_('recordings', vcInput1);    
+    [csDir_in1, csDir_out1, csFile_param1] = deal({});
+    for iRec = 1:numel(csDir_rec1)
+        vcDir_rec1 = csDir_rec1{iRec};
+        vcRecording1 = strrep(fileparts(vcDir_rec1), vcDir_in, '');
+        for iParam = 1:nParams
+            vcDir_out1 = fullfile(vcDir_out, csParam{iParam}, vcRecording1);
+            [csDir_in1{end+1}, csDir_out1{end+1}, csFile_param1{end+1}] = ...
+                deal(vcDir_rec1, vcDir_out1, fh_param(csParam{iParam}));
+        end
+    end
+    irc('sbatch-mda', csDir_in1, csDir_out1, csFile_param1, fWait);
+    fprintf('\tFinished %s, took %0.1fs\n', vcInput1, toc(t1));
 end
+
 end %func
 
 
@@ -110,25 +121,56 @@ vcDir_out = irc('call', 'read_cfg', {'path_validation'});
 vcDir_out = fullfile(vcDir_out, irc('version'));
 
 switch lower(vcType)
+    case {'recordings', 'rec'} % return a cell of directories containing raw.mda        
+        [~, vcPath] = find_files_(locate_('input', vcKey), '/**/raw.mda');
+        
     case 'cache'
         vcPath = fullfile(vcDir_out, 'scoreboard.mat');
     case 'settings'
         vcPath = ircpath_('settings.scoreboard');
     case 'param'
-        vcPath = fullfile(vcDir_out, 'param', [vcKey, '_template.prm']);
+        if isempty(vcKey)
+            vcPath = find_files_(vcDir_out, '/param/*_template.prm');
+        elseif ischar(vcKey)
+            vcPath = fullfile(vcDir_out, 'param', [vcKey, '_template.prm']);
+        elseif iscell(vcKey)
+            vcPath = cellfun_(@(x)fullfile(vcDir_out, 'param', [x, '_template.prm']), vcKey);
+        end
     case {'input', 'in'}
         if ~isempty(vcKey)
-            vcPath = fullfile(vcDir_in, vcKey);
+            if ischar(vcKey)
+                vcPath = fullfile(vcDir_in, vcKey);
+            elseif iscell(vcKey)
+                vcPath = cellfun_(@(x)fullfile(vcDir_in, x), vcKey);
+            end
         else
             vcPath = vcDir_in;
         end
     case {'output', 'out'}
         if ~isempty(vcKey)
-            vcPath = fullfile(vcDir_out, vcKey);
+            if ischar(vcKey)
+                vcPath = fullfile(vcDir_out, vcKey);
+            else
+                vcPath = cellfun_(@(x)fullfile(vcDir_out, x), vcKey);
+            end
         else
             vcPath = vcDir_out;
         end
 end %switch
+end %func
+
+
+%--------------------------------------------------------------------------
+function varargout = cellfun_(varargin)
+if nargout==1
+    varargout{1} = cellfun(varargin{:}, 'UniformOutput', 0);
+elseif nargout==2
+    [varargout{1}, varargout{2}] = cellfun(varargin{:}, 'UniformOutput', 0);    
+elseif nargout==3
+    [varargout{1}, varargout{2}, varargout{3}] = cellfun(varargin{:}, 'UniformOutput', 0);    
+else
+    error('cellfun_: nargout exceeds 3');
+end   
 end %func
 
 
@@ -155,7 +197,7 @@ S0 = irc('call', 'file2struct', {locate_('settings')});
 
 % generate struct arrays
 csName = fieldnames(S0);
-csVal = cellfun(@(x)S0.(x), csName, 'UniformOutput', 0);
+csVal = cellfun_(@(x)S0.(x), csName);
 vnParam = zeros(size(csVal));
 for iVal = 1:numel(csVal)
     val = csVal{iVal};
@@ -350,13 +392,11 @@ end %func
 %--------------------------------------------------------------------------
 function [csRecording, csStudy, csStudyset] = load_dataset_()
 vcDir_in = locate_('input');
-
-csFiles_raw = arrayfun(@(x)fullfile(x.folder, x.name), ...
-    dir(fullfile(vcDir_in, '/**/raw.mda')), 'UniformOutput', 0);
+csFiles_raw = find_files_(vcDir_in, '/**/raw.mda');
 % csFiles_raw = flipud(csFiles_raw); % put new files first
 if vcDir_in(end) ~= '/', vcDir_in(end+1) = '/'; end
-fh_list1 = @(cs)unique(cellfun(@(x)fileparts(x), cs, 'UniformOutput', 0));
-fh_list2 = @(cs)cellfun(@(x)strrep(x, vcDir_in, ''), cs, 'UniformOutput', 0);
+fh_list1 = @(cs)unique(cellfun_(@(x)fileparts(x), cs));
+fh_list2 = @(cs)cellfun_(@(x)strrep(x, vcDir_in, ''), cs);
 fh_list3 = @(cs)fh_list2(fh_list1(cs));
 csRecording = fh_list3(csFiles_raw);
 csStudy = fh_list3(csRecording);
@@ -365,13 +405,24 @@ end %func
 
 
 %--------------------------------------------------------------------------
+function [csFiles_raw, csDir_raw] = find_files_(vcDir_in, vcFile)
+csFiles_raw = arrayfun(@(x)fullfile(x.folder, x.name), ...
+    dir(fullfile(vcDir_in, vcFile)), 'UniformOutput', 0);
+if nargout>=2
+    csDir_raw = cellfun_(@(x)fileparts(x), csFiles_raw);
+end
+end %func
+
+
+%--------------------------------------------------------------------------
 % load param hash code: vcDir_out\param\paramhash.prm
 function csParam = load_param_()
-vcDir_out = locate_('output');
-csFiles_param = arrayfun(@(x)fullfile(x.folder, x.name), ...
-    dir(fullfile(vcDir_out, '/param/*_template.prm')), 'UniformOutput', 0);
-[~, csParam, ~] = cellfun(@fileparts, csFiles_param, 'UniformOutput', 0);
-csParam = cellfun(@(x)strrep(x, '_template', ''), csParam, 'UniformOutput', 0);
+% vcDir_out = locate_('output');
+csFiles_param = locate_('Param');
+% csFiles_param = arrayfun(@(x)fullfile(x.folder, x.name), ...
+%     dir(fullfile(vcDir_out, '/param/*_template.prm')), 'UniformOutput', 0);
+[~, csParam, ~] = cellfun_(@fileparts, csFiles_param);
+csParam = cellfun_(@(x)strrep(x, '_template', ''), csParam);
 end %func
 
 

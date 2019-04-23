@@ -1,0 +1,23 @@
+% #Pre-processing
+%maxDist_site_um = {50};
+%maxDist_site_spk_um = {75, 100};
+%vcFilter = {'bandpass', 'banddiff', 'wiener'};
+%freqLim = {[300, 3000], [300, 6000]};
+%vcFilter_detect = {'none', 'bandpass'};
+%freqLim_detect = {[300, 3000]};
+%vcCommonRef = {'none', 'whiten'};
+
+% #Spike detection
+%qqFactor = {4.5};
+%spkLim_ms = {[-.25, 1], [-.25, .75]}; 
+
+% #Feature extraction
+%feature_type = {'gpca'};
+%pc_per_chan = {3};
+
+% #Clustering
+nTime_clu = {4, 8};
+nTime_drift = {1, 64};
+
+% #Auto-merging
+maxWavCor = {.97, .98, .99};
