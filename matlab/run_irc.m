@@ -19,11 +19,11 @@ if ~isdeployed()
     source_path = fileparts(mfilename('fullpath'));
     addpath(genpath(fullfile(source_path)));
 end
-% if nargin==1
-%     vcCmd = vcDir_in;
-%     fprintf('%s\n', irc(vcCmd)); 
-%     return; 
-% end
+if strcmpi(vcDir_in, 'version')
+    vcCmd = vcDir_in;
+    fprintf('%s\n', irc(vcCmd)); 
+    return; 
+end
 
 irc('call', 'mkdir', {vcDir_out}); % create temp output directory
     
@@ -35,6 +35,7 @@ if ~exist_file_(raw_fname)
     return;
 end
 fForceRerun = irc('call', 'read_cfg', {'fForceRerun'});
+fClear_mda = irc('call', 'read_cfg', {'fClear_mda'});
 if ~exist_file_(firings_out_fname) || fForceRerun
     geom_fname = fullfile(vcDir_in, 'geom.csv');
     prm_fname = fullfile(vcDir_in, 'params.json');
@@ -43,6 +44,9 @@ if ~exist_file_(firings_out_fname) || fForceRerun
     irc('run', vcFile_prm);
     irc('export-mda', vcFile_prm, firings_out_fname);
     fprintf('Clustering result wrote to %s\n', firings_out_fname);
+    if fClear_mda % clear temp files after exporting mda file
+        irc('clear', vcFile_prm); % clear output
+    end
 end
 
 % create a ground truth

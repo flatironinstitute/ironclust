@@ -28,6 +28,7 @@ warning off;
 fExit = 1;
 switch lower(vcCmd)
     % No arguments        
+    case 'scoreboard', irc_scoreboard(); return;
     case 'hash', varargout{1} = file2hash_(); return; 
     case 'addpath', addpath_(); return; %add path of current irc
     case 'mcc', mcc_(vcArg1); return; %matlab compiler
@@ -1676,7 +1677,8 @@ mrDist_site = pdist2(P.mrSiteXY, P.mrSiteXY);
 maxDist_site_um = get_set_(P, 'maxDist_site_um', 50);
 nSites_fet = max(sum(mrDist_site <= maxDist_site_um)); % 11/7/17 JJJ: med to max
 if isempty(P.nSites_ref) 
-    maxDist_site_spk_um = get_set_(P, 'maxDist_site_spk_um', maxDist_site_um+25);        
+    maxDist_site_spk_um = get_set_(P, 'maxDist_site_spk_um', maxDist_site_um+25);     
+    maxDist_site_spk_um = max(maxDist_site_um, maxDist_site_spk_um);  % must be greater than feature sites
     nSites_spk = max(sum(mrDist_site <= maxDist_site_spk_um)); % 11/7/17 JJJ: med to max
     maxSite = (nSites_spk-1)/2;
     P.nSites_ref = nSites_spk - nSites_fet;
@@ -2893,9 +2895,9 @@ disp_score_(makeStruct_(vrSnr, vrFp, vrFn, vrAccuracy, vnSite, vnSpk, fVerbose, 
 
 % plot if not running from the cluster
 if isempty(fPlot_gt), fPlot_gt = get_(S_cfg, 'fPlot_gt'); end
-if isUsingBuiltinEditor_() % cluster    
+if isUsingBuiltinEditor_() && fPlot_gt>0    
     try
-        vrAccuracy = S_score.S_score_clu.vrAccuracy;        
+        vrAccuracy = S_score.S_score_clu.vrAccuracy;   
         switch fPlot_gt
             case 5 % variance ratio
                 figure;
@@ -2923,8 +2925,9 @@ if isUsingBuiltinEditor_() % cluster
             otherwise
                 return;
         end
-        csCode = file2cellstr_([mfilename(), '.m']);
-        set(gcf,'UserData', makeStruct_(P, S_score, csCode));   
+        csCode = file2cellstr_([mfilename('fullpath'), '.m']);
+        S_fig = makeStruct_(P, S_score, csCode);
+        set(gcf,'UserData', S_fig);   
         vcFile_fig = filename_timestamp_(subsFileExt_(P.vcFile_prm, '_gt.fig'));
         if get_set_(S_cfg, 'fSaveFig_gt', 0)
             save_fig_(vcFile_fig, gcf);
@@ -27801,6 +27804,17 @@ csDir_out = cellfun(@(x)strrep(x, vcDir_in, vcDir_out), csDir_in, 'UniformOutput
 
 % create task.disbatch
 vcFile_disbatch = fullfile(vcDir_out, sprintf('irc_%s.disbatch', version_()));
+if ischar(vcFile_template)
+    csFile_template = {vcFile_template};
+else
+    csFile_template = vcFile_template;
+end
+% csLine_disbatch = {};
+% for iTemplate = 1:numel(csFile_template)
+%     vcFile_template1 = csFile_template{iTemplate};
+%     csLine_disbatch1 = cellfun(@(x,y)sprintf('run_irc %s %s %s', x, y, vcFile_template1), csDir_in, csDir_out, 'UniformOutput', 0);
+%     csLine_disbatch = cat(1, csLine_disbatch, csLine_disbatch1);
+% end
 csLine_disbatch = cellfun(@(x,y)sprintf('run_irc %s %s %s', x, y, vcFile_template), csDir_in, csDir_out, 'UniformOutput', 0);
 
 % Add start and stop
@@ -27809,6 +27823,7 @@ delete_(vcFile_start);
 delete_(vcFile_end);    
 % vcCmd_cd = ['cd ', vcDir_out]; % switch to the output directory to write log files there
 addpath_(); % add current irc to the path
+vcPath_pre = pwd();
 cd(vcDir_out); % move to the output directory
 vcCmd_start = ['date ''+%Y-%m-%d %H:%M:%S'' > ', vcFile_start];
 vcCmd_end = ['date ''+%Y-%m-%d %H:%M:%S'' > ', vcFile_end];
@@ -27830,12 +27845,14 @@ if ~fWait
     return;     
 end
 
-fDone = waitfor_file_(vcFile_end, 3600, 1); %wait for a file writing up to an hour, throw an error if file not written
+timeout_sbatch = read_cfg_('timeout_sbatch');
+fDone = waitfor_file_(vcFile_end, timeout_sbatch, 1); %wait for a file writing up to an hour, throw an error if file not written
 if ~fDone
     fprintf(2, 'Task timeout\n');
     return;
 end
 batch_verify_(vcFile_batch, 'skip');
+cd(vcPath_pre);
 fprintf('\n\tRunning %s took %0.1fs\n\n', vcFile_batch, toc(t1));
 end %func
 
