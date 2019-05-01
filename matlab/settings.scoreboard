@@ -8,16 +8,17 @@
 %vcCommonRef = {'none', 'whiten'};
 
 % #Spike detection
-%qqFactor = {4.5};
-%spkLim_ms = {[-.25, 1], [-.25, .75]}; 
+qqFactor = {4.5};
+spkLim_ms = {[-.25, 1]}; 
 
 % #Feature extraction
 %feature_type = {'gpca'};
-%pc_per_chan = {3};
+pc_per_chan = {2};
 
 % #Clustering
-nTime_clu = {4, 8};
-nTime_drift = {1, 64};
+nTime_clu = {4};
+nTime_drift = {64};
 
 % #Auto-merging
-maxWavCor = {.97, .98, .99};
+maxWavCor = {.98};
+%fGpu=0;

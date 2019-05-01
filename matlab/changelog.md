@@ -3,6 +3,26 @@ IronClust, written by J. James Jun, Flatiron Institute, Simons Foundation
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [4.5.7] - 2019-5-1
+### Added
+- manual GUI: `Show raw waveforms` toggle will influence the all-channel waveform view
+  when `view\Show averaged waveforms on all channels` is selected.
+- manual GUI: Keyboard shortcut is assigned to `reset window positions`. 
+  - Press `1` (number one) to activate. 
+  - Focus is returned to the main window after rearranging.
+  - This features doesn't eactly align window boundaries in Linux.
+- `irc scoreboard`: New GUI tool that works with parallel computing resources
+  to find optimal set of sorting parameters
+- `irc convert-mda-buzsaki [in] [out]`: convertion utility that exports to mda format
+  - [in]: .mat file that follows `*.spikes.cellinfo.mat` format.
+  - [out]: output directory
+  - Different shanks are stored in different subfolders.
+
+
+### Fixed
+- manual GUI: all figures will close when the main window is closed.
+
+
 ## [4.5.6] - 2019-4-19
 ### Fixed
 - Error is resolved when using CPU (`fGpu = 0`);

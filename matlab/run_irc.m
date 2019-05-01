@@ -22,20 +22,20 @@ end
 if strcmpi(vcDir_in, 'version')
     vcCmd = vcDir_in;
     fprintf('%s\n', irc(vcCmd)); 
+    exit_deployed_();
     return; 
 end
 
 irc('call', 'mkdir', {vcDir_out}); % create temp output directory
     
 % inferred from the path
-firings_out_fname = fullfile(vcDir_out, 'firings_out.mda');
+firings_out_fname = fullfile(vcDir_out, 'firings.mda');
 raw_fname = fullfile(vcDir_in, 'raw.mda');
 if ~exist_file_(raw_fname)
     fprintf(2, 'file does not exist: %s\n', raw_fname);
     return;
 end
 fForceRerun = irc('call', 'read_cfg', {'fForceRerun'});
-fClear_mda = irc('call', 'read_cfg', {'fClear_mda'});
 if ~exist_file_(firings_out_fname) || fForceRerun
     geom_fname = fullfile(vcDir_in, 'geom.csv');
     prm_fname = fullfile(vcDir_in, 'params.json');
@@ -44,21 +44,24 @@ if ~exist_file_(firings_out_fname) || fForceRerun
     irc('run', vcFile_prm);
     irc('export-mda', vcFile_prm, firings_out_fname);
     fprintf('Clustering result wrote to %s\n', firings_out_fname);
-    if fClear_mda % clear temp files after exporting mda file
-        irc('clear', vcFile_prm); % clear output
-    end
 end
 
 % create a ground truth
 vcFile_gt_mda = fullfile(vcDir_in, 'firings_true.mda');
-if exist_file_(vcFile_gt_mda)
+vcFile_score = fullfile(vcDir_out, 'raw_geom_score.mat');
+if exist_file_(vcFile_gt_mda) && ~exist_file_(vcFile_score)
     try
-        vcFile_prm = fullfile(vcDir_out, 'raw_geom.prm');
-        irc('import-gt', vcFile_gt_mda, vcFile_prm);
+%         vcFile_prm = fullfile(vcDir_out, 'raw_geom.prm');
+%         irc('import-gt', vcFile_gt_mda, vcFile_prm);
         irc('validate-mda', vcFile_gt_mda, firings_out_fname, raw_fname); % assume that groundtruth file exists
     catch
         fprintf(2, 'Validation failed\n');
     end
+end
+
+fClear_mda = irc('call', 'read_cfg', {'fClear_mda'});
+if fClear_mda % clear temp files after exporting mda file
+    irc('clear', fullfile(vcDir_out, 'raw_geom.prm')); % clear output
 end
 
 % Exit

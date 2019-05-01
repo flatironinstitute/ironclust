@@ -7,7 +7,7 @@ function varargout = irc(varargin)
 % P is static and loaded from file
 % Dynamic variables are set in S0=get(0,'UserData')
 
-persistent vcFile_prm_ % remember the currently working prm file
+persistent vcFile_prm_ fReset_path_ % remember the currently working prm file
 
 % input parse
 if nargin<1, vcCmd = 'version'; else vcCmd = varargin{1}; end
@@ -20,7 +20,8 @@ if nargin<7, vcArg6 = ''; else vcArg6 = varargin{7}; end
 if nargin<8, vcArg7 = ''; else vcArg7 = varargin{8}; end
 if nargin<9, vcArg8 = ''; else vcArg8 = varargin{9}; end
 
-if read_cfg_('reset_path'), reset_path_(); end
+if isempty(fReset_path_), fReset_path_ = read_cfg_('reset_path'); end
+if fReset_path_, reset_path_(); end
 warning off;
 
 %-----
@@ -49,7 +50,7 @@ switch lower(vcCmd)
         if nargout==0, version_(vcArg1);
         else [varargout{1}, varargout{2}] = version_(vcArg1);
         end
-    case 'clear', clear_(vcArg1);
+    case 'clear', clear_(vcArg1, vcArg2);
     case 'mda-cut', mda_cut_(vcArg1);
     case 'doc', doc_('IronClust manual.pdf');
     case 'doc-edit', doc_('IronClust manual.docx');
@@ -64,25 +65,28 @@ switch lower(vcCmd)
     case 'import-h5', import_h5_(vcArg1);
     case 'import-jrc1', import_jrc1_(vcArg1);
     case 'export-jrc1', export_jrc1_(vcArg1);
-    case 'convert-mda', convert_mda_(vcArg1, vcArg2, vcArg3, vcArg4);
-        
+    case 'summarize-study', summarize_study_(vcArg1);
+           
     % two arguments
     case 'makeprb', makeprb_(vcArg1, vcArg2); return;
-    case 'waitfor', waitfor_file_(vcArg1, vcArg2);
-    case 'convert-mda-yass', convert_mda_yass_(vcArg1, vcArg2);    
+    case 'waitfor', waitfor_file_(vcArg1, vcArg2);    
     case 'convert-mda-crcns', convert_mda_crcns_(vcArg1, vcArg2);
     case 'convert-mda-english', convert_mda_english_(vcArg1, vcArg2);        
-    case 'convert-mda-buzsaki', convert_mda_buzsaki_(vcArg1, vcArg2);
-    case 'convert-mda-manual', convert_mda_manual_(vcArg1, vcArg2);
-    case 'convert-mda-boyden', convert_mda_boyden_(vcArg1, vcArg2);
-    case 'convert-mda-kampff1', convert_mda_kampff1_(vcArg1, vcArg2);
-    case 'convert-mda-kampff2', convert_mda_kampff2_(vcArg1, vcArg2); 
+    case 'convert-mda-buzsaki-intra', convert_mda_buzsaki_intra_(vcArg1, vcArg2);
     case 'convert-mda-juxta', convert_mda_juxta_(vcArg1, vcArg2); 
-    case 'summarize-study', summarize_study_(vcArg1);
+        
+    case {'convert-mda', 'convert-mda-prm'}, convert_mda_prm_(vcArg1, vcArg2, vcArg3, vcArg4); return;
+    case 'convert-mda-manual', convert_mda('manual', vcArg1, vcArg2); return;
+    case 'convert-mda-boyden', convert_mda('boyden', vcArg1, vcArg2); return;
+    case 'convert-mda-kampff1', convert_mda('kampff1', vcArg1, vcArg2); return;
+    case 'convert-mda-kampff2', convert_mda('kampff2', vcArg1, vcArg2); return;
+    case 'convert-mda-mearec100', convert_mda('mearec100', vcArg1, vcArg2); return;
+    case 'convert-mda-mea', convert_mda('mea', vcArg1, vcArg2, vcArg3); return;
+    case 'convert-mda-yass', convert_mda('yass', vcArg1, vcArg2); return;
+    case 'convert-mda-buzsaki', convert_mda('buzsaki', vcArg1, vcArg2); return;
         
     % three or more arguments
-    case 'validate-mda', validate_mda_(vcArg1, vcArg2, vcArg3);
-    case 'convert-mda-mea', convert_mda_mea_(vcArg1, vcArg2, vcArg3);
+    case 'validate-mda', validate_mda_(vcArg1, vcArg2, vcArg3);    
     case {'makeprm', 'createprm', 'makeprm-all'}
         vcFile_prm_ = makeprm_(vcArg1, vcArg2, 1, vcArg3, vcArg4);
         if nargout>0, varargout{1} = vcFile_prm_; end
@@ -1646,6 +1650,8 @@ P.vcFilter = get_filter_(P);
 if isempty(get_(P, 'vcFilter_show'))
     P.vcFilter_show = P.vcFilter;
 end
+P.nC_max = read_cfg_('nC_max'); % override nC_max (gpu parameter)
+
 assert_(validate_param_(P), 'Parameter file contains error.');
 if fEditFile, edit_(P.vcFile_prm); end % Show settings file
 end %func
@@ -2224,9 +2230,12 @@ if ischar(vcFile)
     end
     if ~exist_file_(vcFile, 1), return; end
     [fid, nBytes_file] = fopen_(vcFile, 'r');
-    if header>0, fseek(fid, header, 'bof'); end
+    if header>0
+        nBytes_file = nBytes_file - header;
+        fseek(fid, header, 'bof'); 
+    end    
     if numel(dimm) < 2
-        nSamples = floor((nBytes_file - header) / bytesPerSample_(vcDataType) / nChans);
+        nSamples = floor(nBytes_file / bytesPerSample_(vcDataType) / nChans);
         if fTranspose_bin
             dimm = [nChans, nSamples]; %return column
         else
@@ -2783,7 +2792,7 @@ S_json = loadjson_(fullfile(vcDir_in, 'params.json'));
 sRateHz = get_(S_json, 'samplerate');
 mrOut = int32(readmda(firings_out))';
 [viClu, viTime_spk] = deal(mrOut(:,3), mrOut(:,2));
-vcFile_prm = firings_out;
+vcFile_prm = subs_file_(firings_out, 'raw_geom.prm');
 vcFile = raw_mda;
 P = makeStruct_(sRateHz, vcFile_prm, vcFile);
 S_clu = makeStruct_(viClu);
@@ -2802,47 +2811,8 @@ if isempty(S_gt1)
     S_gt1 = mda2gt1_(firings_true);
     struct_save_(S_gt1, vcFile_gt1, 1);
 end
-
 S0 = makeStruct_(viTime_spk, S_clu, S_gt1);
-
-
 S_score = validate_(P, [], S0);
-
-% vcFile_gt1 = strrep(firings_out, '.mda', '_gt1.mat');
-% if exist_file_(vcFile_gt1)
-%     S_gt = load(vcFile_gt1);
-% else
-%     S_gt = mda2gt1_(firings_true);
-%     struct_save_(S_gt, vcFile_gt1);
-% end
-% nSamples_jitter = round(sRateHz / 1000); %1 ms jitter
-% 
-% fprintf('verifying cluster...\n'); 
-% [mrMiss, mrFp, vnCluGt, miCluMatch, S_score] = ...
-%     clusterVerify(S_gt.viClu, S_gt.viTime, viClu_spk, viTime_spk, nSamples_jitter);  %S_gt.viTime
-% [vrSnr_gt, vrAccuracy_gt, vrFp_gt, vrFn_gt] = ...
-%     deal(S_gt.vrSnr_min_clu, S_score.vrAccuracy, S_score.vrFp, S_score.vrMiss);
-% vcFile_irc = [mfilename('fullpath'), '.m'];
-% csCode = file2cellstr_(vcFile_irc);
-% if exist_file_(fullfile(vcDir_out, 'raw_geom.prm'))
-%     P = loadParam_(fullfile(vcDir_out, 'raw_geom.prm'));
-% else
-%     P = [];
-% end
-% S_fig = makeStruct_(P, S_score, csCode);
-% 
-% % store run summary to validation database
-% vcHash_out = file2hash_({vcFile_irc, P.vcFile_prm});
-% vcFile_mat = fullfile(read_cfg_('path_validation'), vcHash_out);
-% 
-% try
-%     hFig = figure;
-%     set(hFig,'Color','w', 'Name', vcDir_out);
-%     plot_gt_2by2_(vrSnr_gt, vrAccuracy_gt, vrFp_gt, vrFn_gt);    
-%     set(hFig, 'UserData', S_fig);    
-% catch
-%     fprintf(2, 'validate_mda_: Figure creation error\n');
-% end
 end %func
 
 
@@ -2871,9 +2841,6 @@ if isempty(S0)
     if ~is_sorted_(P), sort_(P); end    
     set(0, 'UserData', []); %clear cache
     S0 = load_cached_(P, 1); %do not load waveforms
-    fWriteScore = 1;
-else
-    fWriteScore = 0;
 end
 
 S_score = compute_S_score_(S0, P);
@@ -2881,7 +2848,8 @@ S_score = compute_S_score_(S0, P);
 
 fprintf('SNR_gt (Vp/Vrms): %s\n', sprintf('%0.1f ', S_score.vrSnr_gt));
 fprintf('nSites>thresh (GT): %s\n', sprintf('%d ', S_score.vnSite_gt));
-if fWriteScore % write score if not called by validtate_mda
+fSaveScore_gt = get_set_(S_cfg, 'fSaveScore_gt', 1);
+if fSaveScore_gt % write score if not called by validtate_mda
     write_struct_(strrep(P.vcFile_prm, '.prm', '_score.mat'), S_score);
 end
 set0_(S_score);       
@@ -5221,6 +5189,7 @@ function [mnWav2, vnWav2_mean] = filt_car_(mnWav2, P, mnWav1_pre, mnWav1_post, f
 if nargin<3, mnWav1_pre = []; end
 if nargin<4, mnWav1_post = []; end
 if nargin<5, fTrim_pad = 1; end
+
 n_pre = size(mnWav1_pre,1);
 n_post = size(mnWav1_post,1);
 if n_pre > 0 || n_post > 0
@@ -5257,7 +5226,7 @@ end
 
 %global subtraction before 
 [nSamples, nChans] = size(mnWav2);
-if nChans >= get_set_(P, 'nChans_min_car', 0);
+if nChans >= get_set_(P, 'nChans_min_car', 0) && ndims(mnWav2) >= 3
     [mnWav2, vnWav2_mean] = wav_car_(mnWav2, P); 
 else
     vnWav2_mean = [];
@@ -5339,7 +5308,8 @@ try
         else
             dimm2 = floor(numel(mnWav1) / dimm_wav(1));
             if dimm2 >= 1
-                mnWav1 = reshape(mnWav1, dimm_wav(1), dimm2);
+                nSamples1 = dimm_wav(1) * dimm2;
+                mnWav1 = reshape(mnWav1(1:nSamples1), dimm_wav(1), dimm2);
             else
                 mnWav1 = [];
             end
@@ -5988,6 +5958,7 @@ S_fig.csHelp = { ...
     '[A] Resample spikes', ...
     '[Z] zoom selected cluster', ...
     '[R] reset view', ...
+    '[1] reset window positions', ...
     '------------------', ...
     '[U] update all', ...  
     '[C] correlation plot', ...            
@@ -6049,7 +6020,7 @@ uimenu_(mh_view,'Label', 'Show raw waveform', 'Callback', @(h,e)raw_waveform_(h)
 %uimenu_(mh_view,'Label', 'Threshold by sites', 'Callback', @(h,e)keyPressFcn_thresh_(hFig, 'n'));
 % uimenu_(mh_view,'Label', '.prm file', 'Callback', @edit_prm_);
 uimenu_(mh_view,'Label', 'Show averaged waveforms on all channels','Callback', @(h,e)clust_comp_all_chan_(1));
-uimenu_(mh_view,'Label', 'Reset window positions', 'Callback', @reset_position_);
+uimenu_(mh_view,'Label', 'Reset window positions[1]', 'Callback', @reset_position_);
 
 mh_proj = uimenu_(hFig,'Label','Projection'); 
 uimenu_(mh_proj, 'Label', 'vpp', 'Callback', @(h,e)proj_view_(h), ...
@@ -6139,8 +6110,11 @@ try
     P = S0.P;
     fExit = save_manual_(P);
     if ~fExit, return; end 
+    csFig_close = {'FigPos', 'FigMap', 'FigTime', 'FigWav', 'FigWavCor', 'FigProj', 'FigRD', 'FigCorr', 'FigIsi', 'FigHist', 'FigClust', 'FigAux'};
     if ~isfield(S0, 'csFig')
-        S0.csFig = {'FigPos', 'FigMap', 'FigTime', 'FigWav', 'FigWavCor', 'FigProj', 'FigRD', 'FigCorr', 'FigIsi', 'FigHist', 'FigClust', 'FigAux'};
+        S0.csFig = csFig_close;
+    else
+        S0.csFig = union(S0.csFig, csFig_close);
     end
     delete_multi_(get_fig_all_(S0.csFig), src);
     close_(get_fig_('FigTrial'), get_fig_('FigTrial_b'), get_fig_('FigAux'));    
@@ -6499,6 +6473,7 @@ switch lower(event.Key)
     case 'e', plot_FigMap_(S0);        
     case 'u', update_FigCor_(S0);        
     case 'p', plot_psth_trial_(S0, 1);
+    case '1', reset_position_();
     otherwise, figure_wait_(0); %stop waiting
 end
 figure_(hObject); %change the focus back to the current object
@@ -7519,7 +7494,7 @@ if isempty(S_fig)
 else    
     set(S_fig.hPatch, 'CData', mrVpp);    
 end
-title_(S_fig.hAx, sprintf('Max: %0.1f \\muVpp', max(vrVpp)));
+title_(S_fig.hAx, sprintf('Max: %0.1f uVpp', max(vrVpp)));
 axis_(S_fig.hAx, S_fig.alim);
 caxis(S_fig.hAx, [0, max(vrVpp)]);
 
@@ -7608,9 +7583,9 @@ plot_unit_(S_clu1, S_fig.hAx, [0 0 0]);
 vrPosXY1 = [S_clu.vrPosX_clu(S_clu1.iClu), S_clu.vrPosY_clu(S_clu1.iClu)];
 nSpk1 = S_clu.vnSpk_clu(S_clu1.iClu);
 if isempty(S_clu2)        
-    vcTitle = sprintf('Unit %d: %d spikes; (X,Y)=(%0.1f, %0.1f)um', S_clu1.iClu, nSpk1, vrPosXY1);
+    vcTitle = sprintf('Unit %d: #spikes:%d; x:%0.1fum; y:%0.1fum', S_clu1.iClu, nSpk1, vrPosXY1);
     try
-        vcTitle = sprintf('%s\nSNR=%0.1f; %0.1fuVmin %0.1fuVpp (IsoD,ISIr,Lrat)=(%0.1f,%0.2f,%0.1f)', ...
+        vcTitle = sprintf('%s\nSNR:%0.1f; %0.1fuVmin; %0.1fuVpp\nIsoD:%0.1f; ISIr:%0.2f; Lrat:%0.2f', ...
             vcTitle, S_clu1.snr, S_clu1.uVmin, S_clu1.uVpp, S_clu1.iso_dist, S_clu1.isi_ratio, S_clu1.l_ratio);
     catch
     end
@@ -8771,6 +8746,7 @@ for iFig=1:numel(S0.csFig)
         figure(hFig1); %bring it to foreground
     end
 end
+figure(get_fig_cache_('FigWav'));
 end %func
 
 
@@ -10084,6 +10060,8 @@ function [mrWav_clu1, viSite_clu1, mrWav_lo_clu1, mrWav_hi_clu1] = clu_wav_(S_cl
 if nargin<4, S0 = get(0, 'UserData'); end
 fUseCenterSpk = 0; % set to zero to use all spikes
 nSamples_max = 1000;
+fMedian = strcmpi(get_set_(S0.P, 'vcCluWavMode'), 'median');
+fh1 = ifeq_(fMedian, @median, @mean);
 
 fDrift_merge = get_set_(S0.P, 'fDrift_merge', 0);
 [mrWav_clu1, viSite_clu1, mrWav_lo_clu1, mrWav_hi_clu1] = deal([]);
@@ -10099,7 +10077,7 @@ end
 if isempty(viSpk_clu1), return; end  
 if ~fDrift_merge
     viSpk_clu2 = spk_select_mid_(viSpk_clu1, S0.viTime_spk, S0.P); 
-    mrWav_clu1 = mean(single(tnWav_(:,:,viSpk_clu2)), 3);
+    mrWav_clu1 = fh1(single(tnWav_(:,:,viSpk_clu2)), 3);
     mrWav_clu1 = meanSubt_(mrWav_clu1); %122717 JJJ
     return;
 end
@@ -13957,17 +13935,21 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function delete_(csFiles)
-if ischar(csFiles), csFiles = {csFiles}; end
-for i=1:numel(csFiles)
-    try
-        if iscell(csFiles)
-            delete(csFiles{i});
-        else
-            delete(csFiles(i));
+% 4/23/2019 JJJ: delete either cell of files or multiple arguments
+function delete_(varargin)
+for iArg = 1:nargin
+    csFiles = varargin{iArg};
+    if ischar(csFiles), csFiles = {csFiles}; end
+    for i=1:numel(csFiles)
+        try
+            if iscell(csFiles)
+                delete(csFiles{i});
+            else
+                delete(csFiles(i));
+            end
+        catch
+    %         disperr_();
         end
-    catch
-%         disperr_();
     end
 end
 end %func
@@ -17844,7 +17826,7 @@ end %func
 function flag = validate_param_(P)
 % validate P
 
-NDIM_SORT_MAX = get_set_(P, 'nC_max', 48);
+NDIM_SORT_MAX = get_set_(P, 'nC_max', 45);
 
 csError = {};
 
@@ -17854,9 +17836,9 @@ nFet_sort = nSites_spk * P.nPcPerChan;
 if nSites_spk <= 0
     csError{end+1} = sprintf('Negative # Sites/spk. Use this formula to adjust maxSite and nSites_ref (nSites_spk = 1+maxSite*2-nSites_ref)');
 end
-if nFet_sort > NDIM_SORT_MAX
-    csError{end+1} = sprintf('# dimensions (%d) exceeds the maximum limit for CUDA code (%d), decrease maxSite', nFet_sort, NDIM_SORT_MAX);
-end
+% if nFet_sort > NDIM_SORT_MAX
+%     csError{end+1} = sprintf('# dimensions (%d) exceeds the maximum limit for CUDA code (%d), decrease maxSite', nFet_sort, NDIM_SORT_MAX);
+% end
 
 % nFet = P.
 % Validate format
@@ -19103,9 +19085,10 @@ end %func
 % 12/21/17 JJJ: clearing a batch file (v3.2.0)
 % 10/15/17 JJJ: clear function memory
 % 7/31/17 JJJ: Documentation and test
-function clear_(vcFile_prm)
+function clear_(vcFile_prm, vcMode)
 % Clear IronClust global variables
 if nargin<1, vcFile_prm = ''; end
+if nargin<2, vcMode = ''; end
 global fDebug_ui;
 
 % clear irc
@@ -19856,6 +19839,8 @@ end %func
 function cellstr2file_(vcFile, csLines, fVerbose)
 % Write a cellstring to a text file
 if nargin<3, fVerbose = 0; end
+vcDir = fileparts(vcFile);
+mkdir_(vcDir);
 fid = fopen(vcFile, 'w');
 for i=1:numel(csLines)
     fprintf(fid, '%s\n', csLines{i});
@@ -21467,7 +21452,7 @@ for iClu1 = 1:nClu_show
     vcTitle_ = sprintf('Clu %d (Site %d, Chan %d): Corr=%0.3f', ...
         iClu, iSite_, P.viSite2Chan(iSite_), vrCorr_aux_clu(iClu));
     title(hAx1, vcTitle_);
-    set(hAx1, 'XLim', vrTime_aux([1,end]));
+    set(ax1_, 'XLim', vrTime_aux([1,end]));
     grid(hAx1, 'on');
     
     hAx2 = axes('Parent', htab1, 'OuterPosition', [0 0 1 .5]); 
@@ -22696,105 +22681,6 @@ end %func
 function min_ = min_step_(vr)
 min_ = diff(sort(vr));
 min_ = min(min_(min_>0));
-end %func
-
-
-%--------------------------------------------------------------------------
-% 3/8/2019 JJJ: added vcFile_out
-% Convert existing format to mda format and put in the directory
-function convert_mda_(vcFile_in, vcFile_out, viSite, tLim)
-% Usage
-% -----
-% export_mda_(myfile.prm)
-% export_mda_(myfile.batch)
-% mda file exported to where .prm files exist
-
-if nargin<2, vcFile_out = ''; end
-if nargin<3, viSite = []; else, viSite = str2num_(viSite); end
-if nargin<4, tLim = []; else, tLim = str2num_(tLim); end
-
-fOverwrite_raw_mda = 1;
-% if nargin<2, vcDir_out = ''; end
-
-vcFile_template = '';
-if matchFileEnd_(vcFile_in, '.batch')
-    csFile_prm = load_batch_(vcFile_in);
-%     vcFile_template = vcArg2;
-elseif matchFileEnd_(vcFile_in, '.prm')
-    csFile_prm = {vcFile_in};
-else
-    fprintf(2, 'Incorrect format\n');
-    return;
-end
-
-for iFile = 1:numel(csFile_prm)
-    vcFile_prm_ = csFile_prm{iFile};
-    if ~matchFileExt_(vcFile_prm_, '.prm')
-        fprintf(2, '\tInvalid format: %s\n', vcFile_prm_); 
-        continue;
-    end
-    P_ = loadParam_(vcFile_prm_, 0);
-    nLim_ = round(tLim * P_.sRateHz);
-    if isempty(vcFile_out)
-        % create a folder by the prm name
-        vcDir1 = strrep(vcFile_prm_, '.prm', ''); % full path location
-    else
-        % create a folder 
-        if numel(csFile_prm) == 1
-            vcDir1 = vcFile_out;
-        else
-            vcDir1 = fullfile(vcFile_out, sprintf('%d', iFile));
-        end
-    end
-    mkdir_(vcDir1);
-    
-    % Exclude sites if viSiteZero not empty
-    
-    % export .bin to .mda
-    vcFile_raw_mda = fullfile(vcDir1, 'raw.mda');
-    if fOverwrite_raw_mda
-        fWrite_mda_ = 1;
-    else
-        fWrite_mda_ = ~exist_file_(vcFile_raw_mda);
-    end
-    if fWrite_mda_
-        mnWav = load_bin_(P_.vcFile, P_.vcDataType, file_dimm_(P_), P_.header_offset);
-        if P_.fTranspose_bin
-            mnWav = mnWav(P_.viSite2Chan,:);
-        else
-            mnWav = mnWav(:, P_.viSite2Chan)';
-        end
-        mnWav = trim_wav_(mnWav, viSite, nLim_);
-        writemda_(mnWav, vcFile_raw_mda, fOverwrite_raw_mda);
-    end
-    
-    % export .prm to geom.csv
-    prb2geom_(P_.mrSiteXY, fullfile(vcDir1, 'geom.csv'), 0, viSite);
-    
-    % export ground truth
-    S_gt_ = load_gt_(get_(P_, 'vcFile_gt'));
-    if ~isempty(S_gt_)
-        if ~isfield(S_gt_, 'viSite')
-            iSite_gt = [];
-            if isfield(P_, 'iSite_gt'), iSite_gt = get_(P_, 'iSite_gt'); end
-            if isfield(P_, 'iChan_gt'), iSite_gt = chan2site_prb_(P_.iChan_gt, P_.probe_file); end   
-            if ~isempty(iSite_gt)
-                S_gt_.viSite = repmat(int32(iSite_gt), size(S_gt_.viTime));
-            end
-        end
-        gt2mda_(S_gt_, fullfile(vcDir1, 'firings_true.mda'), nLim_);
-    end
-    
-    % Write to params.json
-    S_json_ = struct('samplerate', P_.sRateHz, ...
-        'spike_sign', ifeq_(P_.fInverse_file==0, -1, 1), ...
-        'scale_factor', P_.uV_per_bit);
-    juxta_channel = unique(get_(S_gt_, 'viSite'));
-    if numel(juxta_channel)==1, S_json_.juxta_channel = juxta_channel; end
-    struct2json_(S_json_, fullfile(vcDir1, 'params.json'));
-    
-    fprintf('\n');
-end %for
 end %func
 
 
@@ -24485,9 +24371,9 @@ function [vrKnn, fGpu, miKnn] = cuda_knn_(mrFet, vi2, vi1, P)
 
 persistent CK
 knn = get_set_(P, 'knn', 30);
-[CHUNK, nC_max, nThreads] = deal(8, 36, 256); % tied to cuda_knn_index.cu
+[CHUNK, nC_max, nThreads] = deal(8, P.nC_max, 256); % tied to cuda_knn_index.cu
 [n2, n1, nC, n12] = deal(numel(vi2), numel(vi1), size(mrFet,1), size(mrFet,2));
-fGpu = P.fGpu;
+fGpu = P.fGpu && nC <= nC_max;
 knn = min(knn, n2);
 if fGpu
     [gmrFet2, gmrFet1] = gpuArray_deal_(mrFet(:,vi2), mrFet(:,vi1), P.fGpu);
@@ -24636,7 +24522,7 @@ CHUNK = get_set_(P, 'CHUNK', 16);
 nC_max = get_set_(P, 'nC_max', 45);
 nThreads = get_set_(P, 'nThreads', 128);
 [n2, n1, nC, n12] = deal(numel(vi2), numel(vi1), size(mrFet,1), size(mrFet,2));
-fGpu = P.fGpu;
+fGpu = P.fGpu && nC <= nC_max;
 
 if fGpu
     [gmrFet2, gmrFet1, gvrRho2, gvrRho1] = gpuArray_deal_(mrFet(:,vi2), mrFet(:,vi1), vrRho(vi2), vrRho(vi1));
@@ -27696,7 +27582,7 @@ end %func
 %--------------------------------------------------------------------------
 % 11/5/2018 JJJ: Return the version of compiled run_irc
 function vcVersion = mcc_version_()
-[status, cmdout] = system('run_irc version'); % must be found in the system path
+[status, cmdout] = system([ircpath_('run_irc'), ' version']); % must be found in the system path
 vcVersion = strtrim(cmdout);
 end %func
 
@@ -27721,7 +27607,7 @@ for iFile = 1:numel(csDir_in)
     try
         [vcDir_in1, vcDir_out1] = deal(csDir_in{iFile}, csDir_out{iFile});        
         [geom_csv1, params_json1] = deal(fullfile(vcDir_in1, 'geom.csv'), fullfile(vcDir_in1, 'params.json'));
-        firings_out_fname1 = fullfile(vcDir_out1, 'firings_out.mda');
+        firings_out_fname1 = fullfile(vcDir_out1, 'firings.mda');
         vcFile_prm1 = irc('makeprm-mda', vcFile_raw1, geom_csv1, params_json1, vcDir_out1, vcFile_template);
         irc('clear', vcFile_prm1); %init 
         irc('run', vcFile_prm1);
@@ -27791,10 +27677,10 @@ if nargin<4, fWait = 1; end
 
 if ischar(fWait), fWait = str2num(fWait); end
 % compile if the version mismatches
-if ~strcmpi(version_(), mcc_version_()), mcc_(); end 
-fprintf('Running batch on %s\n', vcDir_in); t1=tic;
+if ~strcmpi(version_(), mcc_version_()), mcc_(); end %compile
+t1=tic;
 S_cfg = read_cfg_();
-
+run_irc_path = ircpath_('run_irc');
 % Find inputdir and outputdir
 if ischar(vcFile_template)
     vcDir_in = path_abs_(vcDir_in);
@@ -27802,35 +27688,42 @@ if ischar(vcFile_template)
     vcDir_out = path_abs_(vcDir_out);
     [csFile_raw, csDir_in] = find_files_(vcDir_in, 'raw.mda');
     csDir_out = cellfun(@(x)strrep(x, vcDir_in, vcDir_out), csDir_in, 'UniformOutput', 0);
-    csLine_disbatch = cellfun(@(x,y)sprintf('run_irc %s %s %s', x, y, vcFile_template), csDir_in, csDir_out, 'UniformOutput', 0);
+    csLine_disbatch = cellfun(@(x,y)sprintf('%s %s %s %s', run_irc_path, x, y, vcFile_template), csDir_in, csDir_out, 'UniformOutput', 0);
 elseif iscell(vcFile_template)
-    csFile_template = vcFile_template;
     assert(iscell(vcDir_in) && iscell(vcDir_out), 'all inputs must be the cell');
+    [csFile_template, csDir_in, csDir_out] = deal(vcFile_template, vcDir_in, vcDir_out);    
     assert(numel(csDir_in) == numel(csDir_out) && numel(csDir_out) == numel(csFile_template), 'size must be the same');
-    csLine_disbatch = cellfun(@(x,y,z)sprintf('run_irc %s %s %s', x, y, z), csDir_in, csDir_out, csFile_template, 'UniformOutput', 0);
+    csLine_disbatch = cellfun(@(x,y,z)sprintf('%s %s %s %s', run_irc_path, x, y, z), csDir_in, csDir_out, csFile_template, 'UniformOutput', 0);
 end %if
+fprintf('Running sbatch on %d jobs.\n', numel(csLine_disbatch)); 
+
 % Add start and stop
-[vcFile_start, vcFile_end] = deal(fullfile(vcDir_out, 'disbatch_start.out'), fullfile(vcDir_out, 'disbatch_end.out'));
-delete_(vcFile_start);
-delete_(vcFile_end);    
-% vcCmd_cd = ['cd ', vcDir_out]; % switch to the output directory to write log files there
-addpath_(); % add current irc to the path
+vcDir_disbatch = read_cfg_('disbatch_path');
+system(sprintf('rm -fr %s', vcDir_disbatch)); % remove all in the disbatch folder
 vcPath_pre = pwd();
-cd(vcDir_out); % move to the output directory
+mkdir_(vcDir_disbatch);
+vcFile_start = fullfile(vcDir_disbatch, 'disbatch_start.out');
+vcFile_end = fullfile(vcDir_disbatch, 'disbatch_end.out');
 vcCmd_start = ['date ''+%Y-%m-%d %H:%M:%S'' > ', vcFile_start];
 vcCmd_end = ['date ''+%Y-%m-%d %H:%M:%S'' > ', vcFile_end];
 vcCmd_barrier = '#DISBATCH BARRIER';
 csLine_disbatch = {vcCmd_start, vcCmd_barrier, csLine_disbatch{:}, vcCmd_barrier, vcCmd_end};
 
 % create task.disbatch
-vcFile_disbatch = fullfile(vcDir_out, sprintf('irc_%s.disbatch', version_()));
+vcFile_disbatch = fullfile(vcDir_disbatch, sprintf('irc_%s.disbatch', version_()));
+vcFile_batch = fullfile(vcDir_disbatch, sprintf('irc_%s.batch', version_()));
+delete_(vcFile_disbatch, vcFile_start, vcFile_end, vcFile_batch);
+
 cellstr2file_(vcFile_disbatch, csLine_disbatch, 1);
-%vcCmd = strrep_(S_cfg.sbatch, '$taskfile', vcFile_disbatch, '$n', S_cfg.sbatch_nnodes, '$t', S_cfg.sbatch_ntasks_per_node, '$c', S_cfg.sbatch_ncpu_per_task);     
 vcCmd = strrep_(S_cfg.sbatch, '$taskfile', vcFile_disbatch, '$n', S_cfg.sbatch_nnodes, '$c', S_cfg.sbatch_ncpu_per_task);     
 fprintf('Running %s\n', vcCmd);
+t_submit=tic;
+
+% output is directed to vcDir_disbatch
+cd(vcDir_disbatch);
 system(vcCmd);
 
-vcFile_batch = fullfile(vcDir_out, sprintf('irc_%s.batch', version_()));
+fprintf('\n\tsbatch submission took %0.1fs\n', toc(t_submit));
 csFile_prm = cellfun(@(x)fullfile(x, 'raw_geom.prm'), csDir_out, 'UniformOutput', 0);
 cellstr2file_(vcFile_batch, csFile_prm, 1);
 if ~fWait
@@ -27844,7 +27737,7 @@ if ~fDone
     fprintf(2, 'Task timeout\n');
     return;
 end
-batch_verify_(vcFile_batch, 'skip');
+% batch_verify_(vcFile_batch, 'skip');
 cd(vcPath_pre);
 fprintf('\n\tRunning %s took %0.1fs\n\n', vcFile_batch, toc(t1));
 end %func
@@ -28502,7 +28395,7 @@ for iArg = 1:nargin()
     if ischar(val1)
         varargout{iArg} = str2num(val1);
     else
-        varargout{iArg} = val1;
+        varargout{iArg} = nan;
     end
 end
 end %func
@@ -28534,300 +28427,9 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function convert_mda_kampff1_(vcDir_in, vcDir_out)
-if isempty(vcDir_in)
-    vcDir_in = 'K:\AdamKampff\kampff2\';
-end
-if isempty(vcDir_out)
-    vcDir_out = 'K:\spikeforest\groundtruth\paired_recordings\neuropix32c\';
-end
-viChan_A = [1 3 6 8]' + [0:8:63]; viChan_A = viChan_A(:);
-viChan_B = [2 4 5 7]' + [0:8:63]; viChan_B = viChan_B(:);
-cviChan = {viChan_A, viChan_B};
-csDir = {'2015_09_03_Pair_9_0A', '2015_09_03_Pair_9_0B'};
-
-vcFile_raw = fullfile(vcDir_in, 'raw.mda');
-vcFile_geom = fullfile(vcDir_in, 'geom.csv');
-mrWav = readmda_(vcFile_raw);
-mrSiteXY = csvread(vcFile_geom);
-
-for iDir = 1:numel(csDir)
-    vcDir_out1 = fullfile(vcDir_out, csDir{iDir});
-    mkdir_(vcDir_out1);
-    
-    % write geom.csv
-    viChan1 = cviChan{iDir};
-    csvwrite(fullfile(vcDir_out1, 'geom.csv'), mrSiteXY(viChan1,:));
-    
-    % copy params.json and gorund truth
-    copyfile(fullfile(vcDir_in, 'params.json'), fullfile(vcDir_out1, 'params.json'));
-    copyfile(fullfile(vcDir_in, 'firings_true.mda'), fullfile(vcDir_out1, 'firings_true.mda'));
-    
-    % write raw.mda
-    writemda_(mrWav(viChan1,:), fullfile(vcDir_out1, 'raw.mda'));
-end %for
-
-end %func
-
-
-%--------------------------------------------------------------------------
-function convert_mda_kampff2_(vcDir_in, vcDir_out)
-if isempty(vcDir_in)
-    vcDir_in = 'K:\AdamKampff\Neuropixels';
-end
-if isempty(vcDir_out)
-    vcDir_out = 'K:\spikeforest\groundtruth\paired_recordings\neuropix32c';
-end
-
-S_npx = struct('sRateHz', 30000, 'nChans', 384, 'nChans_out', 32, 'vcDataType', 'int16', 'spike_sign', -1); % 320 um span
-S_npx.viChan_max = [235 190 219 182 179 249 184 230 162 176 110 190];
-S_npx.csDir_in = {'c28', 'c21', 'c24', 'c46', 'c45', 'c26', 'c19', 'c27', 'c14', 'c44', 'c42', 'c16'};
-
-convert_mda_kampff_(vcDir_in, vcDir_out, S_npx);
-end %func
-
-
-%--------------------------------------------------------------------------
-function convert_mda_kampff_(vcDir_in, vcDir_out, S_npx)
-
-S_map = load(fullfile(vcDir_in, 'chanMap.mat'));
-mrSiteXY_in = [S_map.xcoords(:), S_map.ycoords(:)];
-[csDir_in, viChan_max] = struct_get_(S_npx, 'csDir_in', 'viChan_max');
-% extract 32 nearest sites from the center and sort by channel numbers and
-% write to geom.csv
-S_params = struct('spike_sign', S_npx.spike_sign, 'samplerate', S_npx.sRateHz);
-bytes_per_sample = bytesPerSample_(S_npx.vcDataType);
-
-for iFile = 1:numel(csDir_in)
-    vcDir1 = csDir_in{iFile};
-    vcFile_npx1 = fullfile(vcDir_in, vcDir1, [vcDir1, '_npx_raw.bin']);
-    vcFile_npy1 = fullfile(vcDir_in, vcDir1, [vcDir1, '_extracellular_spikes.npy']);    
-    try
-        assert(exist_file_(vcFile_npx1) && exist_file_(vcFile_npy1), sprintf('%d: %s error\n', iFile, vcDir1));
-        
-        % output files
-        vcDir_out1 = fullfile(vcDir_out, vcDir1);
-        mkdir_(vcDir_out1);
-
-        % write geom.csv
-        iChan0_in1 = viChan_max(iFile);
-        [~, viSrt_site_] = sort(pdist2(mrSiteXY_in, mrSiteXY_in(iChan0_in1,:)), 'ascend');
-        viChan_out1 = sort(viSrt_site_(1:S_npx.nChans_out));
-        iSite_gt1 = find(viChan_out1 == iChan0_in1);        
-        csvwrite(fullfile(vcDir_out1, 'geom.csv'), mrSiteXY_in(viChan_out1,:));    
-
-        % write raw.mda
-        S_dir1 = dir(vcFile_npx1);
-        nSamples1 = floor(S_dir1.bytes / S_npx.nChans / bytes_per_sample);
-%         mrWav_ = irc('call', 'load_bin', {vcFile_npx1, S_npx.vcDataType, [S_npx.nChans, nSamples1]}, 1);
-        mrWav_ = load_bin_(vcFile_npx1, S_npx.vcDataType, [S_npx.nChans, nSamples1]);
-        mrWav_ = mrWav_(viChan_out1,:);
-        writemda(mrWav_, fullfile(vcDir_out1, 'raw.mda'), S_npx.vcDataType);
-        
-        % write param.json
-        struct2json_(S_params, fullfile(vcDir_out1, 'params.json'));
-
-        % export firings_true.mda
-        viTime_gt1 = readNPY(vcFile_npy1);
-        nSpikes = numel(viTime_gt1);
-        mrFirings_out = ones(3, nSpikes, 'double');
-        mrFirings_out(1,:) = iSite_gt1;
-        mrFirings_out(2,:) = viTime_gt1;
-        writemda(mrFirings_out, fullfile(vcDir_out1, 'firings_true.mda'), 'float64');
-
-        fprintf('%d: %s converted\n', iFile, vcDir1);
-    catch        
-        disperr_();
-    end
-end %for iFile
-end %func
-
-
-%--------------------------------------------------------------------------
-function convert_mda_mea_(vcDir_in, vcDir_out, vcFile_prm)
-if isempty(vcDir_in)
-    vcDir_in = 'K:\PierreYger\';
-end
-if isempty(vcDir_out)
-    vcDir_out = 'K:\spikeforest\groundtruth\paired_recordings\mea64c';
-end
-
-% load the probe layout
-S_map = load(fullfile(vcDir_in, 'chanMap.mat'));
-mrSiteXY_in = [S_map.xcoords(:), S_map.ycoords(:)];
-if ~isempty(get_(S_map, 'exclude_chan'))
-    mrSiteXY_in(S_map.exclude_chan,:) = inf; % exclude channel will not get selected
-end
-
-S_mea = struct('nChans_out', 64, 'spike_sign', -1, 'nChans', 256, 'vcDataType', 'uint16');
-S_params = struct('spike_sign', -1, 'samplerate', 20000); 
-bytes_per_sample = bytesPerSample_(S_mea.vcDataType); % @TODO: use S_npx.vcDataType
-
-% look for .raw files
-vS_Files_raw = dir(fullfile(vcDir_in, '*/*.raw'));
-csFiles_raw = cellfun(@(x,y)fullfile(x,y), {vS_Files_raw.folder}, {vS_Files_raw.name}, 'UniformOutput', 0);
-csFiles_raw = csFiles_raw(~contains(csFiles_raw, 'juxta'));
-
-% look for raw files in it
-for iFile = 1:numel(csFiles_raw)
-    vcFile_raw1 = csFiles_raw{iFile};
-    [~,vcDir1] = fileparts(fileparts(vcFile_raw1));
-    vcFile_txt1 = strrep(vcFile_raw1, '.raw', '.txt');
-    vcFile_npy1 = strrep(vcFile_raw1, '.raw', '.triggers.npy');  
-%     if ~exist_file_(vcFile_npy1), vcFile_npy1 = strrep(vcFile_raw1, '.raw', '.snippets.npy'); end
-    try
-        assert(exist_file_(vcFile_npy1) && exist_file_(vcFile_txt1), sprintf('%d: %s error\n', iFile, vcDir1));
-        S_txt1 = meta2struct_(vcFile_txt1);
-        
-        % output files
-        vcDir_out1 = fullfile(vcDir_out, vcDir1);
-        mkdir_(vcDir_out1);
-
-        % write geom.csv
-        iChan0_in1 = S_txt1.channel+1;
-        [~, viSrt_site_] = sort(pdist2(mrSiteXY_in, mrSiteXY_in(iChan0_in1,:)), 'ascend');
-        viChan_out1 = sort(viSrt_site_(1:S_mea.nChans_out));
-        iSite_gt1 = find(viChan_out1 == iChan0_in1);        
-        csvwrite(fullfile(vcDir_out1, 'geom.csv'), mrSiteXY_in(viChan_out1,:));
-
-        % write raw.mda
-        S_dir1 = dir(vcFile_raw1);
-        nBytes = S_dir1.bytes - S_txt1.padding;
-        nSamples1 = floor(nBytes / S_mea.nChans / bytes_per_sample);
-        mrWav_ = load_bin_(vcFile_raw1, S_mea.vcDataType, [S_mea.nChans, nSamples1], S_txt1.padding);
-        mrWav_ = mrWav_(viChan_out1,:);
-        writemda(mrWav_, fullfile(vcDir_out1, 'raw.mda'), S_mea.vcDataType);
-        
-        % write param.json
-        struct2json_(S_params, fullfile(vcDir_out1, 'params.json'));
-
-        % export firings_true.mda
-        viTime_gt1 = readNPY(vcFile_npy1);
-        nSpikes = numel(viTime_gt1);
-        mrFirings_out = ones(3, nSpikes, 'double');
-        mrFirings_out(1,:) = iSite_gt1;
-        mrFirings_out(2,:) = viTime_gt1;
-        writemda(mrFirings_out, fullfile(vcDir_out1, 'firings_true.mda'), 'float64');
-
-        fprintf('%d: %s converted\n', iFile, vcDir1);
-    catch        
-        disperr_();
-    end
-end %for iFile
-end %func
-
-
-%--------------------------------------------------------------------------
-function convert_mda_boyden_(vcDir_in, vcDir_out)
-if isempty(vcDir_in)
-    vcDir_in = 'K:\spikeforest\groundtruth\paired_recordings\boyden\';
-end
-if isempty(vcDir_out)
-    vcDir_out = 'K:\spikeforest\groundtruth\paired_recordings\boyden32c\';
-end
-S_mea = struct('nChans_out', 32);
-
-% look for .raw files
-vS_Files_raw = dir(fullfile(vcDir_in, '*/raw.mda'));
-csFiles_raw = cellfun(@(x,y)fullfile(x,y), {vS_Files_raw.folder}, {vS_Files_raw.name}, 'UniformOutput', 0);
-
-% look for raw files in it
-for iFile = 1:numel(csFiles_raw)
-    vcFile_raw1 = csFiles_raw{iFile};
-    vcDir_in1 = fileparts(vcFile_raw1);
-    [~, vcDir1] = fileparts(vcDir_in1);
-    vcDir_out1 = fullfile(vcDir_out, vcDir1);
-    try
-%         if exist_dir_(vcDir_out1), continue; end
-        mkdir_(vcDir_out1);
-        vcFile_out_raw1 = fullfile(vcDir_out1, 'raw.mda');
-        if exist_file_(vcFile_out_raw1), continue; end
-        
-        copyfile(fullfile(vcDir_in1, 'params.json'), fullfile(vcDir_out1, 'params.json'));
-        copyfile(fullfile(vcDir_in1, 'firings_true.mda'), fullfile(vcDir_out1, 'firings_true.mda'));
-        
-        % determine the peak channel
-        mrGt1 = readmda_(fullfile(vcDir_in1, 'firings_true.mda'));
-        viTime_gt1 = mrGt1(2,:);
-        mrWav1 = readmda_(fullfile(vcDir_in1, 'raw.mda'));
-        mrWav_mean1 = mr2tr3_(mrWav1', [-30,30], viTime_gt1);
-        mrWav_mean1 = squeeze(mean(mrWav_mean1,2));
-        [~, iChan0_in1] = max(max(mrWav_mean1)-min(mrWav_mean1));
-        
-        % write geom.csv
-        mrSiteXY1 = csvread(fullfile(vcDir_in1, 'geom.csv'));
-        [~, viSrt_site_] = sort(pdist2(mrSiteXY1, mrSiteXY1(iChan0_in1,:)), 'ascend');
-        viChan_out1 = sort(viSrt_site_(1:S_mea.nChans_out));
-        iSite_gt1 = find(viChan_out1 == iChan0_in1);        
-        csvwrite(fullfile(vcDir_out1, 'geom.csv'), mrSiteXY1(viChan_out1,:));
-
-        % write raw.mda
-        writemda_(mrWav1(viChan_out1,:), vcFile_out_raw1);       
-
-        fprintf('%d: %s converted\n', iFile, vcDir1);
-    catch     
-        fprintf(2, '%d: error processing %s\n', iFile, vcDir_in1);
-    end
-end %for iFile
-end %func
-
-
-%--------------------------------------------------------------------------
-% extract time and put it in the folders
-% divide files into 600 s chunk and evaluate accuracy
-function convert_mda_manual_(vcDir_in, vcDir_out)
-if isempty(vcDir_in)
-    vcDir_in = 'K:\JasonChung\tetrodes_manual\';
-end
-if isempty(vcDir_out)
-    vcDir_out = 'K:\spikeforest\groundtruth\manual_sortings\tetrode_1200s\'; % cratet sorter 1,2,3
-end
-S_out = struct('t_dur_sec', 1200); % export 10 minute recordings
-
-% look for .raw files
-vcFile_raw = '20160426_DL15_02_r1.nt16.mda';
-csFiles_gt = {'manclust1_firings.mda', 'manclust2_firings.mda', 'manclust3_firings.mda'};
-csDir_out = {'sorter1', 'sorter2', 'sorter3'};
-
-mrWav1 = readmda_(fullfile(vcDir_in, vcFile_raw));
-nSamples = size(mrWav1,2);
-vcFile_param = fullfile(vcDir_in, 'params.json');
-S_param = loadjson_(vcFile_param);
-nSamples_per_file = S_out.t_dur_sec * S_param.samplerate;
-nTime = floor(nSamples / nSamples_per_file);
-        
-for iFile = 1:numel(csFiles_gt)   
-    mrGt1 = readmda_(fullfile(vcDir_in, csFiles_gt{iFile})); 
-    viTime_gt1 = mrGt1(2,:);    
-    for iTime = 1:nTime
-        vcDir_out11 = fullfile(vcDir_out, sprintf('%s_%d', csDir_out{iFile}, iTime));                    
-        try
-            mkdir_(vcDir_out11);
-
-            % copy params.json and geom.csv
-            copyfile(vcFile_param, fullfile(vcDir_out11, 'params.json'));
-            copyfile(fullfile(vcDir_in, 'geom.csv'), fullfile(vcDir_out11, 'geom.csv'));
-
-            % write raw.mda
-            viTime_out11 = (1:nSamples_per_file) + (iTime-1)*nSamples_per_file;        
-            writemda_(mrWav1(:,viTime_out11), fullfile(vcDir_out11, 'raw.mda'));
-
-            % write firings_true.mda
-            mrGt11 = mrGt1(:,viTime_gt1 >= viTime_out11(1) & viTime_gt1 <= viTime_out11(end));
-            mrGt11(2,:) = mrGt11(2,:) - (viTime_out11(1) - 1);
-            writemda_(mrGt11, fullfile(vcDir_out11, 'firings_true.mda'));
-
-            fprintf('%d_%d: converted to %s\n', iFile, iTime, vcDir_out11);
-        catch
-            fprintf(2, '%d_%d: error creating %s\n', iFile, iTime, vcDir_out11);
-        end
-    end %for    
-end %for
-end %func
-
-
-%--------------------------------------------------------------------------
 function S_txt = loadjson_(vcArg_txt)
+S_txt=[]; 
+if ~exist_file_(vcArg_txt), return; end
 addpath_('jsonlab-1.5/');
 S_txt = loadjson(vcArg_txt);
 end %func
@@ -28842,7 +28444,7 @@ if nargin > 0
     try
         [varargin{:}] = convertStringsToChars(varargin{:});
     catch
-        fprintf(2, '`convertStringsToChars` failed\n');
+        varargin = cellfun(@char, varargin, 'UniformOutput', 0);
     end
 end
 
@@ -29026,7 +28628,7 @@ end %func
     
     
 %--------------------------------------------------------------------------
-function convert_mda_buzsaki_(vcDir_in, vcDir_out)
+function convert_mda_buzsaki_intra_(vcDir_in, vcDir_out)
 if isempty(vcDir_in)
     vcDir_in = 'K:\globus\Buzsaki\juxtaExtra';
 end
@@ -29139,7 +28741,7 @@ end %func
 %--------------------------------------------------------------------------
 % 1/9/2019 JJJ: export to spikeforest format
 % save raw.mda, geom.csv, params.json, firings_true.mda
-function export_spikeforest_(vcDir_out1, mnWav1, mrSiteXY1, S_json1, mrGt1)
+function export_spikeforest_(vcDir_out1, mnWav_T1, mrSiteXY1, S_json1, mrGt1)
 % export_spikeforest_paired_(vcDir_out1, mnWav1, mrSiteXY1, S_json1, mrGt1)
 % S_json: {'samplerate', 'spike_sign', 'scale_factor'}
 % mrGt1: 3 x nSpk double matrix. elec#, time index, cluster number
@@ -29148,7 +28750,7 @@ function export_spikeforest_(vcDir_out1, mnWav1, mrSiteXY1, S_json1, mrGt1)
 mkdir_(vcDir_out1);
 
 % write raw.mda
-writemda_(mnWav1, fullfile(vcDir_out1, 'raw.mda'));
+writemda_(mnWav_T1, fullfile(vcDir_out1, 'raw.mda'));
 
 % write geom.csv
 csvwrite(fullfile(vcDir_out1, 'geom.csv'), mrSiteXY1);
@@ -30320,64 +29922,6 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function convert_mda_yass_(vcDir_in, vcDir_out)
-
-if isempty(vcDir_in)
-    vcDir_in = 'K:\PeterLee';
-end
-if isempty(vcDir_out)
-    vcDir_out = 'K:\spikeforest\groundtruth\visapy_mea';
-end
-[csFiles_gt, csFiles_h5] = dir_set_(vcDir_in, 'ViSAPy_ground_truth.gdf', 'ViSAPy_nonfiltered.h5');
-
-% load timestamps and parse out non-noise clusters
-S_json = struct('spike_sign', -1);
-sample_offset = 16001;
-
-for iFile = 1:numel(csFiles_gt)
-    try
-        % firings_true.mda
-        gt = textread(csFiles_gt{iFile},'%u');
-        gt = reshape(gt,2,[])';
-        vi_gt1 = find(gt(:,2) > sample_offset);
-        mrGt1 = zeros(3, size(gt,1), 'double');
-        mrGt1(2,:) = gt(vi_gt1,2) - sample_offset; % time
-        mrGt1(3,:) = gt(vi_gt1,1); % cluster label
-        
-        % params.json
-        sRateHz1 = double(str2num_(h5read(csFiles_h5{iFile}, '/srate')));
-        vx = h5read(csFiles_h5{iFile}, '/electrode/x');
-        vy = h5read(csFiles_h5{iFile}, '/electrode/y');
-        vz = h5read(csFiles_h5{iFile}, '/electrode/z');
-        mrSiteXY1 = [vx(:), vz(:)];        
-        nChans1 = numel(vx);
-        scale_factor1 = 1e-4;
-        S_json1 = struct_set_(S_json, 'samplerate', sRateHz1, 'scale_factor', scale_factor1);
-        
-        % output directory
-        [~, vcDir12] = fileparts(fileparts(csFiles_gt{iFile}));
-        vcDir_out1 = fullfile(vcDir_out, vcDir12);
-          
-        fprintf('\n%d/%d: %s, #ch=%d, sRateHz=%0.1f\n', ...
-            iFile, numel(csFiles_gt), vcDir12, nChans1, sRateHz1);        
-            
-        % raw.mda
-        if ~exist_file_(fullfile(vcDir_out1, 'raw.mda'))
-            mnWav1 = h5read(csFiles_h5{iFile},'/data');
-            mnWav1 = mnWav1(:,sample_offset+1:end);        
-        else
-            mnWav1 = [];
-        end
-        export_spikeforest_(vcDir_out1, mnWav1, mrSiteXY1, S_json1, mrGt1);        
-    catch
-        disp(lasterr());
-    end  
-end %for
-
-end %func
-
-
-%--------------------------------------------------------------------------
 % multiply spikes by spikes
 function mr12 = tr2mr_mtimes_(tr1, tr2)
 dimm1 = size(tr1);
@@ -30814,6 +30358,30 @@ end
 
 
 %--------------------------------------------------------------------------
+function trWav_clu = load_wav_med_(P, cviTime_clu)
+% load raw waveforms
+nSamples_max = 2^12;
+fShow_raw = get_set_(P, 'fWav_raw_show', 0);
+mnWav_T = load_bin_T_(P);
+if ~iscell(cviTime_clu), cviTime_clu = {cviTime_clu}; end
+trWav_clu = [];
+nClu = numel(cviTime_clu);
+for iClu = 1:nClu;
+    viTime_spk1 = cviTime_clu{iClu};
+    viTime_spk1 = subsample_vr_(viTime_spk1, nSamples_max);
+    tnWav1 = mr2tr4_(mnWav_T, P.spkLim_raw, viTime_spk1);    
+    mrWav1 = median(tnWav1,3);
+    mrWav1 = single(mrWav1 - median(mrWav1)) * P.uV_per_bit;
+    if ~fShow_raw, mrWav1 = filt_car_(mrWav1, P); end
+    if isempty(trWav_clu)
+        trWav_clu = zeros(size(mrWav1,1), size(mrWav1,2), nClu, 'single');
+    end
+    trWav_clu(:,:,iClu) = mrWav1;
+end
+end %func
+
+
+%--------------------------------------------------------------------------
 % 2019/04/09 JJJ: cleaned code originally craeted by Zach Sperry
 function clust_comp_all_chan_(fNewFig)
 persistent hFig
@@ -30822,25 +30390,14 @@ if nargin<1, fNewFig=0; end
 if ~fNewFig && ~isvalid_(hFig), return ;end
 
 S0 = get0_();
-P = S0.P;
+[P, S_clu] = get_(S0, 'P', 'S_clu');
 iClu = S0.iCluCopy;
-[snr_thresh, nSamples_max, nSkip_site] = deal(3, 2^12, 2);
+[snr_thresh, nSkip_site] = deal(3, 2);
 
 % load raw waveforms
-mnWav_T = load_bin_T_(P);
-nSites = size(mnWav_T,1);
-
-% obtain raw spike waveforms
-iClu = S0.iCluCopy;
-viTime_spk1 = S0.viTime_spk(S0.S_clu.cviSpk_clu{iClu});
-if 0
-    viTime_spk1=viTime_spk1(viTime_spk1+50000<length(mnWav_T) & viTime_spk1>50001);
-end
-viTime_spk1 = subsample_vr_(viTime_spk1, nSamples_max);
-tnWav_spk1 = mr2tr4_(mnWav_T, P.spkLim_raw, viTime_spk1);
-mrWav_med_spk1 = single(median(tnWav_spk1,3)) * P.uV_per_bit;
-mrWav_med_spk1 = mrWav_med_spk1 - median(mrWav_med_spk1);
-vrTime_plot = (P.spkLim_raw(1):P.spkLim_raw(end)) / P.sRateHz * 1000;
+viTime_spk1 = S0.viTime_spk(S_clu.cviSpk_clu{iClu});
+mrWav_med_spk1 = load_wav_med_(P, viTime_spk1);
+nSites = size(mrWav_med_spk1, 2);
 
 % plot
 if fNewFig
@@ -30854,9 +30411,11 @@ maxAmp = get_userdata_(get_fig_('FigWav'), 'maxAmp');
 % separate to above and below SNR
 vrVrms_site = single(S0.vrThresh_site) / S0.P.qqFactor * P.uV_per_bit;
 vrVpp1_site = range(mrWav_med_spk1,1);
+% if numel(vrVpp1_site) ~= numel(vrVrms_site)
 vrSnr1_site = vrVpp1_site(:) ./ vrVrms_site(:);
 vlOver_site = vrSnr1_site > snr_thresh;
 [viSites1, viSites2] = deal(find(vlOver_site), find(~vlOver_site));
+vrTime_plot = (P.spkLim_raw(1):P.spkLim_raw(end)) / P.sRateHz * 1000;
 hLine1 = multiplot(hAx, maxAmp, vrTime_plot, mrWav_med_spk1(:,viSites1), viSites1);
 set_(hLine1, 'Color', 'r');
 hLine2 = multiplot(hAx, maxAmp, vrTime_plot, mrWav_med_spk1(:,viSites2), viSites2);
@@ -31469,4 +31028,159 @@ for iRepeat = 1:N_REPEATS
     fprintf('.');
 end %for
 fprintf('\ntook %0.1fs\n', toc(t1));
+end %func
+
+
+%--------------------------------------------------------------------------
+% 3/8/2019 JJJ: added vcFile_out
+% Convert existing format to mda format and put in the directory
+function convert_mda_prm_(vcFile_in, vcFile_out, viSite, tLim)
+% Usage
+% -----
+% export_mda_(myfile.prm)
+% export_mda_(myfile.batch)
+% mda file exported to where .prm files exist
+
+if nargin<2, vcFile_out = ''; end
+if nargin<3, viSite = []; else, viSite = str2num_(viSite); end
+if nargin<4, tLim = []; else, tLim = str2num_(tLim); end
+
+fOverwrite_raw_mda = 1;
+% if nargin<2, vcDir_out = ''; end
+
+vcFile_template = '';
+if matchFileEnd_(vcFile_in, '.batch')
+    csFile_prm = load_batch_(vcFile_in);
+%     vcFile_template = vcArg2;
+elseif matchFileEnd_(vcFile_in, '.prm')
+    csFile_prm = {vcFile_in};
+else
+    fprintf(2, 'Incorrect format\n');
+    return;
+end
+
+for iFile = 1:numel(csFile_prm)
+    vcFile_prm_ = csFile_prm{iFile};
+    if ~matchFileExt_(vcFile_prm_, '.prm')
+        fprintf(2, '\tInvalid format: %s\n', vcFile_prm_); 
+        continue;
+    end
+    P_ = loadParam_(vcFile_prm_, 0);
+    nLim_ = round(tLim * P_.sRateHz);
+    if isempty(vcFile_out)
+        % create a folder by the prm name
+        vcDir1 = strrep(vcFile_prm_, '.prm', ''); % full path location
+    else
+        % create a folder 
+        if numel(csFile_prm) == 1
+            vcDir1 = vcFile_out;
+        else
+            vcDir1 = fullfile(vcFile_out, sprintf('%d', iFile));
+        end
+    end
+    mkdir_(vcDir1);
+    
+    % Exclude sites if viSiteZero not empty
+    
+    % export .bin to .mda
+    vcFile_raw_mda = fullfile(vcDir1, 'raw.mda');
+    if fOverwrite_raw_mda
+        fWrite_mda_ = 1;
+    else
+        fWrite_mda_ = ~exist_file_(vcFile_raw_mda);
+    end
+    if fWrite_mda_
+        mnWav = load_bin_(P_.vcFile, P_.vcDataType, file_dimm_(P_), P_.header_offset);
+        if P_.fTranspose_bin
+            mnWav = mnWav(P_.viSite2Chan,:);
+        else
+            mnWav = mnWav(:, P_.viSite2Chan)';
+        end
+        mnWav = trim_wav_(mnWav, viSite, nLim_);
+        writemda_(mnWav, vcFile_raw_mda, fOverwrite_raw_mda);
+    end
+    
+    % export .prm to geom.csv
+    prb2geom_(P_.mrSiteXY, fullfile(vcDir1, 'geom.csv'), 0, viSite);
+    
+    % export ground truth
+    S_gt_ = load_gt_(get_(P_, 'vcFile_gt'));
+    if ~isempty(S_gt_)
+        if ~isfield(S_gt_, 'viSite')
+            iSite_gt = [];
+            if isfield(P_, 'iSite_gt'), iSite_gt = get_(P_, 'iSite_gt'); end
+            if isfield(P_, 'iChan_gt'), iSite_gt = chan2site_prb_(P_.iChan_gt, P_.probe_file); end   
+            if ~isempty(iSite_gt)
+                S_gt_.viSite = repmat(int32(iSite_gt), size(S_gt_.viTime));
+            end
+        end
+        gt2mda_(S_gt_, fullfile(vcDir1, 'firings_true.mda'), nLim_);
+    end
+    
+    % Write to params.json
+    S_json_ = struct('samplerate', P_.sRateHz, ...
+        'spike_sign', ifeq_(P_.fInverse_file==0, -1, 1), ...
+        'scale_factor', P_.uV_per_bit);
+    juxta_channel = unique(get_(S_gt_, 'viSite'));
+    if numel(juxta_channel)==1, S_json_.juxta_channel = juxta_channel; end
+    struct2json_(S_json_, fullfile(vcDir1, 'params.json'));
+    
+    fprintf('\n');
+end %for
+end %func
+
+
+%--------------------------------------------------------------------------
+function convert_mda_kampff_(vcDir_in, vcDir_out, S_npx)
+
+S_map = load(fullfile(vcDir_in, 'chanMap.mat'));
+mrSiteXY_in = [S_map.xcoords(:), S_map.ycoords(:)];
+[csDir_in, viChan_max] = struct_get_(S_npx, 'csDir_in', 'viChan_max');
+% extract 32 nearest sites from the center and sort by channel numbers and
+% write to geom.csv
+S_params = struct('spike_sign', S_npx.spike_sign, 'samplerate', S_npx.sRateHz);
+bytes_per_sample = bytesPerSample_(S_npx.vcDataType);
+
+for iFile = 1:numel(csDir_in)
+    vcDir1 = csDir_in{iFile};
+    vcFile_npx1 = fullfile(vcDir_in, vcDir1, [vcDir1, '_npx_raw.bin']);
+    vcFile_npy1 = fullfile(vcDir_in, vcDir1, [vcDir1, '_extracellular_spikes.npy']);    
+    try
+        assert(exist_file_(vcFile_npx1) && exist_file_(vcFile_npy1), sprintf('%d: %s error\n', iFile, vcDir1));
+        
+        % output files
+        vcDir_out1 = fullfile(vcDir_out, vcDir1);
+        mkdir_(vcDir_out1);
+
+        % write geom.csv
+        iChan0_in1 = viChan_max(iFile);
+        [~, viSrt_site_] = sort(pdist2(mrSiteXY_in, mrSiteXY_in(iChan0_in1,:)), 'ascend');
+        viChan_out1 = sort(viSrt_site_(1:S_npx.nChans_out));
+        iSite_gt1 = find(viChan_out1 == iChan0_in1);        
+        csvwrite(fullfile(vcDir_out1, 'geom.csv'), mrSiteXY_in(viChan_out1,:));    
+
+        % write raw.mda
+        S_dir1 = dir(vcFile_npx1);
+        nSamples1 = floor(S_dir1.bytes / S_npx.nChans / bytes_per_sample);
+%         mrWav_ = irc('call', 'load_bin', {vcFile_npx1, S_npx.vcDataType, [S_npx.nChans, nSamples1]}, 1);
+        mrWav_ = load_bin_(vcFile_npx1, S_npx.vcDataType, [S_npx.nChans, nSamples1]);
+        mrWav_ = mrWav_(viChan_out1,:);
+        writemda(mrWav_, fullfile(vcDir_out1, 'raw.mda'), S_npx.vcDataType);
+        
+        % write param.json
+        struct2json_(S_params, fullfile(vcDir_out1, 'params.json'));
+
+        % export firings_true.mda
+        viTime_gt1 = readNPY(vcFile_npy1);
+        nSpikes = numel(viTime_gt1);
+        mrFirings_out = ones(3, nSpikes, 'double');
+        mrFirings_out(1,:) = iSite_gt1;
+        mrFirings_out(2,:) = viTime_gt1;
+        writemda(mrFirings_out, fullfile(vcDir_out1, 'firings_true.mda'), 'float64');
+
+        fprintf('%d: %s converted\n', iFile, vcDir1);
+    catch        
+        disperr_();
+    end
+end %for iFile
 end %func

@@ -1,46 +1,53 @@
 %--------------------------------------------------------------------------
 function irc_scoreboard()
 irc('addpath');
-hMsg = msgbox('Loading files');
-[csRecording, csStudy, csStudyset] = load_dataset_();
-[csParam] = load_param_();
+cd_irc_();
 
+% create figure
+hFig = irc('call', 'create_figure_', {'Fig_scoreboard', [0 0 .5 1], 'IronClust Scoreboard', 0, 1}); 
+add_menu_(hFig);
+
+% load settings
+hMsg = msgbox('Loading files');
+vcFile_cache = locate_('cache');
+if exist_file_(vcFile_cache)
+    disp('Loading from cache');
+    S_fig = load(vcFile_cache);
+    hFig.UserData = S_fig;
+    [csRecording, csStudy, csStudyset, csParam] = ...
+        get_userdata_(hFig, 'csRecording', 'csStudy', 'csStudyset', 'csParam');
+else
+    [csRecording, csStudy, csStudyset] = load_input_();
+    [csParam] = load_param_();    
+    S_fig = set_userdata_(hFig, csRecording, csStudy, csStudyset, csParam);
+end
 try, close(hMsg); catch; end
 
-% create GUI
-hFig = irc('call', 'create_figure_', {'Fig_scoreboard', [0 0 .5 1], 'IronClust Scoreboard', 0, 1}); 
+% Add axes
 fh_ax1 = @(x)axes('Parent', hFig, 'OuterPosition', x);
-
-S_fig = set_userdata_(hFig, csRecording);
-S_fig = set_userdata_(hFig, csStudy);
-S_fig = set_userdata_(hFig, csStudyset);
-S_fig = set_userdata_(hFig, csParam);
-
-
-% create three axes
-vhAx = cellfun(@(x)fh_ax1(x), {[0 .1 .15 .3], [.15 .1 .15 .3], [.35 .1 .15 .3], [.5 .1 .15 .3], [.70 .1 .15 .3], [.85 .1 .15 .3]});
+%vhAx = cellfun(@(x)fh_ax1(x), {[0 .1 .15 .3], [.15 .1 .15 .3], [.35 .1 .15 .3], [.5 .1 .15 .3], [.70 .1 .15 .3], [.85 .1 .15 .3]});
+vhAx = cellfun(@(x)fh_ax1(x), {[0 .1 .33 .3], [0 0 0 0], [.33 .1 .33 .3], [0 0 0 0], [.66 .1 .33 .3], [0 0 0 0]});
 [hAx_accu1, hAx_accu2, hAx_prec1, hAx_prec2, hAx_recl1, hAx_recl2] = deal_(vhAx);
 xlabel_(vhAx(1:2:end), 'SNR (Vmin/Vrms)');
-xlabel_(vhAx(2:2:end), 'Param Rank');
-ylabel_(vhAx(1:2), 'Accuracy');
-ylabel_(vhAx(3:4), 'Precision');
-ylabel_(vhAx(5:6), 'Recall');
+% xlabel_(vhAx(2:2:end), 'Param Rank');
+ylabel_(vhAx(1), 'Accuracy');
+ylabel_(vhAx(3), 'Precision');
+ylabel_(vhAx(5), 'Recall');
 arrayfun(@(x)grid(x, 'on'), vhAx);
 arrayfun(@(x)ylim(x, [0 1]), vhAx);
 S_fig = set_userdata_(hFig, vhAx);
 set(hFig, 'UserData', S_fig);
 
+% add texts
 hText1 = uicontrol(hFig, 'Style','text','String','',...
        'Unit', 'Normalized', 'OuterPosition', [.5 .4 .5 .3], ...
        'HorizontalAlignment', 'left', 'BackgroundColor','w', 'Tag', 'text_param');
 hText1.String = {'Select a parameter'}; % display meta
-S_fig = set_userdata_(hFig, hText1);
-
 hText2  = uicontrol(hFig, 'Style','text','String','',...
        'Unit', 'Normalized', 'OuterPosition', [0 0 1 .1], ...
        'HorizontalAlignment', 'left', 'BackgroundColor','w', 'Tag', 'text_selection');   
 hText2.String = {'All selected'}; % display meta
-S_fig = set_userdata_(hFig, hText2);
+S_fig = set_userdata_(hFig, hText1, hText2);
 
 % create table
 hTable_studyset = create_table_(hFig, csStudyset, 'Studyset', [0 .8 .5 .2]);
@@ -48,25 +55,261 @@ hTable_study = create_table_(hFig, csStudy, 'Study', [0 .6 .5 .2]);
 hTable_recording = create_table_(hFig, csRecording, 'Recording', [0 .4 .5 .2]);
 hTable_param = create_table_(hFig, csParam, 'Param', [.5 .7 .5 .3]);
 
-% disable when one is selected, click again to enable others
+% set table cbf
 vhTable = [hTable_studyset, hTable_study, hTable_recording, hTable_param];
 S_fig = set_userdata_(hFig, vhTable);
 arrayfun(@(x)set(x, 'CellSelectionCallback', @cbf_select_table_), vhTable);
+arrayfun(@(x)set(x, 'ButtonDownFcn', @cbf_sort_table_), vhTable);
+update_tables_();
 
-% populate table
-add_menu_(hFig);
+[csParam1, csInput1] = deal(csParam, csStudyset);
+set_userdata_(hFig, csParam1, csInput1);
+end %func
+
+
+%--------------------------------------------------------------------------
+function cd_irc_()
+cd(fileparts(mfilename('fullpath')));
 end %func
 
 
 %--------------------------------------------------------------------------
 function run_batch_(h, e)
+cd_irc_();
 hFig = h.Parent.Parent;
 csInput1 = get_userdata_(hFig, 'csInput1');
 csParam1 = get_userdata_(hFig, 'csParam1');
 if isempty(csParam1), csParam1 = get_userdata_(hFig, 'csParam'); end
 if isempty(csInput1), csInput1 = get_userdata_(hFig, 'csStudyset'); end
 
-sbatch_mda_(csInput1, csParam1);
+hMsgbox = msgbox('Running batch');
+csDir_out = sbatch_mda_(csInput1, csParam1);
+assemble_results_(csDir_out)
+close_(hMsgbox);
+end %func
+
+
+%--------------------------------------------------------------------------
+function cbf_assemble_results_(h,e)
+h = msgbox('Assembling results');
+[~, csDir_out] = find_files_(locate_('output'), '**/raw_geom_score.mat');
+assemble_results_(csDir_out);
+close_(h);
+end %func
+
+
+%--------------------------------------------------------------------------
+function assemble_results_(csDir_out)
+% assemble_results_(csDir_out)
+% assemble_results_()
+hFig = get_fig_();
+vcDir_out = locate_('output');
+csParam = get_userdata_(hFig, 'csParam');
+csRecording = get_userdata_(hFig, 'csRecording');
+[cmSnr, cmPrecision, cmRecall, cmAccuracy] = deal(cell(numel(csRecording), numel(csParam)));
+for iDir = 1:numel(csDir_out)
+    vcFile_gt1 = fullfile(csDir_out{iDir}, 'raw_geom_score.mat');
+    [vcParam1, vcRecording1] = strtok(strrep(csDir_out{iDir}, vcDir_out, ''), '/');
+    iParam1 = find(strcmp(vcParam1, csParam));
+    iRecording1 = find(strcmp(vcRecording1, csRecording));
+    try
+        S_score1 = load(vcFile_gt1);
+        S_score_clu1 = S_score1.S_score_clu;
+        [vrSnr1, vrPrecision1, vrRecall1, vrAccuracy1] = ...
+            deal(S_score1.vrSnr_min_gt, 1-S_score_clu1.vrFp, 1-S_score_clu1.vrMiss, ...
+                S_score_clu1.vrAccuracy);
+        cmSnr{iRecording1,iParam1} = vrSnr1(:);
+        cmPrecision{iRecording1,iParam1} = vrPrecision1(:);
+        cmRecall{iRecording1,iParam1} = vrRecall1(:);
+        cmAccuracy{iRecording1,iParam1} = vrAccuracy1(:);
+    catch
+        ; %no output generated
+    end
+end
+
+S_fig = set_userdata_(hFig, cmSnr, cmPrecision, cmRecall, cmAccuracy);
+save_cache_(S_fig);
+update_tables_();
+% close_(hMsgbox);
+end %func
+
+
+%--------------------------------------------------------------------------
+function S_fig = save_cache_(S_fig)
+if nargin<1
+    [hFig, S_fig] = get_fig_();
+end
+irc('call', 'write_struct', {locate_('cache'), S_fig});
+end %func
+
+
+%--------------------------------------------------------------------------
+function [hFig, S_fig] = get_fig_()
+persistent hFig_
+if ~ishandle(hFig_), hFig_ = []; end
+if isempty(hFig_)
+    hFig_ = findobj('Type', 'Figure', 'Tag', 'Fig_scoreboard');
+end
+hFig = hFig_;
+S_fig = hFig.UserData;
+end %func
+
+
+%--------------------------------------------------------------------------
+function update_tables_(vcType, vcKey)
+% arrange the param from the best to worst
+if nargin<1, vcType = ''; end
+if nargin<2, vcKey = ''; end
+
+[nCols, snr_thresh, accuracy_thresh, iCol_accuracy] = deal(6, 8, .8, 3);
+
+hFig = get_fig_();
+vhTable = get_userdata_(hFig, 'vhTable');
+[cmSnr, cmPrecision, cmRecall, cmAccuracy, csParam, csParam1] = ...
+    get_userdata_(hFig, 'cmSnr', 'cmPrecision', 'cmRecall', 'cmAccuracy', 'csParam', 'csParam1');
+[nRecording, nParam] = size(cmSnr);
+
+switch lower(vcType)
+    case 'param' % parameter is generated, update table, reset
+        csParam = vcKey;
+        hTbl_param = vhTable(4);
+        hTbl_param.Data = cell(numel(vcKey), nCols);
+        hTbl_param.Data(:,1) = csParam;
+        [cmSnr, cmPrecision, cmRecall, cmAccuracy] = deal([]);
+        set_userdata_(hFig, cmSnr, cmPrecision, cmRecall, cmAccuracy, csParam);
+        save_cache_();
+        return;
+        
+    case 'input'
+        csParam1 = vcKey;
+        if isempty(cmSnr), return; end
+        [~, viParam] = ismember(csParam1, csParam);
+        fh_ = @(x)cell2mat_(x(:,viParam));
+        [mrSnr1, mrPrecision1, mrRecall1, mrAccuracy1] = ...nC_max
+            deal(fh_(cmSnr), fh_(cmPrecision), fh_(cmRecall), fh_(cmAccuracy));
+        vhAx = get_userdata_(hFig, 'vhAx');
+        arrayfun(@(x)hold(x,'off'), vhAx);
+        plot(vhAx(1), mrSnr1(:), mrAccuracy1(:), '.'); xylabel_(vhAx(1), 'SNR', 'Accuracy');
+        plot(vhAx(3), mrSnr1(:), mrPrecision1(:), '.'); xylabel_(vhAx(3), 'SNR', 'Precision');
+        plot(vhAx(5), mrSnr1(:), mrRecall1(:), '.'); xylabel_(vhAx(5), 'SNR', 'Recall');
+        arrayfun(@(x)ylim(x,[0,1]), vhAx);
+        arrayfun(@(x)grid(x,'on'), vhAx);
+end
+if isempty(cmSnr), return; end
+
+% param table
+[hTbl_studyset, hTbl_study, hTbl_recording, hTbl_param] = deal_(vhTable);
+csParam_tbl = hTbl_param.Data(:,1);
+% hTbl_param.Data = cell(nParam, nCols);
+for iParam_tbl = 1:numel(csParam_tbl)    
+    iParam = strcmp(csParam_tbl{iParam_tbl}, csParam);
+    fh_ = @(x)cell2mat_(x(:,iParam));
+    [vrSnr1, vrPrec1, vrRecall1, vrAccuracy1] = ...
+        deal(fh_(cmSnr), fh_(cmPrecision), fh_(cmRecall), fh_(cmAccuracy));   
+    
+    vl_ = vrSnr1 > snr_thresh;
+    fh_ = @(x)nanmean(x(vl_));
+    vr_ = [nanmean(vrAccuracy1>accuracy_thresh), fh_(vrAccuracy1), fh_(vrPrec1), fh_(vrRecall1), numel(vl_)];
+%     hTbl_param.Data{iParam, 1} = csParam{iParam};
+    hTbl_param.Data(iParam_tbl, 2:end) = arrayfun(@num2str, vr_, 'UniformOutput', 0);
+end %for
+% accuracy rank
+% precision rank
+% recall rank
+
+% pick the best overall by Accuracy and determine iParam index
+if numel(csParam1) == numel(csParam)
+    viParam = 1:numel(csParam);
+elseif numel(csParam1) >= 1
+    [~, viParam] = ismember(csParam1, csParam);
+elseif isempty(csParam1)
+    vrAccuracy_param = cellfun(@str2num_, hTbl_param.Data(:,iCol_accuracy));
+    [~, iParam_] = max(vrAccuracy_param);
+    if isnan(iParam_), return; end
+    vcParam_best = hTbl_param.Data{iParam_, 1};
+    viParam = find(strcmp(vcParam_best, csParam));
+end
+% clear the recording table (use the best parameter)
+% if parameter is selected, use that and pick the best? or average of them?
+% if multiple parameters are selected show the averaged results
+% if none selected show the best overall. 
+% clear the table first
+% hTbl_recording.Data(:, 2:end) = {''};
+% hTbl_study.Data(:, 2:end) = {''};
+% hTbl_studyset.Data(:, 2:end) = {''};
+
+[csRecording, csStudy, csStudyset] = get_userdata_(hFig, 'csRecording', 'csStudy', 'csStudyset');
+csRecording_tbl = hTbl_recording.Data(:,1);
+% create studyset and study matrix
+for iRecording_tbl = 1:nRecording
+    try
+        iRecording = find(strcmp(csRecording_tbl{iRecording_tbl}, csRecording));
+        
+        if isempty(iRecording), continue; end
+        fh_ = @(x)nanmean(cell2mat_(x(iRecording,viParam)),2);
+        [vrSnr1, vrPrec1, vrRecall1, vrAccuracy1] = ...
+            deal(fh_(cmSnr), fh_(cmPrecision), fh_(cmRecall), fh_(cmAccuracy));       
+        if isempty(vrSnr1), continue; end
+        vl_ = vrSnr1 > snr_thresh;
+        fh_ = @(x)nanmean(x(vl_));
+        vr_ = [nanmean(vrAccuracy1>accuracy_thresh), fh_(vrAccuracy1), fh_(vrPrec1), fh_(vrRecall1), numel(vl_)];
+        hTbl_recording.Data(iRecording_tbl, 2:end) = arrayfun(@num2str, vr_, 'UniformOutput', 0);
+    catch
+        ;
+    end
+end %for
+
+csStudy_tbl = hTbl_study.Data(:,1);
+for iStudy_tbl = 1:numel(csStudy_tbl)
+    try
+        vcStudy1 = csStudy_tbl{iStudy_tbl};
+        viRecording1 = find(contains(csRecording, vcStudy1));
+        if isempty(viRecording1), return; end
+        fh_ = @(x)nanmean(cell2mat_(x(viRecording1,viParam)),2);
+        [vrSnr1, vrPrec1, vrRecall1, vrAccuracy1] = ...
+            deal(fh_(cmSnr), fh_(cmPrecision), fh_(cmRecall), fh_(cmAccuracy));       
+        if isempty(vrSnr1), continue; end
+        vl_ = vrSnr1 > snr_thresh;
+        fh_ = @(x)nanmean(x(vl_));
+        vr_ = [nanmean(vrAccuracy1>accuracy_thresh), fh_(vrAccuracy1), fh_(vrPrec1), fh_(vrRecall1), numel(vl_)];
+        hTbl_study.Data(iStudy_tbl, 2:end) = arrayfun(@num2str, vr_, 'UniformOutput', 0);
+    catch
+        ;
+    end
+end %for
+
+csStudyset_tbl = hTbl_studyset.Data(:,1);
+for iStudyset_tbl = 1:numel(csStudyset_tbl)
+    try
+        vcStudyset1 = csStudyset_tbl{iStudyset_tbl};
+        viRecording1 = find(contains(csRecording, vcStudyset1));        
+        if isempty(viRecording1), return; end
+        fh_ = @(x)nanmean(cell2mat_(x(viRecording1,viParam)),2);
+        [vrSnr1, vrPrec1, vrRecall1, vrAccuracy1] = ...
+            deal(fh_(cmSnr), fh_(cmPrecision), fh_(cmRecall), fh_(cmAccuracy));       
+        if isempty(vrSnr1), continue; end
+        vl_ = vrSnr1 > snr_thresh;
+        fh_ = @(x)nanmean(x(vl_));
+        vr_ = [nanmean(vrAccuracy1>accuracy_thresh), fh_(vrAccuracy1), fh_(vrPrec1), fh_(vrRecall1), numel(vl_)];
+        hTbl_studyset.Data(iStudyset_tbl, 2:end) = arrayfun(@num2str, vr_, 'UniformOutput', 0);
+    catch
+        ;
+    end
+end %for
+
+% accuracy rank
+% precision rank
+% recall rank
+
+end %func
+
+
+%--------------------------------------------------------------------------
+function vr = cell2mat_(cvr)
+% create a matrix that is #vectors x # cells
+% remove empty
+vi = find(cellfun(@(x)~isempty(x), cvr));
+vr = cell2mat(cvr(vi));
 end %func
 
 
@@ -81,7 +324,7 @@ end %func
 
 %--------------------------------------------------------------------------
 % apply paramters to sorting
-function sbatch_mda_(csInput, csParam)
+function csDir_out = sbatch_mda_(csInput, csParam)
 % non-blocking call
 if ischar(csParam), csParam = {csParam}; end
 if ischar(csInput), csInput = {csInput}; end
@@ -92,6 +335,7 @@ nParams = numel(csParam);
 % run all param in parallel. create a GT if doesn't exist and run
 % validation
 fh_param = @(x)fullfile(vcDir_out, 'param', x);
+csDir_out = {};
 for iData = 1:numel(csInput)    
     vcInput1 = csInput{iData};
     fprintf('Processing %s\n', vcInput1); t1=tic;
@@ -99,7 +343,7 @@ for iData = 1:numel(csInput)
     [csDir_in1, csDir_out1, csFile_param1] = deal({});
     for iRec = 1:numel(csDir_rec1)
         vcDir_rec1 = csDir_rec1{iRec};
-        vcRecording1 = strrep(fileparts(vcDir_rec1), vcDir_in, '');
+        vcRecording1 = strrep(vcDir_rec1, vcDir_in, '');
         for iParam = 1:nParams
             vcDir_out1 = fullfile(vcDir_out, csParam{iParam}, vcRecording1);
             [csDir_in1{end+1}, csDir_out1{end+1}, csFile_param1{end+1}] = ...
@@ -107,6 +351,7 @@ for iData = 1:numel(csInput)
         end
     end
     irc('sbatch-mda', csDir_in1, csDir_out1, csFile_param1, fWait);
+    csDir_out = cat(1, csDir_out, csDir_out1(:));
     fprintf('\tFinished %s, took %0.1fs\n', vcInput1, toc(t1));
 end
 
@@ -116,11 +361,19 @@ end %func
 %--------------------------------------------------------------------------
 function vcPath = locate_(vcType, vcKey)
 if nargin<2, vcKey = []; end
-vcDir_in = irc('call', 'read_cfg', {'path_groundtruth'});
-vcDir_out = irc('call', 'read_cfg', {'path_validation'});
-vcDir_out = fullfile(vcDir_out, irc('version'));
+persistent vcDir_in vcDir_out
+if isempty(vcDir_in) || isempty(vcDir_out)
+    vcDir_in = read_cfg_('path_groundtruth');
+    vcDir_out = fullfile(read_cfg_('path_validation'), irc('version'));
+end
 
 switch lower(vcType)
+    case 'disbatch'
+        vcPath0 = fullfile(read_cfg_('path_validation'), 'disbatch');
+        vcPath = find_files_(vcPath0, '*_status.txt');
+        if isempty(vcPath), return; end
+        if iscell(vcPath), vcPath = vcPath{1}; end
+        
     case {'recordings', 'rec'} % return a cell of directories containing raw.mda        
         [~, vcPath] = find_files_(locate_('input', vcKey), '/**/raw.mda');
         
@@ -130,7 +383,7 @@ switch lower(vcType)
         vcPath = ircpath_('settings.scoreboard');
     case 'param'
         if isempty(vcKey)
-            vcPath = find_files_(vcDir_out, '/param/*_template.prm');
+            vcPath = flipud(find_files_(vcDir_out, '/param/*_template.prm'));
         elseif ischar(vcKey)
             vcPath = fullfile(vcDir_out, 'param', [vcKey, '_template.prm']);
         elseif iscell(vcKey)
@@ -140,6 +393,7 @@ switch lower(vcType)
         if ~isempty(vcKey)
             if ischar(vcKey)
                 vcPath = fullfile(vcDir_in, vcKey);
+                if vcPath(end) ~= filesep(), vcPath(end+1) = filesep(); end
             elseif iscell(vcKey)
                 vcPath = cellfun_(@(x)fullfile(vcDir_in, x), vcKey);
             end
@@ -150,6 +404,7 @@ switch lower(vcType)
         if ~isempty(vcKey)
             if ischar(vcKey)
                 vcPath = fullfile(vcDir_out, vcKey);
+                if vcPath(end) ~= filesep(), vcPath(end+1) = filesep(); end
             else
                 vcPath = cellfun_(@(x)fullfile(vcDir_out, x), vcKey);
             end
@@ -182,10 +437,51 @@ set(hFig, 'MenuBar','None');
 mh_file = uimenu(hFig,'Label','File'); 
 uimenu(mh_file,'Label', 'Edit `settings.scoreboard`', 'Callback', @(h,e)edit_('settings.scoreboard'));
 uimenu(mh_file,'Label', 'Edit `default.cfg`', 'Callback', @(h,e)edit_('default.cfg'));
+uimenu(mh_file,'Label', 'Delete cache', 'Callback', @(h,e)delete_(locate_('cache')));
+uimenu(mh_file,'Label', 'Open disbatch status', 'Callback', @(h,e)edit_(locate_('disbatch')));
 
 mh_file = uimenu(hFig,'Label','Run'); 
 uimenu(mh_file,'Label', 'Generate param files (hashcode_template.prm)', 'Callback', @generate_param_);
 uimenu(mh_file,'Label', 'Run batch', 'Callback', @run_batch_);
+uimenu(mh_file, 'Label', 'Assemble batch result', 'Callback', @cbf_assemble_results_);
+
+mh_file = uimenu(hFig,'Label','Help'); 
+uimenu(mh_file,'Label', 'Show help', 'Callback', @menu_help_);
+
+% mh_file = uimenu(hFig,'Label','Sort'); 
+% uimenu(mh_file,'Label', 'Sort Param table', 'Callback', @cbf_sort_table_);
+% uimenu(mh_file,'Label', 'Sort Input tables', 'Callback', @cbf_sort_table_);
+end %func
+
+
+%--------------------------------------------------------------------------
+function menu_help_(h,e)
+csMsg = {};
+
+csMsg{end+1} = 'To sort the table, left click the cell to sort and right click again';
+csMsg{end+1} = 'To apply sorting, select the data on the left column and select `Run` menu -> `Run batch`';
+
+msgbox(csMsg);
+end %func
+
+
+%--------------------------------------------------------------------------
+function cbf_sort_table_(hTable,e)
+if nargin<2, e=[]; end
+
+if isnumeric(e)
+    iCol_sort = e;
+else
+    Indices = get_userdata_(hTable, 'Indices');
+    if isempty(Indices), return; end
+    if size(Indices,1)>1, return; end %no multiselection
+    iCol_sort = Indices(2);
+end
+try
+    hTable.Data = sortrows(hTable.Data,iCol_sort, 'descend');
+catch
+    ;
+end
 end %func
 
 
@@ -223,10 +519,10 @@ for iParam = 1:nParams
     struct2file_(S1, vcFile1);
     fprintf('\tWrote to %s\n', vcFile1);
 end
-close_(hMsg);
 
 % update parameter list
-update_table_('Param', load_param_());
+update_tables_('Param', load_param_());
+close_(hMsg);
 end %func
 
 
@@ -266,8 +562,13 @@ end %func
 function cbf_select_table_(hTbl,e)
 hFig = hTbl.Parent;
 S_fig = hFig.UserData;
-iRow = e.Indices(1,1);
+Indices = e.Indices;
+if isempty(Indices), return; end
+
+hMsgbox = msgbox('Updating...');
+viRow = e.Indices(:,1);
 iCol = e.Indices(1,2);
+set_userdata_(hTbl, Indices);
 S_tbl = hTbl.UserData;
 vhTable = S_fig.vhTable;
 csMsg = {};
@@ -275,8 +576,14 @@ if iCol == 1
     set(vhTable, 'Enable', 'off');
     set(hTbl, 'Enable', 'on');
     vcType = hTbl.Tag;
-    vcKey = hTbl.Data{iRow,1};    
-    csMsg{end+1} = sprintf('Selected %s: %s', vcType, vcKey);
+    csKey = hTbl.Data(viRow,1);    
+    csMsg{end+1} = sprintf('Selected %s:', vcType);
+    csMsg = cat(1, csMsg, csKey);
+    if numel(csKey)==1
+        vcKey = csKey{1};
+    else
+        vcKey = csKey;
+    end
 elseif iCol > 1 % clear selection
     set(vhTable, 'Enable', 'on');
     csMsg{end+1} = sprintf('All selected');
@@ -291,16 +598,19 @@ csParam1 = get_userdata_(hFig, 'csParam');
 csInput1 = get_userdata_(hFig, 'csStudyset');
 switch vcType
     case 'Param'
-        S_fig.hText1.String = file2cellstr_(locate_('Param', vcKey));
-        csParam1 = {vcKey};
-    case 'Studyset', csInput1 = {vcKey};
-    case 'Study', csInput1 = {vcKey};
-    case 'Recording', csInput1 = {vcKey};
+        if ischar(vcKey)
+            S_fig.hText1.String = file2cellstr_(locate_('Param', vcKey));
+        elseif iscell(vcKey)
+            cS_ = cellfun_(@file2struct_, locate_('Param', vcKey));
+            S_fig.hText1.String = struct2str_(struct_intersect_(cS_{:}));
+        end
+        csParam1 = csKey;
+        update_tables_('Input', csParam1);
+    case {'Studyset', 'Study', 'Recording'}, csInput1 = ifeq_(ischar(vcKey), {vcKey}, vcKey);
 end
 S_fig.hText2.String = csMsg;
-set_userdata_(hFig, csParam1);
-set_userdata_(hFig, csInput1);
-
+set_userdata_(hFig, csParam1, csInput1);
+close_(hMsgbox);
 % @ToDo
 %  sort by parameters (# units > .8)
 %  update parameter table using the selected values
@@ -360,7 +670,13 @@ end %func
 
 %--------------------------------------------------------------------------
 function update_table_(vcLabel, csFiles)
-create_table_([], csFiles, vcLabel, []);
+hTable = create_table_([], csFiles, vcLabel, []);
+hFig = hTable.Parent;
+switch lower(vcLabel)
+    case 'param'
+        csParam = csFiles;
+        set_userdata_(hFig, csParam);
+end
 end %func
 
 
@@ -390,14 +706,12 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function [csRecording, csStudy, csStudyset] = load_dataset_()
+function [csRecording, csStudy, csStudyset] = load_input_()
 vcDir_in = locate_('input');
 csFiles_raw = find_files_(vcDir_in, '/**/raw.mda');
-% csFiles_raw = flipud(csFiles_raw); % put new files first
-if vcDir_in(end) ~= '/', vcDir_in(end+1) = '/'; end
 fh_list1 = @(cs)unique(cellfun_(@(x)fileparts(x), cs));
 fh_list2 = @(cs)cellfun_(@(x)strrep(x, vcDir_in, ''), cs);
-fh_list3 = @(cs)fh_list2(fh_list1(cs));
+fh_list3 = @(cs)flipud(fh_list2(fh_list1(cs)));
 csRecording = fh_list3(csFiles_raw);
 csStudy = fh_list3(csRecording);
 csStudyset = fh_list3(csStudy);
@@ -446,28 +760,16 @@ end %func
 %==========================================================================
 % call irc.m
 
-
-%--------------------------------------------------------------------------
-function vcFile_full = ircpath_(vcFile, fConditional)
-if nargin<2, fConditional=1; end
-vcFile_full = irc('call', 'ircpath_', {vcFile, fConditional});
-end %func
-
-
-%--------------------------------------------------------------------------
-function vl = exist_file_(vc)
-vl = irc('call', 'exist_file_', {vc});
-end %func
-
-
-%--------------------------------------------------------------------------
-function vl = file2cellstr_(vc)
-vl = irc('call', 'file2cellstr_', {vc});
-end %func
-
-
-%==========================================================================
-% from irc.m
+function xylabel_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
+function out1 = title_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
+function out1 = str2num_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
+function out1 = read_cfg_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
+function out1 = ircpath_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
+function out1 = exist_file_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
+function out1 = file2cellstr_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
+function out1 = file2struct_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
+function out1 = struct2str_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
+function out1 = ifeq_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 
 
 %--------------------------------------------------------------------------
@@ -495,10 +797,9 @@ if nargin==2
     catch
         disp(lasterr());
     end
-elseif nargin>2
-    
-    for iArg_in = 2:2:nargin
-        [vcName1, val1] = deal(varargin{iArg_in}, varargin{iArg_in+1});
+elseif nargin>2    
+    for iArg_in = 2:nargin
+        [vcName1, val1] = deal(inputname(iArg_in), varargin{iArg_in});
         S_userdata.(vcName1) = val1;
     end %for
 else
@@ -654,18 +955,75 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function val = get_userdata_(h, vcName, fDelete)
-% fDelete: delete the field after retrieving
+function varargout = get_userdata_(varargin)
+% varargout = get_userdata_(h, name1, name2, ...)
+
 val = [];
-if nargin<3, fDelete = 0; end
-try
-    S_userdata = get(h, 'UserData');
-    if ~isfield(S_userdata, vcName), return; end
-    val = S_userdata.(vcName);
-    if fDelete
-        set(h, 'UserData', rmfield(S_userdata, vcName));
+h = varargin{1};
+S_userdata = get(h, 'UserData');
+for iArg_out = 1:nargout
+    vcName_ = varargin{iArg_out + 1};
+    if isfield(S_userdata, vcName_)
+        varargout{iArg_out} = S_userdata.(vcName_);
+    else
+        varargout{iArg_out} = [];
     end
-catch
-    val = [];
+end %for
+end %func
+
+
+%--------------------------------------------------------------------------
+% 4/23/2019 JJJ: delete either cell of files or multiple arguments
+function delete_(varargin)
+for iArg = 1:nargin
+    csFiles = varargin{iArg};
+    if ischar(csFiles), csFiles = {csFiles}; end
+    for i=1:numel(csFiles)
+        try
+            if iscell(csFiles)
+                delete(csFiles{i});
+            else
+                delete(csFiles(i));
+            end
+        catch
+    %         disperr_();
+        end
+    end
 end
+end %func
+
+
+%--------------------------------------------------------------------------
+function S_out = struct_intersect_(varargin)
+
+S1 = varargin{1};
+for iArg = 2:nargin
+    S2 = varargin{iArg};
+    csName1 = fieldnames(S1);
+    csName2 = fieldnames(S2);
+    csName12 = intersect(csName1, csName2);
+    S_out = struct();
+    if isempty(csName12), return; end
+
+    for iField = 1:numel(csName12)
+        vcName_ = csName12{iField};
+        val1_ = S1.(vcName_);
+        val2_ = S2.(vcName_);
+        if ~strcmp(class(val1_), class(val2_))
+            fDiff_ = true;
+        elseif isempty(val1_) && isempty(val2_)
+            fDiff_ = false;
+        elseif ischar(val1_)
+            fDiff_ = ~strcmpi(val1_, val2_);
+        elseif numel(val1_) ~= numel(val2_)
+            fDiff_ = true;
+        else
+            fDiff_ = ~all(val1_ == val2_);
+        end
+        if ~fDiff_
+            S_out.(vcName_) = val1_;
+        end
+    end %for
+    S1 = S_out;
+end %arg
 end %func

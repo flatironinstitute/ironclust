@@ -18,6 +18,18 @@ for iField = 1:numel(csName12)
         fDiff_ = ~strcmpi(val1_, val2_);
     elseif numel(val1_) ~= numel(val2_)
         fDiff_ = true;
+    elseif iscell(val1_)
+        if numel(val1_) ~= numel(val2_)
+            fDiff_ = true;
+        else
+            for iCell = 1:numel(val1_)
+                if numel(val1_{iCell}) ~= numel(val2_{iCell})
+                    fDiff_ = true;
+                elseif ~all(val1_{iCell} == val2_{iCell})
+                    fDiff_ = true;
+                end
+            end
+        end
     else
         fDiff_ = ~all(val1_ == val2_);
     end

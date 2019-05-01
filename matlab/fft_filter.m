@@ -14,7 +14,14 @@ if nargin<3, vcMode = ''; end
 if isempty(vcMode), vcMode = 'bandpass'; end
 fDebug = 0;
 
-if P.fGpu && fDebug
+if ndims(mrWav) == 3
+    for iSpk = 1:size(mrWav,3)
+        mrWav(:,:,iSpk) = fft_filter(mrWav(:,:,iSpk), P, vcMode);
+    end
+    return;
+end
+
+if get_set_(P, 'fGpu', 1) && fDebug
     mrWav = gather(mrWav);
     P.fGpu = 0;
     fGpu_out = 1;
