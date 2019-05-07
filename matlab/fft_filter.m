@@ -58,6 +58,7 @@ if ~fGpu, mrWav = gather_(mrWav); end
 fh_filter = @(x,f)real(ifft(bsxfun(@times, fft(single(x)), f)));
 n_prev = nan;
 fprintf('Running fft filter (%s)\n\t', vcMode); t1=tic;
+if nT <= nSkip, nPad = 0; end
 for iStart = 1:nSkip:nT
     iEnd = min(iStart+nSkip-1, nT);
     iStart1 = iStart - nPad;

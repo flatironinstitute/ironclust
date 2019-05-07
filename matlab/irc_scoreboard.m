@@ -112,6 +112,7 @@ for iDir = 1:numel(csDir_out)
     [vcParam1, vcRecording1] = strtok(strrep(csDir_out{iDir}, vcDir_out, ''), '/');
     iParam1 = find(strcmp(vcParam1, csParam));
     iRecording1 = find(strcmp(vcRecording1, csRecording));
+    if isempty(iRecording1) || isempty(iParam1) continue; end
     try
         S_score1 = load(vcFile_gt1);
         S_score_clu1 = S_score1.S_score_clu;
@@ -160,8 +161,9 @@ function update_tables_(vcType, vcKey)
 % arrange the param from the best to worst
 if nargin<1, vcType = ''; end
 if nargin<2, vcKey = ''; end
-
-[nCols, snr_thresh, accuracy_thresh, iCol_accuracy] = deal(6, 8, .8, 3);
+S_cfg = read_cfg_();
+[snr_thresh, accuracy_thresh] = get_(S_cfg, 'snr_thresh_plot_gt', 'accuracy_thresh_plot_gt');
+[nCols, iCol_accuracy] = deal(6, 3);
 
 hFig = get_fig_();
 vhTable = get_userdata_(hFig, 'vhTable');
@@ -643,7 +645,10 @@ function hTable = create_table_(hFig, csFiles_raw, vcLabel, pos_table)
 % [hTable, hText] = create_table_([], csFiles_raw, vcLabel)
 
 nFiles = numel(csFiles_raw);
-csColumnName = irc('call', 'pad_cs', {{vcLabel, 'Frac>.8', 'Accu>8', 'Prec>8', 'Recl>8', '#Units'}, [100 5 5 5 5 5]});
+S_cfg = read_cfg_();
+[th2,th1] = get_(S_cfg, 'snr_thresh_plot_gt', 'accuracy_thresh_plot_gt');
+cs_ = cellfun(@(x,y)sprintf('%s>%0.1f',x,y), {'Frac','Accu','Prec','Recl'}, {th1,th2,th2,th2}, 'UniformOutput', 0);
+csColumnName = pad_cs_({vcLabel, cs_{:} , '#Units'}, [100 5 5 5 5 5]);
 nCols = numel(csColumnName);
 vlEditable = false(1, nCols);
 cData_rec = cell(nFiles, numel(csColumnName)); 
@@ -770,6 +775,7 @@ function out1 = file2cellstr_(varargin), fn=dbstack(); out1 = irc('call', fn(1).
 function out1 = file2struct_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = struct2str_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = ifeq_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
+function out1 = pad_cs_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 
 
 %--------------------------------------------------------------------------

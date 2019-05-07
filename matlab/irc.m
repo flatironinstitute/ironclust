@@ -21771,8 +21771,8 @@ end %func
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_(vcFile_prm)
 if nargin<1, vcFile_prm = ''; end
-vcVer = 'v4.5.6';
-vcDate = '4/19/2019';
+vcVer = 'v4.5.8';
+vcDate = '5/7/2019';
 vcHash = file2hash_();
 
 if nargout==0
@@ -23818,18 +23818,21 @@ else
 end
         
 prm_template_name = get_set_(S_txt, 'prm_template_name', []);
-if isempty(vcFile_template)
+if strcmpi(prm_template_name, 'None'), prm_template_name = []; end
+if isempty(vcFile_template) || strcmpi(vcFile_template, 'None')
     if ~isempty(prm_template_name)
         prm_template_name = append_ext_default_(prm_template_name, '_template.prm');
         vcFile_template = ircpath_(prm_template_name);
-        assert_(exist_file_(vcFile_template), 'template file does not exist.');
     end
 else
     vcFile_template = append_ext_default_(vcFile_template, '_template.prm');
     if ~exist_file_(vcFile_template)        
         vcFile_template = ircpath_(vcFile_template);
     end
-    assert_(exist_file_(vcFile_template), 'prm file does not exist.');
+end
+if ~exist_file_(vcFile_template) && ~isempty(vcFile_template)    
+    fprintf(2, 'Template file does not exist: %s\n', vcFile_template);
+    vcFile_template = [];
 end
 P.sRateHz = get_set_(S_txt, 'samplerate', 30000);
 if isfield(S_txt, 'detect_sign')
@@ -30371,7 +30374,7 @@ for iClu = 1:nClu;
     viTime_spk1 = subsample_vr_(viTime_spk1, nSamples_max);
     tnWav1 = mr2tr4_(mnWav_T, P.spkLim_raw, viTime_spk1);    
     mrWav1 = median(tnWav1,3);
-    mrWav1 = single(mrWav1 - median(mrWav1)) * P.uV_per_bit;
+    mrWav1 = single(mrWav1 - median(mrWav1,1)) * P.uV_per_bit;
     if ~fShow_raw, mrWav1 = filt_car_(mrWav1, P); end
     if isempty(trWav_clu)
         trWav_clu = zeros(size(mrWav1,1), size(mrWav1,2), nClu, 'single');

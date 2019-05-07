@@ -55,10 +55,10 @@ st3(:,3) = abs(S0.vrAmp_spk);
 % pc_feature_ind.npy - [nTemplates, nPCFeatures] uint32 matrix specifying which pcFeatures are included in the pc_features matrix.
 
 % build a cluster template. use code from zack's waveform visualizer
-templates = S_clu.tmrWav_spk_clu; % make sure it spans full channels, don't be confused with trWav_clu which stores a subset
+templates = permute(S_clu.tmrWav_spk_clu, [3,1,2]); % make sure it spans full channels, don't be confused with trWav_clu which stores a subset
 
 rez = makeStruct_(st3, connected, xcoords, ycoords, kcoords, templates, cProj, iNeigh, cProjPC, iNeighPC);
-rez.ops = struct('Nchan', nSites, 'chanMap', [], 'Nfilt', [], 'fbinary', P.vcFile, 'NchanTOT', P.nChans, 'fs', P.sRateHz);
+rez.ops = struct('Nchan', nSites, 'chanMap', P.viSite2Chan, 'Nfilt', nClu, 'fbinary', P.vcFile, 'NchanTOT', P.nChans, 'fs', P.sRateHz);
 
 mkdir_(savePath);
 rezToPhy(rez, savePath);

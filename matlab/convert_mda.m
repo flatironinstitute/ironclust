@@ -36,21 +36,22 @@ S_json = struct('samplerate', 20000, 'scale_factor', .195, 'spike_sign', -1);
 vcFile_dat = fullfile(fileparts(fileparts(vcDir_in)), 'Peter_MS21_180719_155941_concat.dat');
 % mnWav = load_bin_(vcFile, vcDataType, dimm, header)
 % create `nShanks` number of ground truth
-S_recording = struct('vcDataType', 'int16', 'nChans', 128, 'nSites_shank', 10);
+S_recording = struct('vcDataType', 'int16', 'nChans', 128);
 viShank_uniq = unique(viShankID_clu);
+viShank_uniq = setdiff(viShank_uniq, [7, 14]); % explicitly exclude shanks
 nShanks = numel(viShank_uniq);
 mnWav_T = [];
 for iShank1 = 1:nShanks
     iShank = viShank_uniq(iShank1);
     viSite1 = find(viShank==iShank);
-    if numel(viSite1) < S_recording.nSites_shank, continue; end
+%     if numel(viSite1) < S_recording.nSites_shank, continue; end
     % reverse lookup for channel_map
     viChan1 = irc('call', 'reverse_lookup', {viSite1, viSite2Chan});
     mrSiteXY1 = mrPosXY_site(viSite1,:);
-    vcDir_out1 = fullfile(vcDir_out, sprintf('shank%d', iShank));
+    vcDir_out1 = fullfile(vcDir_out, sprintf('shank%d', iShank1));
     cvrTime_clu1 = cvrTime_clu(viShankID_clu==iShank);
     viClu1 = cell2mat(arrayfun(@(x)repmat(x, 1, numel(cvrTime_clu1{x})), 1:numel(cvrTime_clu1), 'UniformOutput', 0));
-    viTime1 = cell2mat(cvrTime_clu1');
+    viTime1 = cell2mat(cvrTime_clu1') * S_json.samplerate;
     [viTime1, viSrt] = sort(viTime1); viClu1 = viClu1(viSrt);    
     mrGt1 = [ones(1, numel(viClu1)); viTime1(:)'; viClu1(:)'];    
     if isempty(mnWav_T)

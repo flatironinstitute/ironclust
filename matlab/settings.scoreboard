@@ -1,8 +1,8 @@
 % #Pre-processing
-%maxDist_site_um = {50};
-%maxDist_site_spk_um = {75, 100};
-%vcFilter = {'bandpass', 'banddiff', 'wiener'};
-%freqLim = {[300, 3000], [300, 6000]};
+maxDist_site_um = {50, 75};
+maxDist_site_spk_um = {75, 100};
+vcFilter = {'bandpass'};
+freqLim = {[300, 6000]};
 %vcFilter_detect = {'none', 'bandpass'};
 %freqLim_detect = {[300, 3000]};
 %vcCommonRef = {'none', 'whiten'};
@@ -16,9 +16,9 @@ spkLim_ms = {[-.25, 1]};
 pc_per_chan = {2};
 
 % #Clustering
-nTime_clu = {4};
+nTime_clu = {1,4};
 nTime_drift = {64};
 
 % #Auto-merging
-maxWavCor = {.98};
+maxWavCor = {.97, .98};
 %fGpu=0;
