@@ -53,7 +53,7 @@ fText = 1;                  % Show spike count per unit (*, press 'n' to toggle 
 % #Pre-processing (run "jrc spikesort" after change)
 tlim_load = [];             % Time range to load in sec (uses all time range if set to empty)
 vcFilter = 'bandpass';         % {'ndiff', 'sgdiff', 'bandpass', 'fir1', 'user', 'fftdiff', 'none'}
-vcFilter_detect = '';  % Filter choice to run spike detection {'bandpass', 'wiener', 'matched', 'corr', 'xcov'}
+vcFilter_detect = '';  % Filter choice to run spike detection {'bandpass', 'wiener', 'matched', 'corr', 'xcov', 'banddiff'}
 nDiff_filt = 3;			    % Differentiation filter for vcFilter='sgdiff', ignored otherwise. Set to [] to disable. 2n+1 samples used for centered differentiation
 freqLim = [300, 6000];      % Frequency cut-off limit for vcFilter='bandpass', ignored otherwise. to use high-pass set to [f_lo, nan], to use low-pass set to [nan, f_hi]
 freqLim_detect = [300, 3000];      % Used by vcFilter_detect
@@ -64,7 +64,7 @@ fEllip = 1;                 % Use Elliptic filter. set to 0 for Butterworth filt
 vnFilter_user = [];         % User-specified filter kernel. Used if vcFilter='user' is set.
 fft_thresh = 0;             % Automatically remove frequency outliers (unit:MAD, 10 recommended, 0 to disable). Verify by running "jrc traces" and press "p" to view the power spectrum.
 freqLimNotch = {};          % Notch filter frequency range to exclude manually. {[start1, end1], [start2, end2]}. Can be used in conjunction with fft_thresh.
-vcCommonRef = 'none';       % common reference mode {'none', 'mean', 'median', 'whiten', 'whiten-mean', 'whiten-median'}
+vcCommonRef = 'mean';       % common reference mode {'none', 'mean', 'median', 'whiten', 'whiten-mean', 'whiten-median'}
 nSites_whiten = 32;         % number of sites to use local whtening (only active when vcCommonRef=`whiten`).
 nChans_min_car = 8;        % minimum number of common average referencing
 viSiteZero = [];            % Site# to ignore manually
@@ -106,7 +106,7 @@ fRaw_feature = 0;           % Use raw waveform for feature extraction
 vcCluster = 'drift-knn';        % cluster method: {'spacetime', 'drift', 'drift2', 'drift-knn', 'wavcov'}, spacetime: spatiotemporal decentralized clustering that can handle slow drift; drift: fast drift clustering; wavcov: waveform covariance (creates nChans^2*nDelays_wavcov number of features)
 knn = 30;                   % K nearest neighbor clustering
 nQuantile_drift = 8;        % Valid if vcCluster = 'drift'; # of bins for amplitude histogram per site to find drift pairs
-nTime_clu = 4;             % number of time periods to perform separate clustering (later to be merged after clustering)
+nTime_clu = 2;             % number of time periods to perform separate clustering (later to be merged after clustering)
 nTime_drift = 64;          % divide to 16 drift time bins
 nThreads = 128;             % number of GPU threads for clustering
 
@@ -118,7 +118,7 @@ min_sites_mask = 5;         % Minimum number of sites to have to apply spatial m
 nDelays_xcov = 4;           % Used for vcCluster='xcov'. Number of delays for channel-pair covariance 
 
 % #Post-cluster auto-merging parameters (run "jrc auto" after change)
-maxWavCor = .98;            % merge if waveform correlation is greater than maxWavCor.
+maxWavCor = .99;            % merge if waveform correlation is greater than maxWavCor.
 min_count = 30;             % Minimum cluster size (min_count will be set to 2*#features if lower).
 knn_merge_thresh = 1;       % Number of spikes shared between two peaks to be merged
 thresh_mad_clu = 7.5;       % This sets the MAD score threshold to remove outlier spikes for each cluster.

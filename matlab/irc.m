@@ -2187,15 +2187,7 @@ end %func
 %--------------------------------------------------------------------------
 function write_struct_(vcFile, S)
 % Write a struct S to file vcFile
-try
-    warning off
-    t1=tic;    
-%     S = struct_remove_handles(S); %remove figure handle
-    save(vcFile, '-struct', 'S');
-    fprintf('Wrote to %s, took %0.1fs.\n', vcFile, toc(t1));
-catch
-    fprintf(2, 'Writing struct to file %s failed.\n', vcFile);
-end
+struct_save_(S, vcFile);
 end %func
 
 
@@ -2850,7 +2842,7 @@ fprintf('SNR_gt (Vp/Vrms): %s\n', sprintf('%0.1f ', S_score.vrSnr_gt));
 fprintf('nSites>thresh (GT): %s\n', sprintf('%d ', S_score.vnSite_gt));
 fSaveScore_gt = get_set_(S_cfg, 'fSaveScore_gt', 1);
 if fSaveScore_gt % write score if not called by validtate_mda
-    write_struct_(strrep(P.vcFile_prm, '.prm', '_score.mat'), S_score);
+    struct_save_(S_score, strrep(P.vcFile_prm, '.prm', '_score.mat'));
 end
 set0_(S_score);       
 assignWorkspace_(S_score); %put in workspace
@@ -3249,7 +3241,8 @@ if nargin<3, fPostCluster=1; end
 nRepeat_merge = get_set_(P, 'nRepeat_merge', 10);
 % refresh clu, start with fundamentals
 S_clu = struct_copy_(S_clu, 'rho', 'delta', 'ordrho', 'nneigh', 'P', ...
-    't_runtime', 'halo', 'viiSpk', 'trFet_dim', 'vrDc2_site', 'miKnn', 'viClu', 'icl', 'S_drift');
+    't_runtime', 'halo', 'viiSpk', 'trFet_dim', 'vrDc2_site', 'miKnn', ...
+    'viClu', 'icl', 'S_drift');
 
 if fPostCluster, S_clu = postCluster_(S_clu, P); end
 
@@ -3257,6 +3250,8 @@ S_clu = S_clu_refresh_(S_clu);
 S_clu.viClu_premerge = S_clu.viClu;
 
 switch 1 %1 previously 1
+    case 5
+        S_clu = drift_merge_post_(S_clu, P);
     case 4
         S_clu = graph_merge_(S_clu, P);
     case 3
@@ -4509,6 +4504,13 @@ end %func
 
 
 %--------------------------------------------------------------------------
+function [vi_uniq, vn_uniq] = unique_min_(vi, min_count)
+[vi_uniq, vn_uniq] = unique_count_(vi);
+vi_uniq = vi_uniq(vn_uniq>=min_count);
+end %func
+
+
+%--------------------------------------------------------------------------
 function S_clu = post_merge_wav1_(S_clu, nRepeat_merge, P)
 % S0 = get(0, 'UserData');
 % create covariance matrix (mrDist_wav)
@@ -5103,7 +5105,7 @@ else
     edit_prm_file_(struct('vcFile_gt', vcFile_gt_mat), vcFile_prm); % update groundtruth file field
 %     edit_(vcFile_prm);
 end
-write_struct_(vcFile_gt_mat, S_gt);
+struct_save_(S_gt, vcFile_gt_mat);
 end %func
 
 
@@ -13108,7 +13110,7 @@ Sevt.viSpk = S0.viTime_spk;
 Sevt.vrSpk = S0.vrAmp_spk;
 Sevt.vrThresh_uV = bit2uV_(S0.vrThresh_site, S0.P);
 Sevt.dimm_fet = [1, S0.dimm_fet(:)'];
-write_struct_(strrep(P.vcFile_prm, '.prm', '_evt.mat'), Sevt);
+struct_save_(Sevt, strrep(P.vcFile_prm, '.prm', '_evt.mat'));
 fprintf('\tEvent struct (Sevt) exported.\n\t');
 assignWorkspace_(Sevt);
 
@@ -13120,7 +13122,7 @@ if isfield(S0, 'S_clu')
     Sclu.viSite = S0.viSite_spk;
     Sclu.viTime = S0.viTime_spk;
     Sclu.vrSnr_Vmin_clu = S0.S_clu.vrSnr_clu;
-    write_struct_(strrep(P.vcFile_prm, '.prm', '_clu.mat'), Sclu);
+    struct_save_(Sclu, strrep(P.vcFile_prm, '.prm', '_clu.mat'));
     fprintf('\tCluster struct (Sclu) exported.\n\t');
     assignWorkspace_(Sclu);
 end
@@ -13376,7 +13378,7 @@ fprintf('\tkilosort took %0.1fs for %s\n', runtime_ksort, P.vcFile_prm);
 
 % output kilosort result
 S_ksort = struct('rez', rez, 'P', P, 'runtime_ksort', runtime_ksort);
-struct_save_(S_ksort, strrep(vcFile_prm, '.prm', '_ksort.mat'), 1);
+struct_save_(S_ksort, strrep(vcFile_prm, '.prm', '_ksort.mat'));
 end %func
 
 
@@ -21771,8 +21773,8 @@ end %func
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_(vcFile_prm)
 if nargin<1, vcFile_prm = ''; end
-vcVer = 'v4.5.8';
-vcDate = '5/7/2019';
+vcVer = 'v4.5.9';
+vcDate = '5/14/2019';
 vcHash = file2hash_();
 
 if nargout==0
@@ -23650,7 +23652,7 @@ end
 S_caim = makeStruct_(mrV_clu, mrCentroid_clu, vS_region_clu, img_label, ...
     viSync_rhs, vcFile_stim_rhs, dimm_stim_rhs, ...
     vpp_stim_rhs, vrVpp_chan_stim_rhs, vrVpp_time_stim_rhs, S_rhs, P, vcFile_prm);
-write_struct_(strrep(vcFile_prm, '.prm', '_caim.mat'), S_caim);
+struct_save_(S_caim, strrep(vcFile_prm, '.prm', '_caim.mat'));
 
 % show image and traces
 % plot_caim_(S_caim);
@@ -24111,7 +24113,7 @@ nSites = numel(P.viSite2Chan);
 %     S_clu = cluster_spacetime_(S0, P, [], viSpk_drift);
 %     return;
 % else
-[miSort_drift, cviSpk_drift, nTime_drift] = drift_similarity_(S0, P);
+[miSort_drift, cviSpk_drift, nTime_drift, viDrift_spk] = drift_similarity_(S0, P);
 % end
 
 dc2 = [];
@@ -24204,8 +24206,9 @@ fprintf('\n\ttook %0.1fs\n', toc(t2));
 t_runtime = toc(t_func);
 trFet_dim = size(trFet_spk); %[1, size(mrFet1,1), size(mrFet1,2)]; %for postCluster
 [~, ordrho] = sort(vrRho, 'descend');
-S_clu = struct('rho', vrRho, 'delta', vrDelta, 'ordrho', ordrho, 'nneigh', viNneigh, ...
-    'P', P, 't_runtime', t_runtime, 'halo', [], 'viiSpk', [], 'trFet_dim', trFet_dim, 'vrDc2_site', vrDc2_site);
+S_clu = struct('rho', vrRho, 'delta', vrDelta, 'ordrho', ordrho, ...
+    'nneigh', viNneigh, 'P', P, 't_runtime', t_runtime, 'halo', [], ...
+    'viiSpk', [], 'trFet_dim', trFet_dim, 'vrDc2_site', vrDc2_site);
 end %func
 
 
@@ -27661,6 +27664,7 @@ if ~isempty(vcDir_out)
 end
 disp(vcEval);
 eval(vcEval);
+system('./run_irc  version');
 fprintf('\n\trun_irc.m is compiled by mcc, took %0.1fs\n', toc(t1));
 end %fucn
 
@@ -27684,21 +27688,38 @@ if ~strcmpi(version_(), mcc_version_()), mcc_(); end %compile
 t1=tic;
 S_cfg = read_cfg_();
 run_irc_path = ircpath_('run_irc');
+timeout = get_set_(S_cfg, 'timeout_disbatch', 60*60*1);
+
 % Find inputdir and outputdir
 if ischar(vcFile_template)
     vcDir_in = path_abs_(vcDir_in);
     mkdir_(vcDir_out);
     vcDir_out = path_abs_(vcDir_out);
     [csFile_raw, csDir_in] = find_files_(vcDir_in, 'raw.mda');
-    csDir_out = cellfun(@(x)strrep(x, vcDir_in, vcDir_out), csDir_in, 'UniformOutput', 0);
-    csLine_disbatch = cellfun(@(x,y)sprintf('%s %s %s %s', run_irc_path, x, y, vcFile_template), csDir_in, csDir_out, 'UniformOutput', 0);
+    csDir_out = cellfun_(@(x)strrep(x, vcDir_in, vcDir_out), csDir_in);
+    csFile_log = cellfun_(@(x)fullfile(x, 'stdout_irc.log'), csDir_out);
+    csLine_disbatch = ...
+        cellfun_(@(x,y,z)sprintf('timeout %d %s %s %s %s &> %s', ...
+            timeout, run_irc_path, x, y, vcFile_template, z), ...
+                csDir_in, csDir_out, csFile_log);
 elseif iscell(vcFile_template)
     assert(iscell(vcDir_in) && iscell(vcDir_out), 'all inputs must be the cell');
     [csFile_template, csDir_in, csDir_out] = deal(vcFile_template, vcDir_in, vcDir_out);    
     assert(numel(csDir_in) == numel(csDir_out) && numel(csDir_out) == numel(csFile_template), 'size must be the same');
-    csLine_disbatch = cellfun(@(x,y,z)sprintf('%s %s %s %s', run_irc_path, x, y, z), csDir_in, csDir_out, csFile_template, 'UniformOutput', 0);
+    csFile_log = cellfun_(@(x)fullfile(x, 'stdout_irc.log'), csDir_out);
+    csLine_disbatch = ...
+        cellfun_(@(x,y,z,a)sprintf('timeout %d %s %s %s %s &> %s', ...
+            timeout, run_irc_path, x, y, z, a), ...
+                csDir_in, csDir_out, csFile_template, csFile_log);
 end %if
-fprintf('Running sbatch on %d jobs.\n', numel(csLine_disbatch)); 
+% add output log files and 
+fprintf('Running sbatch on %d jobs.\n', numel(csLine_disbatch));
+
+cellfun_(@(x)mkdir_(x), csDir_out);
+fForceRerun = get_set_(S_cfg, 'fForceRerun', 0);
+if fForceRerun
+    cellfun(@(x)delete_(fullfile(x,'*')), csDir_out);
+end
 
 % Add start and stop
 vcDir_disbatch = read_cfg_('disbatch_path');
@@ -27718,14 +27739,18 @@ vcFile_batch = fullfile(vcDir_disbatch, sprintf('irc_%s.batch', version_()));
 delete_(vcFile_disbatch, vcFile_start, vcFile_end, vcFile_batch);
 
 cellstr2file_(vcFile_disbatch, csLine_disbatch, 1);
-vcCmd = strrep_(S_cfg.sbatch, '$taskfile', vcFile_disbatch, '$n', S_cfg.sbatch_nnodes, '$c', S_cfg.sbatch_ncpu_per_task);     
+%vcCmd = strrep_(S_cfg.sbatch, '$taskfile', vcFile_disbatch, '$N', S_cfg.sbatch_nnodes, '$c', S_cfg.sbatch_ncpu_per_task);     
+vcCmd = strrep_(S_cfg.sbatch, '$taskfile', vcFile_disbatch, ...
+    '$N', S_cfg.sbatch_nnodes, '$n', S_cfg.sbatch_tasks_per_node, ...
+    '$t', S_cfg.sbatch_time_limit);     
 fprintf('Running %s\n', vcCmd);
 t_submit=tic;
 
 % output is directed to vcDir_disbatch
 cd(vcDir_disbatch);
-system(vcCmd);
-
+[status_system, cmdout_system] = system(vcCmd);
+disp(cmdout_system);
+disp(csFile_log');
 fprintf('\n\tsbatch submission took %0.1fs\n', toc(t_submit));
 csFile_prm = cellfun(@(x)fullfile(x, 'raw_geom.prm'), csDir_out, 'UniformOutput', 0);
 cellstr2file_(vcFile_batch, csFile_prm, 1);
@@ -30911,7 +30936,11 @@ S_clu = S0.S_clu;
 
 S_cfg = read_cfg_();
 fUseCache_gt = get_set_(S_cfg, 'fUseCache_gt', 1);
-fMergeCheck = get_set_(S_cfg, 'fMergeCheck_gt', 1); %kilosort-style validation
+fMergeCheck_gt = get_set_(S_cfg, 'fMergeCheck_gt', 1); %kilosort-style validation
+fBurstCheck_gt = get_set_(S_cfg, 'fBurstCheck_gt', 1); 
+fOverlapCheck_gt = get_set_(S_cfg, 'fOverlapCheck_gt', 1); 
+
+
 if ~isfield(P, 'snr_thresh_gt')
     snr_thresh_gt = get_set_(S_cfg, 'snr_thresh_gt', 1);
 else
@@ -30927,11 +30956,16 @@ else
         P.vcFile_gt = subsFileExt_(P.vcFile, '_gt.mat'); 
     end
     vcFile_gt1 = strrep(P.vcFile_prm, '.prm', '_gt1.mat');
-    if exist_file_(vcFile_gt1) && fUseCache_gt
-        S_gt = load(vcFile_gt1);
-        if isfield(S_gt, 'vrSnr_sd_clu')
-            fprintf('Loaded from cache: %s\n', vcFile_gt1);
-            fProcess_gt = 0; 
+    if fUseCache_gt
+        if ~exist_file_(vcFile_gt1)
+            vcFile_gt1 = fullfile(fileparts(P.vcFile), 'firings_true_gt1.mat');
+        end
+        if exist_file_(vcFile_gt1)
+            S_gt = load(vcFile_gt1);
+            if isfield(S_gt, 'vrSnr_sd_clu')
+                fprintf('Loaded from cache: %s\n', vcFile_gt1);
+                fProcess_gt = 0; 
+            end
         end
     end   
     if fProcess_gt
@@ -30957,11 +30991,13 @@ fprintf('verifying cluster...\n');
 
 [mrMiss, mrFp, vnCluGt, miCluMatch, S_score_clu] = ...
     clusterVerify(S_gt.viClu, S_gt.viTime, S_clu.viClu, S0.viTime_spk, nSamples_jitter);  %S_gt.viTime
-if fMergeCheck
+[S_score_ksort, S_burst, S_overlap] = deal([]);
+if fMergeCheck_gt
     try
+        t_mergeCheck = tic;
         S_score_ksort = compareClustering2_(S_gt.viClu, S_gt.viTime, S_clu.viClu+1, S0.viTime_spk); 
+        fprintf('\tmerge check took %0.1fs\n', toc(t_mergeCheck));
     catch
-        S_score_ksort = [];
         disperr_('validate: fMergeCheck failed');
     end
 end
@@ -30979,28 +31015,38 @@ else
 end
 
 % Burst stats
-[vlHit_gtspk, vnBurst_gtspk] = deal(cell2vec_(S_score_clu.cvlHit_gt), cell2vec_(S_gt.cvnBurst_clu));
-[vpHit_burst, vnHit_burst] = grpstats(vlHit_gtspk, vnBurst_gtspk, {'mean', 'numel'});
-cvpHit_burst_gt = cellfun(@(vl_,vi_)grpstats(vl_,vi_+1,'mean'), S_score_clu.cvlHit_gt(:), S_gt.cvnBurst_clu(:), 'UniformOutput', 0);
-mpHit_burst_gt = cell2mat_nan_(cvpHit_burst_gt)';
-S_burst = makeStruct_(cvpHit_burst_gt, vlHit_gtspk, vnBurst_gtspk, vpHit_burst, vnHit_burst, mpHit_burst_gt);
-S_score = struct_add_(S_score, S_burst);
+try
+    if fBurstCheck_gt
+        t_burstCheck = tic;
+        [vlHit_gtspk, vnBurst_gtspk] = deal(cell2vec_(S_score_clu.cvlHit_gt), cell2vec_(S_gt.cvnBurst_clu));
+        [vpHit_burst, vnHit_burst] = grpstats(vlHit_gtspk, vnBurst_gtspk, {'mean', 'numel'});
+        cvpHit_burst_gt = cellfun(@(vl_,vi_)grpstats(vl_,vi_+1,'mean'), S_score_clu.cvlHit_gt(:), S_gt.cvnBurst_clu(:), 'UniformOutput', 0);
+        mpHit_burst_gt = cell2mat_nan_(cvpHit_burst_gt)';
+        S_burst = makeStruct_(cvpHit_burst_gt, vlHit_gtspk, vnBurst_gtspk, vpHit_burst, vnHit_burst, mpHit_burst_gt);
+        fprintf('\tBurst check took %0.1fs\n', toc(t_burstCheck));
+    end
+catch
+    ;
+end
 
 % Overlap stats
 try
-    S_overlap = analyze_overlap_(S_gt, S_cfg, P);
-    cvnOverlap_gt = S_overlap.cvnOverlap_gt;
-    vnOverlap_gtspk = cell2vec_(cvnOverlap_gt);
-    [vpHit_overlap, vnHit_overlap] = grpstats(vlHit_gtspk, cell2vec_(cvnOverlap_gt), {'mean', 'numel'});
-    cvpHit_overlap_gt = cellfun(@(vl_,vi_)grpstats(vl_,vi_+1,'mean'), S_score_clu.cvlHit_gt(:), cvnOverlap_gt(:), 'UniformOutput', 0);
-    mpHit_overlap_gt = cell2mat_nan_(cvpHit_overlap_gt)';
-    S_overlap = struct_add_(S_overlap, ...
-        cvpHit_overlap_gt, vlHit_gtspk, vnOverlap_gtspk, vpHit_overlap, vnHit_overlap, mpHit_overlap_gt);
+    if fOverlapCheck_gt
+        t_overlapCheck = tic;
+        S_overlap = analyze_overlap_(S_gt, S_cfg, P);
+        cvnOverlap_gt = S_overlap.cvnOverlap_gt;
+        vnOverlap_gtspk = cell2vec_(cvnOverlap_gt);
+        [vpHit_overlap, vnHit_overlap] = grpstats(vlHit_gtspk, cell2vec_(cvnOverlap_gt), {'mean', 'numel'});
+        cvpHit_overlap_gt = cellfun(@(vl_,vi_)grpstats(vl_,vi_+1,'mean'), S_score_clu.cvlHit_gt(:), cvnOverlap_gt(:), 'UniformOutput', 0);
+        mpHit_overlap_gt = cell2mat_nan_(cvpHit_overlap_gt)';
+        S_overlap = struct_add_(S_overlap, ...
+            cvpHit_overlap_gt, vlHit_gtspk, vnOverlap_gtspk, vpHit_overlap, vnHit_overlap, mpHit_overlap_gt);
+        fprintf('\tOverlap check took %0.1fs\n', toc(t_overlapCheck));
+    end
 catch
-    S_overlap = [];
+    ;
 end
-S_score = struct_add_(S_score, S_overlap, S_score_clu, S_score_ksort);
-
+S_score = struct_add_(S_score, S_overlap, S_score_clu, S_score_ksort, S_burst);
 end %func
 
 
@@ -31186,4 +31232,102 @@ for iFile = 1:numel(csDir_in)
         disperr_();
     end
 end %for iFile
+end %func
+
+
+%--------------------------------------------------------------------------
+function varargout = cellfun_(varargin)
+if nargout == 0
+    cellfun(varargin{:}, 'UniformOutput', 0);
+elseif nargout==1
+    varargout{1} = cellfun(varargin{:}, 'UniformOutput', 0);
+elseif nargout==2
+    [varargout{1}, varargout{2}] = cellfun(varargin{:}, 'UniformOutput', 0);    
+elseif nargout==3
+    [varargout{1}, varargout{2}, varargout{3}] = cellfun(varargin{:}, 'UniformOutput', 0);    
+else
+    error('cellfun_: nargout exceeds 3');
+end   
+end %func
+
+
+%--------------------------------------------------------------------------
+% May 14, 2019 JJJ
+function S_clu = drift_merge_post_(S_clu, P)
+
+fUse_raw = 0;
+nSpk_min = 10; %get_set_(P, 'min_count', 30);
+
+viDrift_spk = S_clu.S_drift.viDrift_spk(:);
+fprintf('Drift merge (post-hoc)\n'); t1=tic;
+[viClu_spk, cviSpk_clu] = struct_get_(S_clu, 'viClu', 'cviSpk_clu');
+viSite_spk = get0_('viSite_spk');
+frac_thresh = get_set_(P, 'thresh_core_knn', .75);
+nTemplates = get_set_(P, 'nTemplates_clu', 100); %P.knn;
+nShift_max = ceil(diff(P.spkLim) * P.frac_shift_merge / 2);
+viShift = -nShift_max:nShift_max;
+tnWav_spk = get_spkwav_(P, fUse_raw); % use raw waveform
+
+% create template (nTemplate per cluster)
+% [cviSpk_in_clu, cviSpk_out_clu, ctrWav_in_clu, cviSite_in_clu] = deal(cell(S_clu.nClu, 1));
+fh_car = @(tr)tr - repmat(mean(tr,2), [1,size(tr,2),1]);
+fh_wav = @(vi)single(tnWav_spk(:,:,vi));
+fh_trimmean = @(vi)tr2mr_trimmean_(fh_wav(vi));
+fh_mr = @(vi)single(reshape(tnWav_spk(:,:,vi), [], numel(vi)));
+fh_med = @(vi)single(median(tnWav_spk(:,:,vi),3));
+fh_mean = @(vi)single(mean(tnWav_spk(:,:,vi),3));
+fh_pv1 = @(vi)tr_pv1_(single(tnWav_spk(:,:,vi)));
+fh_meanalign = @(vi)tr_mean_align_(single(tnWav_spk(:,:,vi)));
+fh_denoise = @(vi)tr2mr_denoise_(single(tnWav_spk(:,:,vi)));
+nSites = max(viSite_spk);
+nDrift = get_set_(P, 'nTime_drift', 64);
+[viClu_spk, vrRho_spk] = deal(S_clu.viClu, S_clu.rho);
+
+
+nClu = S_clu.nClu;
+fprintf('Merging templates\n\t'); t_merge=tic;
+fh_norm = @(x)bsxfun(@rdivide, x, std(x,1)*sqrt(size(x,1)));
+fh_mean = @(x)mean(single(x),3);
+mrDist_clu = nan(S_clu.nClu, 'single');
+miSites_clu = P.miSites(1:end/2,S_clu.viSite_clu);
+cviDrift_spk_clu = cellfun_(@(x)(viDrift_spk(x)), S_clu.cviSpk_clu);
+cviDrift_unique_clu = cellfun_(@(x)unique_min_(x,nSpk_min), cviDrift_spk_clu);
+cviSite_spk_clu = cellfun_(@(x)viSite_spk(x), S_clu.cviSpk_clu);
+for iClu1 = 1:S_clu.nClu
+    viSite_clu1 = miSites_clu(:,iClu1);
+    vrDist_clu1 = zeros(S_clu.nClu, 1, 'single');
+    viSite_spk_clu1 = cviSite_spk_clu{iClu1};
+    viSpk_clu1 = cviSpk_clu{iClu1};
+    for iClu2 = iClu1+1:S_clu.nClu
+        viSite_clu2 = miSites_clu(:,iClu2);
+        viSite12 = intersect(viSite_clu1, viSite_clu2);
+        if isempty(viSite12), continue; end        
+        viDrift12 = intersect(cviDrift_unique_clu{iClu1}, cviDrift_unique_clu{iClu2});
+        if isempty(viDrift12), continue; end      
+        
+        viSpk_clu2 = cviSpk_clu{iClu2};
+        viSite_spk_clu2 = cviSite_spk_clu{iClu2};   
+        
+        [vl1, vl2] = deal(ismember(cviDrift_spk_clu{iClu1}, viDrift12), ismember(cviDrift_spk_clu{iClu2}, viDrift12));
+        iSite12 = mode([viSite_spk_clu1(vl1); viSite_spk_clu2(vl2)]);        
+
+        viSpk12 = viSpk_clu1(viSite_spk_clu1 == iSite12 & vl1);
+        viSpk21 = viSpk_clu2(viSite_spk_clu2 == iSite12 & vl2);        
+        if isempty(viSpk12) || isempty(viSpk21), continue; end
+                
+        mr12 = mean(single(tnWav_spk(:,:,viSpk12)),3);
+        mr21 = mean(single(tnWav_spk(:,:,viSpk21)),3);
+        vrDist_clu1(iClu2) = fh_norm(mr12(:))' * fh_norm(mr21(:));
+    end
+    mrDist_clu(:, iClu1) = vrDist_clu1;
+%     fprintf('.');
+end %for
+mlWavCor_clu = mrDist_clu >= P.maxWavCor;
+viMap_clu = int32(ml2map_(mlWavCor_clu));
+vlPos = S_clu.viClu > 0;
+S_clu.viClu(vlPos) = viMap_clu(S_clu.viClu(vlPos)); %translate cluster number
+S_clu = S_clu_refresh_(S_clu);
+nClu_post = S_clu.nClu;
+nClu_pre = nClu;
+fprintf('\nMerged %d waveforms (%d->%d), took %0.1fs\n', nClu-nClu_post, nClu, nClu_post, toc(t_merge));
 end %func

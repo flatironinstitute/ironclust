@@ -188,7 +188,6 @@ function vrFilter_wiener = fft_wiener_(N, freqLim, freqLim_width, sRateHz)
 % freqLim_width: frequency transition width, [f_width_lo, f_width_hi]
 
 persistent P_ filt0_
-
 % computes the cache only if the cache is abscent
 if nargin==2
     if ~isempty(filt0_)
@@ -215,7 +214,7 @@ if nargin==2
     end
     vrFft_noise = fh1(vr2<=threshLim(1));
     vrFft_noise_signal = fh1(vr2>=threshLim(2));
-    vrFilt = fh_rect(vrFft_noise_signal.^2 - vrFft_noise.^2) ./ vrFft_noise_signal.^2;
+    vrFilt = rectify_(vrFft_noise_signal.^2 - vrFft_noise.^2) ./ vrFft_noise_signal.^2;
     vrFilt(vrFilt<0) = 0;
 %     switch 3
 %         case 3, scale = 1;
@@ -254,6 +253,12 @@ switch 2
         vrFilter = vrFilter_wiener;
 end
 filt_ = vrFilter;
+end %func
+
+
+%--------------------------------------------------------------------------
+function x = rectify_(x)
+x(x<0) = 0;
 end %func
 
 

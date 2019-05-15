@@ -3,6 +3,17 @@ IronClust, written by J. James Jun, Flatiron Institute, Simons Foundation
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [4.5.9] - 2019-5-14
+### Changed
+- `default.prm` paramters updated based on parameter search using SpikeForest dataset
+  - `maxWavCor=.99`, previously .98
+  - `nTime_clu=2`, previously 4
+  - `vcCommonRef='mean';`, previously 'none'
+
+### Fixed
+- `fft_filter` error fixed when `vcFilter='wiener';` option is used.
+
+
 ## [4.5.8] - 2019-5-7
 ### Fixed
 - `Show averaged waveforms on all channels` error fixed

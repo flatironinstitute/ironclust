@@ -26,7 +26,7 @@ try, close(hMsg); catch; end
 % Add axes
 fh_ax1 = @(x)axes('Parent', hFig, 'OuterPosition', x);
 %vhAx = cellfun(@(x)fh_ax1(x), {[0 .1 .15 .3], [.15 .1 .15 .3], [.35 .1 .15 .3], [.5 .1 .15 .3], [.70 .1 .15 .3], [.85 .1 .15 .3]});
-vhAx = cellfun(@(x)fh_ax1(x), {[0 .1 .33 .3], [0 0 0 0], [.33 .1 .33 .3], [0 0 0 0], [.66 .1 .33 .3], [0 0 0 0]});
+vhAx = cellfun(@(x)fh_ax1(x), {[0 0 .33 .3], [0 0 0 0], [.33 0 .33 .3], [0 0 0 0], [.66 0 .33 .3], [0 0 0 0]});
 [hAx_accu1, hAx_accu2, hAx_prec1, hAx_prec2, hAx_recl1, hAx_recl2] = deal_(vhAx);
 xlabel_(vhAx(1:2:end), 'SNR (Vmin/Vrms)');
 % xlabel_(vhAx(2:2:end), 'Param Rank');
@@ -39,15 +39,16 @@ S_fig = set_userdata_(hFig, vhAx);
 set(hFig, 'UserData', S_fig);
 
 % add texts
-hText1 = uicontrol(hFig, 'Style','text','String','',...
+hText1 = uicontrol(hFig, 'Style','text','String','Select a parameter',...
        'Unit', 'Normalized', 'OuterPosition', [.5 .4 .5 .3], ...
        'HorizontalAlignment', 'left', 'BackgroundColor','w', 'Tag', 'text_param');
-hText1.String = {'Select a parameter'}; % display meta
-hText2  = uicontrol(hFig, 'Style','text','String','',...
-       'Unit', 'Normalized', 'OuterPosition', [0 0 1 .1], ...
-       'HorizontalAlignment', 'left', 'BackgroundColor','w', 'Tag', 'text_selection');   
-hText2.String = {'All selected'}; % display meta
-S_fig = set_userdata_(hFig, hText1, hText2);
+hText2  = uicontrol(hFig, 'Style','text','String','All selected',...
+       'Unit', 'Normalized', 'OuterPosition', [0 .3 .5 .1], ...
+       'HorizontalAlignment', 'left', 'BackgroundColor','w', 'Tag', 'text_selection');
+hText3  = uicontrol(hFig, 'Style','text','String','All selected',...
+       'Unit', 'Normalized', 'OuterPosition', [0.5 .3 .5 .1], ...
+       'HorizontalAlignment', 'left', 'BackgroundColor','w', 'Tag', 'text_selection');
+S_fig = set_userdata_(hFig, hText1, hText2, hText3);
 
 % create table
 hTable_studyset = create_table_(hFig, csStudyset, 'Studyset', [0 .8 .5 .2]);
@@ -60,7 +61,7 @@ vhTable = [hTable_studyset, hTable_study, hTable_recording, hTable_param];
 S_fig = set_userdata_(hFig, vhTable);
 arrayfun(@(x)set(x, 'CellSelectionCallback', @cbf_select_table_), vhTable);
 arrayfun(@(x)set(x, 'ButtonDownFcn', @cbf_sort_table_), vhTable);
-update_tables_();
+update_tables_('initialize');
 
 [csParam1, csInput1] = deal(csParam, csStudyset);
 set_userdata_(hFig, csParam1, csInput1);
@@ -82,8 +83,11 @@ csParam1 = get_userdata_(hFig, 'csParam1');
 if isempty(csParam1), csParam1 = get_userdata_(hFig, 'csParam'); end
 if isempty(csInput1), csInput1 = get_userdata_(hFig, 'csStudyset'); end
 
-hMsgbox = msgbox('Running batch');
+hMsgbox = msgbox('Running batch...');
 csDir_out = sbatch_mda_(csInput1, csParam1);
+close_(hMsgbox);
+
+hMsgbox = msgbox('Assembling results...');
 assemble_results_(csDir_out)
 close_(hMsgbox);
 end %func
@@ -130,7 +134,7 @@ end
 
 S_fig = set_userdata_(hFig, cmSnr, cmPrecision, cmRecall, cmAccuracy);
 save_cache_(S_fig);
-update_tables_();
+update_tables_('initialize');
 % close_(hMsgbox);
 end %func
 
@@ -159,149 +163,186 @@ end %func
 %--------------------------------------------------------------------------
 function update_tables_(vcType, vcKey)
 % arrange the param from the best to worst
-if nargin<1, vcType = ''; end
+if nargin<1, vcType = 'initialize'; end
 if nargin<2, vcKey = ''; end
 S_cfg = read_cfg_();
 [snr_thresh, accuracy_thresh] = get_(S_cfg, 'snr_thresh_plot_gt', 'accuracy_thresh_plot_gt');
 [nCols, iCol_accuracy] = deal(6, 3);
 
-hFig = get_fig_();
+[hFig, S_fig] = get_fig_();
 vhTable = get_userdata_(hFig, 'vhTable');
-[cmSnr, cmPrecision, cmRecall, cmAccuracy, csParam, csParam1] = ...
-    get_userdata_(hFig, 'cmSnr', 'cmPrecision', 'cmRecall', 'cmAccuracy', 'csParam', 'csParam1');
-[nRecording, nParam] = size(cmSnr);
 
-switch lower(vcType)
-    case 'param' % parameter is generated, update table, reset
+switch lower(vcType)        
+    case 'param' % parameter is generated, clear table
         csParam = vcKey;
         hTbl_param = vhTable(4);
         hTbl_param.Data = cell(numel(vcKey), nCols);
-        hTbl_param.Data(:,1) = csParam;
+        hTbl_param.Data(:,1) = csParam;        
         [cmSnr, cmPrecision, cmRecall, cmAccuracy] = deal([]);
         set_userdata_(hFig, cmSnr, cmPrecision, cmRecall, cmAccuracy, csParam);
-        save_cache_();
+        % deselect all
+        [csParam1, csInput1] = get_userdata_(hFig, 'csParam', 'csStudyset');
+        set_userdata_(hFig, csParam1, csInput1);
+        S_fig.hText1.String = '';
+        S_fig.hText2.String = {'Selected Recording:', 'All selected'};
+        S_fig.hText3.String = {'Selected Param:', 'All selected'};
+        save_cache_();        
+        
         return;
         
-    case 'input'
-        csParam1 = vcKey;
-        if isempty(cmSnr), return; end
-        [~, viParam] = ismember(csParam1, csParam);
-        fh_ = @(x)cell2mat_(x(:,viParam));
-        [mrSnr1, mrPrecision1, mrRecall1, mrAccuracy1] = ...nC_max
-            deal(fh_(cmSnr), fh_(cmPrecision), fh_(cmRecall), fh_(cmAccuracy));
-        vhAx = get_userdata_(hFig, 'vhAx');
-        arrayfun(@(x)hold(x,'off'), vhAx);
-        plot(vhAx(1), mrSnr1(:), mrAccuracy1(:), '.'); xylabel_(vhAx(1), 'SNR', 'Accuracy');
-        plot(vhAx(3), mrSnr1(:), mrPrecision1(:), '.'); xylabel_(vhAx(3), 'SNR', 'Precision');
-        plot(vhAx(5), mrSnr1(:), mrRecall1(:), '.'); xylabel_(vhAx(5), 'SNR', 'Recall');
-        arrayfun(@(x)ylim(x,[0,1]), vhAx);
-        arrayfun(@(x)grid(x,'on'), vhAx);
+    case {'input-param', 'param-input'}
+        [viRecording1, viParam1] = update_plots_(hFig);
+
 end
+
+[cmSnr, cmPrecision, cmRecall, cmAccuracy, csParam, csParam1, csRecording] = ...
+    get_userdata_(hFig, 'cmSnr', 'cmPrecision', 'cmRecall', 'cmAccuracy', 'csParam', 'csParam1', 'csRecording');
+[nRecording, nParam] = size(cmSnr);
 if isempty(cmSnr), return; end
 
-% param table
 [hTbl_studyset, hTbl_study, hTbl_recording, hTbl_param] = deal_(vhTable);
-csParam_tbl = hTbl_param.Data(:,1);
-% hTbl_param.Data = cell(nParam, nCols);
-for iParam_tbl = 1:numel(csParam_tbl)    
-    iParam = strcmp(csParam_tbl{iParam_tbl}, csParam);
-    fh_ = @(x)cell2mat_(x(:,iParam));
-    [vrSnr1, vrPrec1, vrRecall1, vrAccuracy1] = ...
-        deal(fh_(cmSnr), fh_(cmPrecision), fh_(cmRecall), fh_(cmAccuracy));   
-    
-    vl_ = vrSnr1 > snr_thresh;
-    fh_ = @(x)nanmean(x(vl_));
-    vr_ = [nanmean(vrAccuracy1>accuracy_thresh), fh_(vrAccuracy1), fh_(vrPrec1), fh_(vrRecall1), numel(vl_)];
-%     hTbl_param.Data{iParam, 1} = csParam{iParam};
-    hTbl_param.Data(iParam_tbl, 2:end) = arrayfun(@num2str, vr_, 'UniformOutput', 0);
-end %for
-% accuracy rank
-% precision rank
-% recall rank
+switch lower(vcType)
+    case {'input-param', 'initialize'} % update the input table using param
+        % param table        
+        csParam_tbl = hTbl_param.Data(:,1);
+        % hTbl_param.Data = cell(nParam, nCols);
+        for iParam_tbl = 1:numel(csParam_tbl)    
+            iParam = strcmp(csParam_tbl{iParam_tbl}, csParam);
+            fh_ = @(x)cell2mat_(x(:,iParam));
+            [vrSnr1, vrPrec1, vrRecall1, vrAccuracy1] = ...
+                deal(fh_(cmSnr), fh_(cmPrecision), fh_(cmRecall), fh_(cmAccuracy));   
 
-% pick the best overall by Accuracy and determine iParam index
-if numel(csParam1) == numel(csParam)
-    viParam = 1:numel(csParam);
-elseif numel(csParam1) >= 1
-    [~, viParam] = ismember(csParam1, csParam);
-elseif isempty(csParam1)
-    vrAccuracy_param = cellfun(@str2num_, hTbl_param.Data(:,iCol_accuracy));
-    [~, iParam_] = max(vrAccuracy_param);
-    if isnan(iParam_), return; end
-    vcParam_best = hTbl_param.Data{iParam_, 1};
-    viParam = find(strcmp(vcParam_best, csParam));
-end
-% clear the recording table (use the best parameter)
-% if parameter is selected, use that and pick the best? or average of them?
-% if multiple parameters are selected show the averaged results
-% if none selected show the best overall. 
-% clear the table first
-% hTbl_recording.Data(:, 2:end) = {''};
-% hTbl_study.Data(:, 2:end) = {''};
-% hTbl_studyset.Data(:, 2:end) = {''};
-
-[csRecording, csStudy, csStudyset] = get_userdata_(hFig, 'csRecording', 'csStudy', 'csStudyset');
-csRecording_tbl = hTbl_recording.Data(:,1);
-% create studyset and study matrix
-for iRecording_tbl = 1:nRecording
-    try
-        iRecording = find(strcmp(csRecording_tbl{iRecording_tbl}, csRecording));
+            vl_ = vrSnr1 > snr_thresh;
+            fh_ = @(x)nanmean(x(vl_));
+            vr_ = [nanmean(vrAccuracy1>accuracy_thresh), fh_(vrAccuracy1), fh_(vrPrec1), fh_(vrRecall1), numel(vl_)];
+        %     hTbl_param.Data{iParam, 1} = csParam{iParam};
+            hTbl_param.Data(iParam_tbl, 2:end) = arrayfun(@num2str, vr_, 'UniformOutput', 0);
+        end %for
         
-        if isempty(iRecording), continue; end
-        fh_ = @(x)nanmean(cell2mat_(x(iRecording,viParam)),2);
-        [vrSnr1, vrPrec1, vrRecall1, vrAccuracy1] = ...
-            deal(fh_(cmSnr), fh_(cmPrecision), fh_(cmRecall), fh_(cmAccuracy));       
-        if isempty(vrSnr1), continue; end
-        vl_ = vrSnr1 > snr_thresh;
-        fh_ = @(x)nanmean(x(vl_));
-        vr_ = [nanmean(vrAccuracy1>accuracy_thresh), fh_(vrAccuracy1), fh_(vrPrec1), fh_(vrRecall1), numel(vl_)];
-        hTbl_recording.Data(iRecording_tbl, 2:end) = arrayfun(@num2str, vr_, 'UniformOutput', 0);
-    catch
-        ;
-    end
-end %for
+        % pick the best overall by Accuracy and determine iParam index
+        if numel(csParam1) == numel(csParam)
+            viParam1 = 1:numel(csParam);
+        elseif numel(csParam1) >= 1
+            [~, viParam1] = ismember(csParam1, csParam);
+        elseif isempty(csParam1)
+            vrAccuracy_param = cellfun(@str2num_, hTbl_param.Data(:,iCol_accuracy));
+            [~, iParam_] = max(vrAccuracy_param);
+            if isnan(iParam_), return; end
+            vcParam_best = hTbl_param.Data{iParam_, 1};
+            viParam1 = find(strcmp(vcParam_best, csParam));
+        end
 
-csStudy_tbl = hTbl_study.Data(:,1);
-for iStudy_tbl = 1:numel(csStudy_tbl)
-    try
-        vcStudy1 = csStudy_tbl{iStudy_tbl};
-        viRecording1 = find(contains(csRecording, vcStudy1));
-        if isempty(viRecording1), return; end
-        fh_ = @(x)nanmean(cell2mat_(x(viRecording1,viParam)),2);
-        [vrSnr1, vrPrec1, vrRecall1, vrAccuracy1] = ...
-            deal(fh_(cmSnr), fh_(cmPrecision), fh_(cmRecall), fh_(cmAccuracy));       
-        if isempty(vrSnr1), continue; end
-        vl_ = vrSnr1 > snr_thresh;
-        fh_ = @(x)nanmean(x(vl_));
-        vr_ = [nanmean(vrAccuracy1>accuracy_thresh), fh_(vrAccuracy1), fh_(vrPrec1), fh_(vrRecall1), numel(vl_)];
-        hTbl_study.Data(iStudy_tbl, 2:end) = arrayfun(@num2str, vr_, 'UniformOutput', 0);
-    catch
-        ;
-    end
-end %for
+        [csRecording, csStudy, csStudyset] = get_userdata_(hFig, 'csRecording', 'csStudy', 'csStudyset');
+        csRecording_tbl = hTbl_recording.Data(:,1);
+        % create studyset and study matrix
+        for iRecording_tbl = 1:nRecording
+            try
+                iRecording = find(strcmp(csRecording_tbl{iRecording_tbl}, csRecording));
 
-csStudyset_tbl = hTbl_studyset.Data(:,1);
-for iStudyset_tbl = 1:numel(csStudyset_tbl)
-    try
-        vcStudyset1 = csStudyset_tbl{iStudyset_tbl};
-        viRecording1 = find(contains(csRecording, vcStudyset1));        
-        if isempty(viRecording1), return; end
-        fh_ = @(x)nanmean(cell2mat_(x(viRecording1,viParam)),2);
-        [vrSnr1, vrPrec1, vrRecall1, vrAccuracy1] = ...
-            deal(fh_(cmSnr), fh_(cmPrecision), fh_(cmRecall), fh_(cmAccuracy));       
-        if isempty(vrSnr1), continue; end
-        vl_ = vrSnr1 > snr_thresh;
-        fh_ = @(x)nanmean(x(vl_));
-        vr_ = [nanmean(vrAccuracy1>accuracy_thresh), fh_(vrAccuracy1), fh_(vrPrec1), fh_(vrRecall1), numel(vl_)];
-        hTbl_studyset.Data(iStudyset_tbl, 2:end) = arrayfun(@num2str, vr_, 'UniformOutput', 0);
-    catch
-        ;
-    end
-end %for
+                if isempty(iRecording), continue; end
+                fh_ = @(x)nanmean(cell2mat_(x(iRecording,viParam1)),2);
+                [vrSnr1, vrPrec1, vrRecall1, vrAccuracy1] = ...
+                    deal(fh_(cmSnr), fh_(cmPrecision), fh_(cmRecall), fh_(cmAccuracy));       
+                if isempty(vrSnr1), continue; end
+                vl_ = vrSnr1 > snr_thresh;
+                fh_ = @(x)nanmean(x(vl_));
+                vr_ = [nanmean(vrAccuracy1>accuracy_thresh), fh_(vrAccuracy1), fh_(vrPrec1), fh_(vrRecall1), numel(vl_)];
+                hTbl_recording.Data(iRecording_tbl, 2:end) = arrayfun(@num2str, vr_, 'UniformOutput', 0);
+            catch
+                ;
+            end
+        end %for
 
-% accuracy rank
-% precision rank
-% recall rank
+        csStudy_tbl = hTbl_study.Data(:,1);
+        for iStudy_tbl = 1:numel(csStudy_tbl)
+            try
+                vcStudy1 = csStudy_tbl{iStudy_tbl};
+                viRecording1 = find(contains(csRecording, vcStudy1));
+                if isempty(viRecording1), return; end
+                fh_ = @(x)nanmean(cell2mat_(x(viRecording1,viParam1)),2);
+                [vrSnr1, vrPrec1, vrRecall1, vrAccuracy1] = ...
+                    deal(fh_(cmSnr), fh_(cmPrecision), fh_(cmRecall), fh_(cmAccuracy));       
+                if isempty(vrSnr1), continue; end
+                vl_ = vrSnr1 > snr_thresh;
+                fh_ = @(x)nanmean(x(vl_));
+                vr_ = [nanmean(vrAccuracy1>accuracy_thresh), fh_(vrAccuracy1), fh_(vrPrec1), fh_(vrRecall1), numel(vl_)];
+                hTbl_study.Data(iStudy_tbl, 2:end) = arrayfun(@num2str, vr_, 'UniformOutput', 0);
+            catch
+                ;
+            end
+        end %for
+
+        csStudyset_tbl = hTbl_studyset.Data(:,1);
+        for iStudyset_tbl = 1:numel(csStudyset_tbl)
+            try
+                vcStudyset1 = csStudyset_tbl{iStudyset_tbl};
+                viRecording1 = find(contains(csRecording, vcStudyset1));        
+                if isempty(viRecording1), return; end
+                fh_ = @(x)nanmean(cell2mat_(x(viRecording1,viParam1)),2);
+                [vrSnr1, vrPrec1, vrRecall1, vrAccuracy1] = ...
+                    deal(fh_(cmSnr), fh_(cmPrecision), fh_(cmRecall), fh_(cmAccuracy));       
+                if isempty(vrSnr1), continue; end
+                vl_ = vrSnr1 > snr_thresh;
+                fh_ = @(x)nanmean(x(vl_));
+                vr_ = [nanmean(vrAccuracy1>accuracy_thresh), fh_(vrAccuracy1), fh_(vrPrec1), fh_(vrRecall1), numel(vl_)];
+                hTbl_studyset.Data(iStudyset_tbl, 2:end) = arrayfun(@num2str, vr_, 'UniformOutput', 0);
+            catch
+                ;
+            end
+        end %for
+
+        
+    case 'param-input' % update the param table using input and sort
+        csParam_tbl = hTbl_param.Data(:,1); 
+        hTbl_param.Data(:, 2:end) = {''}; % erase table
+        for iParam_tbl = 1:numel(csParam_tbl)
+            try
+                iParam1 = find(contains(csParam, csParam_tbl{iParam_tbl}));
+                if isempty(iParam1), return; end
+                fh_ = @(x)cell2mat_(x(viRecording1,iParam1));
+                [vrSnr1, vrPrec1, vrRecall1, vrAccuracy1] = ...
+                    deal(fh_(cmSnr), fh_(cmPrecision), fh_(cmRecall), fh_(cmAccuracy));       
+                if isempty(vrSnr1), continue; end
+                vl_ = vrSnr1 > snr_thresh;
+                fh_ = @(x)nanmean(x(vl_));
+                vr_ = [nanmean(vrAccuracy1>accuracy_thresh), fh_(vrAccuracy1), fh_(vrPrec1), fh_(vrRecall1), numel(vl_)];
+                hTbl_param.Data(iParam_tbl, 2:end) = arrayfun(@num2str, vr_, 'UniformOutput', 0);
+            catch
+                ;
+            end
+        end %for
+        cbf_sort_table_(hTbl_param, 2);
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+function [viRecording1, viParam1] = update_plots_(hFig)
+
+[csParam1, csParam, csInput1, csRecording] = ...
+    get_userdata_(hFig, 'csParam1', 'csParam', 'csInput1', 'csRecording');
+
+vhAx = get_userdata_(hFig, 'vhAx');
+arrayfun(@cla,vhAx);
+
+[~, viParam1] = ismember(csParam1, csParam);
+viRecording1 = find_substr_(csRecording, csInput1);
+if isempty(viRecording1) || isempty(viParam1), return; end
+
+[cmSnr, cmPrecision, cmRecall, cmAccuracy] = ...
+    get_userdata_(hFig, 'cmSnr', 'cmPrecision', 'cmRecall', 'cmAccuracy');
+if isempty(cmSnr), return; end
+
+fh_ = @(x)cell2mat_(x(viRecording1, viParam1));
+[mrSnr1, mrPrecision1, mrRecall1, mrAccuracy1] = ...
+    deal(fh_(cmSnr), fh_(cmPrecision), fh_(cmRecall), fh_(cmAccuracy));
+
+arrayfun(@(x)hold(x,'off'), vhAx);
+plot(vhAx(1), mrSnr1(:), mrAccuracy1(:), '.'); xylabel_(vhAx(1), 'SNR', 'Accuracy');
+plot(vhAx(3), mrSnr1(:), mrPrecision1(:), '.'); xylabel_(vhAx(3), 'SNR', 'Precision');
+plot(vhAx(5), mrSnr1(:), mrRecall1(:), '.'); xylabel_(vhAx(5), 'SNR', 'Recall');
+arrayfun(@(x)ylim(x,[0,1]), vhAx);
+arrayfun(@(x)grid(x,'on'), vhAx);
 
 end %func
 
@@ -361,6 +402,18 @@ end %func
 
 
 %--------------------------------------------------------------------------
+function cancel_batch_()
+vcPath = locate_('disbatch');
+if isempty(vcPath), msgbox('No jobs found'); return; end
+[~,vcFile] = fileparts(vcPath);
+csPath = strsplit(vcFile, '_');
+vcJob = csPath{end-1};
+system(sprintf('module load slurm ; scancel %s', vcJob));
+msgbox(sprintf('Job %s is cancelled', vcJob));
+end %func
+
+
+%--------------------------------------------------------------------------
 function vcPath = locate_(vcType, vcKey)
 if nargin<2, vcKey = []; end
 persistent vcDir_in vcDir_out
@@ -369,7 +422,7 @@ if isempty(vcDir_in) || isempty(vcDir_out)
     vcDir_out = fullfile(read_cfg_('path_validation'), irc('version'));
 end
 
-switch lower(vcType)
+switch lower(vcType)    
     case 'disbatch'
         vcPath0 = fullfile(read_cfg_('path_validation'), 'disbatch');
         vcPath = find_files_(vcPath0, '*_status.txt');
@@ -419,7 +472,9 @@ end %func
 
 %--------------------------------------------------------------------------
 function varargout = cellfun_(varargin)
-if nargout==1
+if nargout == 0
+    cellfun(varargin{:}, 'UniformOutput', 0);
+elseif nargout==1
     varargout{1} = cellfun(varargin{:}, 'UniformOutput', 0);
 elseif nargout==2
     [varargout{1}, varargout{2}] = cellfun(varargin{:}, 'UniformOutput', 0);    
@@ -439,13 +494,19 @@ set(hFig, 'MenuBar','None');
 mh_file = uimenu(hFig,'Label','File'); 
 uimenu(mh_file,'Label', 'Edit `settings.scoreboard`', 'Callback', @(h,e)edit_('settings.scoreboard'));
 uimenu(mh_file,'Label', 'Edit `default.cfg`', 'Callback', @(h,e)edit_('default.cfg'));
+uimenu(mh_file,'Label', 'Edit `default.prm`', 'Callback', @(h,e)edit_('default.prm'));
 uimenu(mh_file,'Label', 'Delete cache', 'Callback', @(h,e)delete_(locate_('cache')));
-uimenu(mh_file,'Label', 'Open disbatch status', 'Callback', @(h,e)edit_(locate_('disbatch')));
+
+mh_file = uimenu(hFig,'Label','View'); 
+uimenu(mh_file,'Label', 'Update recordings using param', 'Callback', @(h,e)update_tables_('input-param'));
+uimenu(mh_file,'Label', 'Update param using recordings', 'Callback', @(h,e)update_tables_('param-input'));
 
 mh_file = uimenu(hFig,'Label','Run'); 
 uimenu(mh_file,'Label', 'Generate param files (hashcode_template.prm)', 'Callback', @generate_param_);
 uimenu(mh_file,'Label', 'Run batch', 'Callback', @run_batch_);
 uimenu(mh_file, 'Label', 'Assemble batch result', 'Callback', @cbf_assemble_results_);
+uimenu(mh_file,'Label', 'Open batch status', 'Callback', @(h,e)edit_(locate_('disbatch')));
+uimenu(mh_file,'Label', 'Cancel batch', 'Callback', @(h,e)cancel_batch_);
 
 mh_file = uimenu(hFig,'Label','Help'); 
 uimenu(mh_file,'Label', 'Show help', 'Callback', @menu_help_);
@@ -524,6 +585,7 @@ end
 
 % update parameter list
 update_tables_('Param', load_param_());
+% cbf_assemble_results_(h,e);
 close_(hMsg);
 end %func
 
@@ -561,8 +623,8 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function cbf_select_table_(hTbl,e)
-hFig = hTbl.Parent;
+function cbf_select_table_(hTable,e)
+hFig = hTable.Parent;
 S_fig = hFig.UserData;
 Indices = e.Indices;
 if isempty(Indices), return; end
@@ -570,52 +632,51 @@ if isempty(Indices), return; end
 hMsgbox = msgbox('Updating...');
 viRow = e.Indices(:,1);
 iCol = e.Indices(1,2);
-set_userdata_(hTbl, Indices);
-S_tbl = hTbl.UserData;
+set_userdata_(hTable, Indices);
+S_tbl = hTable.UserData;
 vhTable = S_fig.vhTable;
-csMsg = {};
-if iCol == 1
-    set(vhTable, 'Enable', 'off');
-    set(hTbl, 'Enable', 'on');
-    vcType = hTbl.Tag;
-    csKey = hTbl.Data(viRow,1);    
-    csMsg{end+1} = sprintf('Selected %s:', vcType);
-    csMsg = cat(1, csMsg, csKey);
-    if numel(csKey)==1
-        vcKey = csKey{1};
-    else
-        vcKey = csKey;
-    end
-elseif iCol > 1 % clear selection
-    set(vhTable, 'Enable', 'on');
-    csMsg{end+1} = sprintf('All selected');
-    vcType = 'All';
-    vcKey = [];
-%     @TODO: sort by param on all scores
-end
+vcType = hTable.Tag;
+csKey = hTable.Data(viRow,1);   
 
 % display selected info
 S_fig.hText1.String = 'Select a parameter';
-csParam1 = get_userdata_(hFig, 'csParam');
-csInput1 = get_userdata_(hFig, 'csStudyset');
+[csParam1, csParam] = get_userdata_(hFig, 'csParam1', 'csParam');
+[csInput1, csInput] = get_userdata_(hFig, 'csInput1', 'csStudyset');
+if isempty(csParam1), csParam1 = csParam; end
+if isempty(csInput1), csInput1 = csInput; end
+csMsg = {sprintf('Selected %s:', vcType)};
 switch vcType
-    case 'Param'
-        if ischar(vcKey)
-            S_fig.hText1.String = file2cellstr_(locate_('Param', vcKey));
-        elseif iscell(vcKey)
-            cS_ = cellfun_(@file2struct_, locate_('Param', vcKey));
-            S_fig.hText1.String = struct2str_(struct_intersect_(cS_{:}));
+    case 'Param'           
+        if iCol == 1
+            csParam1 = csKey;            
+            csMsg = cat(1, csMsg, csKey);
+        else
+            csParam1 = csParam;
+            csMsg{end+1} = sprintf('All selected');
+        end        
+        S_fig.hText3.String = csMsg;
+        cS_ = cellfun_(@file2struct_, locate_('Param', csParam1));
+        S_fig.hText1.String = struct2str_(struct_intersect_(cS_{:}));
+
+    case {'Studyset', 'Study', 'Recording'}
+        if iCol == 1
+            csInput1 = csKey;
+            csMsg = cat(1, csMsg, csKey);
+            set(vhTable(1:end-1), 'Enable', 'off');        
+            set(hTable, 'Enable', 'on');            
+        else
+            csInput1 = csInput;
+            set(vhTable, 'Enable', 'on');
+            csMsg{end+1} = sprintf('All selected');
         end
-        csParam1 = csKey;
-        update_tables_('Input', csParam1);
-    case {'Studyset', 'Study', 'Recording'}, csInput1 = ifeq_(ischar(vcKey), {vcKey}, vcKey);
+        S_fig.hText2.String = csMsg;
 end
-S_fig.hText2.String = csMsg;
+
+% update graph
 set_userdata_(hFig, csParam1, csInput1);
+[viRecording1, viParam1] = update_plots_(hFig);
+
 close_(hMsgbox);
-% @ToDo
-%  sort by parameters (# units > .8)
-%  update parameter table using the selected values
 end %func
 
 
@@ -653,6 +714,9 @@ nCols = numel(csColumnName);
 vlEditable = false(1, nCols);
 cData_rec = cell(nFiles, numel(csColumnName)); 
 cData_rec(1:nFiles,1) = csFiles_raw;
+for iCell = 1:numel(cData_rec)
+    if isempty(cData_rec{iCell}), cData_rec{iCell} = ''; end
+end
 
 % try to find the 
 hTable = findobj('Type', 'uitable', 'Tag', vcLabel);
@@ -1001,8 +1065,9 @@ end %func
 
 %--------------------------------------------------------------------------
 function S_out = struct_intersect_(varargin)
-
 S1 = varargin{1};
+if nargin==1, S_out = S1; return; end
+    
 for iArg = 2:nargin
     S2 = varargin{iArg};
     csName1 = fieldnames(S1);
@@ -1032,4 +1097,21 @@ for iArg = 2:nargin
     end %for
     S1 = S_out;
 end %arg
+end %func
+
+
+%--------------------------------------------------------------------------
+function viRecording1 = find_substr_(csRecording, csInput1)
+if ischar(csInput1), csInput1 = {csInput1}; end
+vlRecording = [];
+for iInput = 1:numel(csInput1)
+    vcInput1 = csInput1{iInput};
+    vlRecording1 = cellfun(@(x)~isempty(strfind(x, vcInput1)), csRecording);
+    if isempty(vlRecording)
+        vlRecording = vlRecording1;
+    else
+        vlRecording = vlRecording | vlRecording1;
+    end
+end
+viRecording1 = find(vlRecording);
 end %func

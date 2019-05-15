@@ -1,11 +1,9 @@
 % #Pre-processing
-maxDist_site_um = {50, 75};
-maxDist_site_spk_um = {75, 100};
+maxDist_site_um = {50};
+maxDist_site_spk_um = {75,100};
 vcFilter = {'bandpass'};
 freqLim = {[300, 6000]};
-%vcFilter_detect = {'none', 'bandpass'};
-%freqLim_detect = {[300, 3000]};
-%vcCommonRef = {'none', 'whiten'};
+vcCommonRef = {'mean'};
 
 % #Spike detection
 qqFactor = {4.5};
@@ -16,9 +14,10 @@ spkLim_ms = {[-.25, 1]};
 pc_per_chan = {2};
 
 % #Clustering
-nTime_clu = {1,4};
+nTime_clu = {2};
 nTime_drift = {64};
 
 % #Auto-merging
-maxWavCor = {.97, .98};
-%fGpu=0;
+maxWavCor = {.99};
+fGpu={1};
+fGpu_sort={1};
