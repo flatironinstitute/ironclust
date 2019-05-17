@@ -115,8 +115,9 @@ for iDir = 1:numel(csDir_out)
     vcFile_gt1 = fullfile(csDir_out{iDir}, 'raw_geom_score.mat');
     [vcParam1, vcRecording1] = strtok(strrep(csDir_out{iDir}, vcDir_out, ''), '/');
     iParam1 = find(strcmp(vcParam1, csParam));
+    if isempty(iParam1), continue; end
     iRecording1 = find(strcmp(vcRecording1, csRecording));
-    if isempty(iRecording1) || isempty(iParam1) continue; end
+    if isempty(iRecording1), continue; end
     try
         S_score1 = load(vcFile_gt1);
         S_score_clu1 = S_score1.S_score_clu;
@@ -234,6 +235,7 @@ switch lower(vcType)
 
         [csRecording, csStudy, csStudyset] = get_userdata_(hFig, 'csRecording', 'csStudy', 'csStudyset');
         csRecording_tbl = hTbl_recording.Data(:,1);
+        hTbl_recording.Data(:, 2:end) = {''}; % erase table
         % create studyset and study matrix
         for iRecording_tbl = 1:nRecording
             try
@@ -254,6 +256,7 @@ switch lower(vcType)
         end %for
 
         csStudy_tbl = hTbl_study.Data(:,1);
+        hTbl_study.Data(:, 2:end) = {''}; % erase table
         for iStudy_tbl = 1:numel(csStudy_tbl)
             try
                 vcStudy1 = csStudy_tbl{iStudy_tbl};
@@ -273,6 +276,7 @@ switch lower(vcType)
         end %for
 
         csStudyset_tbl = hTbl_studyset.Data(:,1);
+        hTbl_studyset.Data(:, 2:end) = {''}; % erase table
         for iStudyset_tbl = 1:numel(csStudyset_tbl)
             try
                 vcStudyset1 = csStudyset_tbl{iStudyset_tbl};

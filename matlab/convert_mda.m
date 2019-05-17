@@ -12,7 +12,66 @@ switch vcMode
     case 'manual', convert_mda_manual_(varargin{:});
     case 'boyden', convert_mda_boyden_(varargin{:});
     case 'mearec100', convert_mda_mearec100_(varargin{:});
+    case 'mearec100', convert_mda_int16_(varargin{:});
 end %switch
+end %func
+
+
+%--------------------------------------------------------------------------
+function convert_mda_int16_(vcDir_in, vcDir_out)
+
+if isempty(vcDir_in)
+    vcDir_in = '/mnt/ceph/users/jjun/groundtruth/';
+end
+if isempty(vcDir_out)
+    vcDir_out = '/mnt/ceph/users/jjun/groundtruth/';
+end
+[csFiles_gt, csFiles_h5] = dir_set_(vcDir_in, 'raw.mda', 'param.json');
+
+% load timestamps and parse out non-noise clusters
+S_json = struct('spike_sign', -1);
+sample_offset = 16001;
+
+for iFile = 1:numel(csFiles_gt)
+    try
+        % firings_true.mda
+        gt = textread(csFiles_gt{iFile},'%u');
+        gt = reshape(gt,2,[])';
+        vi_gt1 = find(gt(:,2) > sample_offset);
+        mrGt1 = zeros(3, size(gt,1), 'double');
+        mrGt1(2,:) = gt(vi_gt1,2) - sample_offset; % time
+        mrGt1(3,:) = gt(vi_gt1,1); % cluster label
+        
+        % params.json
+        sRateHz1 = double(str2num_(h5read(csFiles_h5{iFile}, '/srate')));
+        vx = h5read(csFiles_h5{iFile}, '/electrode/x');
+        vy = h5read(csFiles_h5{iFile}, '/electrode/y');
+        vz = h5read(csFiles_h5{iFile}, '/electrode/z');
+        mrSiteXY1 = [vx(:), vz(:)];        
+        nChans1 = numel(vx);
+        scale_factor1 = 1e-4;
+        S_json1 = struct_set_(S_json, 'samplerate', sRateHz1, 'scale_factor', scale_factor1);
+        
+        % output directory
+        [~, vcDir12] = fileparts(fileparts(csFiles_gt{iFile}));
+        vcDir_out1 = fullfile(vcDir_out, vcDir12);
+          
+        fprintf('\n%d/%d: %s, #ch=%d, sRateHz=%0.1f\n', ...
+            iFile, numel(csFiles_gt), vcDir12, nChans1, sRateHz1);        
+            
+        % raw.mda
+        if ~exist_file_(fullfile(vcDir_out1, 'raw.mda'))
+            mnWav1 = h5read(csFiles_h5{iFile},'/data');
+            mnWav1 = mnWav1(:,sample_offset+1:end);        
+        else
+            mnWav1 = [];
+        end
+        export_spikeforest_(vcDir_out1, mnWav1, mrSiteXY1, S_json1, mrGt1);        
+    catch
+        disp(lasterr());
+    end  
+end %for
+
 end %func
 
 
@@ -316,7 +375,8 @@ if isempty(vcDir_in)
     vcDir_in = 'K:\spikeforest\groundtruth\paired_recordings\boyden\';
 end
 if isempty(vcDir_out)
-    vcDir_out = 'K:\spikeforest\groundtruth\paired_recordings\boyden32c\';
+    %vcDir_out = 'K:\spikeforest\groundtruth\paired_recordings\boyden32c\';
+    vcDir_out = '/mnt/ceph/users/jjun/groundtruth/paired_recordings\boyden32c';
 end
 S_mea = struct('nChans_out', 32);
 

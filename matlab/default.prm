@@ -110,13 +110,6 @@ nTime_clu = 2;             % number of time periods to perform separate clusteri
 nTime_drift = 64;          % divide to 16 drift time bins
 nThreads = 128;             % number of GPU threads for clustering
 
-nPos_Drift = 64;           % number of position bins to compute the spike count histogram
-dc_percent = 2;             % used for distribution cutting
-fRepeat_clu = 0;            % Flag for whether to repeat clustering for the bottom half of the cluster amplitudes.
-fSpatialMask_clu = 0;       % Apply spatial mask calculated from the distances between sites to the peak site (half-scale: P.mnPcPerChanaxDist_site_um). circa v3.1.10
-min_sites_mask = 5;         % Minimum number of sites to have to apply spatial mask. Used if fSpatialMask_clu==1. circa v3.1.10
-nDelays_xcov = 4;           % Used for vcCluster='xcov'. Number of delays for channel-pair covariance 
-
 % #Post-cluster auto-merging parameters (run "jrc auto" after change)
 maxWavCor = .99;            % merge if waveform correlation is greater than maxWavCor.
 min_count = 30;             % Minimum cluster size (min_count will be set to 2*#features if lower).
@@ -126,15 +119,9 @@ maxCluPerSite = 20;         % Maximum clusters per site allowed if local detrend
 spkLim_factor_merge = 1;    % Waveform range for computing the correlation. spkLim_factor_merge <= spkLim_raw_factor_merge. circa v3.1.8
 frac_shift_merge = .1;      % Fraction of the waveform to shift to check for merging
 fRemove_duplicate = 1;      % Remove clusters whose detection site occurs far from the min waveform site (d>=maxDist_site_um)
-
 fDrift_merge = 1;           % Compute multiple waveforms at three drift locations based on the spike position (CoM).
 nInterp_merge = 1;          % Interpolation factor for the mean unit waveforms, set to 1 to disable
-fTemplateMatch_post = 1;    % Perform template matching on the outer part of the cluster cloud
 fWavRaw_merge = 0;          % Use raw average unit waveforms for merge when set to 1, if not use filtered waveforms.
-vcDetrend_postclu = 'global'; % 'none', 'hidehiko', 'global', 'local', 'logz'
-nRepeat_merge = 10;         % # of repeats for average unit raw waveform based merging
-nTemplates_clu = 100;       % Number of template waveforms per cluster to perform post-hoc merging and cluster assignment on the outer edge of clusters
-thresh_core_knn = .8;      % Fraction of KNN from the same cluster to be considered as the core member of a cluster
 
 % #Trial (used for plotting PSTH for each unit after clustering)
 vcFile_trial = '';          % .mat or .csv file containing timestamp in seconds unit. use any variable name.
@@ -296,4 +283,19 @@ iChan_vid = [];             % video sync channel, zero-based
 flim_vid = [];              % used for video sync, video frame #
 tlim_vid = [];              % used for video sync, ephys time
 vcFile_bonsai = '';         % bonsai 5-column output (x,y are 2 and 3)
+
+% Cluster
+%nPos_Drift = 64;           % number of position bins to compute the spike count histogram
+%dc_percent = 2;             % used for distribution cutting
+%fRepeat_clu = 0;            % Flag for whether to repeat clustering for the bottom half of the cluster amplitudes.
+%fSpatialMask_clu = 0;       % Apply spatial mask calculated from the distances between sites to the peak site (half-scale: P.mnPcPerChanaxDist_site_um). circa v3.1.10
+%min_sites_mask = 5;         % Minimum number of sites to have to apply spatial mask. Used if fSpatialMask_clu==1. circa v3.1.10
+%nDelays_xcov = 4;           % Used for vcCluster='xcov'. Number of delays for channel-pair covariance 
+
+% post-merge
+%fTemplateMatch_post = 1;    % Perform template matching on the outer part of the cluster cloud
+%vcDetrend_postclu = 'global'; % 'none', 'hidehiko', 'global', 'local', 'logz'
+%nRepeat_merge = 10;         % # of repeats for average unit raw waveform based merging
+%nTemplates_clu = 100;       % Number of template waveforms per cluster to perform post-hoc merging and cluster assignment on the outer edge of clusters
+%thresh_core_knn = .8;      % Fraction of KNN from the same cluster to be considered as the core member of a cluster
 

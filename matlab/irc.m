@@ -84,6 +84,7 @@ switch lower(vcCmd)
     case 'convert-mda-mea', convert_mda('mea', vcArg1, vcArg2, vcArg3); return;
     case 'convert-mda-yass', convert_mda('yass', vcArg1, vcArg2); return;
     case 'convert-mda-buzsaki', convert_mda('buzsaki', vcArg1, vcArg2); return;
+    case 'convert-mda-int16', convert_mda('int16', vcArg1, vcArg2); return;
         
     % three or more arguments
     case 'validate-mda', validate_mda_(vcArg1, vcArg2, vcArg3);    
@@ -540,10 +541,13 @@ end %func
 % 9/26/17 JJJ: Find .prb file. Look in ./prb/ folder if doesn't exist
 function vcFile_prb = find_prb_(vcProbeFile)
 % Find a prb file
+if isempty(vcProbeFile)
+    error('find_prb_: empty probe file');
+end
 if exist_file_(vcProbeFile)
     vcFile_prb = vcProbeFile;
 else
-    % strip directory and find in the path
+    % strip directory and find in the path    
     [~, vcFile_, vcExt_] = fileparts(vcProbeFile);
     vcProbeFile_ = [vcFile_, vcExt_];
     vcFile_prb = fullfile(ircpath_(), 'prb', vcProbeFile_);
@@ -3000,7 +3004,7 @@ elseif isfield(S, 'gtRes') && isfield(S, 'gtClu')
 end
 
 % add site
-vcFile_gt1 = strrep(P.vcFile_prm, '.prm', '_gt1.mat');
+vcFile_gt1 = strrep(get_(P, 'vcFile_prm'), '.prm', '_gt1.mat');
 if exist_file_(vcFile_gt1)
     % fix viSite_clu if needs to
     S_gt1 = load(vcFile_gt1);
@@ -5374,9 +5378,9 @@ nSpk = numel(S0.viTime_spk);
 nSitesPerEvent = P.maxSite*2+1;
 nFeatures = S0.dimm_fet(1);
 nShanks = max(1, numel(unique(get_(P, 'viShank_site'))));
-
-csDesc = {};
-    csDesc{end+1} = sprintf('Recording file');
+try
+    csDesc = {};
+    csDesc{end+1} = sprintf('Recording format');
     csDesc{end+1} = sprintf('    Recording file          %s', P.vcFile);
     csDesc{end+1} = sprintf('    Probe file              %s', P.probe_file);
     csDesc{end+1} = sprintf('    Recording Duration      %0.1fs', tDur);
@@ -5393,13 +5397,16 @@ csDesc = {};
     csDesc{end+1} = sprintf('    Feature                 %s', P.vcFet);
     csDesc{end+1} = sprintf('    #Sites/event            %d', nSitesPerEvent);
     csDesc{end+1} = sprintf('    #Features/event         %d', nFeatures);    
+catch
+    ;
+end
 if ~isempty(get_(S0, 'nLoads'))
     csDesc{end+1} = sprintf('    #Loads                  %d', S0.nLoads);
 end
 
 if isfield(S0, 'S_clu')
     S_clu = S0.S_clu;
-    csDesc{end+1} = sprintf('Cluster');    
+    csDesc{end+1} = sprintf('Cluster:');    
     csDesc{end+1} = sprintf('    #Clusters               %d', S_clu.nClu);
     csDesc{end+1} = sprintf('    #Unique events          %d', sum(S_clu.viClu>0));
     csDesc{end+1} = sprintf('    min. spk/clu            %d', P.min_count);
@@ -5416,7 +5423,7 @@ try
     catch
         [t_cluster, t_automerge] = deal(0);
     end
-    csDesc{end+1} = sprintf('Runtime (s)');
+    csDesc{end+1} = sprintf('Runtime:');
     csDesc{end+1} = sprintf('    Detect + feature        %0.1fs', S0.runtime_detect);    
     csDesc{end+1} = sprintf('    Cluster + auto-merge    %0.1fs', S0.runtime_sort);
     csDesc{end+1} = sprintf('        Cluster             %0.1fs', t_cluster);
@@ -5426,10 +5433,15 @@ try
 catch
     ;
 end
-
-csDesc{end+1} = sprintf('Parameter file');
-csDesc{end+1} = sprintf('    %s', P.vcFile_prm);    
-
+try
+    csDesc{end+1} = sprintf('Execution:');
+    csDesc{end+1} = sprintf('   IronClust version:      %s', version_());
+    csDesc{end+1} = sprintf('   fGpu (GPU use):         %d', P.fGpu);
+    csDesc{end+1} = sprintf('   fParfor (parfor use):   %d', P.fParfor);
+    csDesc{end+1} = sprintf('   Parameter file:         %s', P.vcFile_prm);
+catch
+    ;
+end
 if nargout==0
     cellfun(@(x)disp(x), csDesc);
 end
@@ -21773,8 +21785,8 @@ end %func
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_(vcFile_prm)
 if nargin<1, vcFile_prm = ''; end
-vcVer = 'v4.5.9';
-vcDate = '5/14/2019';
+vcVer = 'v4.5.10';
+vcDate = '5/16/2019';
 vcHash = file2hash_();
 
 if nargout==0
@@ -23851,10 +23863,10 @@ else
 end    
 
 % set adjacency radius
-P.maxDist_site_spk_um = get_set_(S_txt, 'adjacency_radius', 75);
+P.maxDist_site_um = get_set_(S_txt, 'adjacency_radius', 50);
+P.maxDist_site_spk_um = get_set_(S_txt, 'adjacency_radius_out', 75);
 if P.maxDist_site_spk_um<=0, P.maxDist_site_spk_um = inf; end
-P.maxDist_site_um = P.maxDist_site_spk_um * 2/3;
-P.maxDist_site_merge_um = P.maxDist_site_spk_um * 0.4667;   
+%P.maxDist_site_merge_um = P.maxDist_site_spk_um * 0.4667;   
 
 % set frequency
 freq_min = get_set_(S_txt, 'freq_min', []);
@@ -27742,7 +27754,7 @@ cellstr2file_(vcFile_disbatch, csLine_disbatch, 1);
 %vcCmd = strrep_(S_cfg.sbatch, '$taskfile', vcFile_disbatch, '$N', S_cfg.sbatch_nnodes, '$c', S_cfg.sbatch_ncpu_per_task);     
 vcCmd = strrep_(S_cfg.sbatch, '$taskfile', vcFile_disbatch, ...
     '$N', S_cfg.sbatch_nnodes, '$n', S_cfg.sbatch_tasks_per_node, ...
-    '$t', S_cfg.sbatch_time_limit);     
+    '$t', S_cfg.sbatch_time_limit, '$c', S_cfg.sbatch_cpu_per_task);     
 fprintf('Running %s\n', vcCmd);
 t_submit=tic;
 

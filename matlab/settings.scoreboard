@@ -1,6 +1,6 @@
 % #Pre-processing
 maxDist_site_um = {50};
-maxDist_site_spk_um = {75,100};
+maxDist_site_spk_um = {75};
 vcFilter = {'bandpass'};
 freqLim = {[300, 6000]};
 vcCommonRef = {'mean'};

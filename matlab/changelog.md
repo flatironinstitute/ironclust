@@ -3,6 +3,12 @@ IronClust, written by J. James Jun, Flatiron Institute, Simons Foundation
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [4.5.10] - 2019-5-16
+### Fixed
+- `convert-mda` error is fixed for exporting to SpikeForest groundtruth dataset (.mda format)
+- Unused parameters are disabled in `default.prm`
+
+
 ## [4.5.9] - 2019-5-14
 ### Changed
 - `default.prm` paramters updated based on parameter search using SpikeForest dataset
