@@ -14,10 +14,14 @@ spkLim_ms = {[-.25, 1]};
 pc_per_chan = {2};
 
 % #Clustering
-nTime_clu = {2};
-nTime_drift = {64};
+%nTime_clu = {2};
+%nTime_drift = {64};
 
 % #Auto-merging
 maxWavCor = {.99};
 fGpu={1};
 fGpu_sort={1};
+
+% #Drift
+batch_sec_drift = {600, 400, 200};
+step_sec_drift = {20};

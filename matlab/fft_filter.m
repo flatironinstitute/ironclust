@@ -146,7 +146,7 @@ function filt = fft_highpass_(N, freqLim, freqLim_width, sRateHz)
 [flo, fhi] = deal(freqLim(1), freqLim(2));
 [fwid_lo, fwid_hi] = deal(freqLim_width(1), freqLim_width(2));
 [n1, n2, f] = get_freq_(N, sRateHz);
-filt = sqrt((1+erf((abs(f)-flo)/fwid_lo))/2);;
+filt = sqrt((1+erf((abs(f)-flo)/fwid_lo))/2);
 end %func
 
 

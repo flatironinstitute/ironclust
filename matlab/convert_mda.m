@@ -4,6 +4,12 @@
 function convert_mda(vcMode, varargin)
 
 switch vcMode
+    case 'reliability', convert_mda_reliability_(varargin{:});
+    case 'samplerate', convert_mda_samplerate_(varargin{:});
+        
+    case 'monotrode', convert_mda_monotrode_(varargin{:});
+    case 'gnode', convert_mda_gnode_(varargin{:});
+    case 'waveclus', convert_mda_waveclus_(varargin{:});
     case 'buzsaki', convert_mda_buzsaki_(varargin{:}); 
     case 'yass', convert_mda_yass_(varargin{:});
     case 'kampff1', convert_mda_kampff1_(varargin{:});
@@ -12,61 +18,358 @@ switch vcMode
     case 'manual', convert_mda_manual_(varargin{:});
     case 'boyden', convert_mda_boyden_(varargin{:});
     case 'mearec100', convert_mda_mearec100_(varargin{:});
-    case 'mearec100', convert_mda_int16_(varargin{:});
+    case 'int16', convert_mda_int16_(varargin{:});
 end %switch
 end %func
 
 
 %--------------------------------------------------------------------------
-function convert_mda_int16_(vcDir_in, vcDir_out)
+% interpolate mda files
+function convert_mda_reliability_(vcDir_in, vcDir_out)
+% extract top channels only
 
 if isempty(vcDir_in)
-    vcDir_in = '/mnt/ceph/users/jjun/groundtruth/';
+    vcDir_in = '/mnt/ceph/users/jjun/groundtruth/magland_synth/datasets_noise20_K20_C8/';
 end
 if isempty(vcDir_out)
-    vcDir_out = '/mnt/ceph/users/jjun/groundtruth/';
+    vcDir_out = '/mnt/ceph/users/jjun/groundtruth/test_reliability';
 end
-[csFiles_gt, csFiles_h5] = dir_set_(vcDir_in, 'raw.mda', 'param.json');
+
+vr_randseed = 1:30; % repeat 10x by adding noise
+rand_scale1 = 20/4;
+
+S_json = struct('scale_factor', .01, 'spike_sign', -1);
+vS_Files_raw = dir(fullfile(vcDir_in, '**/raw.mda'));
+csFiles_raw = cellfun(@(x,y)fullfile(x,y), {vS_Files_raw.folder}, {vS_Files_raw.name}, 'UniformOutput', 0);
+
+% look for raw files in it
+for iFile = 1:numel(csFiles_raw)
+    vcFile_raw1 = csFiles_raw{iFile};
+    vcDir_in1 = fileparts(vcFile_raw1);    
+    try        
+        % determine the peak channel
+        mrGt1 = readmda_(fullfile(vcDir_in1, 'firings_true.mda'));
+        mrWav1 = readmda_(fullfile(vcDir_in1, 'raw.mda'))';        
+        mrSiteXY1 = csvread(fullfile(vcDir_in1, 'geom.csv'));
+        S_json1 = loadjson_(fullfile(vcDir_in1, 'params.json'));
+        [nSamples1, nChans1] = size(mrWav1);
+        
+        for iRand = 1:numel(vr_randseed)
+            rng(vr_randseed(iRand));
+            % add random number to the array  
+            mrWav11 = mrWav1;
+            for iChan = 1:nChans1
+                mrWav11(:,iChan) = mrWav1(:,iChan) + randn(nSamples1,1,'single') * rand_scale1;
+            end
+            vcDir_out11 = fullfile(vcDir_out, strrep(vcDir_in1, vcDir_in, ''), sprintf('rand%03d', iRand));
+            export_spikeforest_(vcDir_out11, mrWav11', mrSiteXY1, S_json1, mrGt1);        
+        end
+        fprintf('%d: %s converted\n', iFile, vcDir_in1);
+    catch     
+        fprintf(2, '%d: error processing %s\n', iFile, vcDir_in1);
+    end
+end %for iFile
+end %func
+
+
+%--------------------------------------------------------------------------
+% interpolate mda files
+function convert_mda_samplerate_(vcDir_in, vcDir_out)
+% extract top channels only
+
+if isempty(vcDir_in)
+    vcDir_in = '/mnt/ceph/users/jjun/groundtruth/magland_synth/datasets_noise20_K20_C8';
+end
+if isempty(vcDir_out)
+    vcDir_out = '/mnt/ceph/users/jjun/groundtruth/test_samplerate';
+end
+
+vr_samplerate = [15000, 20000, 30000, 40000, 60000];
+S_json = struct('scale_factor', .01, 'spike_sign', -1);
+vS_Files_raw = dir(fullfile(vcDir_in, '**/raw.mda'));
+csFiles_raw = cellfun(@(x,y)fullfile(x,y), {vS_Files_raw.folder}, {vS_Files_raw.name}, 'UniformOutput', 0);
+
+% look for raw files in it
+for iFile = 1:numel(csFiles_raw)
+    vcFile_raw1 = csFiles_raw{iFile};
+    vcDir_in1 = fileparts(vcFile_raw1);    
+    try        
+        % determine the peak channel
+        mrGt1 = readmda_(fullfile(vcDir_in1, 'firings_true.mda'));
+        viTime_gt1 = mrGt1(2,:); % one base
+        mrWav1 = readmda_(fullfile(vcDir_in1, 'raw.mda'));        
+        mrSiteXY1 = csvread(fullfile(vcDir_in1, 'geom.csv'));
+        S_json1 = loadjson_(fullfile(vcDir_in1, 'params.json'));
+        samplerate1 = S_json1.samplerate;        
+        mrFft1 = fft(single(mrWav1)');
+        
+        for iSampleRate = 1:numel(vr_samplerate)
+            samplerate11 = vr_samplerate(iSampleRate);
+            S_json11 = setfield(S_json1, 'samplerate', samplerate11);                       
+            % scale waveforms using inverse fft
+            mrWav11 = resample_ifft_(mrFft1, samplerate1, samplerate11);
+            mrWav11 = mrWav11';
+            % scale mrGt time index
+            viTime_gt11 = round((viTime_gt1-1) * samplerate11/samplerate1) + 1; % scale
+            mrGt11 = mrGt1;
+            mrGt11(2,:) = viTime_gt11;     
+            
+            vcDir_out11 = fullfile(vcDir_out, sprintf('sr%d', samplerate11), strrep(vcDir_in1, vcDir_in, ''));
+            export_spikeforest_(vcDir_out11, mrWav11, mrSiteXY1, S_json11, mrGt11);        
+        end
+        fprintf('%d: %s converted\n', iFile, vcDir_in1);
+    catch     
+        fprintf(2, '%d: error processing %s\n', iFile, vcDir_in1);
+    end
+end %for iFile
+end %func
+
+
+%--------------------------------------------------------------------------
+function mrWav2 = resample_ifft_(mrFft1, samplerate1, samplerate2)
+[n1, nChans] = size(mrFft1);
+n2 = ceil((n1-1) * samplerate2 / samplerate1) + 1;
+
+mrWav2 = zeros(n2, nChans, 'like', mrFft1);
+vrFft2 = zeros(n2, 1, 'like', mrFft1);
+if samplerate2 >= samplerate1
+    % increase sample rate
+    vrFilt2 = fft_lowpass_(n2, samplerate1/2*.8, 1000, samplerate2); 
+    n1a = ceil(n1/2);
+    n1b = n1-n1a;
+    vi1 = [1:n1a, n2-n1b+1:n2];
+    for iChan = 1:nChans    
+        vrFft2(:) = 0;
+        vrFft2(vi1) = mrFft1(:,iChan);
+        mrWav2(:,iChan) = real(ifft(vrFft2 .* vrFilt2));
+    end
+else
+    % reduce sample rate
+    vrFilt2 = fft_lowpass_(n2, samplerate2/2*.8, 1000, samplerate2); 
+    n2a = ceil(n2/2);
+    n2b = n2-n2a;
+    vi2 = [1:n2a, n1-n2b+1:n1];
+    for iChan = 1:nChans    
+%         vrFft2(:) = 0;
+        vrFft2 = mrFft1(vi2,iChan);
+        mrWav2(:,iChan) = real(ifft(vrFft2 .* vrFilt2));
+    end    
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+function filt = fft_lowpass_(N, fhi, fwid_hi, sRateHz)
+[n1, n2, f] = get_freq_(N, sRateHz);
+filt = sqrt((1-erf((abs(f)-fhi)/fwid_hi))/2);
+end %func
+
+
+%--------------------------------------------------------------------------
+function [n1, n2, f] = get_freq_(N, sRateHz)
+% [n1, n2, f] = get_freq_(N, sRateHz)
+if mod(N,2)==0
+    if nargin>=2
+        df = sRateHz/N;
+        f = df * [0:N/2, -N/2+1:-1]';
+    end
+    n1 = N/2+1;
+else
+    if nargin>=2
+        df = sRateHz/N;
+        f = df * [0:(N-1)/2, -(N-1)/2:-1]'; 
+    end
+    n1 = (N-1)/2+1;
+end
+n2 = N-n1;
+end %func
+
+
+%--------------------------------------------------------------------------
+% load mda single type and save as int16
+function convert_mda_monotrode_(vcDir_in, vcDir_out)
+% extract top channels only
+
+if isempty(vcDir_in)
+    vcDir_in = '/mnt/ceph/users/jjun/groundtruth/paired_recordings';
+end
+if isempty(vcDir_out)
+    vcDir_out = '/mnt/ceph/users/jjun/groundtruth/paired_monotrode';
+end
+
+csDir = {'mea64c', 'boyden32c', 'crcns', 'kampff'};
 
 % load timestamps and parse out non-noise clusters
-S_json = struct('spike_sign', -1);
-sample_offset = 16001;
+S_json = struct('scale_factor', .01, 'spike_sign', -1);
+nChans_out = 4; % number of channels to export
 
-for iFile = 1:numel(csFiles_gt)
+for iDir = 1:numel(csDir)
+    vcDir_in1 = fullfile(vcDir_in, csDir{iDir});
+    vcDir_out1 = fullfile(vcDir_out, csDir{iDir});    
     try
+        export_monotrode_(vcDir_in1, vcDir_out1, nChans_out)
+    catch
+        disp(lasterr());
+    end  
+end %for
+
+end %func
+
+
+%--------------------------------------------------------------------------
+% Pierre Yger dataset
+function export_monotrode_(vcDir_in, vcDir_out, nChans_out)
+spkLim = [-30,30];
+
+% look for .raw files
+vS_Files_raw = dir(fullfile(vcDir_in, '**/raw.mda'));
+csFiles_raw = cellfun(@(x,y)fullfile(x,y), {vS_Files_raw.folder}, {vS_Files_raw.name}, 'UniformOutput', 0);
+
+% look for raw files in it
+for iFile = 1:numel(csFiles_raw)
+    vcFile_raw1 = csFiles_raw{iFile};
+    vcDir_in1 = fileparts(vcFile_raw1);    
+    try        
+        % determine the peak channel
+        mrGt1 = readmda_(fullfile(vcDir_in1, 'firings_true.mda'));
+        viTime_gt1 = mrGt1(2,:);
+        mrWav1 = readmda_(fullfile(vcDir_in1, 'raw.mda'));        
+        mrWav_mean1 = mr2tr3_(mrWav1', spkLim, viTime_gt1);
+        mrWav_mean1 = squeeze(mean(single(mrWav_mean1),2));
+        [~, iChan0_in1] = max(max(mrWav_mean1) - min(mrWav_mean1));
+        mrSiteXY1 = csvread(fullfile(vcDir_in1, 'geom.csv'));
+        [~, viSrt_site_] = sort(pdist2(mrSiteXY1, mrSiteXY1(iChan0_in1,:)), 'ascend');
+        nChans_out1 = min(nChans_out, size(mrSiteXY1,1));
+        viChan_out1 = sort(viSrt_site_(1:nChans_out1));
+        
+        % get n-nearest sites
+        for iChan_out1 = 1:nChans_out1
+            vcDir_out11 = strrep(sprintf('%s_ch%d',vcDir_in1,iChan_out1), vcDir_in, vcDir_out);
+            mkdir_(vcDir_out11);            
+            copyfile(fullfile(vcDir_in1, 'params.json'), fullfile(vcDir_out11, 'params.json'));
+            copyfile(fullfile(vcDir_in1, 'firings_true.mda'), fullfile(vcDir_out11, 'firings_true.mda'));
+            iChan_out = viChan_out1(iChan_out1);
+            csvwrite(fullfile(vcDir_out11, 'geom.csv'), mrSiteXY1(iChan_out,:));
+            writemda_(mrWav1(iChan_out,:), fullfile(vcDir_out11, 'raw.mda'));
+        end
+        fprintf('%d: %s converted\n', iFile, vcDir_in1);
+    catch     
+        fprintf(2, '%d: error processing %s\n', iFile, vcDir_in1);
+    end
+end %for iFile
+end %func
+
+
+%--------------------------------------------------------------------------
+% load mda single type and save as int16
+function convert_mda_gnode_(vcDir_in, vcDir_out)
+
+if isempty(vcDir_in)
+    vcDir_in = '/mnt/home/jjun/ceph/recordings/gnode';
+end
+if isempty(vcDir_out)
+    vcDir_out = '/mnt/ceph/users/jjun/groundtruth/waveclus_synth';
+end
+
+[csFiles_gt, csFiles_h5] = dir_set_(vcDir_in, '_gt.gdf', '_X.h5');
+
+% load timestamps and parse out non-noise clusters
+S_json = struct('samplerate', 24000, 'scale_factor', .01, 'spike_sign', -1);
+mrSiteXY = [0, 0];
+nChans = 1;
+fFlipPolarity = 1; % mean polarity is positive on the waveform
+fOverwrite = 0;
+for iFile = 1:numel(csFiles_h5)
+    try
+        % determine input and output directories
+        vcFile_gt1 = csFiles_gt{iFile};
+        [vcDir1, vcDir2] = fileparts(vcFile_gt1);
+        [~,vcDir1] = fileparts(vcDir1);
+        vcDir2 = strrep(vcDir2, '_gt','');        
+        vcDir_out1 = fullfile(vcDir_out, vcDir1, vcDir2);
+        
         % firings_true.mda
-        gt = textread(csFiles_gt{iFile},'%u');
-        gt = reshape(gt,2,[])';
-        vi_gt1 = find(gt(:,2) > sample_offset);
-        mrGt1 = zeros(3, size(gt,1), 'double');
-        mrGt1(2,:) = gt(vi_gt1,2) - sample_offset; % time
-        mrGt1(3,:) = gt(vi_gt1,1); % cluster label
+        vcFile_h5_ = csFiles_h5{iFile};
+        sRateHz1 = h5read(vcFile_h5_, '/srate');
+        vrWav1 = single(h5read(vcFile_h5_, '/X'));
         
-        % params.json
-        sRateHz1 = double(str2num_(h5read(csFiles_h5{iFile}, '/srate')));
-        vx = h5read(csFiles_h5{iFile}, '/electrode/x');
-        vy = h5read(csFiles_h5{iFile}, '/electrode/y');
-        vz = h5read(csFiles_h5{iFile}, '/electrode/z');
-        mrSiteXY1 = [vx(:), vz(:)];        
-        nChans1 = numel(vx);
-        scale_factor1 = 1e-4;
-        S_json1 = struct_set_(S_json, 'samplerate', sRateHz1, 'scale_factor', scale_factor1);
-        
-        % output directory
-        [~, vcDir12] = fileparts(fileparts(csFiles_gt{iFile}));
-        vcDir_out1 = fullfile(vcDir_out, vcDir12);
+        mr_gt1 = dlmread(vcFile_gt1);
+        S_json1 = setfield(S_json, 'samplerate', sRateHz1);
+        nSpk1 = size(mr_gt1,1);        
+        mrGt1 = zeros(3, nSpk1, 'double');
+        mrGt1(2,:) = mr_gt1(:,2); % factor 4 needed for dif
+        mrGt1(3,:) = mr_gt1(:,1); % cluster label, starts with 1
           
-        fprintf('\n%d/%d: %s, #ch=%d, sRateHz=%0.1f\n', ...
-            iFile, numel(csFiles_gt), vcDir12, nChans1, sRateHz1);        
+        fprintf('\n%d/%d: %s, #ch=%d, sRateHz=%0.1f, duration=%0.1fs, nSpikes=%d\n', ...
+            iFile, numel(csFiles_h5), vcDir1, nChans, sRateHz1, mr_gt1(end,2)/sRateHz1, nSpk1);        
             
         % raw.mda
-        if ~exist_file_(fullfile(vcDir_out1, 'raw.mda'))
-            mnWav1 = h5read(csFiles_h5{iFile},'/data');
-            mnWav1 = mnWav1(:,sample_offset+1:end);        
+        if ~exist_file_(fullfile(vcDir_out1, 'raw.mda')) || fOverwrite
+            vrWav1 = single(h5read(vcFile_h5_, '/X'));
+            if fFlipPolarity
+                vrWav1 = -vrWav1;
+            end
         else
-            mnWav1 = [];
+            vrWav1 = [];
         end
-        export_spikeforest_(vcDir_out1, mnWav1, mrSiteXY1, S_json1, mrGt1);        
+        export_spikeforest_(vcDir_out1, vrWav1, mrSiteXY, S_json1, mrGt1);        
+    catch
+        disp(lasterr());
+    end  
+end %for
+
+end %func
+
+
+%--------------------------------------------------------------------------
+% load mda single type and save as int16
+function convert_mda_waveclus_(vcDir_in, vcDir_out)
+
+if isempty(vcDir_in)
+    vcDir_in = '/mnt/ceph/users/jjun/recordings/waveclus/sim2';
+end
+if isempty(vcDir_out)
+    vcDir_out = '/mnt/ceph/users/jjun/groundtruth/waveclus_synth/sim2_c1';
+end
+csFiles_mat = dir_(fullfile(vcDir_in, 'simulation_*.mat'));
+S_gt = load(fullfile(vcDir_in, 'ground_truth.mat'));
+
+% load timestamps and parse out non-noise clusters
+S_json = struct('samplerate', 24000, 'scale_factor', .01, 'spike_sign', -1);
+mrSiteXY = [0, 0];
+nChans = 1;
+fFlipPolarity = 1; % mean polarity is positive on the waveform
+for iFile = 1:numel(csFiles_mat)
+    try
+        % firings_true.mda
+        viClu_spk1 = S_gt.spike_classes{iFile};
+        viSpk_time1 = S_gt.spike_first_sample{iFile}; %sampled at 24 KHz
+        vi_valid1 = find(viClu_spk1>0);
+        [viClu_spk1, viSpk_time1] = deal(viClu_spk1(vi_valid1), viSpk_time1(vi_valid1));
+        mrWav_clu1 = S_gt.su_waveforms{iFile}'; %sampled at 96 KHz
+        [~,iPeak1] = max(mean(abs(mrWav_clu1),2));
+        mrGt1 = zeros(3, numel(viSpk_time1), 'double');
+        mrGt1(2,:) = round(viSpk_time1 + iPeak1/4); % factor 4 needed for dif
+        mrGt1(3,:) = viClu_spk1; % cluster label, starts with 1
+        
+        % output directory
+        [~, vcDir1] = fileparts(csFiles_mat{iFile});
+        vcDir_out1 = fullfile(vcDir_out, vcDir1);
+          
+        fprintf('\n%d/%d: %s, #ch=%d, sRateHz=%0.1f\n', ...
+            iFile, numel(csFiles_mat), vcDir1, nChans, S_json.samplerate);        
+            
+        % raw.mda
+%         if ~exist_file_(fullfile(vcDir_out1, 'raw.mda'))
+            vrWav1 = load(csFiles_mat{iFile});
+            vrWav1 = single(vrWav1.data);
+            if fFlipPolarity
+                vrWav1 = -vrWav1;
+            end
+%         else
+%             vrWav1 = [];
+%         end
+        export_spikeforest_(vcDir_out1, vrWav1, mrSiteXY, S_json, mrGt1);        
     catch
         disp(lasterr());
     end  
@@ -531,6 +834,7 @@ function out1 = struct_set_(varargin), fn=dbstack(); out1 = irc('call', fn(1).na
 %--------------------------------------------------------------------------
 % 2 outputs
 function [out1, out2] = dir_set_(varargin), fn=dbstack(); [out1, out2] = irc('call', fn(1).name, varargin); end
+function [out1, out2] = dir_(varargin), fn=dbstack(); [out1, out2] = irc('call', fn(1).name, varargin); end
 
 %--------------------------------------------------------------------------
 % varargout

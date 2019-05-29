@@ -49,10 +49,8 @@ end
 % create a ground truth
 vcFile_gt_mda = fullfile(vcDir_in, 'firings_true.mda');
 vcFile_score = fullfile(vcDir_out, 'raw_geom_score.mat');
-if exist_file_(vcFile_gt_mda) && ~exist_file_(vcFile_score)
+if exist_file_(vcFile_gt_mda)  && ~exist_file_(vcFile_score)
     try
-%         vcFile_prm = fullfile(vcDir_out, 'raw_geom.prm');
-%         irc('import-gt', vcFile_gt_mda, vcFile_prm);
         irc('validate-mda', vcFile_gt_mda, firings_out_fname, raw_fname); % assume that groundtruth file exists
     catch
         fprintf(2, 'Validation failed\n');

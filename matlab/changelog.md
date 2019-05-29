@@ -3,6 +3,24 @@ IronClust, written by J. James Jun, Flatiron Institute, Simons Foundation
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [4.6.1] - 2019-5-28
+### Changed
+- `scale_filter` parameter is set to 10 (previously 1)
+  - This parameter scales up the int16 representation after filtering
+  - Substantially improves lower SNR performance by preventing data clipping
+- `maxWavCor = .975` (previously .99)
+  - Controls automated merging threshold
+
+### Added
+- `batch_sec_drift`: controls time duration per cluster batch size
+- `step_sec_drift`: controls time step per anatomical spatial distribution calculation
+
+
+## [4.5.11] - 2019-5-17
+### Fixed
+- monotrode (single-channel electrode) sorting error is fixed
+
+
 ## [4.5.10] - 2019-5-16
 ### Fixed
 - `convert-mda` error is fixed for exporting to SpikeForest groundtruth dataset (.mda format)
