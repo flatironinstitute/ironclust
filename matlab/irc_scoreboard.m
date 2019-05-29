@@ -1,5 +1,6 @@
 %--------------------------------------------------------------------------
 function irc_scoreboard()
+clear irc_scoreboard % remove cache
 irc('addpath');
 cd_irc_();
 

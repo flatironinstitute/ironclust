@@ -1670,7 +1670,7 @@ end
     
 P.bytesPerSample = bytesPerSample_(P.vcDataType);
 P = struct_default_(P, 'vcFile_prm', subsFileExt_(P.vcFile, '.prm'));
-if ~isempty(get_(P, 'gain_boost')), P.uV_per_bit = P.uV_per_bit / P.gain_boost; end
+% if ~isempty(get_(P, 'gain_boost')), P.uV_per_bit = P.uV_per_bit / P.gain_boost; end
 P.spkThresh = P.spkThresh_uV / P.uV_per_bit;
 P = struct_default_(P, 'cvrDepth_drift', {});
 P = struct_default_(P, {'maxSite_fet', 'maxSite_detect', 'maxSite_sort','maxSite_pix', 'maxSite_dip', 'maxSite_merge', 'maxSite_show'}, P.maxSite);
@@ -21844,8 +21844,8 @@ end %func
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_(vcFile_prm)
 if nargin<1, vcFile_prm = ''; end
-vcVer = 'v4.6.1';
-vcDate = '5/28/2019';
+vcVer = 'v4.6.2';
+vcDate = '5/29/2019';
 vcHash = file2hash_();
 
 if nargout==0
@@ -27666,7 +27666,8 @@ end %func
 %--------------------------------------------------------------------------
 % 11/5/2018 JJJ: Return the version of compiled run_irc
 function vcVersion = mcc_version_()
-[status, cmdout] = system([ircpath_('run_irc'), ' version']); % must be found in the system path
+[status, cmdout] = system([ircpath_('run_irc'), ' version']);
+% [status, cmdout] = system([ircpath_('run_run_irc.sh'), ' ', getenv('MCRROOT'), ' version']); % must be found in the system path
 vcVersion = strtrim(cmdout);
 end %func
 
@@ -27765,6 +27766,7 @@ if ischar(fWait), fWait = str2num(fWait); end
 if ~strcmpi(version_(), mcc_version_()), mcc_(); end %compile
 t1=tic;
 S_cfg = read_cfg_();
+% run_irc_path = [ircpath_('run_run_irc.sh'), ' ', getenv('MCRROOT')];
 run_irc_path = ircpath_('run_irc');
 timeout = get_set_(S_cfg, 'timeout_disbatch', 60*60*1);
 

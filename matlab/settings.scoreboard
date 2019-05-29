@@ -23,5 +23,5 @@ fGpu={1};
 fGpu_sort={1};
 
 % #Drift
-batch_sec_drift = {600, 400, 200};
+batch_sec_drift = {1200, 800, 600, 300, 240, 100};
 step_sec_drift = {20};

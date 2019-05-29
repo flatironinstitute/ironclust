@@ -68,9 +68,8 @@ nSites_whiten = 32;         % number of sites to use local whtening (only active
 nChans_min_car = 8;        % minimum number of common average referencing
 viSiteZero = [];            % Site# to ignore manually
 nPad_filt = 100;            % Number of samples to overlap between multiple loading (filter edge safe).
-gain_boost = 10;             % multiply the raw recording by this gain to boost uV per bit
 thresh_corr_bad_site = [];  % Automatically reject bad sites based on the max. correlation with neighboring sites using raw waveforms. Set to [] to disable
-scale_filter = 10;			% filter multiplier for int16 interal representation
+scale_filter = 8;			% filter multiplier for int16 interal representation
 
 % #Spike detection and grouping (run "jrc spikesort" after change)
 vcDetect = 'min';           % Spike detection method. {'min', 'xcov'}
@@ -109,7 +108,7 @@ nQuantile_drift = 8;        % Valid if vcCluster = 'drift'; # of bins for amplit
 nTime_clu = [];             % number of time periods to perform separate clustering (later to be merged after clustering)
 nTime_drift = [];          % divide to n drift time bins
 nThreads = 128;             % number of GPU threads for clustering
-batch_sec_drift = 240;        % batch duration in seconds. clustering time duration
+batch_sec_drift = 600;        % batch duration in seconds. clustering time duration
 step_sec_drift = 20;          % compute anatomical similarity every n sec
 
 % #Post-cluster auto-merging parameters (run "jrc auto" after change)
@@ -235,6 +234,7 @@ fMeanSite = 1;              % Subtract background noise (mean across sites, nSit
 fMeanSite_drift = 0;        % Average nearest vertical neighbors (top and down) [D]
 fCheckSites = 0;            % Automatically reject bad sites if set to 1
 maxLfpSdZ = 4.500000;       % site rejection threshold (valid if fCheckSites=1)
+%gain_boost = 1;             % multiply the raw recording by this gain to boost uV per bit
 
 % Spike detection and grouping
 fPcaDetect = 0;             % Detect spikes after projecting waveform in 1st prin. vec.

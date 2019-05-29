@@ -3,6 +3,12 @@ IronClust, written by J. James Jun, Flatiron Institute, Simons Foundation
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [4.6.2] - 2019-5-29
+### Changed
+- `gain_boost` parameter is removed.
+- `scale_filter` paramter is set to 8.
+
+
 ## [4.6.1] - 2019-5-28
 ### Changed
 - `scale_filter` parameter is set to 10 (previously 1)
