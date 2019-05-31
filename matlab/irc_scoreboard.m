@@ -125,12 +125,15 @@ for iDir = 1:numel(csDir_out)
         [vrSnr1, vrPrecision1, vrRecall1, vrAccuracy1] = ...
             deal(S_score1.vrSnr_min_gt, 1-S_score_clu1.vrFp, 1-S_score_clu1.vrMiss, ...
                 S_score_clu1.vrAccuracy);
+        vn_ = cellfun(@numel, {vrSnr1, vrPrecision1, vrRecall1, vrAccuracy1});        
+        assert(std(vn_)==0, 'number of elements all same');    
+%         if iDir == numel(csDir_out)-5, disp(cmAccuracy{iRecording1,iParam1}); end
         cmSnr{iRecording1,iParam1} = vrSnr1(:);
         cmPrecision{iRecording1,iParam1} = vrPrecision1(:);
         cmRecall{iRecording1,iParam1} = vrRecall1(:);
-        cmAccuracy{iRecording1,iParam1} = vrAccuracy1(:);
+        cmAccuracy{iRecording1,iParam1} = vrAccuracy1(:);        
     catch
-        ; %no output generated
+%         disp(lasterr()); %no output generated
     end
 end
 
@@ -209,7 +212,7 @@ switch lower(vcType)
         csParam_tbl = hTbl_param.Data(:,1);
         % hTbl_param.Data = cell(nParam, nCols);
         for iParam_tbl = 1:numel(csParam_tbl)    
-            iParam = strcmp(csParam_tbl{iParam_tbl}, csParam);
+            iParam = find(strcmp(csParam_tbl{iParam_tbl}, csParam));
             fh_ = @(x)cell2mat_(x(:,iParam));
             [vrSnr1, vrPrec1, vrRecall1, vrAccuracy1] = ...
                 deal(fh_(cmSnr), fh_(cmPrecision), fh_(cmRecall), fh_(cmAccuracy));   
@@ -589,6 +592,7 @@ for iParam = 1:nParams
 end
 
 % update parameter list
+% update_tables_('initialize');
 update_tables_('Param', load_param_());
 % cbf_assemble_results_(h,e);
 close_(hMsg);

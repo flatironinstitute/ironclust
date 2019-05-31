@@ -77,7 +77,7 @@ qqFactor = 4.5;               % Spike detection thresold (Threshold = qqFactor*S
 qqSample = 4;               % Median subsample factor (1 every n)
 spkThresh_uV = [];          % Manual threshold (applies to all channels)
 spkThresh_max_uV = [];      % maximum absolute amp. allowed
-spkLim_ms = [-.25, 1];    % Time range to capture the filtered spike waveforms; spkLim = round(P.spkLim_ms/1000*P.sRateHz)
+spkLim_ms = [-.25, .75];    % Time range to capture the filtered spike waveforms; spkLim = round(P.spkLim_ms/1000*P.sRateHz)
 spkLim_raw_ms = [];         % Raw spike waveform range, setting to [] will use spkLim_raw_factor to determine spkLim_raw (# samples)
 spkLim_raw_factor = 2;      % if spkLim_raw_ms==[] then spkLim_raw = spkLim * spkLim_raw_factor
 maxSite = [];               % Auto-calculated by `maxDist_site_spk_um` if empty. `nSites_spk` = 1+2*`maxSite`-`nSite_ref`)
@@ -112,7 +112,7 @@ batch_sec_drift = 600;        % batch duration in seconds. clustering time durat
 step_sec_drift = 20;          % compute anatomical similarity every n sec
 
 % #Post-cluster auto-merging parameters (run "jrc auto" after change)
-maxWavCor = .975;            % merge if waveform correlation is greater than maxWavCor.
+maxWavCor = .985;            % merge if waveform correlation is greater than maxWavCor.
 min_count = 30;             % Minimum cluster size (min_count will be set to 2*#features if lower).
 knn_merge_thresh = 1;       % Number of spikes shared between two peaks to be merged
 thresh_mad_clu = 7.5;       % This sets the MAD score threshold to remove outlier spikes for each cluster.
@@ -245,7 +245,7 @@ refrac_factor = 2;          % Refractory period for the same channel  (spkRefrac
 
 % Feature extraction
 slopeLim_ms = [.05 .35];    % Slope feature parameter
-spkLim_ms_fet = [-.25, .75];			% Spike waveform time range
+spkLim_ms_fet = [-.25, 1];			% Spike waveform time range
 maxSite_fet = [];              % 2*n number of nearest neighbors for merging
 nMinAmp_ms = 0;             % Amplitude minimum search range
 fRejectSpk_vpp = 0;         % Reject spikes exceedign 2 * thresh

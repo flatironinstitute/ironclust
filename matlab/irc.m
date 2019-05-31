@@ -1501,7 +1501,7 @@ switch(P.vcDataType)
     case {'float', 'float32', 'float64', 'single', 'double'}
         vrWav_med1 = median_(subsample_mr_(mnWav1, 2^16, 2)')';
         mnWav1 = bsxfun(@minus, mnWav1, vrWav_med1); % subtract med to prevent saturation
-        mnWav1 = int16(mnWav1 / P.uV_per_bit);
+        mnWav1 = int16(mnWav1 / get_set_(P, 'uV_per_bit', 1));
 end
 if get_(P, 'fInverse_file'), mnWav1 = -mnWav1; end %flip the polarity
 
@@ -21844,8 +21844,8 @@ end %func
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_(vcFile_prm)
 if nargin<1, vcFile_prm = ''; end
-vcVer = 'v4.6.2';
-vcDate = '5/29/2019';
+vcVer = 'v4.6.3';
+vcDate = '5/30/2019';
 vcHash = file2hash_();
 
 if nargout==0

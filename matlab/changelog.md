@@ -3,6 +3,12 @@ IronClust, written by J. James Jun, Flatiron Institute, Simons Foundation
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [4.6.3] - 2019-5-30
+### Changed
+- `maxWavCor` set to .985 (previously .975)
+- `spkLim_ms` set to [-.25, .75] (previously [-.25, 1])
+
+
 ## [4.6.2] - 2019-5-29
 ### Changed
 - `gain_boost` parameter is removed.
