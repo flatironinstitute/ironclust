@@ -1462,9 +1462,12 @@ function [mnWav1, dimm_wav, P] = load_file_(fid_bin, nSamples_load1, P, fSingle)
 % [Output]
 % mnWav1: int16 (# samples/chan x chan)
 % vrWav_mean1: average across chan output
+persistent single_center single_scale
+
 mnWav1 = [];
 fClose_file = 1;
 if ischar(fid_bin)
+    [single_center, single_scale] = deal([]);
     vcFile = fid_bin;
     if ~exist_file_(vcFile)
         error('File does not exist: %s\n', vcFile);
@@ -1499,9 +1502,17 @@ end
 switch(P.vcDataType)
     case 'uint16', mnWav1 = int16(single(mnWav1)-2^15);
     case {'float', 'float32', 'float64', 'single', 'double'}
-        vrWav_med1 = median_(subsample_mr_(mnWav1, 2^16, 2)')';
-        mnWav1 = bsxfun(@minus, mnWav1, vrWav_med1); % subtract med to prevent saturation
-        mnWav1 = int16(mnWav1 / get_set_(P, 'uV_per_bit', 1));
+        if isempty(single_center) || isempty(single_scale)
+            max_ = max(mnWav1(:));
+            min_ = min(mnWav1(:));
+            single_scale = max_ - min_;
+            single_center = (max_ + min_) / 2;            
+%             vrWav_med1 = median_(subsample_mr_(mnWav1, 2^16, 2)')';
+%             mnWav1 = bsxfun(@minus, mnWav1, vrWav_med1); % subtract med to prevent saturation
+%             mnWav1 = int16(mnWav1 / get_set_(P, 'uV_per_bit', 1));
+        end
+        mnWav1 = int16((mnWav1 - single_center) * (2^14 / single_scale));
+        
 end
 if get_(P, 'fInverse_file'), mnWav1 = -mnWav1; end %flip the polarity
 
@@ -3015,7 +3026,16 @@ function S_gt = load_gt_(vcFile_gt, P)
 if nargin<2, P = get0_('P'); end
 vcFile_gt = locate_gt_(vcFile_gt, P);
 if ~exist_file_(vcFile_gt), S_gt=[]; return; end
-S = load(vcFile_gt);
+[~,~,vcExt] = fileparts(vcFile_gt);
+switch lower(vcExt)
+    case '.mat'
+        S = load(vcFile_gt);
+    case '.mda'
+        mr_ = readmda_(vcFile_gt)';
+        S = struct('viClu', int32(mr_(:,3)), 'viTime', int32(mr_(:,2)));
+    otherwise
+        error('nsupported');
+end
 if isfield(S, 'S_gt')
     S_gt = S.S_gt;  
 elseif isfield(S, 'Sgt')
@@ -7003,6 +7023,15 @@ switch lower(P.vcFet) %{'xcor', 'amp', 'slope', 'pca', 'energy', 'vpp', 'diff248
         trcov_ = @(a,b)shiftdim(sqrt(abs(mean(a.*b) - mean(a).*mean(b))));        
         mrFet2 = trcov_(trWav2_spk(1:end-nDelay,:,:), trWav2_spk(nDelay+1:end,:,:))';
         %mrFet1 = shiftdim(std(trWav_spk1,1))';
+        
+    case {'autoencoder', 'autoenc'}
+        autoencoder_global = get0_('autoencoder_global');
+        if isempty(autoencoder_global)
+            autoencoder_global = trainAutoeocnder(trWav2_spk);
+            set0_(autoencoder_global);
+        end
+        mrFet1 = encode(autoencoder_global, trWav2_spk);
+        
         
     case {'pca', 'gpca', 'fpca', 'spca', 'cpca'}
         %  Compute PrinVec, 2D, max channel only
@@ -16490,6 +16519,7 @@ nFiles = numel(csFile);
 set0_(mrPv_global, vrFilt_spk); % reeset mrPv_global and force it to recompute
 write_spk_(P.vcFile_prm);
 for iFile=1:nFiles
+    clear load_file_
     fprintf('File %d/%d: detecting spikes from %s\n', iFile, nFiles, csFile{iFile});
     t1 = tic;
     [fid1, nBytes_file1] = fopen_(csFile{iFile}, 'r');
@@ -17179,6 +17209,7 @@ P.fft_thresh = 0; %disable for GT
 [tnWav_spk, vnThresh_site] = deal({});    
 nSamples1 = 0;  
 [fid1, nBytes_file1] = fopen_(P.vcFile, 'r');
+clear load_file_
 nBytes_file1 = file_trim_(fid1, nBytes_file1, P);
 [nLoad1, nSamples_load1, nSamples_last1] = plan_load_(nBytes_file1, P);
 t_dur1 = tic;
@@ -20096,6 +20127,7 @@ for iFile = 1:numel(csFile_bin)
             nSamples_per_load_ = nSamples_per_load;
         end
         [cvi_lim_bin, viRange_bin] = sample_skip_([1, nSamples_per_load_], nSamples_bin_, nLoads_per_file_);   
+        clear load_file_
         for iLoad_ = 1:nLoads_per_file_        
             fprintf('.');
             ilim_bin_ = cvi_lim_bin{iLoad_};
@@ -21844,8 +21876,8 @@ end %func
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_(vcFile_prm)
 if nargin<1, vcFile_prm = ''; end
-vcVer = 'v4.6.3';
-vcDate = '5/30/2019';
+vcVer = 'v4.6.4';
+vcDate = '6/4/2019';
 vcHash = file2hash_();
 
 if nargout==0

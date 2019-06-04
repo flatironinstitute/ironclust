@@ -3,6 +3,15 @@ IronClust, written by J. James Jun, Flatiron Institute, Simons Foundation
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [4.6.4] - 2019-6-4
+### Fixed
+- `single` data type for the raw recording is correctly scaled to int16 format.
+  - max and min value of the recording is used to fill +/-2^14 int16 range
+  - The actual microvolts scaling may be off using this approach.
+    However, most single-type recordings are from simulated studies 
+    for a ground-truth validation purpose, where uV scaling isn't necessary.
+
+
 ## [4.6.3] - 2019-5-30
 ### Changed
 - `maxWavCor` set to .985 (previously .975)
