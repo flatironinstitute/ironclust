@@ -13,7 +13,7 @@ function run_irc(vcDir_in, vcDir_out, vcFile_template)
 if nargin<2, vcDir_out = ''; end
 if nargin<3, vcFile_template = ''; end
 if isempty(vcDir_out)
-    vcDir_out = strrep(vcDir_in, '/groundtruth/', '/irc/');
+    vcDir_out = strrep(vcDir_in, '/groundtruth/', sprintf('/irc_%s/', irc('version')));
 end
 if ~isdeployed()
     source_path = fileparts(mfilename('fullpath'));

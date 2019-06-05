@@ -16,6 +16,7 @@ pc_per_chan = {2};
 % #Clustering
 %nTime_clu = {2};
 %nTime_drift = {64};
+fSpatialMask_clu = {0,1};
 
 % #Auto-merging
 maxWavCor = {.985};

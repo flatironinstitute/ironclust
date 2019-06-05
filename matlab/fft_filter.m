@@ -30,7 +30,12 @@ else
 end
 
 NSKIP_MAX = 2^19; % fft work length
-scale_filter = get_set_(P, 'scale_filter', 1);
+vcDataType_filter = get_set_(P, 'vcDataType_filter', 'int16');
+if strcmpi(vcDataType_filter, 'int16')
+    scale_filter = get_set_(P, 'scale_filter', 1);
+else
+    scale_filter = 1;
+end
 nPad = 300;
 [nT, nC] = size(mrWav);
 nSkip = min(nT, NSKIP_MAX);

@@ -51,6 +51,7 @@ vcFilter_show = '';         % Filter to apply in the "traces" view. Choices: {''
 fText = 1;                  % Show spike count per unit (*, press 'n' to toggle in manual GUI)
 
 % #Pre-processing (run "jrc spikesort" after change)
+vcDataType_filter = 'single';   % Internal data representation after filtering
 tlim_load = [];             % Time range to load in sec (uses all time range if set to empty)
 vcFilter = 'bandpass';         % {'ndiff', 'sgdiff', 'bandpass', 'fir1', 'user', 'fftdiff', 'none'}
 vcFilter_detect = '';  % Filter choice to run spike detection {'bandpass', 'wiener', 'matched', 'corr', 'xcov', 'banddiff'}
@@ -69,7 +70,7 @@ nChans_min_car = 8;        % minimum number of common average referencing
 viSiteZero = [];            % Site# to ignore manually
 nPad_filt = 100;            % Number of samples to overlap between multiple loading (filter edge safe).
 thresh_corr_bad_site = [];  % Automatically reject bad sites based on the max. correlation with neighboring sites using raw waveforms. Set to [] to disable
-scale_filter = 8;			% filter multiplier for int16 interal representation
+scale_filter = 8;			% filter multiplier for int16 interal representation (only used if vcDataType_filter='int16', otherwise set to 1)
 
 % #Spike detection and grouping (run "jrc spikesort" after change)
 vcDetect = 'min';           % Spike detection method. {'min', 'xcov'}
@@ -110,6 +111,7 @@ nTime_drift = [];          % divide to n drift time bins
 nThreads = 128;             % number of GPU threads for clustering
 batch_sec_drift = 600;        % batch duration in seconds. clustering time duration
 step_sec_drift = 20;          % compute anatomical similarity every n sec
+fSpatialMask_clu = 1;       % Apply spatial mask calculated from the distances between sites to the peak site (half-scale: P.mnPcPerChanaxDist_site_um). circa v3.1.10
 
 % #Post-cluster auto-merging parameters (run "jrc auto" after change)
 maxWavCor = .985;            % merge if waveform correlation is greater than maxWavCor.
@@ -290,7 +292,6 @@ vcFile_bonsai = '';         % bonsai 5-column output (x,y are 2 and 3)
 %nPos_Drift = 64;           % number of position bins to compute the spike count histogram
 %dc_percent = 2;             % used for distribution cutting
 %fRepeat_clu = 0;            % Flag for whether to repeat clustering for the bottom half of the cluster amplitudes.
-%fSpatialMask_clu = 0;       % Apply spatial mask calculated from the distances between sites to the peak site (half-scale: P.mnPcPerChanaxDist_site_um). circa v3.1.10
 %min_sites_mask = 5;         % Minimum number of sites to have to apply spatial mask. Used if fSpatialMask_clu==1. circa v3.1.10
 %nDelays_xcov = 4;           % Used for vcCluster='xcov'. Number of delays for channel-pair covariance 
 

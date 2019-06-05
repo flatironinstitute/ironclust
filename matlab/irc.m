@@ -1,6 +1,7 @@
 %--------------------------------------------------------------------------
 % IronClust (irc)
 % James Jun, Flatiron Institute
+% 2019/06/05: after filter data is in float32 format
 
 function varargout = irc(varargin)
 % Memory-efficient version 
@@ -990,10 +991,10 @@ switch lower(vcDetect)
         S0 = detect_xcov_(P, viTime_spk0, viSite_spk0);
 end
 if get_set_(P, 'fRamCache', 1)
-    tnWav_raw = load_bin_(strrep(P.vcFile_prm, '.prm', '_spkraw.jrc'), 'int16', S0.dimm_raw);
-    tnWav_spk = load_bin_(strrep(P.vcFile_prm, '.prm', '_spkwav.jrc'), 'int16', S0.dimm_spk); 
+    tnWav_raw = load_spkraw_(S0, P);
+    tnWav_spk = load_spkwav_(S0, P);    
 end
-trFet_spk = load_bin_(strrep(P.vcFile_prm, '.prm', '_spkfet.jrc'), 'single', S0.dimm_fet); 
+trFet_spk = load_spkfet_(S0, P);
 S0.mrPos_spk = spk_pos_(S0, trFet_spk);
 
 % measure time
@@ -1143,12 +1144,10 @@ try
         if ~fLoadWav, return; end
         if isempty(S0), return; end %no info                
         try
-            if get_set_(P, 'fRamCache', 1)            
-                trFet_spk = load_bin_(strrep(P.vcFile_prm, '.prm', '_spkfet.jrc'), 'single', S0.dimm_fet);
-                tnWav_spk = load_bin_(strrep(P.vcFile_prm, '.prm', '_spkwav.jrc'), 'int16', S0.dimm_spk);
-                tnWav_raw = load_bin_(strrep(P.vcFile_prm, '.prm', '_spkraw.jrc'), 'int16', S0.dimm_raw);                
+            if get_set_(P, 'fRamCache', 1)   
+                [tnWav_raw, tnWav_spk, trFet_spk] = load_raw_spk_fet_(S0, P);
             else
-                trFet_spk = load_bin_(strrep(P.vcFile_prm, '.prm', '_spkfet.jrc'), 'single', S0.dimm_fet);
+                trFet_spk = load_spkfet_(S0, P);
             end
         catch
             disperr_();
@@ -1391,13 +1390,13 @@ end %func
 function [nLoad1, nSamples_load1, nSamples_last1] = plan_load_(nBytes_file, P)
 % plan load file size according to the available memory and file size (nBytes_file1)
 % LOAD_FACTOR = 8; % Memory usage overhead
-
+vcDataType = get_set_(P, 'vcDataType_filter', P.vcDataType);
 nSamples1 = floor(nBytes_file / bytesPerSample_(P.vcDataType) / P.nChans);
 % nSamples_max = floor(mem_max_(P) / P.nChans / 4); % Bound by MAX_BYTES_LOAD
 if ~isfield(P, 'MAX_BYTES_LOAD'), P.MAX_BYTES_LOAD = []; end
 if isempty(P.MAX_BYTES_LOAD), P.MAX_BYTES_LOAD = floor(mem_max_(P)); end
 if isempty(P.MAX_LOAD_SEC)
-   nSamples_max = floor(P.MAX_BYTES_LOAD / P.nChans / bytesPerSample_(P.vcDataType));
+   nSamples_max = floor(P.MAX_BYTES_LOAD / P.nChans / bytesPerSample_(vcDataType));
 else
     nSamples_max = floor(P.sRateHz * P.MAX_LOAD_SEC);
 end
@@ -1502,17 +1501,18 @@ end
 switch(P.vcDataType)
     case 'uint16', mnWav1 = int16(single(mnWav1)-2^15);
     case {'float', 'float32', 'float64', 'single', 'double'}
-        if isempty(single_center) || isempty(single_scale)
-            max_ = max(mnWav1(:));
-            min_ = min(mnWav1(:));
-            single_scale = max_ - min_;
-            single_center = (max_ + min_) / 2;            
-%             vrWav_med1 = median_(subsample_mr_(mnWav1, 2^16, 2)')';
-%             mnWav1 = bsxfun(@minus, mnWav1, vrWav_med1); % subtract med to prevent saturation
-%             mnWav1 = int16(mnWav1 / get_set_(P, 'uV_per_bit', 1));
+        vcDataType_filter = get_set_(P, 'vcDataType_filter', 'single');
+        if strcmpi(vcDataType_filter, 'int16')
+            if isempty(single_center) || isempty(single_scale)
+                max_ = max(mnWav1(:));
+                min_ = min(mnWav1(:));
+                single_scale = max_ - min_;
+                single_center = (max_ + min_) / 2;            
+            end
+            mnWav1 = int16((mnWav1 - single_center) * (2^14 / single_scale));
+        else
+            mnWav1 = cast_(mnWav1, vcDataType_filter);
         end
-        mnWav1 = int16((mnWav1 - single_center) * (2^14 / single_scale));
-        
 end
 if get_(P, 'fInverse_file'), mnWav1 = -mnWav1; end %flip the polarity
 
@@ -2773,13 +2773,18 @@ switch nFet_use
         viSpk12_ = viSpk1_;
         [n1_, n2_] = deal(numel(viSpk1_), numel(viSpk2_));
 end
-try
-    nSites_fet = 1 + P.maxSite*2 - P.nSites_ref;    
-    if get_set_(P, 'fSpatialMask_clu', 1) && nSites_fet >= get_set_(P, 'min_sites_mask', 5)
-        nFetPerChan = size(mrFet12_,1) / nSites_fet;
-        vrSpatialMask = spatialMask_(P, iSite, nSites_fet, P.maxDist_site_um);
-        vrSpatialMask = repmat(vrSpatialMask(:), [nFetPerChan, 1]);
-        mrFet12_ = bsxfun(@times, mrFet12_, vrSpatialMask(:));
+try % spatial mask
+    switch lower(P.vcFet)
+        case {'pca', 'gpca', 'fpca'}
+            nFetPerChan = get_(P, 'nPcPerChan', 2);
+            nSites_fet = size(mrFet12_,1) / nFetPerChan;
+        %     nSites_fet = 1 + P.maxSite*2 - P.nSites_ref;    
+            if get_set_(P, 'fSpatialMask_clu', 1) && nSites_fet >= get_set_(P, 'nChans_min_car', 8)
+        %         nFetPerChan = size(mrFet12_,1) / nSites_fet;
+                vrSpatialMask = spatialMask_(P, iSite, nSites_fet, P.maxDist_site_um);
+                vrSpatialMask = repmat(vrSpatialMask(:), [nFetPerChan, 1]);
+                mrFet12_ = bsxfun(@times, mrFet12_, vrSpatialMask(:));
+            end
     end
 catch
     disperr_('Spatial mask error');
@@ -5258,6 +5263,7 @@ n_post = size(mnWav1_post,1);
 if n_pre > 0 || n_post > 0
     mnWav2 = [mnWav1_pre; mnWav2; mnWav1_post];
 end
+
 P.vcFilter = get_filter_(P);
 vcMode = lower(P.vcFilter);
 switch vcMode
@@ -5451,7 +5457,7 @@ try
     csDesc{end+1} = sprintf('    Common ref              %s', P.vcCommonRef);
     csDesc{end+1} = sprintf('Events');
     csDesc{end+1} = sprintf('    #Spikes                 %d', nSpk);
-    csDesc{end+1} = sprintf('    Feature                 %s', P.vcFet);
+    csDesc{end+1} = sprintf('    Feature extracted       %s', P.vcFet);
     csDesc{end+1} = sprintf('    #Sites/event            %d', nSitesPerEvent);
     csDesc{end+1} = sprintf('    #Features/event         %d', nFeatures);    
 catch
@@ -5471,6 +5477,7 @@ if isfield(S0, 'S_clu')
     csDesc{end+1} = sprintf('    K-nearest neighbor(knn) %d', P.knn);
     csDesc{end+1} = sprintf('    nTime_clu               %d', P.nTime_clu);
     csDesc{end+1} = sprintf('    nTime_drift             %d', P.nTime_drift);
+    csDesc{end+1} = sprintf('    fSpatialMask_clu        %d', P.fSpatialMask_clu);
 end
 try
     runtime_total = S0.runtime_detect + S0.runtime_sort;
@@ -7025,12 +7032,19 @@ switch lower(P.vcFet) %{'xcor', 'amp', 'slope', 'pca', 'energy', 'vpp', 'diff248
         %mrFet1 = shiftdim(std(trWav_spk1,1))';
         
     case {'autoencoder', 'autoenc'}
+        mr_ = reshape(permute(trWav2_spk,[1,3,2]), [], size(trWav2_spk,2));
+        mr_ = single(gather_(mr_));
+        nFet = P.nPcPerChan * size(tnWav1_spk,2);
         autoencoder_global = get0_('autoencoder_global');
         if isempty(autoencoder_global)
-            autoencoder_global = trainAutoeocnder(trWav2_spk);
+            fprintf('\n\ttrWav2fet_: Training autoencoder...'); t_=tic;
+            vi_select_ = subsample_vr_(1:size(mr_,2), 2^10);
+            autoencoder_global = trainAutoencoder(mr_(:,vi_select_), nFet, ...
+                'ShowProgressWindow', false, 'MaxEpochs', 2^10);
             set0_(autoencoder_global);
+            fprintf('\n\t\ttook %0.1fs\n', toc(t_));
         end
-        mrFet1 = encode(autoencoder_global, trWav2_spk);
+        mrFet1 = encode(autoencoder_global, mr_);
         
         
     case {'pca', 'gpca', 'fpca', 'spca', 'cpca'}
@@ -10882,14 +10896,19 @@ function vr_uV = bit2uV_(vn, P)
 % use only for filtered traces
 
 if nargin<2, P = get0_('P'); end
-% if isempty(get_(P, 'nDiff_filt')), P.nDiff_filt = 0; end
+vcDataType_filter = get_set_(P, 'vcDataType_filter', 'int16');
+
 switch lower(get_filter_(P))
     case 'sgdiff'
         norm = sum((1:P.nDiff_filt).^2) * 2;
     case 'ndiff'
         norm = 2^(P.nDiff_filt-1);
-    case {'bandpass', 'wiener', 'fftdiff', 'banddiff'}
-        norm = get_set_(P, 'scale_filter', 1);
+    case {'bandpass', 'wiener', 'fftdiff', 'banddiff'}        
+        if strcmpi(vcDataType_filter, 'int16')
+            norm = get_set_(P, 'scale_filter', 1);
+        else
+            norm = 1;
+        end
     otherwise
         norm = 1;
 end
@@ -11064,8 +11083,9 @@ fMerge_spk = get_set_(P, 'fMerge_spk', 1);
 
 [n1, nSites, ~] = size(mnWav3);
 [cviSpk_site, cvrSpk_site] = deal(cell(nSites,1));
-if isempty(vnThresh_site)
-    vnThresh_site = int16(mr2rms_(gather_(mnWav3), 1e5) * P.qqFactor);
+if isempty(vnThresh_site)    
+%     vnThresh_site = int16(mr2rms_(gather_(mnWav3), 1e5) * P.qqFactor);
+    vnThresh_site = mr2thresh_(mnWav3, P);
 end
 fprintf('\tDetecting spikes from each channel.\n\t\t'); t1=tic;
 % parfor iSite = 1:nSites   
@@ -11170,7 +11190,7 @@ S0 = struct('viTime_spk', S_gt1.viTime(:), 'viSite_spk', S_gt1.viSite(:), 'P', P
 [S0] = file2spk_(P, S0.viTime_spk, S0.viSite_spk);
 set(0, 'UserData', S0);
 
-trFet_spk = load_bin_(strrep(P.vcFile_prm, '.prm', '_spkfet.jrc'), 'single', S0.dimm_fet); 
+trFet_spk = load_spkfet_(S0, P);
 S0.mrPos_spk = spk_pos_(S0, trFet_spk);
 
 % cluster and describe
@@ -11228,9 +11248,7 @@ viSite_spk = viSite_clu(viClu);
 S0 = file2spk_(P, int32(viTime_spk), int32(viSite_spk));
 S0.P = P;
 S0.S_ksort = S_ksort;
-tnWav_raw = load_bin_(strrep(P.vcFile_prm, '.prm', '_spkraw.jrc'), 'int16', S0.dimm_raw);
-tnWav_spk = load_bin_(strrep(P.vcFile_prm, '.prm', '_spkwav.jrc'), 'int16', S0.dimm_spk); 
-trFet_spk = load_bin_(strrep(P.vcFile_prm, '.prm', '_spkfet.jrc'), 'single', S0.dimm_fet); 
+[tnWav_raw, tnWav_spk, trFet_spk] = load_raw_spk_fet_(S0, P);
 S0.mrPos_spk = spk_pos_(S0, trFet_spk);
 set(0, 'UserData', S0);
 
@@ -11247,6 +11265,18 @@ set(0, 'UserData', S0);
 % Save
 save0_(strrep(P.vcFile_prm, '.prm', '_jrc.mat'));
 describe_(S0);
+end %func
+
+
+%--------------------------------------------------------------------------
+% 19/6/5 JJJ: Load spike waveforms and features
+function [tnWav_raw, tnWav_spk, trFet_spk] = load_raw_spk_fet_(S0, P)
+if nargin<1, S0 = get0_(); end
+if nargin<2, P = S0.P; end
+
+tnWav_raw = load_spkraw_(S0, P);
+tnWav_spk = load_spkwav_(S0, P);
+trFet_spk = load_spkfet_(S0, P);
 end %func
 
 
@@ -14058,7 +14088,7 @@ end %func
 function export_fet_(P)
 % export feature matrix to workspace
 S0 = load(strrep(P.vcFile_prm, '.prm', '_jrc.mat'));
-trFet = load_bin_(strrep(P.vcFile_prm, '.prm', '_spkfet.jrc'), 'single', S0.dimm_fet);
+trFet = load_spkfet_(S0, P);
 assignWorkspace_(trFet);
 end %func
 
@@ -15956,7 +15986,10 @@ end
 if get_set_(P, 'fSmooth_spatial', 0)
     mnWav1 = spatial_smooth_(mnWav1, P);
 end
-% [mnWav2, vnWav11, mnWav1, P.fGpu] = wav_preproces_(mnWav1, P);
+vcDataType_filter = get_set_(P, 'vcDataType_filter', 'single');
+if ~strcmpi(vcDataType_filter, 'int16')
+    mnWav1 = cast_(mnWav1, vcDataType_filter);
+end
 try        
     [mnWav1_, P.fGpu] = gpuArray_(mnWav1, P.fGpu);
     if P.fft_thresh>0, mnWav1_ = fft_clean_(mnWav1_, P); end
@@ -15993,12 +16026,7 @@ end
 %-----
 % detect spikes or use the one passed from the input (importing)
 if isempty(vnThresh_site)
-    try
-        vnThresh_site = gather_(int16(mr2rms_(mnWav3, 1e5) * P.qqFactor));
-    catch
-        vnThresh_site = int16(mr2rms_(gather_(mnWav3), 1e5) * P.qqFactor);
-        P.fGpu = 0;
-    end
+    [vnThresh_site, P.fGpu] = mr2thresh_(mnWav3, P);
 end
 if isempty(viTime_spk) || isempty(viSite_spk)
     P_ = setfield(P, 'nPad_pre', nPad_pre);
@@ -16096,6 +16124,39 @@ if nPad_pre > 0, viTime_spk = viTime_spk - nPad_pre; end
     gather_(viTime_spk, trFet_spk, miSite_spk, tnWav_spk);
 fGpu = P.fGpu;
 fprintf('\ttook %0.1fs\n', toc(t_fet));
+end %func
+
+
+%--------------------------------------------------------------------------
+function [vnThresh_site, fGpu] = mr2thresh_(mnWav3, P)
+fGpu = P.fGpu;
+vcDataType_filter = get_set_(P, 'vcDataType_filter', 'int16');
+if strcmpi(vcDataType_filter, 'int16')
+    try
+        
+        vnThresh_site = gather_(int16(mr2rms_(mnWav3, 1e5) * P.qqFactor));
+    catch
+        vnThresh_site = int16(mr2rms_(gather_(mnWav3), 1e5) * P.qqFactor);
+        fGpu = 0;
+    end
+else
+    try
+        vnThresh_site = gather_(mr2rms_(mnWav3, 1e5) * P.qqFactor);
+    catch
+        vnThresh_site = mr2rms_(gather_(mnWav3), 1e5) * P.qqFactor;
+    end
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+function vr = cast_(vr, vcType)
+switch lower(vcType)
+    case 'float32', vcType = 'single';
+    case 'float64', vcType = 'double';
+    otherwise, vcType = lower(vcType);
+end %switch
+vr = cast(vr, vcType);
 end %func
 
 
@@ -16570,6 +16631,7 @@ end
 
 % set S0
 [dimm_raw, dimm_spk, dimm_fet] = deal(size(tnWav_raw_), size(tnWav_spk_), size(trFet_spk_));
+[type_raw, type_spk, type_fet] = deal(class(tnWav_raw_), class(tnWav_spk_), class(trFet_spk_));
 [dimm_raw(3), dimm_spk(3), dimm_fet(3)] = deal(numel(viTime_spk));
 nSites = numel(P.viSite2Chan);
 cviSpk_site = arrayfun(@(iSite)find(miSite_spk(:,1) == iSite), 1:nSites, 'UniformOutput', 0);
@@ -16586,7 +16648,7 @@ end
 [mrPv_global, vrD_global] = get0_('mrPv_global', 'vrD_global');
 S0 = makeStruct_(P, viSite_spk, viSite2_spk, viTime_spk, vrAmp_spk, vrThresh_site, dimm_spk, ...
     cviSpk_site, cviSpk2_site, cviSpk3_site, dimm_raw, viT_offset_file, dimm_fet, nLoads, ...
-    mrPv_global, vrFilt_spk, vrD_global);
+    mrPv_global, vrFilt_spk, vrD_global, type_raw, type_spk, type_fet);
 clear_filters_();  % reset wiener cache
 end %func
 
@@ -21876,8 +21938,8 @@ end %func
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_(vcFile_prm)
 if nargin<1, vcFile_prm = ''; end
-vcVer = 'v4.6.4';
-vcDate = '6/4/2019';
+vcVer = 'v4.6.5';
+vcDate = '6/5/2019';
 vcHash = file2hash_();
 
 if nargout==0
@@ -22140,17 +22202,31 @@ end %func
 
 %--------------------------------------------------------------------------
 % 10/10/17 JJJ: load tnWav_raw from disk
-function tnWav_raw = load_spkraw_(S0)
+function tnWav_raw = load_spkraw_(S0, P)
 if nargin<1, S0 = get(0, 'UserData'); end
-tnWav_raw = load_bin_(strrep(S0.P.vcFile_prm, '.prm', '_spkraw.jrc'), 'int16', S0.dimm_raw);
+if nargin<2, P = S0.P; end
+type_raw = get_set_(S0, 'type_raw', 'int16');
+tnWav_raw = load_bin_(strrep(S0.P.vcFile_prm, '.prm', '_spkraw.jrc'), type_raw, S0.dimm_raw);
 end %func
 
 
 %--------------------------------------------------------------------------
 % 10/10/17 JJJ: load tnWav_spk from disk
-function tnWav_spk = load_spkwav_(S0)
+function tnWav_spk = load_spkwav_(S0, P)
 if nargin<1, S0 = get(0, 'UserData'); end
-tnWav_spk = load_bin_(strrep(S0.P.vcFile_prm, '.prm', '_spkwav.jrc'), 'int16', S0.dimm_spk);
+if nargin<2, P = S0.P; end
+type_spk = get_set_(S0, 'type_spk', 'int16');
+tnWav_spk = load_bin_(strrep(S0.P.vcFile_prm, '.prm', '_spkwav.jrc'), type_spk, S0.dimm_spk);
+end %func
+
+
+%--------------------------------------------------------------------------
+% 10/10/17 JJJ: load tnWav_spk from disk
+function trFet_spk = load_spkfet_(S0, P)
+if nargin<1, S0 = get(0, 'UserData'); end
+if nargin<2, P = S0.P; end
+type_fet = get_set_(S0, 'type_fet', 'single');
+trFet_spk = load_bin_(strrep(P.vcFile_prm, '.prm', '_spkfet.jrc'), type_fet, S0.dimm_fet);
 end %func
 
 
@@ -22899,6 +22975,7 @@ switch lower(vcDataType)
     otherwise vc = vcDataType;
 end
 end %func
+
 
 %--------------------------------------------------------------------------
 function dimm = file_dimm_(P_)
