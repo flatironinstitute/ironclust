@@ -60,9 +60,18 @@ switch lower(vcMode)
     otherwise, error(['fftfilt_: invalid option: ', vcMode]);
 end
 if ~fGpu, mrWav = gather_(mrWav); end
-fh_filter = @(x,f)real(ifft(bsxfun(@times, fft(single(x)), f)));
+
+fprintf('Running fft filter (%s)\n', vcMode); t1=tic;
+
+fft_thresh = get_set_(P, 'fft_thresh', 0);
+if fft_thresh == 0
+    fh_filter = @(x,f)real(ifft(bsxfun(@times, fft(single(x)), f), 'symmetric'));
+    fprintf('\t\t');
+else
+    fh_filter = @(x,f)real(ifft(bsxfun(@times, fft_clean_(fft(single(x)), fft_thresh), f), 'symmetric'));
+    fprintf('\t\tfft_filter: performing fft_clean with threshold %0.3f\n\t\t', fft_thresh);
+end
 n_prev = nan;
-fprintf('Running fft filter (%s)\n\t', vcMode); t1=tic;
 if nT <= nSkip, nPad = 0; end
 for iStart = 1:nSkip:nT
     iEnd = min(iStart+nSkip-1, nT);
@@ -106,7 +115,45 @@ if ~isGpu_(mrWav), mrWav_filt = gather_(mrWav_filt); end
 if fGpu_out
     mrWav_filt = gpuArray(mrWav_filt);
 end
-fprintf('\n\ttook %0.1fs (fGpu=%d)\n', toc(t1), fGpu);
+fprintf('\n\t\ttook %0.1fs (fGpu=%d)\n', toc(t1), fGpu);
+end %func
+
+
+%--------------------------------------------------------------------------
+% 2019/6/7 JJJ: frequency domain fft clean
+function mrFft = fft_clean_(mrFft, fft_thresh)
+nbins = 20; 
+nw = 3; %frequency neighbors to set to zero
+
+try
+    % Find frequency outliers    
+    n1 = floor(size(mrFft,1)/2);
+    viFreq = (1:n1)';
+    vrFft1 = mean(bsxfun(@times, abs(mrFft(1+viFreq,:)), viFreq), 2);
+    vi1_lim = round(linspace(0, n1, nbins+1));
+    for ibin=1:nbins
+        vi1 = (vi1_lim(ibin)+1):vi1_lim(ibin+1);
+        vrFft2 = vrFft1(vi1);
+        vrFft2 = vrFft2 - median(vrFft2); %mad transform
+        vrFft1(vi1) = vrFft2 / median(abs(vrFft2));
+    end
+
+    % broaden spectrum
+    vl_noise = vrFft1 > fft_thresh;
+    vi_noise = find(vl_noise);
+    for i_nw=1:nw
+        viA = vi_noise-i_nw;    viA(viA<1)=[];
+        viB = vi_noise+i_nw;    viB(viB>n1)=[];
+        vl_noise(viA)=1;
+        vl_noise(viB)=1;
+    end
+    vi_noise = find(vl_noise);
+catch
+    disp(lasterr());
+    return;
+end
+mrFft(1+vi_noise,:) = 0;
+mrFft(end-vi_noise+1,:) = 0;
 end %func
 
 

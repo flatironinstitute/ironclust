@@ -14,9 +14,7 @@ spkLim_ms = {[-.25, .75]};
 pc_per_chan = {2};
 
 % #Clustering
-%nTime_clu = {2};
-%nTime_drift = {64};
-fSpatialMask_clu = {0,1};
+fSpatialMask_clu = {1};
 
 % #Auto-merging
 maxWavCor = {.985};
@@ -24,5 +22,8 @@ fGpu={1};
 fGpu_sort={1};
 
 % #Drift
-batch_sec_drift = {600};
+batch_sec_drift = {300};
 step_sec_drift = {20};
+
+% #Noise
+fft_thresh = {0, 10};

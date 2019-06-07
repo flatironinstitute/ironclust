@@ -3,6 +3,16 @@ IronClust, written by J. James Jun, Flatiron Institute, Simons Foundation
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [4.6.6] - 2019-6-7
+### Changed
+- raw data and `_spkraw.jrc` files are stored in its original format
+  - raw spike waveforms are now stored in the original format regardless of `fft_thresh`.
+  - previously, raw spike waveforms were saved after performing `fft_thresh` operation.
+- `fft_thresh=10;` by default (previously 0)
+  - `fft_thresh` operation is now performed in the `fft_filter` function
+  - Only one fft and ifft operation is performed
+
+
 ## [4.6.5] - 2019-6-5
 ### Changed
 - `vcDataType_filter` sets the internal number representation of 

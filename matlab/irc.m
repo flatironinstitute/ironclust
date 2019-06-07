@@ -235,7 +235,7 @@ switch lower(vcCmd)
     case {'export-wav', 'export-raw'} % load raw and assign workspace
         mnWav = load_file_(P.vcFile, [], P);
         if strcmpi(vcCmd, 'export-wav')
-            if P.fft_thresh>0, mnWav = fft_clean_(mnWav, P); end
+%             if P.fft_thresh>0, mnWav = fft_clean_(mnWav, P); end
             mnWav = filt_car_(mnWav, P);
         end
         mnWav = gather_(mnWav);
@@ -5499,10 +5499,10 @@ catch
 end
 try
     csDesc{end+1} = sprintf('Execution:');
-    csDesc{end+1} = sprintf('   IronClust version:      %s', version_());
-    csDesc{end+1} = sprintf('   fGpu (GPU use):         %d', P.fGpu);
-    csDesc{end+1} = sprintf('   fParfor (parfor use):   %d', P.fParfor);
-    csDesc{end+1} = sprintf('   Parameter file:         %s', P.vcFile_prm);
+    csDesc{end+1} = sprintf('    IronClust version:      %s', version_());
+    csDesc{end+1} = sprintf('    fGpu (GPU use):         %d', P.fGpu);
+    csDesc{end+1} = sprintf('    fParfor (parfor use):   %d', P.fParfor);
+    csDesc{end+1} = sprintf('    Parameter file:         %s', P.vcFile_prm);
 catch
     ;
 end
@@ -15759,7 +15759,7 @@ P.vcFilter = get_filter_(P);
 if strcmpi(S_fig.vcFilter, 'on')
     P1=P; P1.sRateHz = sRateHz; P1.fGpu = 0;
     P1.vcFilter = get_set_(P, 'vcFilter_show', P.vcFilter);
-    if P.fft_thresh>0, mnWav1 = fft_clean_(mnWav1, P); end
+%     if P.fft_thresh>0, mnWav1 = fft_clean_(mnWav1, P); end
     mrWav1 = bit2uV_(filt_car_(mnWav1(viSamples1, P.viSite2Chan), P1), P1);
     vcFilter_show = P1.vcFilter;
 else
@@ -15987,20 +15987,19 @@ if get_set_(P, 'fSmooth_spatial', 0)
     mnWav1 = spatial_smooth_(mnWav1, P);
 end
 vcDataType_filter = get_set_(P, 'vcDataType_filter', 'single');
-if ~strcmpi(vcDataType_filter, 'int16')
-    mnWav1 = cast_(mnWav1, vcDataType_filter);
-end
-try        
-    [mnWav1_, P.fGpu] = gpuArray_(mnWav1, P.fGpu);
-    if P.fft_thresh>0, mnWav1_ = fft_clean_(mnWav1_, P); end
+try    
+    mnWav1_ = cast_(mnWav1, vcDataType_filter);
+    [mnWav1_, P.fGpu] = gpuArray_(mnWav1_, P.fGpu);
+%     if P.fft_thresh>0, mnWav1_ = fft_clean_(mnWav1_, P); end
     [mnWav2, vnWav11] = filt_car_(mnWav1_, P);    
-    mnWav1 = gather_(mnWav1_); % process raw recordings in CPU
-    mnWav1_ = []; % remove from GPU memory 
+%     mnWav1 = gather_(mnWav1_); % process raw recordings in CPU
 catch % GPU failure
     P.fGpu = 0;
-    if P.fft_thresh>0, mnWav1 = fft_clean_(mnWav1, P); end
-    [mnWav2, vnWav11] = filt_car_(mnWav1, P);
+    mnWav1_ = cast_(mnWav1, vcDataType_filter);
+%     if P.fft_thresh>0, mnWav1_ = fft_clean_(mnWav1_, P); end
+    [mnWav2, vnWav11] = filt_car_(mnWav1_, P);    
 end
+clear mnWav1_
 
 
 %-----
@@ -16156,6 +16155,7 @@ switch lower(vcType)
     case 'float64', vcType = 'double';
     otherwise, vcType = lower(vcType);
 end %switch
+if strcmpi(class_(vr), vcType), return; end
 vr = cast(vr, vcType);
 end %func
 
@@ -17325,7 +17325,7 @@ if nargin<5, mnWav1_post = []; end
 if ~isempty(mnWav1_pre) || ~isempty(mnWav1_post)
     mnWav1 = [mnWav1_pre; mnWav1; mnWav1_post];
 end
-if P.fft_thresh>0, mnWav1 = fft_clean_(mnWav1, P); end
+% if P.fft_thresh>0, mnWav1 = fft_clean_(mnWav1, P); end
 [mnWav2, vnWav11] = filt_car_(mnWav1, P); % filter and car
 
 % detect spikes or use the one passed from the input (importing)
@@ -17683,7 +17683,8 @@ end
 function [mnWav1, fGpu] = fft_clean_(mnWav, P)
 if ~isstruct(P), P = struct('fft_thresh', P); end
 fGpu = get_set_(P, 'fGpu', isGpu_(mnWav));
-% fGpu = 1;
+% return; % disable this function
+
 if isempty(P.fft_thresh) || P.fft_thresh==0 || isempty(mnWav), mnWav1=mnWav; return; end
 [vcClass, fGpu_mnWav] = class_(mnWav);
 fprintf('Applying FFT cleanup\n'); t1=tic;
@@ -21938,8 +21939,8 @@ end %func
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_(vcFile_prm)
 if nargin<1, vcFile_prm = ''; end
-vcVer = 'v4.6.5';
-vcDate = '6/5/2019';
+vcVer = 'v4.6.6';
+vcDate = '6/7/2019';
 vcHash = file2hash_();
 
 if nargout==0
@@ -24071,8 +24072,8 @@ P = struct_copyas_(P, S_txt, ...
 % String parameters
 P = struct_copyas_(P, S_txt, {'filter_type', 'feature_type'}, {'vcFilter', 'vcFet'});
 
-% integer parameters
-P = struct_copyas_(P, S_txt, {'knn', 'batch_sec_drift', 'step_sec_drift', 'min_count', 'nSites_whiten'});
+% same name
+P = struct_copyas_(P, S_txt, {'knn', 'batch_sec_drift', 'step_sec_drift', 'min_count', 'nSites_whiten', 'fft_thresh'});
 
 % set GPU use
 vcGpu = get_(S_txt, 'fGpu');
@@ -27132,7 +27133,7 @@ set(0, 'UserData', []);
 
 % Load waveform
 mnWav_raw = load_file_(P.vcFile, [], P);
-if get_(P, 'fft_thresh')>0, mnWav_raw = fft_clean_(mnWav_raw, P); end
+% if get_(P, 'fft_thresh')>0, mnWav_raw = fft_clean_(mnWav_raw, P); end
 mnWav_filt = fft_filter(mnWav_raw, P, 'bandpass');
 nSites = size(P.mrSiteXY,1);
 nShanks = max(P.viShank_site);
