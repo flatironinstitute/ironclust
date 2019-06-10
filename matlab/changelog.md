@@ -3,6 +3,12 @@ IronClust, written by J. James Jun, Flatiron Institute, Simons Foundation
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [4.6.7] - 2019-6-10
+### Changed
+- `fft_thresh=6` (previously 10).
+  - Detrending of the power is done using sliding median filter (medfilt1.m)
+
+
 ## [4.6.6] - 2019-6-7
 ### Changed
 - raw data and `_spkraw.jrc` files are stored in its original format

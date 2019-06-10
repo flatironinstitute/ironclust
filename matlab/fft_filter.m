@@ -124,36 +124,51 @@ end %func
 function mrFft = fft_clean_(mrFft, fft_thresh)
 nbins = 20; 
 nw = 3; %frequency neighbors to set to zero
+NFILT_MED = 512;
 
 try
-    % Find frequency outliers    
-    n1 = floor(size(mrFft,1)/2);
-    viFreq = (1:n1)';
-    vrFft1 = mean(bsxfun(@times, abs(mrFft(1+viFreq,:)), viFreq), 2);
-    vi1_lim = round(linspace(0, n1, nbins+1));
-    for ibin=1:nbins
-        vi1 = (vi1_lim(ibin)+1):vi1_lim(ibin+1);
-        vrFft2 = vrFft1(vi1);
-        vrFft2 = vrFft2 - median(vrFft2); %mad transform
-        vrFft1(vi1) = vrFft2 / median(abs(vrFft2));
-    end
+    switch 2
+        case 2
+            n1 = floor((size(mrFft,1)-1)/2);
+            vrFft1 = gather_(mean(abs(mrFft(2:n1,:)),2));
+            vrFft2 = medfilt1(vrFft1,NFILT_MED, 'truncate');
+            vrFft3 = abs(vrFft1 - vrFft2);
+            vrFft4 = vrFft3 ./ medfilt1(vrFft3, NFILT_MED, 'truncate');
+            vi_noise = find(vrFft4 > fft_thresh);
+%             vrFft5 = vrFft4; vrFft5(vi_noise) = 0; figure; plot(vrFft4); hold on; plot(vrFft5);
+            mrFft(1+vi_noise,:) = 0; 
+            mrFft(end-vi_noise+1,:) = 0; 
+            mrFft(1,:) = 0; %remove DC
+        case 1
+            % Find frequency outliers    
+            n1 = floor(size(mrFft,1)/2);
+            viFreq = (1:n1)';
+            vrFft1 = mean(bsxfun(@times, abs(mrFft(1+viFreq,:)), viFreq), 2);
+            vi1_lim = round(linspace(0, n1, nbins+1));
+            for ibin=1:nbins
+                vi1 = (vi1_lim(ibin)+1):vi1_lim(ibin+1);
+                vrFft2 = vrFft1(vi1);
+                vrFft2 = vrFft2 - median(vrFft2); %mad transform
+                vrFft1(vi1) = vrFft2 / median(abs(vrFft2));
+            end
 
-    % broaden spectrum
-    vl_noise = vrFft1 > fft_thresh;
-    vi_noise = find(vl_noise);
-    for i_nw=1:nw
-        viA = vi_noise-i_nw;    viA(viA<1)=[];
-        viB = vi_noise+i_nw;    viB(viB>n1)=[];
-        vl_noise(viA)=1;
-        vl_noise(viB)=1;
-    end
-    vi_noise = find(vl_noise);
+            % broaden spectrum
+            vl_noise = vrFft1 > fft_thresh;
+            vi_noise = find(vl_noise);
+            for i_nw=1:nw
+                viA = vi_noise-i_nw;    viA(viA<1)=[];
+                viB = vi_noise+i_nw;    viB(viB>n1)=[];
+                vl_noise(viA)=1;
+                vl_noise(viB)=1;
+            end
+            vi_noise = find(vl_noise);
+            mrFft(1+vi_noise,:) = 0;
+            mrFft(end-vi_noise+1,:) = 0;
+    end %switch
 catch
     disp(lasterr());
     return;
 end
-mrFft(1+vi_noise,:) = 0;
-mrFft(end-vi_noise+1,:) = 0;
 end %func
 
 

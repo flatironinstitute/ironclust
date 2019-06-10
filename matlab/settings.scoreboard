@@ -26,4 +26,4 @@ batch_sec_drift = {300};
 step_sec_drift = {20};
 
 % #Noise
-fft_thresh = {0, 10};
+fft_thresh = {0, 6, 10};
