@@ -4518,7 +4518,7 @@ end %func
 function [viMapClu_new, viUniq_, viMapClu] = ml2map_(ml)
 % ml: connectivity matrix to merge
 % viMapClu: old to new index
-nRepeat = 10;
+nRepeat = 32;
 
 nCl = size(ml,1);
 ml = set_diag_(ml | ml', true(nCl,1)); %format ml
@@ -9986,18 +9986,36 @@ knn_merge_thresh = get_set_(P, 'knn_merge_thresh', 1);
 
 % S_clu.cviSpk_clu = arrayfun(@(iClu)find(S_clu.viClu==iClu), 1:nClu, 'UniformOutput', 0);
 % S_clu.vnSpk_clu = cellfun(@numel, S_clu.cviSpk_clu); 
-
+DEGREE_OF_SEPARATION = 2;
+NUM_KNN = 16;
 
 nClu = numel(S_clu.icl);
 mnKnn_clu = zeros(nClu);
+nknn = min(size(S_clu.miKnn,1), NUM_KNN);
 miKnn = int32(S_clu.miKnn);
-miKnn_clu = miKnn(:,S_clu.icl);
-for iClu1 = 1:nClu
-    viKnn1 = miKnn_clu(:,iClu1);
-    for iClu2 = 1:iClu1-1        
-        mnKnn_clu(iClu2,iClu1) = sum(ismember(viKnn1, miKnn_clu(:,iClu2)));
-    end
-end
+miKnn_clu = sort(miKnn(:,S_clu.icl));
+switch 3
+    case 3
+        for iClu1 = 2:nClu
+            vi_ = miKnn_clu(1:nknn,iClu1);
+            for iDegree = 1:(DEGREE_OF_SEPARATION-1)
+                vi_ = miKnn(1:nknn,vi_);
+                vi_ = vi_(:);
+            end
+            mnKnn_clu(1:iClu1-1,iClu1) = sum(ismember(miKnn_clu(:,1:iClu1-1), sort(vi_)));
+        end 
+    case 2
+        for iClu1 = 2:nClu
+            mnKnn_clu(1:iClu1-1,iClu1) = sum(ismember(miKnn_clu(:,1:iClu1-1), miKnn_clu(:,iClu1)));
+        end        
+    case 1
+        for iClu1 = 1:nClu
+            viKnn1 = miKnn_clu(:,iClu1);
+            for iClu2 = 1:iClu1-1        
+                mnKnn_clu(iClu2,iClu1) = sum(ismember(viKnn1, miKnn_clu(:,iClu2)));
+            end
+        end
+end %switch
 [viMap, viUniq_] = ml2map_(mnKnn_clu >= knn_merge_thresh);
 % S_clu.icl = S_clu.icl(viUniq_);
 viMap = viMap(:);
@@ -21939,7 +21957,7 @@ end %func
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_(vcFile_prm)
 if nargin<1, vcFile_prm = ''; end
-vcVer = 'v4.6.7';
+vcVer = 'v4.6.8';
 vcDate = '6/10/2019';
 vcHash = file2hash_();
 

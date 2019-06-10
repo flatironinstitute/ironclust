@@ -3,6 +3,13 @@ IronClust, written by J. James Jun, Flatiron Institute, Simons Foundation
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [4.6.8] - 2019-6-10
+### Changed
+- S_clu_peak_merge_: degree of seperation of up to 2 is allowed between density peaks
+  - previously separation of 1 was allowed.
+  - 16 nearest neighbors were considered (previously all knn neighbors, knn=30)
+
+
 ## [4.6.7] - 2019-6-10
 ### Changed
 - `fft_thresh=6` (previously 10).
