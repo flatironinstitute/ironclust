@@ -3,6 +3,15 @@ IronClust, written by J. James Jun, Flatiron Institute, Simons Foundation
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [4.6.9] - 2019-6-11
+### Changed
+- Density peak merging behavior is changed
+  - peaks are merged only when both peaks are connected
+  - KNN (k-nearest-neighbors) relations are not symmetric thus both relations need to be checked.
+- `fft_thresh=10` 
+  - Previously it was 6, but it was too agressively removing noise and affecting signal spectrum.
+
+
 ## [4.6.8] - 2019-6-10
 ### Changed
 - S_clu_peak_merge_: degree of seperation of up to 2 is allowed between density peaks

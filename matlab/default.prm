@@ -62,7 +62,7 @@ freqLim_width = [100, 1000]; % Frequency transition width for the higher filter 
 filtOrder = 3;              % Bandpass filter order
 fEllip = 1;                 % Use Elliptic filter. set to 0 for Butterworth filter. Only valid for vcFilter='bandpass'.
 vnFilter_user = [];         % User-specified filter kernel. Used if vcFilter='user' is set.
-fft_thresh = 6;             % Automatically remove frequency outliers (unit:MAD, 10 recommended, 0 to disable). Verify by running "jrc traces" and press "p" to view the power spectrum.
+fft_thresh = 10;             % Automatically remove frequency outliers (unit:MAD, 10 recommended, 0 to disable). Verify by running "jrc traces" and press "p" to view the power spectrum.
 freqLimNotch = {};          % Notch filter frequency range to exclude manually. {[start1, end1], [start2, end2]}. Can be used in conjunction with fft_thresh.
 vcCommonRef = 'mean';       % common reference mode {'none', 'mean', 'median', 'whiten', 'whiten-mean', 'whiten-median'}
 nSites_whiten = 32;         % number of sites to use local whtening (only active when vcCommonRef=`whiten`).

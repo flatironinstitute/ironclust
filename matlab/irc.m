@@ -9984,21 +9984,47 @@ knn_merge_thresh = get_set_(P, 'knn_merge_thresh', 1);
 % consider cluster count
 % remove centers if their knn overlaps
 
-% S_clu.cviSpk_clu = arrayfun(@(iClu)find(S_clu.viClu==iClu), 1:nClu, 'UniformOutput', 0);
-% S_clu.vnSpk_clu = cellfun(@numel, S_clu.cviSpk_clu); 
-DEGREE_OF_SEPARATION = 2;
-NUM_KNN = 16;
+DEG_SEPARATION = 2;
+NUM_KNN = 4;
 
 nClu = numel(S_clu.icl);
 mnKnn_clu = zeros(nClu);
 nknn = min(size(S_clu.miKnn,1), NUM_KNN);
+% nknn = size(S_clu.miKnn,1);
 miKnn = int32(S_clu.miKnn);
 miKnn_clu = sort(miKnn(:,S_clu.icl));
-switch 3
+switch 5
+    case 5
+        % find exact knn of the peaks using feature matrix
+        [mnKnn_lower_clu, mnKnn_upper_clu] = deal(zeros(nClu));
+        for iClu1 = 1:nClu
+            vi_ = miKnn_clu(:,iClu1);            
+            vi_ = miKnn(1:nknn,vi_);
+            vi_ = sort(vi_(:));
+            if iClu1 > 1
+                mnKnn_lower_clu(1:iClu1-1,iClu1) = sum(ismember(miKnn_clu(:,1:iClu1-1), vi_))';
+            end
+            if iClu1 < nClu
+                mnKnn_upper_clu(iClu1+1:end,iClu1) = sum(ismember(miKnn_clu(:,iClu1+1:end), vi_))';
+            end
+        end   
+        mnKnn_lower_clu = mnKnn_lower_clu + mnKnn_lower_clu';
+        mnKnn_upper_clu = mnKnn_upper_clu + mnKnn_upper_clu';
+        mnKnn_clu = min(mnKnn_lower_clu, mnKnn_upper_clu);
+    case 4
+        for iClu1 = 1:nClu
+            vi_ = miKnn_clu(:,iClu1);            
+            for iDegree = 1:(DEG_SEPARATION-1)
+                vi_ = miKnn(1:nknn,vi_);
+                vi_ = vi_(:);
+            end
+            mnKnn_clu(:,iClu1) = mnKnn_clu(:,iClu1) + sum(ismember(miKnn_clu, sort(vi_)))';
+        end 
     case 3
         for iClu1 = 2:nClu
-            vi_ = miKnn_clu(1:nknn,iClu1);
-            for iDegree = 1:(DEGREE_OF_SEPARATION-1)
+%             vi_ = miKnn_clu(1:nknn,iClu1);
+            vi_ = miKnn_clu(:,iClu1);
+            for iDegree = 1:(DEG_SEPARATION-1)
                 vi_ = miKnn(1:nknn,vi_);
                 vi_ = vi_(:);
             end
@@ -21957,8 +21983,8 @@ end %func
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_(vcFile_prm)
 if nargin<1, vcFile_prm = ''; end
-vcVer = 'v4.6.8';
-vcDate = '6/10/2019';
+vcVer = 'v4.6.9';
+vcDate = '6/11/2019';
 vcHash = file2hash_();
 
 if nargout==0
