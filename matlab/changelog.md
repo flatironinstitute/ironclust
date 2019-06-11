@@ -3,6 +3,11 @@ IronClust, written by J. James Jun, Flatiron Institute, Simons Foundation
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [4.7.1] - 2019-6-11
+### Changed
+- `delta_cut=1.1` (previously 1 by mistake)
+
+
 ## [4.7.0] - 2019-6-11
 ### Changed
 - k-nearest-neighbor computation for computing `rho` is done exactly using CPU by default.

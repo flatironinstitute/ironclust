@@ -21984,7 +21984,7 @@ end %func
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_(vcFile_prm)
 if nargin<1, vcFile_prm = ''; end
-vcVer = 'v4.7.0';
+vcVer = 'v4.7.1';
 vcDate = '6/11/2019';
 vcHash = file2hash_();
 
@@ -24118,7 +24118,7 @@ P = struct_copyas_(P, S_txt, ...
 P = struct_copyas_(P, S_txt, {'filter_type', 'feature_type'}, {'vcFilter', 'vcFet'});
 
 % same name
-P = struct_copyas_(P, S_txt, {'knn', 'batch_sec_drift', 'step_sec_drift', 'min_count', 'nSites_whiten', 'fft_thresh'});
+P = struct_copyas_(P, S_txt, {'knn', 'batch_sec_drift', 'step_sec_drift', 'min_count', 'nSites_whiten', 'fft_thresh', 'delta_cut'});
 
 % set GPU use
 vcGpu = get_(S_txt, 'fGpu');
