@@ -8,10 +8,12 @@
 #include <math.h>
 #define ABS(my_val) ((my_val) < 0) ? -(my_val) : (my_val)
 #define NC (3*16) //2pca x 18 channels max
-#define CHUNK (8)
 #define SINGLE_INF (3.402E+38) // equipvalent to NAN. consider -1 value
-#define NTHREADS (256)
 #define SWAP(x, y, T) do { T SWAP = x; x = y; y = SWAP; } while (0)
+#define CHUNK (4)
+#define NTHREADS (512)
+//#define CHUNK (8)
+//#define NTHREADS (256)
 
 /** Main entry point.
  * Works out where the current thread should read/write to global memory

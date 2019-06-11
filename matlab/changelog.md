@@ -3,6 +3,18 @@ IronClust, written by J. James Jun, Flatiron Institute, Simons Foundation
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [4.7.0] - 2019-6-11
+### Changed
+- k-nearest-neighbor computation for computing `rho` is done exactly using CPU by default.
+  - CPU-based computation is ~2x slower than GPU but exact.
+- `rho` is now computed using the number of neighbors pointing to each event
+  - `kNN` matrix is used to compute the number of neighbors pointing to each event
+  - Previously `rho` := 1/d_knn where `d_knn` is the k-th neighbor distance
+- Introduced a delta cut-off parameter called `delta_cut=1.1`.
+  - Previuosly this value was fixed at 1.
+  - The new value reduced cluster oversplitting.
+
+
 ## [4.6.9] - 2019-6-11
 ### Changed
 - Density peak merging behavior is changed

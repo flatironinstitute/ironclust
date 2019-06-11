@@ -2352,7 +2352,7 @@ switch lower(vcCluster)
     case 'drift'
         S_clu = cluster_drift_(S0, P);     
     case {'drift-knn' ,'knn'}
-        fGpu_sort = read_cfg_('fGpu_sort'); % Speed gain from GPU estimation isn't worth the quality loss
+        fGpu_sort = get_set_(P, 'fGpu_sort', 1);
         S_clu = cluster_drift_knn_(S0, setfield(P, 'fGpu', fGpu_sort));                
     case 'xcov' % waveform-covariance based clustering
         S_clu = cluster_xcov_(S0, P);
@@ -5455,6 +5455,7 @@ try
     csDesc{end+1} = sprintf('    Filter                  %s', P.vcFilter);
     csDesc{end+1} = sprintf('    Filter range (Hz)       %0.1f-%0.1f', P.freqLim);
     csDesc{end+1} = sprintf('    Common ref              %s', P.vcCommonRef);
+    csDesc{end+1} = sprintf('    fft thresh              %s', get_set_(P, 'fft_thresh', 0));
     csDesc{end+1} = sprintf('Events');
     csDesc{end+1} = sprintf('    #Spikes                 %d', nSpk);
     csDesc{end+1} = sprintf('    Feature extracted       %s', P.vcFet);
@@ -9624,7 +9625,7 @@ switch lower(P.vcDetrend_postclu)
     case 'logz'
         S_clu.icl = log_ztran_(S_clu.rho, S_clu.delta, P.rho_cut, 4+P.delta1_cut);
     case 'knn'
-        S_clu.icl = find(S_clu.delta(:) > 1);
+        S_clu.icl = find(S_clu.delta(:) > get_set_(P, 'delta_cut', 1.1));
     otherwise
         fprintf(2, 'postCluster_: vcDetrend_postclu = ''%s''; not supported.\n', P.vcDetrend_postclu);
 end
@@ -21983,7 +21984,7 @@ end %func
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_(vcFile_prm)
 if nargin<1, vcFile_prm = ''; end
-vcVer = 'v4.6.9';
+vcVer = 'v4.7.0';
 vcDate = '6/11/2019';
 vcHash = file2hash_();
 
@@ -24487,13 +24488,13 @@ S_drift = makeStruct_(miSort_drift, cviSpk_drift, nTime_drift, viDrift_spk, mlDr
 % rho_drift_knn_();
 fprintf('Calculating Rho\n\t'); t1=tic;
 fDisp = 1;
-% [cvrRho, cviSpk] = deal(cell(nSites, 1));
+P_rho = setfield(P, 'fGpu', 0); % do not use GPU for KNN
 for iSite = 1:nSites
-    [mrFet12_, viSpk12_, n1_, n2_, viiSpk12_ord_, viDrift_spk12_] = fet12_site_(trFet_spk, S0, P, iSite, [], viDrift_spk); % trFet_spk gets replicated. big
+    [mrFet12_, viSpk12_, n1_, n2_, viiSpk12_ord_, viDrift_spk12_] = fet12_site_(trFet_spk, S0, P_rho, iSite, [], viDrift_spk); % trFet_spk gets replicated. big
     if isempty(viSpk12_), continue; end    
     if isempty(mrFet12_), continue; end    
     vi1_ = viSpk12_(1:n1_);
-    [vrRho(vi1_), fGpu_, miKnn_] = rho_drift_knn_(mrFet12_, viDrift_spk12_, mlDrift, n1_, P);  
+    [vrRho(vi1_), fGpu_, miKnn_] = rho_drift_knn_(mrFet12_, viDrift_spk12_, mlDrift, n1_, P_rho);  
     miKnn(:,vi1_) = viSpk12_(miKnn_);
     if fDisp
         fprintf('using %s.\n\t', ifeq_(fGpu_, 'GPU', 'CPU')); 
@@ -24505,7 +24506,16 @@ end
 fprintf('\n\ttook %0.1fs\n', toc(t1));
 
 % correct for the rho density variation
-switch 2
+vrRho_dist = []; % distance based density
+switch 3
+    case 3
+        vnNeigh_spk = zeros(size(miKnn,2),1, 'int32');
+        for iSpk = 1:nSpk
+            viKnn1 = miKnn(:,iSpk);
+            vnNeigh_spk(viKnn1) = vnNeigh_spk(viKnn1) + 1;
+        end
+        vrRho_dist = vrRho;
+        vrRho = single(vnNeigh_spk);
     case 2
         % normalize rho based on neighbor density
         vrRho_drift = cellfun(@(x)quantile(vrRho(x), .5), cviSpk_drift);
@@ -24534,6 +24544,9 @@ for iSite = 1:nSites
     viNneigh(viSpk_site_) = viSpk12_(viNneigh_);
     [mrFet12_, vrRho12_, viDrift_spk12_] = deal([]);
     fprintf('.');
+end
+if ~isempty(vrRho_dist)
+    vrDelta = vrDelta ./ single(vnNeigh_spk) .* vrRho_dist;
 end
 % Deal with nan delta
 viNan_delta = find(isnan(vrDelta));
@@ -24609,7 +24622,8 @@ function [vrKnn, fGpu, miKnn] = cuda_knn_(mrFet, vi2, vi1, P)
 
 persistent CK
 knn = get_set_(P, 'knn', 30);
-[CHUNK, nC_max, nThreads] = deal(8, P.nC_max, 256); % tied to cuda_knn_index.cu
+%[CHUNK, nC_max, nThreads] = deal(8, P.nC_max, 256); % tied to cuda_knn_index.cu
+[CHUNK, nC_max, nThreads] = deal(4, P.nC_max, 512); % tied to cuda_knn_index.cu
 [n2, n1, nC, n12] = deal(numel(vi2), numel(vi1), size(mrFet,1), size(mrFet,2));
 fGpu = P.fGpu && nC <= nC_max;
 knn = min(knn, n2);
