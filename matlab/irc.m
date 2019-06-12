@@ -21984,8 +21984,8 @@ end %func
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_(vcFile_prm)
 if nargin<1, vcFile_prm = ''; end
-vcVer = 'v4.7.1';
-vcDate = '6/11/2019';
+vcVer = 'v4.7.2';
+vcDate = '6/12/2019';
 vcHash = file2hash_();
 
 if nargout==0
@@ -24118,7 +24118,8 @@ P = struct_copyas_(P, S_txt, ...
 P = struct_copyas_(P, S_txt, {'filter_type', 'feature_type'}, {'vcFilter', 'vcFet'});
 
 % same name
-P = struct_copyas_(P, S_txt, {'knn', 'batch_sec_drift', 'step_sec_drift', 'min_count', 'nSites_whiten', 'fft_thresh', 'delta_cut'});
+P = struct_copyas_(P, S_txt, ...
+    {'knn', 'batch_sec_drift', 'step_sec_drift', 'min_count', 'nSites_whiten', 'fft_thresh', 'delta_cut', 'sort_mode'});
 
 % set GPU use
 vcGpu = get_(S_txt, 'fGpu');
@@ -24507,7 +24508,7 @@ fprintf('\n\ttook %0.1fs\n', toc(t1));
 
 % correct for the rho density variation
 vrRho_dist = []; % distance based density
-switch 3
+switch get_set_(P, 'sort_mode', 2)
     case 3
         vnNeigh_spk = zeros(size(miKnn,2),1, 'int32');
         for iSpk = 1:nSpk

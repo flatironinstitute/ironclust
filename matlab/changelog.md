@@ -3,6 +3,14 @@ IronClust, written by J. James Jun, Flatiron Institute, Simons Foundation
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [4.7.2] - 2019-6-12
+### Changed
+- The definition of rho is reverted to defalut (`rho` :=1/d_knn)
+  - (default) set `sort_mode=2` to use `rho:=1/dknn` and correct for density variation across time
+  - set `sort_mode=3` to use rho:=`network in-degree`
+  - set `sort_mode=1` to use `1/dknn` and not correct for the density variation across time 
+
+
 ## [4.7.1] - 2019-6-11
 ### Changed
 - `delta_cut=1.1` (previously 1 by mistake)
