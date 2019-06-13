@@ -3,6 +3,20 @@ IronClust, written by J. James Jun, Flatiron Institute, Simons Foundation
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [4.7.3] - 2019-6-12
+### Added
+- `viSiteExcl` field is added. It excludes the sites from being analyzed. 
+  - `viSiteZero` will set the site values to zero but it won't remove the sites. 
+  - Re-indexing will occur in the site numbers after removal
+
+### Changed
+- `fft_thresh=8` (prevously 10). 
+
+## Fixed
+- `irc makeprm myrecording.dat` now works without having to provide a probe file
+  - Probe file can be specified later in the dialog box.
+
+
 ## [4.7.2] - 2019-6-12
 ### Changed
 - The definition of rho is reverted to defalut (`rho` :=1/d_knn)

@@ -548,7 +548,8 @@ end %func
 function vcFile_prb = find_prb_(vcProbeFile)
 % Find a prb file
 if isempty(vcProbeFile)
-    error('find_prb_: empty probe file');
+    vcFile_prb = []; return; 
+%     error('find_prb_: empty probe file');
 end
 if exist_file_(vcProbeFile)
     vcFile_prb = vcProbeFile;
@@ -1610,6 +1611,7 @@ try
     else
         P.probe_file = probe_file_;
     end
+    P0.viSiteExcl = get_(P, 'viSiteExcl');
     P0 = load_prb_(P.probe_file, P0);
 catch
     fprintf('loadParam: %s not found.\n', P.probe_file);
@@ -2025,6 +2027,7 @@ function P = load_prb_(vcFile_prb, P)
 
 % append probe file to P
 if nargin<2, P = []; end
+viSiteExcl = get_set_(P, 'viSiteExcl', []);
 
 % Find the probe file
 vcFile_prb = find_prb_(vcFile_prb);
@@ -2036,6 +2039,13 @@ P.probe_file = vcFile_prb;
 %     [P.viSite2Chan, P.mrSiteXY, P.vrSiteHW, P.cviShank] = read_prb_file(vcFile_prb);
 S_prb = file2struct_(vcFile_prb);
 S_prb.pad = get_set_(S_prb, 'pad', [12 12]);
+if ~isempty(viSiteExcl)
+    S_prb.channels(viSiteExcl) = [];    
+    S_prb.geometry(viSiteExcl,:) = [];    
+    if isfield(S_prb, 'shank')
+        S_prb.shank(viSiteExcl) = [];
+    end
+end
 P.viSite2Chan = S_prb.channels;
 P.mrSiteXY = S_prb.geometry;
 if size(P.mrSiteXY,2)~=2
@@ -2057,6 +2067,7 @@ elseif iscell(shank)
 else
     P.viShank_site = S_prb.shank;
 end
+
 S_prb = remove_struct_(S_prb, 'channels', 'geometry', 'pad', 'ref_sites', ...
     'viHalf', 'i', 'vcFile_file2struct', 'shank', 'cviShank');
 
@@ -21984,7 +21995,7 @@ end %func
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_(vcFile_prm)
 if nargin<1, vcFile_prm = ''; end
-vcVer = 'v4.7.2';
+vcVer = 'v4.7.3';
 vcDate = '6/12/2019';
 vcHash = file2hash_();
 
