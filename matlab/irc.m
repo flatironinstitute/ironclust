@@ -5455,11 +5455,13 @@ try
     csDesc{end+1} = sprintf('    Filter                  %s', P.vcFilter);
     csDesc{end+1} = sprintf('    Filter range (Hz)       %0.1f-%0.1f', P.freqLim);
     csDesc{end+1} = sprintf('    Common ref              %s', P.vcCommonRef);
-    csDesc{end+1} = sprintf('    fft thresh              %s', get_set_(P, 'fft_thresh', 0));
+    csDesc{end+1} = sprintf('    fft thresh              %d', get_set_(P, 'fft_thresh', 0));
     csDesc{end+1} = sprintf('Events');
     csDesc{end+1} = sprintf('    #Spikes                 %d', nSpk);
     csDesc{end+1} = sprintf('    Feature extracted       %s', P.vcFet);
     csDesc{end+1} = sprintf('    #Sites/event            %d', nSitesPerEvent);
+    csDesc{end+1} = sprintf('    maxDist_site_um         %0.0f', P.maxDist_site_um);    
+    csDesc{end+1} = sprintf('    maxDist_site_spk_um     %0.0f', P.maxDist_site_spk_um);    
     csDesc{end+1} = sprintf('    #Features/event         %d', nFeatures);    
 catch
     ;
@@ -5479,6 +5481,9 @@ if isfield(S0, 'S_clu')
     csDesc{end+1} = sprintf('    nTime_clu               %d', P.nTime_clu);
     csDesc{end+1} = sprintf('    nTime_drift             %d', P.nTime_drift);
     csDesc{end+1} = sprintf('    fSpatialMask_clu        %d', P.fSpatialMask_clu);
+    csDesc{end+1} = sprintf('Auto-merge:');   
+    csDesc{end+1} = sprintf('    delta_cut               %0.3f', get_set_(P, 'delta_cut', 1));
+    csDesc{end+1} = sprintf('    maxWavCor               %0.3f', P.maxWavCor);
 end
 try
     runtime_total = S0.runtime_detect + S0.runtime_sort;
@@ -21984,8 +21989,8 @@ end %func
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_(vcFile_prm)
 if nargin<1, vcFile_prm = ''; end
-vcVer = 'v4.7.2';
-vcDate = '6/12/2019';
+vcVer = 'v4.7.3';
+vcDate = '6/13/2019';
 vcHash = file2hash_();
 
 if nargout==0
@@ -24119,7 +24124,7 @@ P = struct_copyas_(P, S_txt, {'filter_type', 'feature_type'}, {'vcFilter', 'vcFe
 
 % same name
 P = struct_copyas_(P, S_txt, ...
-    {'knn', 'batch_sec_drift', 'step_sec_drift', 'min_count', 'nSites_whiten', 'fft_thresh', 'delta_cut', 'sort_mode'});
+    {'knn', 'batch_sec_drift', 'step_sec_drift', 'min_count', 'nSites_whiten', 'fft_thresh', 'delta_cut'});
 
 % set GPU use
 vcGpu = get_(S_txt, 'fGpu');
@@ -24508,7 +24513,7 @@ fprintf('\n\ttook %0.1fs\n', toc(t1));
 
 % correct for the rho density variation
 vrRho_dist = []; % distance based density
-switch get_set_(P, 'sort_mode', 2)
+switch 2
     case 3
         vnNeigh_spk = zeros(size(miKnn,2),1, 'int32');
         for iSpk = 1:nSpk

@@ -3,6 +3,13 @@ IronClust, written by J. James Jun, Flatiron Institute, Simons Foundation
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [4.7.3] - 2019-6-13
+### Changed
+- `irc describe` command displays more info
+  - Also fixed `fft_thresh` display error
+- `fft_thresh=8` (previously 10)
+
+
 ## [4.7.2] - 2019-6-12
 ### Changed
 - The definition of rho is reverted to defalut (`rho` :=1/d_knn)
