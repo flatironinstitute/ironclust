@@ -183,7 +183,7 @@ if nargin<3, thresh_lo = []; end
 vl_hi = vr > thresh_hi;
 vl = vl_hi;
 if isempty(thresh_lo), return; end
-if thresh_lo >= thresh_hi, return; end
+if thresh_lo==0 || isnan(thresh_lo) || thresh_lo >= thresh_hi, return; end
 
 [vi_hi_up, vi_hi_dn] = two_states_(vl_hi);
 [vi_lo_up, vi_lo_dn] = two_states_(vr > thresh_lo);

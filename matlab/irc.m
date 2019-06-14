@@ -24135,7 +24135,7 @@ P = struct_copyas_(P, S_txt, {'filter_type', 'feature_type'}, {'vcFilter', 'vcFe
 
 % same name
 P = struct_copyas_(P, S_txt, ...
-    {'knn', 'batch_sec_drift', 'step_sec_drift', 'min_count', 'nSites_whiten', 'fft_thresh', 'delta_cut'});
+    {'knn', 'batch_sec_drift', 'step_sec_drift', 'min_count', 'nSites_whiten', 'fft_thresh', 'delta_cut', 'fft_thresh_low'});
 
 % set GPU use
 vcGpu = get_(S_txt, 'fGpu');
