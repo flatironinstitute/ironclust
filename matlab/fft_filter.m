@@ -61,15 +61,16 @@ switch lower(vcMode)
 end
 if ~fGpu, mrWav = gather_(mrWav); end
 
-fprintf('Running fft filter (%s)\n', vcMode); t1=tic;
+
 
 fft_thresh = get_set_(P, 'fft_thresh', 0);
+fft_thresh_low = get_(P, 'fft_thresh_low');
 if fft_thresh == 0
     fh_filter = @(x,f)real(ifft(bsxfun(@times, fft(single(x)), f), 'symmetric'));
-    fprintf('\t\t');
+    fprintf('Running fft filter (%s)... ', vcMode); t1=tic;
 else
-    fh_filter = @(x,f)real(ifft(bsxfun(@times, fft_clean_(fft(single(x)), fft_thresh), f), 'symmetric'));
-    fprintf('\t\tfft_filter: performing fft_clean with threshold %0.3f\n\t\t', fft_thresh);
+    fh_filter = @(x,f)real(ifft(bsxfun(@times, fft_clean_(fft(single(x)), fft_thresh, fft_thresh_low), f), 'symmetric'));
+    fprintf('Running fft filter (%s + fft_thresh=%0.1f)... ', vcMode, fft_thresh); t1=tic;
 end
 n_prev = nan;
 if nT <= nSkip, nPad = 0; end
@@ -115,16 +116,18 @@ if ~isGpu_(mrWav), mrWav_filt = gather_(mrWav_filt); end
 if fGpu_out
     mrWav_filt = gpuArray(mrWav_filt);
 end
-fprintf('\n\t\ttook %0.1fs (fGpu=%d)\n', toc(t1), fGpu);
+fprintf(' took %0.1fs (fGpu=%d)\n', toc(t1), fGpu);
 end %func
 
 
 %--------------------------------------------------------------------------
 % 2019/6/7 JJJ: frequency domain fft clean
-function mrFft = fft_clean_(mrFft, fft_thresh)
+function mrFft = fft_clean_(mrFft, fft_thresh, fft_thresh_low)
 nbins = 20; 
 nw = 3; %frequency neighbors to set to zero
 NFILT_MED = 512;
+if nargin<2, fft_thresh = 8; end
+if nargin<3, fft_thresh_low = 6; end
 
 try
     switch 2
@@ -134,8 +137,8 @@ try
             vrFft2 = medfilt1(vrFft1,NFILT_MED, 'truncate');
             vrFft3 = abs(vrFft1 - vrFft2);
             vrFft4 = vrFft3 ./ medfilt1(vrFft3, NFILT_MED, 'truncate');
-            vi_noise = find(vrFft4 > fft_thresh);
-%             vrFft5 = vrFft4; vrFft5(vi_noise) = 0; figure; plot(vrFft4); hold on; plot(vrFft5);
+            vi_noise = find(dual_thresh_(vrFft4, fft_thresh, fft_thresh_low));
+%             vrFft5 = vrFft4; vrFft5(vi_noise) = 0; figure; plot(vrFft4); hold on; plot(vrFft5);        
             mrFft(1+vi_noise,:) = 0; 
             mrFft(end-vi_noise+1,:) = 0; 
             mrFft(1,:) = 0; %remove DC
@@ -169,6 +172,42 @@ catch
     disp(lasterr());
     return;
 end
+end %func
+
+
+%--------------------------------------------------------------------------
+% 6/14/2019 JJJ: apply low threshold if it touches high threshold
+function vl = dual_thresh_(vr, thresh_hi, thresh_lo)
+if nargin<3, thresh_lo = []; end
+
+vl_hi = vr > thresh_hi;
+vl = vl_hi;
+if isempty(thresh_lo), return; end
+if thresh_lo >= thresh_hi, return; end
+
+[vi_hi_up, vi_hi_dn] = two_states_(vl_hi);
+[vi_lo_up, vi_lo_dn] = two_states_(vr > thresh_lo);
+try
+    for i_up1 = 1:numel(vi_hi_up)
+        i_begin = vi_lo_up(find(vi_lo_up <= vi_hi_up(i_up1), 1, 'last'));
+        i_end = vi_lo_dn(find(vi_lo_dn >= vi_hi_dn(i_up1), 1, 'first'));
+        vl(i_begin:i_end) = true;
+    end
+catch
+    fprintf(2, 'fft_filter: dual_thresh_: %s\n', lasterr());
+    return;
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+function [vi_up, vi_dn] = two_states_(vl)
+% vi_up: first up-state index
+% vi_dn: last up-state index
+% assert(numel(vi_up) == numel(vi_dn))
+vi = diff([false; vl(:); false]);
+vi_up = find(vi>0);
+vi_dn = find(vi<0)-1;
 end %func
 
 

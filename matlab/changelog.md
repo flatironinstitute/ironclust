@@ -4,7 +4,14 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
 
-## [4.7.4] - 2019-6-12
+## [4.7.5] - 2019-6-14
+### Added
+- FFT-denoising: Dual threshold scheme is added
+  - `fft_thresh_low=4` is added. Noise peaks that crosses this is removed
+    if it is adjacent to higher threshold crossing (`fft_thresh`)
+
+
+## [4.7.4] - 2019-6-13
 ### Added
 - `viSiteExcl` field is added. It excludes the sites from being analyzed. 
   - `viSiteZero` will set the site values to zero but it won't remove the sites. 
