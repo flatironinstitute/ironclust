@@ -232,7 +232,7 @@ switch lower(vcCmd)
         manual_(P, 'debug'); manual_test_(P, 'Menu'); return;                   
     case {'kilosort-verify', 'ksort-verify'}
         kilosort_(P); import_ksort_(P); describe_(P.vcFile_prm); 
-    case {'export-wav', 'export-raw'} % load raw and assign workspace
+    case {'export-wav', 'export-raw'} % load raw and assign workspace        
         mnWav = load_file_(P.vcFile, [], P);
         if strcmpi(vcCmd, 'export-wav')
 %             if P.fft_thresh>0, mnWav = fft_clean_(mnWav, P); end
@@ -246,18 +246,14 @@ switch lower(vcCmd)
         catch
             error('Probe file not found: %s', P.probe_file);
         end
-%     case 'export-spkwav'
-%         S0 = get(0, 'UserData');
-%         trSpkWav = load_bin_(strrep(P.vcFile_prm, '.prm', '_spkwav.jrc'), 'int16', S0.dimm_spk);
-%         assignWorkspace_(trSpkWav);        
+    case 'export-spkwav'
+        export_spk_(P, 0);
     case 'export-spkraw'
-        S0 = get(0, 'UserData');
-        trWav_raw = load_bin_(strrep(P.vcFile_prm, '.prm', '_spkraw.jrc'), 'int16', S0.dimm_spk);
-        assignWorkspace_(trWav_raw);  
-    case {'export-spkwav', 'spkwav'}, export_spkwav_(P, vcArg2); % export spike waveforms
+        export_spk_(P, 1);
+    case {'export-cluwav', 'spkwav'}, export_cluwav_(P, vcArg2); % export spike waveforms
     case {'export-chan'}, export_chan_(P, vcArg2); % export channels
     case {'export-car'}, export_car_(P, vcArg2); % export common average reference
-    case {'export-spkwav-diff', 'spkwav-diff'}, export_spkwav_(P, vcArg2, 1); % export spike waveforms        
+    case {'export-spkwav-diff', 'spkwav-diff'}, export_cluwav_(P, vcArg2, 1); % export spike waveforms        
     case 'export-spkamp', export_spkamp_(P, vcArg2); %export microvolt unit
     case {'export-csv', 'exportcsv'}, varargout{1} = export_csv_(P);
     case {'export-quality', 'exportquality', 'quality'}, export_quality_(P);
@@ -3324,7 +3320,9 @@ if fPostCluster, S_clu = postCluster_(S_clu, P); end
 S_clu = S_clu_refresh_(S_clu);
 S_clu.viClu_premerge = S_clu.viClu;
 
-switch 1 %1 previously 1
+switch get_set_(P, 'post_merge_mode', 1) %1 previously 1
+    case 6
+        S_clu = post_merge_drift_(S_clu, P);
     case 5
         S_clu = drift_merge_post_(S_clu, P);
     case 4
@@ -13868,7 +13866,7 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function export_spkwav_(P, vcArg2, fDiff)
+function export_cluwav_(P, vcArg2, fDiff)
 % Export spike waveforms organized by clusters
 % export_spkwav_(P)
 % export_spkwav_(P, viClu)
@@ -22000,8 +21998,8 @@ end %func
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_(vcFile_prm)
 if nargin<1, vcFile_prm = ''; end
-vcVer = 'v4.7.5';
-vcDate = '6/13/2019';
+vcVer = 'v4.7.6';
+vcDate = '6/14/2019';
 vcHash = file2hash_();
 
 if nargout==0
@@ -24135,7 +24133,7 @@ P = struct_copyas_(P, S_txt, {'filter_type', 'feature_type'}, {'vcFilter', 'vcFe
 
 % same name
 P = struct_copyas_(P, S_txt, ...
-    {'knn', 'batch_sec_drift', 'step_sec_drift', 'min_count', 'nSites_whiten', 'fft_thresh', 'delta_cut', 'fft_thresh_low'});
+    {'knn', 'batch_sec_drift', 'step_sec_drift', 'min_count', 'nSites_whiten', 'fft_thresh', 'delta_cut', 'fft_thresh_low', 'post_merge_mode', 'sort_mode'});
 
 % set GPU use
 vcGpu = get_(S_txt, 'fGpu');
@@ -24524,7 +24522,8 @@ fprintf('\n\ttook %0.1fs\n', toc(t1));
 
 % correct for the rho density variation
 vrRho_dist = []; % distance based density
-switch 2
+sort_mode = get_set_(P, 'sort_mode', 1);
+switch sort_mode
     case 3
         vnNeigh_spk = zeros(size(miKnn,2),1, 'int32');
         for iSpk = 1:nSpk
@@ -31627,4 +31626,121 @@ S_clu = S_clu_refresh_(S_clu);
 nClu_post = S_clu.nClu;
 nClu_pre = nClu;
 fprintf('\nMerged %d waveforms (%d->%d), took %0.1fs\n', nClu-nClu_post, nClu, nClu_post, toc(t_merge));
+end %func
+
+
+%--------------------------------------------------------------------------
+function export_spk_(P, fRaw)
+S0 = load0_(P);
+% S0 = get(0, 'UserData');
+switch fRaw
+    case 0
+        type_spk = get_set_(S0, 'type_spk', 'int16');
+        tnWav_spk = load_bin_(strrep(P.vcFile_prm, '.prm', '_spkwav.jrc'), type_spk, S0.dimm_spk);
+        assignWorkspace_(tnWav_spk); 
+    case 1
+        type_raw = get_set_(S0, 'type_raw', 'int16');
+        tnWav_raw = load_bin_(strrep(P.vcFile_prm, '.prm', '_spkraw.jrc'), type_raw, S0.dimm_raw);
+        assignWorkspace_(tnWav_raw); 
+end %switch
+end
+
+
+%--------------------------------------------------------------------------
+% 6/14/2019 JJJ: Template merging cluster
+function S_clu = post_merge_drift_(S_clu, P)
+
+fUse_raw = 0;
+nShift_max = ceil(diff(P.spkLim) * P.frac_shift_merge / 2);
+viShift = -nShift_max:nShift_max;
+tnWav_spk = get_spkwav_(P, fUse_raw); % use raw waveform
+
+viSite_spk = get0_('viSite_spk');
+S_drift = S_clu.S_drift;
+nBatch_drift = S_drift.nTime_drift;
+miBatch_drift = S_drift.miSort_drift;
+nClu = S_clu.nClu;
+nSpk_min = P.min_count;
+t_merge = tic;
+fh_norm = @(x)(x-mean(x))/std(x,1)/sqrt(numel(x));
+
+% do a better merging scheme
+% compute average waveforms for each cluster for each drift state
+fprintf('\tComputing average waveforms per unit per batch\n\t\t'); t1=tic;
+[cm_vrWav_batch_clu, cm_mrWav_batch_clu] = deal(cell(nBatch_drift, nClu));
+miSite_batch_clu = zeros(nBatch_drift, nClu);
+for iClu = 1:nClu    
+    viSpk_clu1 = S_clu.cviSpk_clu{iClu};
+    viDrift_spk1 = S_drift.viDrift_spk(viSpk_clu1);
+    for iBatch = 1:nBatch_drift
+        viSpk1 = viSpk_clu1(viDrift_spk1 == iBatch);
+        if numel(viSpk1) < nSpk_min, continue; end
+        viSite1 = viSite_spk(viSpk1);
+        iSite1 = mode(viSite1);
+        viSpk2 = viSpk1(viSite1==iSite1);
+        if numel(viSpk2) < nSpk_min, continue; end
+        miSite_batch_clu(iBatch, iClu) = iSite1;
+        mr_ = mean(single(tnWav_spk(:,:,viSpk2)), 3);
+        cm_vrWav_batch_clu{iBatch, iClu} = fh_norm(mr_(:));
+        cm_mrWav_batch_clu{iBatch, iClu} = mr_shift_norm_(mr_, viShift);
+    end %for
+    fprintf('.');
+end %for
+fprintf('\n\t\ttook %0.1fs\n', toc(t1));
+
+
+% compute waveform similarities
+fprintf('\tComputing waveform similarity between unit pairs\n\t\t'); t2=tic;
+mrDist_clu = zeros(nClu, 'single');
+for iClu1 = 1:nClu
+    vrDist_clu1 = zeros(nClu,1);
+    viBatch1 = find(miSite_batch_clu(:,iClu1) > 0);
+    for iiBatch1 = 1:numel(viBatch1)
+        iBatch11 = viBatch1(iiBatch1);
+        iSite11 = miSite_batch_clu(iBatch11, iClu1);        
+%         vrWav_clu1_T = cm_vrWav_batch_clu{iBatch11, iClu1}';
+        mrWav_clu1_T = cm_mrWav_batch_clu{iBatch11, iClu1}';
+        viBatch11 = miBatch_drift(:,iBatch11); % accept clusters from this        
+        [viiBatch12, viClu12] = find(miSite_batch_clu(viBatch11,:) == iSite11);
+        vl_ = viClu12 ~= iClu1;
+        viBatch12 = viBatch11(viiBatch12(vl_));
+        viClu12 = viClu12(vl_);
+        for ii12 = 1:numel(viClu12)
+            iClu2 = viClu12(ii12);
+            iBatch2 = viBatch12(ii12);
+            vrWav_clu2 = cm_vrWav_batch_clu{iBatch2, iClu2};
+            vrDist_clu1(iClu2) = max(vrDist_clu1(iClu2), max(mrWav_clu1_T * vrWav_clu2));
+        end
+    end
+    mrDist_clu(:,iClu1) = vrDist_clu1;
+    fprintf('.');
+end
+% mrDist_clu = mrDist_clu / (size(tnWav_spk,1)*size(tnWav_spk,2));
+fprintf('\n\t\ttook %0.1fs\n', toc(t2));
+
+
+% merge waveforms
+mlWavCor_clu = mrDist_clu >= P.maxWavCor;
+viMap_clu = int32(ml2map_(mlWavCor_clu));
+vlPos = S_clu.viClu > 0;
+S_clu.viClu(vlPos) = viMap_clu(S_clu.viClu(vlPos)); %translate cluster number
+S_clu = S_clu_refresh_(S_clu);
+nClu_post = S_clu.nClu;
+nClu_pre = nClu;
+fprintf('\nMerged %d waveforms (%d->%d), took %0.1fs\n', nClu-nClu_post, nClu, nClu_post, toc(t_merge));
+end %func
+
+
+%--------------------------------------------------------------------------
+function mr_shift = mr_shift_norm_(mr, viShift)
+mr_shift = zeros(numel(mr), numel(viShift), 'single');
+n = size(mr,1);
+vi0 = 1:n;
+for iShift = 1:numel(viShift)
+    vi_ = min(max(vi0 + viShift(iShift), 1), n);
+    vr_ = mr(vi_,:);
+    vr_ = vr_(:);    
+    mr_shift(:,iShift) = (vr_ - mean(vr_)) / std(vr_,1);
+end
+mr_shift = mr_shift / sqrt(prod(size(mr)));
 end %func
