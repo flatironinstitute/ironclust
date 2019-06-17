@@ -115,7 +115,8 @@ step_sec_drift = 20;          % compute anatomical similarity every n sec
 fSpatialMask_clu = 1;       % Apply spatial mask calculated from the distances between sites to the peak site (half-scale: P.mnPcPerChanaxDist_site_um). circa v3.1.10
 
 % #Post-cluster auto-merging parameters (run "jrc auto" after change)
-delta_cut = 1.1;              % Cutoff value for the Delta outlier in KNN-based Rodriguez-Laio clustering
+post_merge_mode = 1;
+delta_cut = 1.0;              % Cutoff value for the Delta outlier in KNN-based Rodriguez-Laio clustering
 maxWavCor = .985;           % merge if waveform correlation is greater than maxWavCor.
 min_count = 30;             % Minimum cluster size (min_count will be set to 2*#features if lower).
 knn_merge_thresh = 1;       % Number of spikes shared between two peaks to be merged
