@@ -6127,8 +6127,8 @@ uimenu_(mh_view,'Label', 'Show raw waveform', 'Callback', @(h,e)raw_waveform_(h)
     'Checked', ifeq_(get_(P, 'fWav_raw_show'), 'on', 'off'));
 %uimenu_(mh_view,'Label', 'Threshold by sites', 'Callback', @(h,e)keyPressFcn_thresh_(hFig, 'n'));
 % uimenu_(mh_view,'Label', '.prm file', 'Callback', @edit_prm_);
-uimenu_(mh_view,'Label', 'Show averaged waveforms on all channels','Callback', @(h,e)ui_show_all_chan_(1));
-uimenu_(mh_view,'Label', 'Show drift view','Callback', @(h,e)ui_show_drift_view_(1));
+uimenu_(mh_view,'Label', 'Show averaged waveforms on all channels','Callback', @(h,e)ui_show_all_chan_(1,h));
+uimenu_(mh_view,'Label', 'Show drift view','Callback', @(h,e)ui_show_drift_view_(1,h));
 uimenu_(mh_view,'Label', 'Reset window positions[1]', 'Callback', @reset_position_);
 
 mh_proj = uimenu_(hFig,'Label','Projection'); 
@@ -6219,7 +6219,8 @@ try
     P = S0.P;
     fExit = save_manual_(P);
     if ~fExit, return; end 
-    csFig_close = {'FigPos', 'FigMap', 'FigTime', 'FigWav', 'FigWavCor', 'FigProj', 'FigRD', 'FigCorr', 'FigIsi', 'FigHist', 'FigClust', 'FigAux'};
+    % These figures get closed when the main window gets closed.
+    csFig_close = {'FigPos', 'FigMap', 'FigTime', 'FigWav', 'FigWavCor', 'FigProj', 'FigRD', 'FigCorr', 'FigIsi', 'FigHist', 'FigClust', 'FigAux', 'FigDrift'};
     if ~isfield(S0, 'csFig')
         S0.csFig = csFig_close;
     else
@@ -6683,7 +6684,7 @@ if isempty(S_fig)
     set(S_fig.hAx, 'Position', [.05 .2 .9 .7], 'XLimMode', 'manual', 'YLimMode', 'manual');
     
     % first time
-    S_fig.hPlot0 = line(nan, nan, 'Marker', '.', 'Color', P.mrColor_proj(1,:), 'MarkerSize', 5, 'LineStyle', 'none');
+    S_fig.hPlot0 = line(nan, nan, 'Marker', '.', 'Color', P.mrColor_proj(1,:), 'MarkerSize', 3, 'LineStyle', 'none');
     S_fig.hPlot1 = line(nan, nan, 'Marker', '.', 'Color', P.mrColor_proj(2,:), 'MarkerSize', 5, 'LineStyle', 'none');
     S_fig.hPlot2 = line(nan, nan, 'Marker', '.', 'Color', P.mrColor_proj(3,:), 'MarkerSize', 5, 'LineStyle', 'none');   %place holder  
     xlabel(S_fig.hAx, 'Time (s)'); 
@@ -22013,7 +22014,7 @@ end %func
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_(vcFile_prm)
 if nargin<1, vcFile_prm = ''; end
-vcVer = 'v4.7.7';
+vcVer = 'v4.7.8';
 vcDate = '6/17/2019';
 vcHash = file2hash_();
 
@@ -30674,7 +30675,7 @@ end %func
 
 %--------------------------------------------------------------------------
 % 2019/04/09 JJJ: cleaned code originally craeted by Zach Sperry
-function ui_show_all_chan_(fNewFig)
+function ui_show_all_chan_(fNewFig, hMenu)
 persistent hFig
 % hFig = get_fig_('FigClust');
 if nargin<1, fNewFig=0; end
@@ -30692,7 +30693,9 @@ nSites = size(mrWav_med_spk1, 2);
 
 % plot
 if fNewFig
-    hFig = create_figure_('FigClust', [.85 0 .15 1], P.vcFile_prm, 1, 1);
+    hFig = create_figure_('FigClust', [.85 0 .15 1], P.vcFile_prm, 1, 1);    
+    set(hMenu, 'Checked', 'on');
+    set(hFig, 'CloseRequestFcn', @(h,e)close_figure_uncheck_menu_(h, hMenu));
 end
 clf(hFig);
 hAx = axes(hFig);
@@ -31748,15 +31751,18 @@ end %func
 
 %--------------------------------------------------------------------------
 % 2019/04/09 JJJ: cleaned code originally craeted by Zach Sperry
-function ui_show_drift_view_(fNewFig)
+function ui_show_drift_view_(fNewFig, hMenu)
 persistent hFig
+if nargin<2, hMenu = []; end
 % hFig = get_fig_('FigClust');
 if nargin<1, fNewFig=0; end
 if ~fNewFig && ~isvalid_(hFig), return; end
 S0 = get0_();
 P = S0.P;
 if fNewFig
-    hFig = create_figure_('FitDrift', [.15 0 .7 .25], ['Drift view: ', P.vcFile_prm], 0, 0);
+    hFig = create_figure_('FigDrift', [.15 0 .7 .25], ['Drift view: ', P.vcFile_prm], 0, 0);
+    set(hMenu, 'Checked', 'on');
+    set(hFig, 'CloseRequestFcn', @(h,e)close_figure_uncheck_menu_(h, hMenu));
 end
 try
     show_drift_view(S0, hFig);
@@ -31767,6 +31773,13 @@ try
     mouse_figure(hFig);
 catch
 end
+end %func
+
+
+%--------------------------------------------------------------------------
+function close_figure_uncheck_menu_(hFig, hMenu)
+set(hMenu, 'Checked', 'off');
+close_(hFig);
 end %func
 
 

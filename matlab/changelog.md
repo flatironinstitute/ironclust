@@ -3,6 +3,17 @@ IronClust, written by J. James Jun, Flatiron Institute, Simons Foundation
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [4.7.8] - 2019-6-17
+### Added
+- x and y position views can be switched by selecting a tab
+  - Drift view can be enabled by selecting "View\Show drift view" menu
+- Checkbox appears next to the menu when `Drift view` or 
+  `show average waveforms on ...` menu is selected
+  - Checkbox disappears when the figure is closed.
+- `split` and `merge` is enabled in the drift view
+  - Select one cluster and press 's' to split by drawing a polygon.
+  - Select two clusters and press 'm' to merge
+
 
 ## [4.7.7] - 2019-6-17
 ### Added
