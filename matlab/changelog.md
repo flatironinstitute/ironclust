@@ -3,6 +3,13 @@ IronClust, written by J. James Jun, Flatiron Institute, Simons Foundation
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+
+## [4.8.1] - 2019-6-19
+### Added
+- `irc mergeprm myparam.prm files_to_append*.*` will append other binary files to the prm files.
+- `view\show global drift` is added to the manual GUI menu.
+
+
 ## [4.8.0] - 2019-6-19
 ### Changed
 - 'maxSite' and 'nSites_ref' was removed

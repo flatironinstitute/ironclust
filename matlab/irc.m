@@ -99,6 +99,8 @@ switch lower(vcCmd)
         if nargout>0, varargout{1} = vcFile_prm_; end
         if isempty(vcFile_prm_), return; end
         if strcmpi(vcCmd, 'makeprm-all'), irc('all', vcFile_prm_); end
+    case {'append-prm', 'merge-prm', 'mergeprm', 'appendprm'}
+        merge_prm_(vcArg1, vcArg2, vcArg3, vcArg4, vcArg5);
     case 'makeprm-mda'
         vcFile_prm_ = makeprm_mda_(vcArg1, vcArg2, vcArg3, vcArg4, vcArg5);
         if nargout>0, varargout{1} = vcFile_prm_; end        
@@ -1012,7 +1014,7 @@ P = S0.P;
 nSpk = size(trFet_spk,3);
 
 if nargin<3
-    nSites_spk = size(P.miSites,1);
+    nSites_spk = P.nSites_fet;
     miSites_spk = single(P.miSites(1:nSites_spk, S0.viSite_spk));
 elseif isinf(nSites_spk)
     nSites_spk = size(P.mrSiteXY,1);
@@ -1550,9 +1552,11 @@ P.vcFile_prm = vcFile_prm;
 assert_(isfield(P, 'vcFile'), sprintf('Check "%s" file syntax', vcFile_prm));
 
 if ~exist_file_(P.vcFile) && isempty(get_(P, 'csFile_merge'))
-    P.vcFile = replacePath_(P.vcFile, vcFile_prm);
-    if ~exist_file_(P.vcFile)
-        fprintf('vcFile not specified. Assuming multi-file format ''csFiles_merge''.\n');
+    vcFile1 = replacePath_(P.vcFile, vcFile_prm);
+    if ~exist_file_(vcFile1)
+        fprintf('vcFile not specified. Assuming multi-file format ''csFile_merge''.\n');
+    else
+        P.vcFile = vcFile1;
     end
 end
 if fEditFile, fprintf('Running IronClust %s\n', version_()); end
@@ -5361,7 +5365,7 @@ if isempty(S0)
     if isempty(csFile_merge)
         nBytes_file = filesize_(P.vcFile) - get_set_(P, 'header_offset', 0);
         t_dur = nBytes_file / bytesPerSample_(P.vcDataType) / P.nChans / P.sRateHz;
-    else % multi-file format, check csFiles_merge
+    else % multi-file format, check csFile_merge
         % currently unsupported
         error('recording_duration_: not implemented yet');
     end
@@ -6000,6 +6004,8 @@ S_fig.csHelp = { ...
     '[SPACE] clear zoom', ...
     '[(shift) UP]: increase amplitude scale', ...
     '[(shift) DOWN]: decrease amplitude scale', ...
+    '[HOME] Select the first unit', ...
+    '[END] Select the last unit', ...
     '------------------', ...
     '[H] Help', ...       
     '[S] Split auto', ...
@@ -6071,6 +6077,7 @@ uimenu_(mh_view,'Label', 'Show raw waveform', 'Callback', @(h,e)raw_waveform_(h)
 %uimenu_(mh_view,'Label', 'Threshold by sites', 'Callback', @(h,e)keyPressFcn_thresh_(hFig, 'n'));
 % uimenu_(mh_view,'Label', '.prm file', 'Callback', @edit_prm_);
 uimenu_(mh_view,'Label', 'Show averaged waveforms on all channels','Callback', @(h,e)ui_show_all_chan_(1,h));
+uimenu_(mh_view,'Label', 'Show global drift','Callback', @(h,e)plot_drift_());
 uimenu_(mh_view,'Label', 'Show drift view','Callback', @(h,e)ui_show_drift_view_(1,h));
 uimenu_(mh_view,'Label', 'Reset window positions[1]', 'Callback', @reset_position_);
 
@@ -17282,7 +17289,8 @@ end %func
 
 %--------------------------------------------------------------------------
 function plot_drift_(P)
-
+if nargin<1, P = get0_('P'); end
+markerSize = 3;
 iShank_show = get_set_(P, 'iShank_show', 1); % use tabs
 vcMode_drift = get_set_(P, 'vcMode_drift', 'y'); % {'tay', 'xy', 'xya', 'x', 'y', 'gt'}
 vcMode_com = get_set_(P, 'vcMode_com', 'fet'); % {'fet', 'filt', 'raw', 'std'}
@@ -17308,8 +17316,7 @@ switch lower(vcMode_com)
         mrVp = single(squeeze_(max(tnWav_raw) - min(tnWav_raw))) .^ 2;
     case 'fet'
         trFet_spk = get_spkfet_(P); 
-        mrVp = squeeze_(trFet_spk(:,1,:)) .^ 2;
-%         mrVp = abs(squeeze_(trFet_spk(1:nSites_spk,1,:)));
+        mrVp = squeeze_(trFet_spk(1:P.nSites_fet,1,:)) .^ 2;
         miSites_spk = miSites_spk(1:P.nSites_fet,:);
 end
 
@@ -17356,16 +17363,16 @@ if ~isempty(S_clu)
         posY_clu1 = S_clu.vrPosY_clu(iClu);
         switch vcMode_drift
             case 'tay'
-                plot3_(ax, vrTime_spk(viSpk1), vrAmp_spk(viSpk1), vrPosY_spk(viSpk1), '.', 'Color', vrColor1, 'MarkerSize', 5); 
+                plot3_(ax, vrTime_spk(viSpk1), vrAmp_spk(viSpk1), vrPosY_spk(viSpk1), '.', 'Color', vrColor1, 'MarkerSize', markerSize); 
             case 'x'
-                plot_(ax, vrTime_spk(viSpk1), vrPosX_spk(viSpk1), '.', 'Color', vrColor1, 'MarkerSize', 5); 
+                plot_(ax, vrTime_spk(viSpk1), vrPosX_spk(viSpk1), '.', 'Color', vrColor1, 'MarkerSize', markerSize); 
             case 'y'
-                plot_(ax, vrTime_spk(viSpk1), vrPosY_spk(viSpk1), '.', 'Color', vrColor1, 'MarkerSize', 5); 
+                plot_(ax, vrTime_spk(viSpk1), vrPosY_spk(viSpk1), '.', 'Color', vrColor1, 'MarkerSize', markerSize); 
             case 'xy'
-                plot_(ax, vrPosX_spk(viSpk1), vrPosY_spk(viSpk1), '.', 'Color', vrColor1, 'MarkerSize', 5);      
+                plot_(ax, vrPosX_spk(viSpk1), vrPosY_spk(viSpk1), '.', 'Color', vrColor1, 'MarkerSize', markerSize);      
             case 'xya'
                 if S_clu.vrSnr_clu(iClu) < snr_thresh_clu, continue; end
-                plot3_(ax, vrPosX_spk(viSpk1), vrPosY_spk(viSpk1), vrAmp_spk(viSpk1), '.', 'Color', vrColor1, 'MarkerSize', 5);                    
+                plot3_(ax, vrPosX_spk(viSpk1), vrPosY_spk(viSpk1), vrAmp_spk(viSpk1), '.', 'Color', vrColor1, 'MarkerSize', markerSize);                    
             case 'gt'
                 iClu_gt = viClu_gt(iClu);
                 if iClu_gt==0, continue; end
@@ -21725,8 +21732,8 @@ end %func
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_(vcFile_prm)
 if nargin<1, vcFile_prm = ''; end
-vcVer = 'v4.8.0';
-vcDate = '6/19/2019';
+vcVer = 'v4.8.1';
+vcDate = '6/20/2019';
 vcHash = file2hash_();
 
 if nargout==0
@@ -31497,4 +31504,27 @@ try
 catch
     drawnow();
 end
+end %func
+
+
+%--------------------------------------------------------------------------
+function merge_prm_(vcFile_prm, vcArg2, vcArg3, vcArg4, vcArg5)
+P0 = loadParam_(vcFile_prm);
+
+csFile_merge0 = P0.csFile_merge;
+if isempty(P0.vcFile)
+    csFile_merge1 = dir_files_({vcArg2, vcArg3, vcArg4, vcArg5});
+else
+    csFile_merge1 = dir_files_({P0.vcFile, vcArg2, vcArg3, vcArg4, vcArg5});
+end
+if isempty(csFile_merge0)
+    P.csFile_merge = csFile_merge1;
+else
+    P.csFile_merge = union(csFile_merge0, csFile_merge1);
+end
+P.csFile_merge = unique(P.csFile_merge);
+
+P.vcFile = '';
+P = edit_prm_file_(P, vcFile_prm);
+edit_(vcFile_prm);
 end %func
