@@ -3,6 +3,11 @@ IronClust, written by J. James Jun, Flatiron Institute, Simons Foundation
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [4.8.2] - 2019-6-19
+### Changed
+- `mergeprm` command now supports an optional third argument for a new file name
+  - `irc mergeprm myprm.prm files_to_append* newprm.prm` will create newprm.prm 
+    in the folder containing myprm.prm
 
 ## [4.8.1] - 2019-6-19
 ### Added

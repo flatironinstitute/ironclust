@@ -100,8 +100,7 @@ switch lower(vcCmd)
         if isempty(vcFile_prm_), return; end
         if strcmpi(vcCmd, 'makeprm-all'), irc('all', vcFile_prm_); end
     case {'append-prm', 'merge-prm', 'mergeprm', 'appendprm'}
-        vcFile_prm_ = vcArg1;
-        merge_prm_(vcArg1, vcArg2, vcArg3, vcArg4, vcArg5);
+        vcFile_prm_ = merge_prm_(vcArg1, vcArg2, vcArg3);
     case 'makeprm-mda'
         vcFile_prm_ = makeprm_mda_(vcArg1, vcArg2, vcArg3, vcArg4, vcArg5);
         if nargout>0, varargout{1} = vcFile_prm_; end        
@@ -21733,8 +21732,8 @@ end %func
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_(vcFile_prm)
 if nargin<1, vcFile_prm = ''; end
-vcVer = 'v4.8.1';
-vcDate = '6/20/2019';
+vcVer = 'v4.8.2';
+vcDate = '6/19/2019';
 vcHash = file2hash_();
 
 if nargout==0
@@ -31509,14 +31508,14 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function merge_prm_(vcFile_prm, vcArg2, vcArg3, vcArg4, vcArg5)
+function vcFile_prm_new = merge_prm_(vcFile_prm, vcArg2, vcFile_prm_new)
 P0 = loadParam_(vcFile_prm);
 
 csFile_merge0 = P0.csFile_merge;
 if isempty(P0.vcFile)
-    csFile_merge1 = dir_files_({vcArg2, vcArg3, vcArg4, vcArg5});
+    csFile_merge1 = dir_files_(vcArg2);
 else
-    csFile_merge1 = dir_files_({P0.vcFile, vcArg2, vcArg3, vcArg4, vcArg5});
+    csFile_merge1 = dir_files_({P0.vcFile, vcArg2});
 end
 if isempty(csFile_merge0)
     P.csFile_merge = csFile_merge1;
@@ -31525,7 +31524,17 @@ else
 end
 P.csFile_merge = unique(P.csFile_merge);
 
+if ~isempty(vcFile_prm_new)
+    [vcDir_new, ~, ext_] = fileparts(vcFile_prm_new);
+    if isempty(vcDir_new)
+        vcFile_prm_new = subsDir_(vcFile_prm_new, vcFile_prm);
+    end
+    if isempty(ext_), vcFile_prm_new = [vcFile_prm_new, '.prm']; end
+    copyfile(vcFile_prm, vcFile_prm_new);
+else
+    vcFile_prm_new = vcFile_prm;
+end
 P.vcFile = '';
-P = edit_prm_file_(P, vcFile_prm);
-edit_(vcFile_prm);
+edit_prm_file_(P, vcFile_prm_new);
+edit_(vcFile_prm_new);
 end %func
