@@ -100,6 +100,7 @@ switch lower(vcCmd)
         if isempty(vcFile_prm_), return; end
         if strcmpi(vcCmd, 'makeprm-all'), irc('all', vcFile_prm_); end
     case {'append-prm', 'merge-prm', 'mergeprm', 'appendprm'}
+        vcFile_prm_ = vcArg1;
         merge_prm_(vcArg1, vcArg2, vcArg3, vcArg4, vcArg5);
     case 'makeprm-mda'
         vcFile_prm_ = makeprm_mda_(vcArg1, vcArg2, vcArg3, vcArg4, vcArg5);
