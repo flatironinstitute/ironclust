@@ -3,6 +3,15 @@ IronClust, written by J. James Jun, Flatiron Institute, Simons Foundation
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [4.8.3] - 2019-6-19
+### Fixed
+- `View\Show average waveforms on all channel` menu works for merged files
+
+### Added
+- `View\Show drift view` and `View\Show average waveforms on all channel` 
+  menus toggle the views on and off.
+
+
 ## [4.8.2] - 2019-6-19
 ### Changed
 - `mergeprm` command now supports an optional third argument for a new file name

@@ -6170,7 +6170,9 @@ try
     fExit = save_manual_(P);
     if ~fExit, return; end 
     % These figures get closed when the main window gets closed.
-    csFig_close = {'FigPos', 'FigMap', 'FigTime', 'FigWav', 'FigWavCor', 'FigProj', 'FigRD', 'FigCorr', 'FigIsi', 'FigHist', 'FigClust', 'FigAux', 'FigDrift'};
+    csFig_close = {'FigPos', 'FigMap', 'FigTime', 'FigWav', 'FigWavCor', ...
+        'FigProj', 'FigRD', 'FigCorr', 'FigIsi', 'FigHist', 'FigClust', ...
+        'FigAux', 'FigDrift', 'FigDriftAll'};
     if ~isfield(S0, 'csFig')
         S0.csFig = csFig_close;
     else
@@ -17331,7 +17333,7 @@ vlSpk_shank = ismember(P.viShank_site(viSite_spk), iShank_show); %show first sha
 % vrAmp_spk = 1 ./ sqrt(single(abs(S0.vrAmp_spk)));
 % vrAmp_spk = 1 ./ sqrt(sum(mrVp));
 vrAmp_spk = sqrt(mean(mrVp) ./ std(mrVp)); %spatial icv
-hFig_drift = create_figure_('', [0 0 .5 1], P.vcFile_prm, 1, 1);
+hFig_drift = create_figure_('FigDriftAll', [0 0 .5 1], P.vcFile_prm, 1, 1);
 % hFig_drift = gcf;
 figure(hFig_drift); 
 ax = gca(); 
@@ -21732,7 +21734,7 @@ end %func
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_(vcFile_prm)
 if nargin<1, vcFile_prm = ''; end
-vcVer = 'v4.8.2';
+vcVer = 'v4.8.3';
 vcDate = '6/19/2019';
 vcHash = file2hash_();
 
@@ -30349,8 +30351,18 @@ end % func
 
 %--------------------------------------------------------------------------
 function mnWav_T = load_bin_T_(P)
-vcFile_bin = locate_file_(P.vcFile, P.vcFile_prm);
-mnWav_T = load_bin_(P.vcFile_prm);
+if isempty(P.csFile_merge)
+    vcFile_bin = locate_file_(P.vcFile, P.vcFile_prm);
+    mnWav_T = load_bin_(P.vcFile_prm);
+else
+    csFile_merge = dir_files_(P.csFile_merge);
+    cmnWav_T = cell(size(csFile_merge));
+    for iFile = 1:numel(csFile_merge)
+        vcFile_bin1 = locate_file_(csFile_merge{iFile}, P.vcFile_prm);
+        cmnWav_T{iFile} = load_bin_(vcFile_bin1, P.vcDataType, P.nChans);
+    end
+    mnWav_T = cell2mat(cmnWav_T); 
+end
 if ~get_(P, 'fTranspose_bin'), mnWav_T=mnWav_T'; end
 if ~isempty(get_(P, 'viChanZero'))
     mnWav_T(P.viChanZero,:) = nan;  % do not display bad sites
@@ -30403,13 +30415,12 @@ S0 = get0_();
 iClu = S0.iCluCopy;
 [snr_thresh, nSkip_site] = deal(3, 2);
 
-% load raw waveforms
-viTime_spk1 = S0.viTime_spk(S_clu.cviSpk_clu{iClu});
-mrWav_med_spk1 = load_wav_med_(P, viTime_spk1);
-nSites = size(mrWav_med_spk1, 2);
-
 % plot
+hFig_wait = gcf;
 if fNewFig
+    if isvalid_(hFig)
+        close(hFig); hFig = []; set(hMenu, 'Checked', 'off'); return;
+    end
     hFig = create_figure_('FigClust', [.85 0 .15 1], P.vcFile_prm, 1, 1);    
     set(hMenu, 'Checked', 'on');
     set(hFig, 'CloseRequestFcn', @(h,e)close_figure_uncheck_menu_(h, hMenu));
@@ -30417,6 +30428,12 @@ end
 clf(hFig);
 hAx = axes(hFig);
 hold(hAx, 'on');
+figure_wait_(1, hFig_wait); drawnow();
+
+% load raw waveforms
+viTime_spk1 = S0.viTime_spk(S_clu.cviSpk_clu{iClu});
+mrWav_med_spk1 = load_wav_med_(P, viTime_spk1);
+nSites = size(mrWav_med_spk1, 2);
 viSites = 1:nSites;
 maxAmp = get_userdata_(get_fig_('FigWav'), 'maxAmp');
 % separate to above and below SNR
@@ -30439,6 +30456,7 @@ xlabel(hAx, 'Time (ms)');
 grid(hAx, 'on');
 title_(hAx, sprintf('Scale: %0.1f uV', maxAmp));
 set(hFig, 'KeyPressFcn', @(h,e)rescale_multiplot_(e, hLine1, hLine2));
+figure_wait_(0, hFig_wait);
 end
 
 
@@ -31474,6 +31492,9 @@ if ~fNewFig && ~isvalid_(hFig), return; end
 S0 = get0_();
 P = S0.P;
 if fNewFig
+    if isvalid_(hFig) % close toggle
+        close(hFig); hFig = []; set(hMenu, 'Checked', 'off'); return;
+    end 
     hFig = create_figure_('FigDrift', [.15 0 .7 .25], ['Drift view: ', P.vcFile_prm], 0, 0);
     set(hMenu, 'Checked', 'on');
     set(hFig, 'CloseRequestFcn', @(h,e)close_figure_uncheck_menu_(h, hMenu));
