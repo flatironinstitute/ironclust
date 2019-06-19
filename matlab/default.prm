@@ -69,6 +69,7 @@ vcCommonRef = 'mean';       % common reference mode {'none', 'mean', 'median', '
 nSites_whiten = 32;         % number of sites to use local whtening (only active when vcCommonRef=`whiten`).
 nChans_min_car = 8;        % minimum number of common average referencing
 viSiteZero = [];            % Site# to ignore manually
+viSiteExcl = [];            % Site to exclude manually
 nPad_filt = 100;            % Number of samples to overlap between multiple loading (filter edge safe).
 thresh_corr_bad_site = [];  % Automatically reject bad sites based on the max. correlation with neighboring sites using raw waveforms. Set to [] to disable
 scale_filter = 8;			% filter multiplier for int16 interal representation (only used if vcDataType_filter='int16', otherwise set to 1)
@@ -82,7 +83,6 @@ spkThresh_max_uV = [];      % maximum absolute amp. allowed
 spkLim_ms = [-.25, .75];    % Time range to capture the filtered spike waveforms; spkLim = round(P.spkLim_ms/1000*P.sRateHz)
 spkLim_raw_ms = [];         % Raw spike waveform range, setting to [] will use spkLim_raw_factor to determine spkLim_raw (# samples)
 spkLim_raw_factor = 2;      % if spkLim_raw_ms==[] then spkLim_raw = spkLim * spkLim_raw_factor
-maxSite = [];               % Auto-calculated by `maxDist_site_spk_um` if empty. `nSites_spk` = 1+2*`maxSite`-`nSite_ref`)
 spkRefrac_ms = .25;         % Detection refractory period in milliseconds
 vcSpatialFilter = 'none';   % Spatial filter for detection {'mean', 'imec2', 'subtract', 'csd'}
 fSaveEvt = 1;               % Flag to save event file
@@ -98,7 +98,6 @@ fGroup_shank = 0;           % Group all sites in the same shank
 % #Feature extraction (run "jrc spikesort" after change)
 vcFet = 'gpca';             % Feature list: {'gpca', 'cov', 'vpp', 'vmin', 'vminmax', 'energy', 'pca', 'xcov'}
 nPcPerChan = 2;             % number of principal components per chan.
-nSites_ref = [];            % set to 0 for global referencing (move to feature section) @TODO: diagram
 vcSpkRef = 'none';         % Subtract mean of the spiking event sites {'nmean', 'none', 'time-mean'}
 fInterp_fet = 1;            % Interpolate the waveforms for feature projection to find the optimal delay (2x interp). Set to 0 to disable
 fRaw_feature = 0;           % Use raw waveform for feature extraction
@@ -174,9 +173,7 @@ fPlot_gt = 0;                   % Plot groundtruth
 
 % Unit/dipole tracking
 um_per_pix = 20;
-maxSite_pix = 4.5;
 nPc_dip = 3;                    % Number of principal components for dipole fitting
-maxSite_dip = maxSite;          % Number of sites (2n+1) to fit dipole model
 
 % depth tracking
 vcMode_track = 'mt_cpsd2_mr';   % LFP tracking method {'mt_psd_mr', 'mt_cpsd_mr', 'cpsd_mr', 'corr_mr', 'mt_cpsd1_mr', 'mt_fft_mr', 'mt_cpsd2_mr', 'mt_cpsd1_mr', 'mt_dpsd_mr'}

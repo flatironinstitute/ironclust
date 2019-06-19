@@ -1,0 +1,17 @@
+% Order of the probe sites in the recording file
+channels = [1 5 2 6 3 7 4 8];
+channels = repmat(channels, [1,4]);
+channels(9:16) = channels(1:8) + 8;
+channels(17:24) = channels(1:8) + 16;
+channels(25:32) = channels(1:8) + 24;
+
+% Site location, x (first column)
+geometry = [0 0; 13 20; -18.5 40; 23.5 60; -26.5 80; 27.5 100; -26.5 120; 27.5 140];
+geometry = repmat(geometry, [4,1]);
+geometry(9:16,1) = geometry(1:8,1) + 250;
+geometry(17:24,1) = geometry(1:8,1) + 500;
+geometry(25:32,1) = geometry(1:8,1) + 750;
+
+% Recording contact pad size in micrometers. Height x width
+pad = [13 11];
+shank = [repmat(1,1,8), repmat(2,1,8),repmat(3,1,8),repmat(4,1,8)];

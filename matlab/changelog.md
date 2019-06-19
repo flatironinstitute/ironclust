@@ -3,6 +3,20 @@ IronClust, written by J. James Jun, Flatiron Institute, Simons Foundation
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [4.8.0] - 2019-6-19
+### Changed
+- 'maxSite' and 'nSites_ref' was removed
+  - Specify `maxDist_site_um` and `maxDist_site_spk_um` instead to specify inner and outer radius.
+  - Inner radius controls the feature dimensions and outer radius controls the waveform extraction.
+
+### Fixed
+- `drift view` in manual GUI excludes background spikes from other shanks
+- `find_site_spk23_` error is resolved
+
+### Added
+- `ledprobe.prb` is added (Euisik Yoon's group)
+
+
 ## [4.7.8] - 2019-6-17
 ### Added
 - x and y position views can be switched by selecting a tab

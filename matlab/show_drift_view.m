@@ -8,8 +8,8 @@
 function show_drift_view(S0, hFig)
 % [P, S_clu] = get_(S0, 'P', 'S_clu');
 [iClu1, iClu2] = get_(S0, 'iCluCopy', 'iCluPaste');
-[S_clu, mrPos_spk, viTime_spk, P] = ...
-    get_(S0, 'S_clu', 'mrPos_spk', 'viTime_spk', 'P');
+[S_clu, mrPos_spk, viTime_spk, viSite_spk, P] = ...
+    get_(S0, 'S_clu', 'mrPos_spk', 'viTime_spk', 'viSite_spk', 'P');
 switch 2
     case 1
         [hAx_x, hAx_y] = get_userdata_(hFig, 'hAx_x', 'hAx_y');
@@ -44,7 +44,7 @@ end
 viSpk1 = S_clu.cviSpk_clu{iClu1};
 viTime1 = viTime_spk(viSpk1);
 mrPos1 = mrPos_spk(viSpk1,:);
-% try iShank1 = P.viShank_site(S_clu.viSite_clu(iClu1)); catch, end
+try iShank1 = P.viShank_site(S_clu.viSite_clu(iClu1)); catch, end
 
 % clu2
 if ~isempty(iClu2)
@@ -73,6 +73,11 @@ else
 end
 ypos_lim1 = ypos_lim1 + um_per_pix * [-.5,.5];
 viSpk0 = find(mrPos_spk(:,2) >= ypos_lim1(1) & mrPos_spk(:,2) <= ypos_lim1(end));
+try
+    viSpk0 = viSpk0(P.viShank_site(viSite_spk(viSpk0)) == iShank1);
+catch
+   	;
+end
 mrPos0 = mrPos_spk(viSpk0,:);
 viTime0 = viTime_spk(viSpk0);
 
