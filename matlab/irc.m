@@ -6169,10 +6169,10 @@ try
     P = S0.P;
     fExit = save_manual_(P);
     if ~fExit, return; end 
-    % These figures get closed when the main window gets closed.
+    % These figures get closed when the main window gets closed.    
     csFig_close = {'FigPos', 'FigMap', 'FigTime', 'FigWav', 'FigWavCor', ...
         'FigProj', 'FigRD', 'FigCorr', 'FigIsi', 'FigHist', 'FigClust', ...
-        'FigAux', 'FigDrift', 'FigDriftAll'};
+        'FigAux', 'FigDrift', 'FigDriftAll', 'FigImport_trial'};
     if ~isfield(S0, 'csFig')
         S0.csFig = csFig_close;
     else
@@ -16355,12 +16355,12 @@ clear_filters_();
 
 if isempty(P.csFile_merge)
     if ~exist_file_(P.vcFile), P.vcFile = subsDir_(P.vcFile, P.vcFile_prm); end
-    csFile = {P.vcFile};    
+    csFile_merge = {P.vcFile};    
 else
-    csFile = filter_files_(P.csFile_merge);
-    if isempty(csFile)
+    csFile_merge = filter_files_(P.csFile_merge);
+    if isempty(csFile_merge)
         P.csFile_merge = subsDir_(P.csFile_merge, P.vcFile_prm);
-        csFile = filter_files_(P.csFile_merge);
+        csFile_merge = filter_files_(P.csFile_merge);
     end
 end
 if ~isempty(get_(P, 'vcFile_thresh'))
@@ -16373,20 +16373,20 @@ if ~isempty(get_(P, 'vcFile_thresh'))
         disperr_('vcFile_thresh load error');
     end
 end
-if isempty(csFile), error('No binary files found.'); end
+if isempty(csFile_merge), error('No binary files found.'); end
 % [tnWav_raw, tnWav_spk, trFet_spk, miSite_spk, viTime_spk, vrAmp_spk, vnThresh_site] = deal({});    
 [miSite_spk, viTime_spk, vrAmp_spk, vnThresh_site] = deal({});    
-viT_offset_file = zeros(size(csFile));
-nFiles = numel(csFile);    
+viT_offset_file = zeros(size(csFile_merge));
+nFiles = numel(csFile_merge);    
 [nSamples1, nLoads] = deal(0); % initialize the counter
 [vrFilt_spk, mrPv_global] = deal([]); % reset the template
 set0_(mrPv_global, vrFilt_spk); % reeset mrPv_global and force it to recompute
 write_spk_(P.vcFile_prm);
 for iFile=1:nFiles
     clear load_file_
-    fprintf('File %d/%d: detecting spikes from %s\n', iFile, nFiles, csFile{iFile});
+    fprintf('File %d/%d: detecting spikes from %s\n', iFile, nFiles, csFile_merge{iFile});
     t1 = tic;
-    [fid1, nBytes_file1] = fopen_(csFile{iFile}, 'r');
+    [fid1, nBytes_file1] = fopen_(csFile_merge{iFile}, 'r');
     nBytes_file1 = file_trim_(fid1, nBytes_file1, P);
     [nLoad1, nSamples_load1, nSamples_last1] = plan_load_(nBytes_file1, P);
 %         nSamples1 = 0; %accumulated sample offset        
@@ -16451,7 +16451,7 @@ end
 [mrPv_global, vrD_global] = get0_('mrPv_global', 'vrD_global');
 S0 = makeStruct_(P, viSite_spk, viSite2_spk, viTime_spk, vrAmp_spk, vrThresh_site, dimm_spk, ...
     cviSpk_site, cviSpk2_site, cviSpk3_site, dimm_raw, viT_offset_file, dimm_fet, nLoads, ...
-    mrPv_global, vrFilt_spk, vrD_global, type_raw, type_spk, type_fet);
+    mrPv_global, vrFilt_spk, vrD_global, type_raw, type_spk, type_fet, csFile_merge);
 clear_filters_();  % reset wiener cache
 end %func
 
@@ -21735,7 +21735,7 @@ end %func
 function [vcVer, vcDate, vcHash] = version_(vcFile_prm)
 if nargin<1, vcFile_prm = ''; end
 vcVer = 'v4.8.3';
-vcDate = '6/19/2019';
+vcDate = '6/20/2019';
 vcHash = file2hash_();
 
 if nargout==0
@@ -28079,19 +28079,19 @@ else
     [name1, value1] = deal(trial1.name, trial1.value);
 end
 
-f = figure;
+hFig = create_figure_('FigImport_trial', [0 0 .15 1], [name1, ' (close to save)'], 0, 0);
 max_events_trial = get_set_(get0_('P'), 'max_events_trial', 100);
 if isempty(value1), value1 = nan(max_events_trial,2); end
-uiTable1 = uitable(f,'Data',value1, 'ColumnName', {'on (sec)','off (sec)'}, ...
+uiTable1 = uitable(hFig,'Data',value1, 'ColumnName', {'on (sec)','off (sec)'}, ...
     'ColumnEditable', true);
-f.CloseRequestFcn = @(f1,e)uitable_save_close_(f1, h);
-f.UserData = uiTable1;
-[f.MenuBar, f.ToolBar, f.Name, f.NumberTitle, f.WindowStyle] = ...
-    deal('none', 'none', [name1, ' (close to save)'], 'off', 'normal');
-mh_import = uimenu_(f,'Label','Import');
+hFig.CloseRequestFcn = @(f1,e)uitable_save_close_(f1, h);
+hFig.UserData = uiTable1;
+% [hFig.MenuBar, hFig.ToolBar, hFig.Name, hFig.NumberTitle, hFig.WindowStyle] = ...
+%     deal('none', 'none', [name1, ' (close to save)'], 'off', 'normal');
+mh_import = uimenu_(hFig,'Label','Import');
 uimenu_(mh_import,'Label','Import from .nev','Callback',@(h,e)ui_import_nev_(h,e,uiTable1));
-f.InnerPosition = uiTable1.OuterPosition * 1.1;
-uiwait(f); % wait until figure closure
+hFig.InnerPosition = uiTable1.OuterPosition * 1.1;
+uiwait(hFig); % wait until figure closure
 
 S_trials = get_userdata_(mh_trials, 'S_trials');
 mrTable1 = get_userdata_(h, 'mrTable1', 1);
@@ -28119,16 +28119,77 @@ min_event_interval = get_set_(P, 'min_event_interval_trial', 1);
 max_events_trial = get_set_(P, 'max_events_trial', 100);
 [vcDir, ~, ~] = fileparts(P.vcFile_prm);
 try
-    vcFile_nev = uigetfile_(fullfile(vcDir, '*.nev'));
-    if isempty(vcFile_nev), return; end % user pressed cancel
-    vrT_event = load_nev_(vcFile_nev);
-    vrT_event = timestamp_remove_jitter_(vrT_event, min_event_interval);
-    mrTable1 = reshape_(vrT_event, 2)';    
+    vcMultiSelect = ifeq_(isempty(get_(P, 'csFile_merge')), 'off', 'on');
+    csFile_nev = uigetfile_(fullfile(vcDir, '*.nev'), 'MultiSelect', vcMultiSelect);
+    if ischar(csFile_nev), csFile_nev = {csFile_nev}; end
+    if isempty(csFile_nev), return; end % user pressed cancel
+    if strcmpi(vcMultiSelect, 'off')
+        vrT0_file = [0];
+    else
+        [csFile_merge, viT_offset_file] = get0_('csFile_merge', 'viT_offset_file');
+        if isempty(csFile_merge), csFile_merge = P.csFile_merge; end
+        viiFile = find_files_from_list_(csFile_nev, csFile_merge);
+        if any(viiFile==0), error('Matching file is not found from csFile_merge'); end
+        vrT0_file = double(viT_offset_file(viiFile)) / P.sRateHz;
+    end
+    cvrT_event = cell(numel(csFile_nev), 1);
+    for iFile = 1:numel(csFile_nev)
+        vcFile_nev1 = csFile_nev{iFile};
+        vrT_event1 = load_nev_(vcFile_nev1) + vrT0_file(iFile);
+        vrT_event1 = timestamp_remove_jitter_(vrT_event1, min_event_interval);  
+        cvrT_event{iFile} = vrT_event1(:);
+    end
+    mrTable1 = reshape_(cell2mat_(cvrT_event), 2)';    
     uiTable1.Data = [mrTable1; nan(max_events_trial, 2)];
 catch
-    errordlg(['Import failed: ', vcFile_nev])
+    errordlg(['Import failed: ', csFile_nev{1}]);
+    disperr_(lasterr());
 end % try
 end % func
+
+
+%--------------------------------------------------------------------------
+function viiFile = find_files_from_list_(csSearch, csList, fFileOnly)
+if nargin<3, fFileOnly = []; end
+if isempty(fFileOnly), fFileOnly = true; end
+% match file names only
+if fFileOnly
+    csSearch = cellfun_(@(x)argout_(@fileparts, {x}, 2), csSearch);
+    csList = cellfun_(@(x)argout_(@fileparts, {x}, 2), csList);
+end
+[~,viiFile] = ismember(csSearch, csList);
+end %func
+
+
+%--------------------------------------------------------------------------
+% select arg out and return
+function varargout = argout_(fh, cA, viPos)
+n_argout = max(viPos);
+f_noarg = isempty(cA);
+
+% collect the input
+switch n_argout
+    case 1
+        if f_noarg, [a1]=fh(); else, [a1]=fh(cA{:}); end
+        cB = {a1};
+    case 2
+        if f_noarg, [a1,a2]=fh(); else, [a1,a2]=fh(cA{:}); end
+        cB = {a1,a2};
+    case 3
+        if f_noarg, [a1,a2,a3]=fh(); else, [a1,a2,a3]=fh(cA{:}); end
+        cB = {a1,a2,a3};
+    case 4
+        if f_noarg, [a1,a2,a3,a4]=fh(); else, [a1,a2,a3,a4]=fh(cA{:}); end
+        cB = {a1,a2,a3,a4};
+    otherwise, error('assert n_argout<=4');
+end %switch
+
+% direct the output
+for iiPos = 1:numel(viPos)
+    iPos = viPos(iiPos);
+    varargout{iiPos} = cB{iPos};
+end %for
+end %func
 
 
 %--------------------------------------------------------------------------
@@ -31556,6 +31617,7 @@ else
     vcFile_prm_new = vcFile_prm;
 end
 P.vcFile = '';
+P.vcFile_prm = vcFile_prm_new;
 edit_prm_file_(P, vcFile_prm_new);
 edit_(vcFile_prm_new);
 end %func
