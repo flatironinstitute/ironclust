@@ -28090,7 +28090,8 @@ hFig.UserData = uiTable1;
 %     deal('none', 'none', [name1, ' (close to save)'], 'off', 'normal');
 mh_import = uimenu_(hFig,'Label','Import');
 uimenu_(mh_import,'Label','Import from .nev','Callback',@(h,e)ui_import_nev_(h,e,uiTable1));
-hFig.InnerPosition = uiTable1.OuterPosition * 1.1;
+uiTable1.OuterPosition = hFig.InnerPosition * .9;
+% hFig.InnerPosition = uiTable1.OuterPosition * 1.1;
 uiwait(hFig); % wait until figure closure
 
 S_trials = get_userdata_(mh_trials, 'S_trials');
@@ -28375,6 +28376,15 @@ end %func
 % 11/19/2018 JJJ: version-neutral uimenu
 function h = uimenu_(varargin)
 cell_args = varargin;
+hFig = varargin{1};
+position0 = [];
+try
+    if isa(hFig, 'matlab.ui.Figure')
+        position0 = hFig.OuterPosition;
+    end
+catch
+    ;
+end
 % csFields = varargin(2:2:end);
 if version_matlab_() >= 2017.5 % new version calls Label as Text
     cell_args = cellstr_subs_(cell_args, 'Label', 'Text', 1);
@@ -28382,6 +28392,10 @@ else
     cell_args = cellstr_subs_(cell_args, 'Text', 'Label', 1);
 end
 h = uimenu(cell_args{:});
+if ~isempty(position0)
+    drawnow;
+    hFig.OuterPosition = position0;
+end
 end %func
 
 
