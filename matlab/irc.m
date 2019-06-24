@@ -6576,7 +6576,7 @@ P.nLags_ms = nLags_ms;
 
 [hFig, S_fig] = get_fig_cache_('FigCorr'); 
 iClu1 = get_set_(S0, 'iCluCopy', 1);
-iClu2 = get_set_(S0, 'iCluPaste', 1);
+iClu2 = get_(S0, 'iCluPaste');
 if isempty(iClu2), iClu2 = iClu1; end
 
 jitter = round(P.sRateHz / 1000 * P.jitter_ms); %0.5 ms
@@ -6608,7 +6608,11 @@ if isempty(S_fig)
 else
     set(S_fig.hBar, 'XData', vrTime_lag, 'YData', vnCnt);
 end
-title_(S_fig.hAx, sprintf('Clu%d vs Clu%d', iClu1, iClu2));
+if iClu1==iClu2
+    title_(S_fig.hAx, sprintf('Clu%d', iClu1));
+else
+    title_(S_fig.hAx, sprintf('Clu%d vs Clu%d', iClu1, iClu2));
+end
 xlim_(S_fig.hAx, [-nLags, nLags] * P.jitter_ms);
 set(hFig, 'UserData', S_fig);
 end %func
@@ -21734,8 +21738,8 @@ end %func
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_(vcFile_prm)
 if nargin<1, vcFile_prm = ''; end
-vcVer = 'v4.8.3';
-vcDate = '6/20/2019';
+vcVer = 'v4.8.4';
+vcDate = '6/24/2019';
 vcHash = file2hash_();
 
 if nargout==0
@@ -24239,7 +24243,8 @@ S_drift = makeStruct_(miSort_drift, cviSpk_drift, nTime_drift, viDrift_spk, mlDr
 % rho_drift_knn_();
 fprintf('Calculating Rho\n\t'); t1=tic;
 fDisp = 1;
-P_rho = setfield(P, 'fGpu', 0); % do not use GPU for KNN
+fGpu_rho = get_set_(P, 'fGpu_rho', 0);
+P_rho = setfield(P, 'fGpu', fGpu_rho); % do not use GPU for KNN
 for iSite = 1:nSites
     [mrFet12_, viSpk12_, n1_, n2_, viiSpk12_ord_, viDrift_spk12_] = fet12_site_(trFet_spk, S0, P_rho, iSite, [], viDrift_spk); % trFet_spk gets replicated. big
     if isempty(viSpk12_), continue; end    
