@@ -21411,10 +21411,10 @@ for iClu1 = 1:nClu_show
 %     ax_ = axes('Parent', htab1);
 %     subplot(2, 1, 1, ax_);    
     hAx1 = axes('Parent', htab1, 'OuterPosition', [0 .5 1 .5]); 
-    ax1_ = plotyy(hAx1, vrTime_aux, mrRate_clu(:,iClu), vrTime_aux, vrWav_aux);
+    ax1_ = plotyy(hAx1, vrTime_aux, vrWav_aux, vrTime_aux, mrRate_clu(:,iClu));
     xlabel(hAx1, 'Time (s)');
-    ylabel(ax1_(1),'Firing Rate (Hz)');
-    ylabel(ax1_(2), vcLabel_aux);    
+    ylabel(ax1_(2),'Firing Rate (Hz)');
+    ylabel(ax1_(1), vcLabel_aux);    
     iSite_ = S_clu.viSite_clu(iClu);
     vcTitle_ = sprintf('Clu %d (Site %d, Chan %d): Corr=%0.3f', ...
         iClu, iSite_, P.viSite2Chan(iSite_), vrCorr_aux_clu(iClu));
@@ -21448,7 +21448,7 @@ if nargin<2, fNewFig = 0; end % added by Zach
 
 if isempty(fSelectedUnitLast), fSelectedUnitLast = fSelectedUnit; end
 if ~isvalid_(hFig) && ~fNewFig, return; end
-if isvalid_(hFig) && ~fSelectedUnitLast && ~fSelectedUnit, return; end
+if isvalid_(hFig) && ~fSelectedUnitLast && fSelectedUnit, return; end
 fSelectedUnitLast = fSelectedUnit;
 
 [P, S_clu, iCluPlot] = get0_('P', 'S_clu', 'iCluCopy');
@@ -21459,12 +21459,15 @@ P = loadParam_(P.vcFile_prm);
 
 if isempty(vrWav_aux), msgbox_('Aux input is not found'); return; end
 if ~fSelectedUnit, iCluPlot = []; end
-if fNewFig
-	hFig = create_figure_('FigAux', [.5 0 .5 1], P.vcFile_prm,1,1); 
-end
 hFig_wait = figure_wait_(1);
-
-vrWav_aux = smooth_(vrWav_aux, get_set_(P, 'nSmooth_aux_trial', 500));
+if fNewFig
+	hFig = create_figure_('FigAux', [.5 .25 .5 .75], P.vcFile_prm,1,1); 
+end
+drawnow();
+f_uLED = ~isempty(strfind(vcLabel_aux, 'uLED'));
+if ~f_uLED
+    vrWav_aux = smooth_(vrWav_aux, get_set_(P, 'nSmooth_aux_trial', 500));
+end
 mrRate_clu = clu_rate_(S_clu);
 nSamples = min(numel(vrWav_aux), size(mrRate_clu,1));
 [vrWav_aux, vrTime_aux, mrRate_clu] = ...
@@ -21738,7 +21741,7 @@ end %func
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_(vcFile_prm)
 if nargin<1, vcFile_prm = ''; end
-vcVer = 'v4.8.4';
+vcVer = 'v4.8.5';
 vcDate = '6/24/2019';
 vcHash = file2hash_();
 
@@ -27928,6 +27931,7 @@ mh_add_event = uimenu_(mh_trials,'Label','Add event channel', 'Callback', @(h,e)
 mh_add_event.Separator = 'on';
 uimenu_(mh_trials,'Label','Add PSTH channel', 'Callback', @(h,e)trial_add_psth_(h,e));
 uimenu_(mh_trials,'Label','Add analog channel', 'Callback', @(h,e)trial_add_analog_(h,e));
+uimenu_(mh_trials,'Label','Add uLED events', 'Callback', @(h,e)trial_add_event_uled_(h,e));
 
 if ~isempty(cTrials)
     %-----
@@ -28111,6 +28115,35 @@ if isempty(iTrial)
 else
     trial1 = struct('name', name1, 'value', mrTable1, 'type', 'event');
     S_trials.cTrials{iTrial} = trial1;
+end
+set_userdata_(mh_trials, S_trials);
+update_menu_trials_(mh_trials);
+end %func
+
+
+%--------------------------------------------------------------------------
+% 11/13/2018 JJJ: Add an event-type trial
+function trial_add_event_uled_(h,e)
+if nargin<3, iTrial=[]; end
+mh_trials = get_tag_('mh_trials', 'uimenu');
+
+P = get0_('P');
+[vcDir, ~, ~] = fileparts(P.vcFile_prm);
+vcFile_mat = uigetfile_(fullfile(vcDir, '*.mat'));
+if isempty(vcFile_mat), return; end % user pressed cancel
+try
+    S_mat = load(vcFile_mat);
+    cmr_uled = S_mat.cmr_uled;
+catch
+    errordlg('Invalid format. cmr_uled must contain in start, stop in sec');
+    return;
+end
+
+S_trials = get_userdata_(mh_trials, 'S_trials');
+for iLed = 1:numel(cmr_uled)
+    if isempty(cmr_uled{iLed}), continue; end
+    S_trials.cTrials{end+1} = ...
+        struct('name', sprintf('uLED%02d', iLed), 'value', cmr_uled{iLed}, 'type', 'event');
 end
 set_userdata_(mh_trials, S_trials);
 update_menu_trials_(mh_trials);

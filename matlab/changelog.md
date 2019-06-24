@@ -3,6 +3,13 @@ IronClust, written by J. James Jun, Flatiron Institute, Simons Foundation
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [4.8.5] - 2019-6-24
+### Added
+- `Trials\Add uLED events` added
+  - It accepts .mat file containing cmr_uled cell that contains start/stop time
+  - The unit must be in seconds
+
+
 ## [4.8.4] - 2019-6-24
 ### Changed
 - Default changed `fParfor=0`
