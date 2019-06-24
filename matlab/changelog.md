@@ -3,6 +3,21 @@ IronClust, written by J. James Jun, Flatiron Institute, Simons Foundation
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [4.8.4] - 2019-6-24
+### Changed
+- Default changed `fParfor=0`
+  - It's not any faster to run parallel processing for merging spikes. Turned off by default now.
+
+### Added
+- `fGpu_rho=1`
+  - rho computation is carried out in GPU by default
+  - This is an approximation of KNN and less accurate than CPU-based KNN computation, 
+    however, the performance is comparable.
+
+### Fixed
+- `irc manual` GUI: fixed auto-correlogram when one unit is selected.
+
+
 ## [4.8.3] - 2019-6-20
 ### Fixed
 - `View\Show average waveforms on all channel` menu works for merged files
