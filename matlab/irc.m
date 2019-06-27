@@ -351,7 +351,8 @@ end %func
 function [viSpk, viUpdated, viShifted] = search_min_(vnWav1, viSpk, nSearch)
 % center the wave at the min
 
-mi_ = bsxfun(@plus, viSpk(:)', cast(-nSearch:nSearch, 'like', viSpk)');
+% mi_ = bsxfun(@plus, viSpk(:)', cast(-nSearch:nSearch, 'like', viSpk)');
+mi_ = bsxfun_(@plus, viSpk(:)', (-nSearch:nSearch)');
 mi_(mi_<1) = 1;
 mi_(mi_>numel(vnWav1)) = numel(vnWav1);
 [~, viShift_spk11] = min(vnWav1(mi_));
@@ -4703,7 +4704,7 @@ switch lower(P.vcCommonRef)
         
     case 'mean'
         vnWav1_mean = mean_excl_(mnWav1, P);
-        mnWav1 = bsxfun(@minus, mnWav1, vnWav1_mean);
+        mnWav1 = bsxfun_(@minus, mnWav1, vnWav1_mean);
         
     case 'median'
         vnWav1_mean = median_excl_(mnWav1, P);
@@ -21741,8 +21742,8 @@ end %func
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_(vcFile_prm)
 if nargin<1, vcFile_prm = ''; end
-vcVer = 'v4.8.5';
-vcDate = '6/24/2019';
+vcVer = 'v4.8.6';
+vcDate = '6/27/2019';
 vcHash = file2hash_();
 
 if nargout==0
@@ -31672,4 +31673,19 @@ P.vcFile = '';
 P.vcFile_prm = vcFile_prm_new;
 edit_prm_file_(P, vcFile_prm_new);
 edit_(vcFile_prm_new);
+end %func
+
+
+%--------------------------------------------------------------------------
+% robust bsxfun
+function mn = bsxfun_(fh, mn, vn)
+if ~strcmpi(class_(mn), class_(vn))
+    vn = cast(vn, class_(mn));
+    if isGpu_(mn) && ~isGpu_(vn)
+        vn = gpuArray_(vn);
+    elseif ~isGpu_(mn) && isGpu_(vn)
+        vn = gather_(vn);
+    end
+end
+mn = bsxfun(fh, mn, vn);
 end %func
