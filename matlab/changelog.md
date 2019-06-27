@@ -9,8 +9,6 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
   - bsxfun mixed data format error is fixed
   - bsxfun_() function is implemented which checkes and converts the data format
   - gpuArray format is correctly handled
-### Changed
-- LED probe data can be directly imported
 
 
 ## [4.8.5] - 2019-6-24

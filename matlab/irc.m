@@ -90,7 +90,7 @@ switch lower(vcCmd)
     case 'convert-mda-mea', convert_mda('mea', vcArg1, vcArg2, vcArg3); return;
     case 'convert-mda-yass', convert_mda('yass', vcArg1, vcArg2); return;
     case 'convert-mda-buzsaki', convert_mda('buzsaki', vcArg1, vcArg2); return;
-    case 'convert-mda-int16', convert_mda('int16', vcArg1, vcArg2); return;
+    case 'convert-mda-int16', convert_mda('int16', vcArg1, vcArg2); return;        
         
     % three or more arguments
     case 'validate-mda', validate_mda_(vcArg1, vcArg2, vcArg3);    
@@ -173,7 +173,9 @@ switch lower(vcCmd)
     case {'import-kilosort-sort', 'import-ksort-sort'}, import_ksort_(vcFile_prm, 1);  
     case {'kilosort', 'ksort'}, kilosort_(vcFile_prm); import_ksort_(vcFile_prm, 0); 
     case 'export-imec-sync', export_imec_sync_(vcFile_prm);
-    case 'export-prm', export_prm_(vcFile_prm, vcArg2);        
+    case 'export-prm', export_prm_(vcFile_prm, vcArg2);
+    case {'export-phy', 'phy'}, irc2phy(vcFile_prm, vcArg2);
+    case {'export-klusters', 'klusters', 'neurosuite'}, irc2klusters(vcFile_prm, vcArg2);
     case 'dir'
         if any(vcFile_prm=='*')
             dir_files_(vcFile_prm, vcArg2, vcArg3);
@@ -16381,9 +16383,9 @@ end
 if isempty(csFile_merge), error('No binary files found.'); end
 % [tnWav_raw, tnWav_spk, trFet_spk, miSite_spk, viTime_spk, vrAmp_spk, vnThresh_site] = deal({});    
 [miSite_spk, viTime_spk, vrAmp_spk, vnThresh_site] = deal({});    
-viT_offset_file = zeros(size(csFile_merge));
+[viT_offset_file, vnSamples_file] = deal(zeros(size(csFile_merge)));
 nFiles = numel(csFile_merge);    
-[nSamples1, nLoads] = deal(0); % initialize the counter
+[nSamples_total, nLoads] = deal(0); % initialize the counter
 [vrFilt_spk, mrPv_global] = deal([]); % reset the template
 set0_(mrPv_global, vrFilt_spk); % reeset mrPv_global and force it to recompute
 write_spk_(P.vcFile_prm);
@@ -16395,8 +16397,9 @@ for iFile=1:nFiles
     nBytes_file1 = file_trim_(fid1, nBytes_file1, P);
     [nLoad1, nSamples_load1, nSamples_last1] = plan_load_(nBytes_file1, P);
 %         nSamples1 = 0; %accumulated sample offset        
-    viT_offset_file(iFile) = nSamples1;
+    viT_offset_file(iFile) = nSamples_total;
     mnWav11_pre = [];
+    nSamples_file1 = 0;
     for iLoad1 = 1:nLoad1
         fprintf('Processing %d/%d of file %d/%d...\n', iLoad1, nLoad1, iFile, nFiles);
         nSamples11 = ifeq_(iLoad1 == nLoad1, nSamples_last1, nSamples_load1);
@@ -16408,16 +16411,18 @@ for iFile=1:nFiles
         else
             mnWav11_post = [];
         end
-        [viTime_spk11, viSite_spk11] = filter_spikes_(viTime_spk0, viSite_spk0, nSamples1 + [1, nSamples11]);
+        [viTime_spk11, viSite_spk11] = filter_spikes_(viTime_spk0, viSite_spk0, nSamples_total + [1, nSamples11]);
         [tnWav_raw_, tnWav_spk_, trFet_spk_, miSite_spk{end+1}, viTime_spk{end+1}, vrAmp_spk{end+1}, vnThresh_site{end+1}, P.fGpu] ...
                 = wav2spk_(mnWav11, P, viTime_spk11, viSite_spk11, mnWav11_pre, mnWav11_post);
         write_spk_(tnWav_raw_, tnWav_spk_, trFet_spk_);
-        viTime_spk{end} = viTime_spk{end} + nSamples1;
-        nSamples1 = nSamples1 + nSamples11;
+        viTime_spk{end} = viTime_spk{end} + nSamples_total;
+        nSamples_total = nSamples_total + nSamples11;
+        nSamples_file1 = nSamples_file1 + nSamples11;
         if iLoad1 < nLoad1, mnWav11_pre = mnWav11(end-P.nPad_filt+1:end, :); end
         clear mnWav11 vrWav_mean11;
         nLoads = nLoads + 1;
     end %for
+    vnSamples_file(iFile) = nSamples_file1;
     fclose(fid1);   
     t_dur1 = toc(t1);
     t_rec1 = (nBytes_file1 / bytesPerSample_(P.vcDataType) / P.nChans) / P.sRateHz;
@@ -16455,7 +16460,7 @@ else
 end
 [mrPv_global, vrD_global] = get0_('mrPv_global', 'vrD_global');
 S0 = makeStruct_(P, viSite_spk, viSite2_spk, viTime_spk, vrAmp_spk, vrThresh_site, dimm_spk, ...
-    cviSpk_site, cviSpk2_site, cviSpk3_site, dimm_raw, viT_offset_file, dimm_fet, nLoads, ...
+    cviSpk_site, cviSpk2_site, cviSpk3_site, dimm_raw, viT_offset_file, vnSamples_file, dimm_fet, nLoads, ...
     mrPv_global, vrFilt_spk, vrD_global, type_raw, type_spk, type_fet, csFile_merge);
 clear_filters_();  % reset wiener cache
 end %func
@@ -30493,11 +30498,12 @@ end
 
 
 %--------------------------------------------------------------------------
-function trWav_clu = load_wav_med_(P, cviTime_clu)
+function [trWav_clu, mnWav_T] = load_wav_med_(P, cviTime_clu, mnWav_T)
 % load raw waveforms
+if nargin<3, mnWav_T = []; end
 nSamples_max = 2^12;
 fShow_raw = get_set_(P, 'fWav_raw_show', 0);
-mnWav_T = load_bin_T_(P);
+if isempty(mnWav_T), mnWav_T = load_bin_T_(P); end
 if ~iscell(cviTime_clu), cviTime_clu = {cviTime_clu}; end
 trWav_clu = [];
 nClu = numel(cviTime_clu);
