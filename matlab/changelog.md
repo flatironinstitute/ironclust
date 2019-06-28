@@ -3,6 +3,13 @@ IronClust, written by J. James Jun, Flatiron Institute, Simons Foundation
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [4.8.7] - 2019-6-28
+### Added
+- `irc export-klusters myparam.prm` command is added
+  - It exports IronClust output to klusters GUI compatible format (part of NeuroSuite).
+  - Klusters is available from `http://neurosuite.sourceforge.net/`
+
+
 ## [4.8.6] - 2019-6-27
 ### Fixed
 - `Traces` GUI '[F]ilter' command fixed

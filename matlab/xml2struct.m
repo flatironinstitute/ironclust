@@ -1,5 +1,6 @@
 function [ s ] = xml2struct( file )
 %Convert xml file into a MATLAB structure
+% https://github.com/cortex-lab/MATLAB-tools/blob/master/xml2struct.m
 % [ s ] = xml2struct( file )
 %
 % A file containing:

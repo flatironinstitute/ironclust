@@ -1,19 +1,19 @@
-function irc2klusters(vcFile_prm, savePath)
+function irc2klusters(vcFile_prm, vcDir_out)
 % J. James Jun 2019 Jun 27
 % modified from https://github.com/brendonw1/KilosortWrapper/blob/master/Kilosort2Neurosuite.m
-%
 % Original author: 
 %   By Peter Petersen 2018
 %   petersen.peter@gmail.com
-% Converts KiloSort output (.rez structure) to Neurosuite files: fet,res,clu,spk files.
-% Based on the GPU enable filter from Kilosort and fractions from Brendon
-% Watson's code for saving Neurosuite files. 
+% klusters file format:
+%   http://klusters.sourceforge.net/UserManual/data-files.html#cluster-file
+
+[fOverwrite, fZeroBase] = deal(0, 1);
 
 t1 = tic;
-if nargin<2, savePath=''; end
-if isempty(savePath)
-    savePath = fullfile(fileparts(vcFile_prm), 'klusters'); 
-    mkdir(savePath);
+if nargin<2, vcDir_out=''; end
+if isempty(vcDir_out)
+    vcDir_out = fullfile(fileparts(vcFile_prm), 'klusters'); 
+    mkdir(vcDir_out);
 end
 
 [S0, P] = irc('call', 'load_cached_', {vcFile_prm});
@@ -21,291 +21,202 @@ assert(isfield(S0, 'viTime_spk') && isfield(S0, 'S_clu'), 'incorrect format');
 S_clu = S0.S_clu;
 nClu = S0.S_clu.nClu;
 
-spikeTimes = uint64(S0.viTime_spk);
-spikeTemplates = uint32(S_clu.viClu);
-kcoords = P.viShank_site;
-[~,basename] = fileparts(vcFile_prm);
+viTime_spk = uint64(S0.viTime_spk(:));
+viClu_spk = uint32(S_clu.viClu(:));
+viShank_site = P.viShank_site(:);
+[~, vcFile_base] = fileparts(vcFile_prm);
 [nChans, samples] = deal(P.nChans, sum(S0.vnSamples_file));
 
+
 % compute template
-t_template = tic;
-[mrWav_T, templates] = deal([]);
+fprintf('Computing templates per unit\n\t'); t_template = tic;
+[mnWav_T, trWav_clu] = deal([]);
 P1 = setfield(P, 'fWav_raw_show', 0); % return filered
-amplitude_max_channel = zeros(nClu,1);
+P1.spkLim = max(abs(P.spkLim)) * [-1,1]; % must be symmetric
+nSamples_spk = diff(P1.spkLim) + 1;
+viSite_clu = zeros(nClu,1);
 for iClu = 1:nClu
     viTime_spk1 = S0.viTime_spk(S_clu.cviSpk_clu{iClu});
-    [mrWav_clu1, mrWav_T] = irc('call','load_wav_med_', {P1, viTime_spk1, mrWav_T}); % not filtering   
-    if isempty(templates)
-        templates = zeros(size(mrWav_clu1,1), size(mrWav_clu1,2), nClu, 'single');
+    [mrWav_clu1, mnWav_T] = irc('call','load_wav_med_', {P1, viTime_spk1, mnWav_T}); % not filtering   
+    if isempty(trWav_clu)
+        trWav_clu = zeros(size(mrWav_clu1,1), size(mrWav_clu1,2), nClu, 'single');
     else
-        templates(:,:,iClu) = mrWav_clu1;
+        trWav_clu(:,:,iClu) = mrWav_clu1;
     end
-    [~, amplitude_max_channel(iClu)] = max(range(mrWav_clu1));
+    [~, viSite_clu(iClu)] = max(range(mrWav_clu1));
     fprintf('.');
 end %for
-templates = permute(templates, [2,1,3]);
+trWav_clu = permute(trWav_clu, [2,1,3]);
+mnWav_T = int16(mnWav_T);
 fprintf('\n\ttook %0.1fs\n', toc(t_template));
 
-% spikeTimes = uint64(rez.st3(:,1)); % uint64
-% spikeTemplates = uint32(rez.st3(:,2)); % uint32 % template id for each spike
-% kcoords = rez.ops.kcoords;
-% basename = rez.ops.basename;
-% Nchan = rez.ops.Nchan;
-% samples = rez.ops.nt0;
-% templates = zeros(Nchan, size(rez.W,1), rez.ops.Nfilt, 'single');
-% for iNN = 1:rez.ops.Nfilt
-%     templates(:,:,iNN) = squeeze(rez.U(:,iNN,:)) * squeeze(rez.W(:,iNN,:))';
-% end
-% amplitude_max_channel = [];
-% for i = 1:size(templates,3)
-%     [~,amplitude_max_channel(i)] = max(range(templates(:,:,i)'));
-% end
+
+% Shank loop
+fprintf('Exporting shanks\n\t'); t_shank = tic;
+viShank_clu = viShank_site(viSite_clu);
+viShank_unique = unique(viShank_clu);
+[cviSpk_shank, cviSite_shank] = deal(cell(size(viShank_unique)));
+for iiShank = 1:numel(viShank_unique)    
+    iShank1 = viShank_unique(iiShank);
+    fprintf('Loading data for shank %d:\n', iShank1);
+    viClu_shank1 = find(viShank_clu == iShank1);
+    viSpk_shank1 = find(ismember(viClu_spk,viClu_shank1));
+    cviSpk_shank{iiShank} = viSpk_shank1;    
+    nSpk1 = numel(viSpk_shank1);
+    viClu_spk1 = viClu_spk(viSpk_shank1);
+    nClu1 = numel(viClu_shank1);
+    
+    vcFile_clu1 = fullfile(vcDir_out, sprintf('%s.clu.%d', vcFile_base, iShank1));
+    write_file_(vcFile_clu1, [nClu1; viClu_spk(viSpk_shank1)-fZeroBase], '%.0f\n'); % zero-base
+
+    vcFile_res1 = fullfile(vcDir_out, sprintf('%s.res.%d', vcFile_base, iShank1));
+    viTime_spk1 = viTime_spk(viSpk_shank1);
+    write_file_(vcFile_res1, viTime_spk1-fZeroBase, '%.0f\n'); % zero-base
+    
+    vcFile_spk1 = fullfile(vcDir_out, sprintf('%s.spk.%d', vcFile_base, iShank1));    
+    if exist(vcFile_spk1, 'file') ~= 2 || fOverwrite
+        mnWav1 = mnWav_T(viShank_site == iShank1, :)';
+        mnWav1 = int16(irc('call', 'filt_car', {single(mnWav1), P1}));
+        tnWav_spk1 = irc('call', 'mr2tr', {mnWav1, P1.spkLim, viTime_spk1});
+        mnWav1 = []; % clear memory
+        tnWav_spk1 = permute(tnWav_spk1, [3,1,2]); % dimm: [nSites1, nSamples_spk, nSpk1]    
+        write_file_(vcFile_spk1, tnWav_spk1);
+    end
+    
+    vcFile_fet1 = fullfile(vcDir_out, sprintf('%s.fet.%d', vcFile_base, iShank1));
+    if exist(vcFile_fet1, 'file') ~= 2 || fOverwrite
+        write_fet_(vcFile_fet1, tnWav_spk1, viTime_spk1);        
+    end
+    tnWav_spk1 = []; % clear memory
+    
+    vcFile_par1 = fullfile(vcDir_out, sprintf('%s.par.%d', vcFile_base, iShank1));
+    viSite_shank1 = find(viShank_site == iShank1);
+    cviSite_shank{iiShank} = viSite_shank1;
+    
+    fprintf('.');
+end %for
+fprintf('\n\ttook %0.1fs\n', toc(t_shank));
 
 
-% compute ia
-template_kcoords = kcoords(amplitude_max_channel);
-kcoords2 = unique(template_kcoords);
-ia = [];
-for i = 1:length(kcoords2)
-    kcoords3 = kcoords2(i);
-    if mod(i,4)==1; fprintf('\n'); end
-    fprintf(['Loading data for spike group ', num2str(kcoords3),'. '])
-    template_index = find(template_kcoords == kcoords3);
-    ia{i} = find(ismember(spikeTemplates,template_index));
-end
-rez.ia = ia;
+% write parameter
+vcFile_par = fullfile(vcDir_out, sprintf('%s.par', vcFile_base));
+write_par_(vcFile_par, cviSite_shank, P1);
 
+end %func
 
 
 %--------------------------------------------------------------------------
-fprintf('\nSaving .clu files to disk (cluster indexes)')
-for i = 1:length(kcoords2)
-    kcoords3 = kcoords2(i);
-    if mod(i,4)==1; fprintf('\n'); end
-    fprintf(['Saving .clu file for group ', num2str(kcoords3),'. '])
-    tclu = spikeTemplates(ia{i});
-    tclu = cat(1,length(unique(tclu)),double(tclu));
-    cluname = fullfile([basename '.clu.' num2str(kcoords3)]);
-    fid=fopen(cluname,'w');
-    fprintf(fid,'%.0f\n',tclu);
-    fclose(fid);
-    clear fid
-end
-fprintf('\n'); toc(t1)
+function write_file_(vcFile, vnData, vcFormat)
+% mode 1: write formatted numbers
+%  write_file_(vcFile, vnData, vcFormat)
+% mode 2: write binary
+%  write_file_(vcFile, vnData)
+% mode 3: write text (separated by new lines)
+%  write_file_(vcFile, csData)
 
-fprintf('\nSaving .res files to disk (spike times)')
-for i = 1:length(kcoords2)
-    kcoords3 = kcoords2(i);
-    tspktimes = spikeTimes(ia{i});
-    if mod(i,4)==1; fprintf('\n'); end
-    fprintf(['Saving .res file for group ', num2str(kcoords3),'. '])
-    resname = fullfile([basename '.res.' num2str(kcoords3)]);
-    fid=fopen(resname,'w');
-    fprintf(fid,'%.0f\n',tspktimes);
-    fclose(fid);
-    clear fid
-end
-fprintf('\n'); toc(t1)
+if nargin<3, vcFormat = []; end
 
-fprintf('\nExtracting waveforms\n')
-waveforms_all = Kilosort_ExtractWaveforms(rez);
-fprintf('\n'); toc(t1)
-
-fprintf('\nSaving .spk files to disk (waveforms)')
-for i = 1:length(kcoords2)
-    if mod(i,4)==1; fprintf('\n'); end
-    fprintf(['Saving .spk for group ', num2str(kcoords2(i)),'. '])
-    fid=fopen([basename,'.spk.',num2str(kcoords2(i))],'w');
-    fwrite(fid,waveforms_all{i}(:),'int16');
-    fclose(fid);
-end
-fprintf('\n'); toc(t1)
-
-fprintf('\nComputing PCAs')
-% Starting parpool if stated in the Kilosort settings
-if (rez.ops.parfor & isempty(gcp('nocreate'))); parpool; end
-
-for i = 1:length(kcoords2)
-    kcoords3 = kcoords2(i);
-    if mod(i,2)==1; fprintf('\n'); end
-    fprintf(['Computing PCAs for group ', num2str(kcoords3),'. '])
-    PCAs_global = zeros(3,sum(kcoords==kcoords3),length(ia{i}));
-    waveforms = waveforms_all{i};
-    
-    waveforms2 = reshape(waveforms,[size(waveforms,1)*size(waveforms,2),size(waveforms,3)]);
-    wranges = int64(range(waveforms2,1));
-    wpowers = int64(sum(waveforms2.^2,1)/size(waveforms2,1)/100);
-    
-    % Calculating PCAs in parallel if stated in ops.parfor
-    if isempty(gcp('nocreate'))
-        for k = 1:size(waveforms,1)
-            PCAs_global(:,k,:) = pca(zscore(permute(waveforms(k,:,:),[2,3,1]),[],2),'NumComponents',3)';
-        end
+t_write = tic;
+fid=fopen(vcFile, 'w');
+if ~isempty(vcFormat)
+    fprintf(fid, vcFormat, vnData);
+else
+    if iscell(vnData)
+        csLines = vnData;
+        for iLine = 1:numel(csLines)
+            fprintf(fid, '%s\n', csLines{iLine});
+        end %for
     else
-        parfor k = 1:size(waveforms,1)
-            PCAs_global(:,k,:) = pca(zscore(permute(waveforms(k,:,:),[2,3,1]),[],2),'NumComponents',3)';
-        end
-    end
-    fprintf(['Saving .fet files for group ', num2str(kcoords3),'. '])
-    PCAs_global2 = reshape(PCAs_global,size(PCAs_global,1)*size(PCAs_global,2),size(PCAs_global,3));
-    factor = (2^15)./max(abs(PCAs_global2'));
-    PCAs_global2 = int64(PCAs_global2 .* factor');
-    
-    fid=fopen([basename,'.fet.',num2str(kcoords3)],'w');
-    Fet = double([PCAs_global2; wranges; wpowers; spikeTimes(ia{i})']);
-    nFeatures = size(Fet, 1);
-    formatstring = '%d';
-    for ii=2:nFeatures
-        formatstring = [formatstring,'\t%d'];
-    end
-    formatstring = [formatstring,'\n'];
-    
-    fprintf(fid, '%d\n', nFeatures);
-    fprintf(fid,formatstring,Fet);
-    fclose(fid);
-end
-fprintf('\n'); toc(t1)
-fprintf('\nComplete!')
-
-	function waveforms_all = Kilosort_ExtractWaveforms(rez)
-        % Extracts waveforms from a dat file using GPU enable filters.
-        % Based on the GPU enable filter from Kilosort.
-        % All settings and content are extracted from the rez input structure
-        %
-        % Inputs:
-        %   rez -  rez structure from Kilosort
-        %
-        % Outputs:
-        %   waveforms_all - structure with extracted waveforms
-        
-        % Extracting content from the .rez file
-        ops = rez.ops;
-        NT = ops.NT;
-        if exist('ops.fbinary') == 0
-            warning(['Binary file does not exist: ', ops.fbinary])
-        end
-        d = dir(ops.fbinary);
-
-        NchanTOT = ops.NchanTOT;
-        chanMap = ops.chanMap;
-        chanMapConn = chanMap(rez.connected>1e-6);
-        kcoords = ops.kcoords;
-        ia = rez.ia;
-        spikeTimes = rez.st3(:,1);
-        
-        if ispc
-            dmem         = memory;
-            memfree      = dmem.MemAvailableAllArrays/8;
-            memallocated = min(ops.ForceMaxRAMforDat, dmem.MemAvailableAllArrays) - memfree;
-            memallocated = max(0, memallocated);
-        else
-            memallocated = ops.ForceMaxRAMforDat;
-        end
-        ops.ForceMaxRAMforDat   = 10000000000;
-        memallocated = ops.ForceMaxRAMforDat;
-        nint16s      = memallocated/2;
-        
-        NTbuff      = NT + 4*ops.ntbuff;
-        Nbatch      = ceil(d.bytes/2/NchanTOT /(NT-ops.ntbuff));
-        Nbatch_buff = floor(4/5 * nint16s/ops.Nchan /(NT-ops.ntbuff)); % factor of 4/5 for storing PCs of spikes
-        Nbatch_buff = min(Nbatch_buff, Nbatch);
-        
-        DATA =zeros(NT, NchanTOT,Nbatch_buff,'int16');
-        
-        if isfield(ops,'fslow')&&ops.fslow<ops.fs/2
-            [b1, a1] = butter(3, [ops.fshigh/ops.fs,ops.fslow/ops.fs]*2, 'bandpass');
-        else
-            [b1, a1] = butter(3, ops.fshigh/ops.fs*2, 'high');
-        end
-        
-        if isfield(ops,'xml')
-            disp('Loading xml from rez for probe layout')
-            xml = ops.xml;
-        elseif exist(fullfile(ops.root,[ops.basename,'.xml']))==2
-            disp('Loading xml for probe layout from root folder')
-            xml = LoadXml(fullfile(ops.root,[ops.basename,'.xml']));
-            ops.xml = xml;
-        end
-        
-        fid = fopen(ops.fbinary, 'r');
-        
-        waveforms_all = [];
-%         kcoords2 = unique(ops.kcoords);
-        template_kcoords = kcoords(amplitude_max_channel);
-        kcoords2 = unique(template_kcoords);
-
-        channel_order = {};
-        indicesTokeep = {};
-%         connected_index = zeros(size(rez.connected));
-%         connected_index(rez.connected)=1:length(chanMapConn);
-        
-        for i = 1:length(kcoords2)
-            kcoords3 = kcoords2(i);
-            waveforms_all{i} = zeros(sum(kcoords==kcoords3),ops.nt0,size(rez.ia{i},1));
-            if exist('xml')
-                [channel_order,channel_index] = sort(xml.AnatGrps(kcoords2(i)).Channels+1);
-                [~,indicesTokeep{i},~] = intersect(chanMapConn,channel_order);
-                
-                %indicesTokeep{i} = connected_index(indicesTokeep{i});
-            end
-        end
-        
-        fprintf('Extraction of waveforms begun \n')
-        for ibatch = 1:Nbatch
-            if mod(ibatch,10)==0
-                if ibatch~=10
-                    fprintf(repmat('\b',[1 length([num2str(round(100*(ibatch-10)/Nbatch)), ' percent complete'])]))
-                end
-                fprintf('%d percent complete', round(100*ibatch/Nbatch));
-            end
-            
-            offset = max(0, 2*NchanTOT*((NT - ops.ntbuff) * (ibatch-1) - 2*ops.ntbuff));
-            if ibatch==1
-                ioffset = 0;
-            else
-                ioffset = ops.ntbuff;
-            end
-            fseek(fid, offset, 'bof');
-            buff = fread(fid, [NchanTOT NTbuff], '*int16');
-            
-            %         keyboard;
-            
-            if isempty(buff)
-                break;
-            end
-            nsampcurr = size(buff,2);
-            if nsampcurr<NTbuff
-                buff(:, nsampcurr+1:NTbuff) = repmat(buff(:,nsampcurr), 1, NTbuff-nsampcurr);
-            end
-            if ops.GPU
-                dataRAW = gpuArray(buff);
-            else
-                dataRAW = buff;
-            end
-            
-            dataRAW = dataRAW';
-            dataRAW = single(dataRAW);
-            dataRAW = dataRAW(:, chanMapConn);
-            dataRAW = dataRAW-median(dataRAW,2);
-            datr = filter(b1, a1, dataRAW);
-            datr = flipud(datr);
-            datr = filter(b1, a1, datr);
-            datr = flipud(datr);
-            DATA = gather_try(int16( datr(ioffset + (1:NT),:)));
-            dat_offset = offset/NchanTOT/2+ioffset;
-            % Saves the waveforms occuring within each batch
-            for i = 1:length(kcoords2)
-                kcoords3 = kcoords2(i);
-%                 ch_subset = 1:length(chanMapConn);
-                temp = find(ismember(spikeTimes(ia{i}), [ops.nt0/2+1:size(DATA,1)-ops.nt0/2] + dat_offset));
-                temp2 = spikeTimes(ia{i}(temp))-dat_offset;
-                
-                startIndicies = temp2-ops.nt0/2+1;
-                stopIndicies = temp2+ops.nt0/2;
-                X = cumsum(accumarray(cumsum([1;stopIndicies(:)-startIndicies(:)+1]),[startIndicies(:);0]-[0;stopIndicies(:)]-1)+1);
-                X = X(1:end-1);
-                waveforms_all{i}(:,:,temp) = reshape(DATA(X,indicesTokeep{i})',size(indicesTokeep{i},1),ops.nt0,[]);
-            end
-        end
+        fwrite(fid, vnData, class(vnData));
     end
 end
+fclose(fid);
+fprintf('Wrote to %s (took %0.1fs)\n', vcFile, toc(t_write));
+end %func
+
+
+%--------------------------------------------------------------------------
+function write_fet_(vcFile_fet1, tnWav_spk1, viTime_spk1)
+% waveforms: int16
+% capture three PCA
+% tnWav_spk1: [nSites1 x nSamples_spk x nSpk1]
+
+% constants
+[fZeroBase, nPc] = deal(1, 3);
+
+[nSites1, nSamples1, nSpk1] = size(tnWav_spk1);
+mnWav_spk1 = reshape(tnWav_spk1,[],nSpk1);
+wranges = int64(range(mnWav_spk1,1));
+wpowers = int64(sum(mnWav_spk1.^2,1)/size(mnWav_spk1,1)/100);
+mnWav_spk1 = [];
+
+fprintf('Computing PCA\n\t');
+t_pca = tic;
+tnWav_spk2 = permute(tnWav_spk1, [2,3,1]);
+trFet_spk1 = zeros([nSpk1, nPc, nSites1], 'single');
+for iSite = 1:nSites1
+    mrFet1 = zscore(single(tnWav_spk2(:,:,iSite)),[],2);
+    trFet_spk1(:,:,iSite) = pca(mrFet1, 'NumComponents',nPc, 'Centered', false);
+    fprintf('.');
+end
+tnWav_spk2 = []; 
+mnFet_spk1 = reshape(permute(trFet_spk1, [2,3,1]), [], nSpk1);
+factor = (2^15)./max(abs(mnFet_spk1'));
+mnFet_spk1 = int64(mnFet_spk1 .* factor');
+fprintf('\n\ttook %0.1fs\n', toc(t_pca));
+
+Fet = [mnFet_spk1; wranges; wpowers; int64(viTime_spk1(:)'-fZeroBase)];
+nFeatures = size(Fet, 1); 
+vcFormat = ['%d', repmat('\t%d', 1, nFeatures-1), '\n'];
+
+% write to file
+t_write = tic;
+fid = fopen(vcFile_fet1, 'w');
+fprintf(fid, '%d\n', nFeatures);
+fprintf(fid, vcFormat, Fet);
+fclose(fid);
+fprintf('Wrote to %s (took %0.1fs)\n', vcFile_fet1, toc(t_write));
+end %func
+
+
+%--------------------------------------------------------------------------
+% write par files for each shanks (easier than writing an xml file)
+function write_par_(vcFile_par, cviSite_shank, P)
+
+[nBitsPerSample, fZeroBase, nPc] = deal(16, 1, 3);
+highPass = round(P.freqLim(1));
+sample_interval_us = round(1e6/P.sRateHz);
+nShanks = numel(cviSite_shank);
+nSites = sum(cellfun(@sum, cviSite_shank));
+
+csLines_ = {};
+csLines_{end+1} = sprintf('%d %d', nSites, nBitsPerSample);
+csLines_{end+1} = sprintf('%d %d', sample_interval_us, highPass);
+csLines_{end+1} = sprintf('%d', nShanks);
+for iiShank = 1:nShanks
+    viSites1 = cviSite_shank{iiShank} - fZeroBase;
+    csLines_{end+1} = sprintf('%d, %s', numel(viSites1), sprintf('%d ', viSites1));
+end
+write_file_(vcFile_par, csLines_);
+
+
+for iiShank = 1:nShanks
+    viSite_shank1 = cviSite_shank{iiShank} - fZeroBase;
+    nSites1 = numel(viSite_shank1);
+    nSamples_spk = diff(P.spkLim)+1;
+    
+    csLines_ = {};
+    csLines_{end+1} = sprintf('%d %d %d', nSites1, nSites1, sample_interval_us);
+    csLines_{end+1} = sprintf('%d ', viSite_shank1);
+    csLines_{end+1} = '10 2'; %  # refractory sample index after detection, RMS integration window length
+    csLines_{end+1} = '90'; %  # approximate firing frequency in Hz
+    csLines_{end+1} = sprintf('%d %d', nSamples_spk, 1-P.spkLim(1)); % # number of samples in each waveform, sample index of the peak
+    csLines_{end+1} = '12 6'; % # window length to realign the spikes, sample index of the peak (detection program)
+    csLines_{end+1} = '4 4'; % # number of samples (before and after the peak) to use for reconstruction and features
+    csLines_{end+1} = sprintf('%d %d', nPc, nSamples_spk); % # number of principal components (features) per electrode, number of samples used for the PCA
+    csLines_{end+1} = sprintf('%d', highPass);
+    
+    vcFile_par1 = strrep(vcFile_par, '.par', sprintf('.par.%d', iiShank));
+    write_file_(vcFile_par1, csLines_);
+end % for
+end %func

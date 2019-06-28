@@ -13,6 +13,7 @@ function mrWav_filt = fft_filter(mrWav, P, vcMode)
 if nargin<3, vcMode = ''; end
 if isempty(vcMode), vcMode = 'bandpass'; end
 fDebug = 0;
+fVerbose = 0;
 
 if ndims(mrWav) == 3
     for iSpk = 1:size(mrWav,3)
@@ -62,15 +63,15 @@ end
 if ~fGpu, mrWav = gather_(mrWav); end
 
 
-
+t1=tic;
 fft_thresh = get_set_(P, 'fft_thresh', 0);
 fft_thresh_low = get_(P, 'fft_thresh_low');
 if fft_thresh == 0
     fh_filter = @(x,f)real(ifft(bsxfun(@times, fft(single(x)), f), 'symmetric'));
-    fprintf('Running fft filter (%s)... ', vcMode); t1=tic;
+    if fVerbose, fprintf('Running fft filter (%s)... ', vcMode); end    
 else
     fh_filter = @(x,f)real(ifft(bsxfun(@times, fft_clean_(fft(single(x)), fft_thresh, fft_thresh_low), f), 'symmetric'));
-    fprintf('Running fft filter (%s + fft_thresh=%0.1f)... ', vcMode, fft_thresh); t1=tic;
+    if fVerbose, fprintf('Running fft filter (%s + fft_thresh=%0.1f)... ', vcMode, fft_thresh); end
 end
 n_prev = nan;
 if nT <= nSkip, nPad = 0; end
@@ -110,13 +111,13 @@ for iStart = 1:nSkip:nT
         mrWav_filt(iStart:iEnd,:) = mrWav1(nPad+1:end-nPad,:);
     end
     mrWav1 = []; % clear memory
-    fprintf('.');
+    if fVerbose, fprintf('.'); end
 end
 if ~isGpu_(mrWav), mrWav_filt = gather_(mrWav_filt); end
 if fGpu_out
     mrWav_filt = gpuArray(mrWav_filt);
 end
-fprintf(' took %0.1fs (fGpu=%d)\n', toc(t1), fGpu);
+if fVerbose, fprintf(' took %0.1fs (fGpu=%d)\n', toc(t1), fGpu); end
 end %func
 
 

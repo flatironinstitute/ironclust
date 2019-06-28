@@ -342,7 +342,7 @@ for iSite = 1:nSites
     if nTime_search > 0 % deal with single sample shift
         viTime_spk11 = search_min_(mnWav1(:,iSite), viTime_spk11, nTime_search);
     end
-    tnWav_spk1(:,:,viiSpk11) = permute(gather_(mr2tr3_(mnWav1, spkLim_wav, viTime_spk11, viSite11)), [1,3,2]); %raw    
+    tnWav_spk1(:,:,viiSpk11) = permute(gather_(mr2tr_(mnWav1, spkLim_wav, viTime_spk11, viSite11)), [1,3,2]); %raw    
 end
 end %func
 
@@ -8233,8 +8233,8 @@ fRealign_spk = get_set_(P, 'fRealign_spk', 0); %0,1,2
 % viTime_spk = gpuArray_(viTime_spk, fGpu);
 % viSite_spk = gpuArray_(viSite_spk, fGpu);
 if isempty(viSite_spk)
-    tnWav_raw = permute(mr2tr3_(mnWav_raw, spkLim_raw, viTime_spk), [1,3,2]);
-    tnWav_spk = permute(mr2tr3_(mnWav_spk, spkLim_wav, viTime_spk), [1,3,2]);
+    tnWav_raw = permute(mr2tr_(mnWav_raw, spkLim_raw, viTime_spk), [1,3,2]);
+    tnWav_spk = permute(mr2tr_(mnWav_spk, spkLim_wav, viTime_spk), [1,3,2]);
 else
     tnWav_raw = zeros(diff(spkLim_raw) + 1, nSites_spk, nSpks, 'like', mnWav_raw);
     tnWav_spk = zeros(diff(spkLim_wav) + 1, nSites_spk, nSpks, 'like', mnWav_spk);
@@ -8244,7 +8244,7 @@ else
         viTime_spk11 = viTime_spk(viiSpk11); %already sorted by time
         viSite11 = P.miSites(:,iSite);
         try
-            tnWav_spk1 = mr2tr3_(mnWav_spk, spkLim_wav, viTime_spk11, viSite11);
+            tnWav_spk1 = mr2tr_(mnWav_spk, spkLim_wav, viTime_spk11, viSite11);
             if fRealign_spk==1
                 [tnWav_spk1, viTime_spk11] = spkwav_realign_(tnWav_spk1, mnWav_spk, spkLim_wav, viTime_spk11, viSite11, P);
                 viTime_spk(viiSpk11) = viTime_spk11;
@@ -8252,7 +8252,7 @@ else
                 tnWav_spk1 = spkwav_align_(tnWav_spk1, P);
             end
             tnWav_spk(:,:,viiSpk11) = permute(tnWav_spk1, [1,3,2]);
-            tnWav_raw(:,:,viiSpk11) = permute(mr2tr3_(mnWav_raw, spkLim_raw, viTime_spk11, viSite11), [1,3,2]); %raw
+            tnWav_raw(:,:,viiSpk11) = permute(mr2tr_(mnWav_raw, spkLim_raw, viTime_spk11, viSite11), [1,3,2]); %raw
         catch % GPU failure
             disperr_('mn2tn_wav_: GPU failed'); 
         end
@@ -11764,7 +11764,14 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function [tr, miRange] = mr2tr3_(mr, spkLim, viTime, viSite, fMeanSubt)
+% 2019/06/28 JJJ: mr2tr3 (obsolete)
+function [tr, miRange] = mr2tr3_(varargin)
+[tr, miRange] = mr2tr_(varargin{:});
+end %func
+
+
+%--------------------------------------------------------------------------
+function [tr, miRange] = mr2tr_(mr, spkLim, viTime, viSite, fMeanSubt)
 % tr: nSamples x nSpikes x nChans
 
 if nargin<4, viSite=[]; end %faster indexing
@@ -17150,7 +17157,7 @@ viTime_spk = viTime_spk + nPad_pre;
 %     viTime_spk = viTime_spk(viTime_spk >= ilim_spk(1) & viTime_spk <= ilim_spk(2));
 % end%if
 % [tnWav_spk_raw, tnWav_spk] = mn2tn_wav_(mnWav1, mnWav2, [], viTime_spk, P);
-tnWav_spk = permute(gather_(mr2tr3_(mnWav2, P.spkLim, viTime_spk)), [1,3,2]);
+tnWav_spk = permute(gather_(mr2tr_(mnWav2, P.spkLim, viTime_spk)), [1,3,2]);
     
 % if nPad_pre > 0, viTime_spk = viTime_spk - nPad_pre; end
 end %func
@@ -21747,8 +21754,8 @@ end %func
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_(vcFile_prm)
 if nargin<1, vcFile_prm = ''; end
-vcVer = 'v4.8.6';
-vcDate = '6/27/2019';
+vcVer = 'v4.8.7';
+vcDate = '6/28/2019';
 vcHash = file2hash_();
 
 if nargout==0
@@ -22416,7 +22423,7 @@ if isempty(viSpk_shift), return; end
 
 viTime_shift = viTime_spk1(viSpk_shift) - int32(viShift(:)); % spike time to shift
 viTime_spk1(viSpk_shift) = viTime_shift;
-tnWav_spk1(:,viSpk_shift,:) = mr2tr3_(mnWav_spk, spkLim_wav, viTime_shift, viSite1);
+tnWav_spk1(:,viSpk_shift,:) = mr2tr_(mnWav_spk, spkLim_wav, viTime_shift, viSite1);
 % fprintf('\n\t\ttook %0.1fs\n', toc(t1));
 end %func
 
@@ -26990,8 +26997,8 @@ switch 2
     case 2, mnWav_fet = mnWav_raw;            
     case 1, mnWav_fet = mnWav_filt;
 end
-tnWav_spk = permute(mr2tr3_(mnWav_fet, P.spkLim, viTime_spk), [1,3,2]); % danger of offset
-tnWav_raw = permute(mr2tr3_(mnWav_raw, P.spkLim_raw, viTime_spk), [1,3,2]);
+tnWav_spk = permute(mr2tr_(mnWav_fet, P.spkLim, viTime_spk), [1,3,2]); % danger of offset
+tnWav_raw = permute(mr2tr_(mnWav_raw, P.spkLim_raw, viTime_spk), [1,3,2]);
 [tnWav_spk, tnWav_raw] = deal(meanSubt_spk_(tnWav_spk), meanSubt_spk_(tnWav_raw));
 
 if isempty(vrAmp_spk)
@@ -27089,12 +27096,12 @@ viTime_spk = detect_clean_(vrWav_detect, viTime_spk, nAve_wav);
 nT = size(mnWav_filt,1);
 switch 1 %best: 1
     case 5        
-        trWav_spk = mr2tr3_(mrWav_detect, [-nAve_wav,nAve_wav], viTime_spk);
+        trWav_spk = mr2tr_(mrWav_detect, [-nAve_wav,nAve_wav], viTime_spk);
         viT_min_spk = tr_find_peak_(trWav_spk, 1);
         viTime_spk = viTime_spk + (viT_min_spk - nAve_wav - 1);
         viTime_spk(viTime_spk<1 | viTime_spk>nT) = [];
     case 4
-        trWav_spk = mr2tr3_(mnWav_filt, [-nAve_wav,nAve_wav], viTime_spk);
+        trWav_spk = mr2tr_(mnWav_filt, [-nAve_wav,nAve_wav], viTime_spk);
         viT_min_spk = tr_find_peak_(trWav_spk, -1);
         viTime_spk = viTime_spk + (viT_min_spk - nAve_wav - 1);
         viTime_spk(viTime_spk<1 | viTime_spk>nT) = [];
