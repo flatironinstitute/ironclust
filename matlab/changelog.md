@@ -3,6 +3,23 @@ IronClust, written by J. James Jun, Flatiron Institute, Simons Foundation
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [4.8.8] - 2019-7-1
+### Added
+- `nBatch_max_drift` parameter is introduced.
+  - This sets the maximum number of batches for drift correction.
+  - Default value: 8 (set to `inf` to disable).
+- NeuroSuite importer is added for a given .xml parameter file.
+  - `irc makeprm myparam.xml chanMap.mat`
+    - `chanMap.mat`: Kilosort probe file format.
+  - `irc makeprm myparam.xml myprobe.prb`
+    - `myprobe.prb`: IronClust probe file format.
+- NeuroSuite Klusters exporter is added to the manual GUI.
+  - A new menu item is created in `File\Export to NeuroSuite Klusters`.
+
+### Changed
+- `Probe map` view (upper left window) restricts the sites from the same shanks.
+
+
 ## [4.8.7] - 2019-6-28
 ### Added
 - `irc export-klusters myparam.prm` command is added

@@ -1628,8 +1628,9 @@ else
 end
 if isempty(get_(P, 'nTime_clu'))
     try
-        batch_sec_drift = get_set_(P, 'batch_sec_drift', 600);
+        batch_sec_drift = get_set_(P, 'batch_sec_drift', 300);
         P.nTime_clu = max(round(recording_duration_(P) / batch_sec_drift), 1);
+        P.nTime_clu = min(P.nTime_clu, get_set_(P, 'nBatch_max_drift', 8));
         if fEditFile
             fprintf('\tnTime_clu = %d (batch_sec_drift = %0.1f s)\n', P.nTime_clu, batch_sec_drift);
         end
@@ -5358,23 +5359,23 @@ end %func
 
 %--------------------------------------------------------------------------
 % 11/13/2018 JJJ: return recording duration in sec
-function t_dur = recording_duration_(P, S0)
+function [t_dur, nSamples] = recording_duration_(P, S0)
 % t_dur = recording_duration_(P)
 % t_dur = recording_duration_(P, S0)
 
 if nargin<2, S0 = []; end
-if isempty(S0)
+vnSamples_file = get_(S0, 'vnSamples_file');
+if isempty(vnSamples_file)
     csFile_merge = get_(P, 'csFile_merge');
-    if isempty(csFile_merge)
-        nBytes_file = filesize_(P.vcFile) - get_set_(P, 'header_offset', 0);
-        t_dur = nBytes_file / bytesPerSample_(P.vcDataType) / P.nChans / P.sRateHz;
-    else % multi-file format, check csFile_merge
-        % currently unsupported
-        error('recording_duration_: not implemented yet');
+    if isempty(csFile_merge), csFile_merge = {P.vcFile}; end
+    vnSamples_file = zeros(size(csFile_merge));
+    for iFile = 1:numel(csFile_merge)        
+        nBytes_file1 = filesize_(P.vcFile) - get_set_(P, 'header_offset', 0);
+        vnSamples_file(iFile) = nBytes_file1 / bytesPerSample_(P.vcDataType) / P.nChans;
     end
-else % old method used in describe_ command
-    t_dur = double(max(S0.viTime_spk) - min(S0.viTime_spk)) / P.sRateHz;   
 end
+nSamples = sum(vnSamples_file);
+t_dur = vnSamples_file / P.sRateHz;
 end %func
 
 
@@ -6057,7 +6058,8 @@ uimenu_(mh_file,'Label', 'Export all mean unit waveforms', 'Callback', @export_t
 uimenu_(mh_file,'Label', 'Export selected mean unit waveforms', 'Callback', @(h,e)export_mrWav_clu_);
 uimenu_(mh_file,'Label', 'Export all waveforms from the selected unit', 'Callback', @(h,e)export_tnWav_spk_);
 uimenu_(mh_file,'Label', 'Export firing rate for all units', 'Callback', @(h,e)export_rate_);
-uimenu_(mh_file,'Label', 'Exit', 'Callback', @exit_manual_, 'Separator', 'on', 'Accelerator', 'Q');
+uimenu_(mh_file,'Label', 'Export to NeuroSuite Klusters', 'Callback', @(h,e)export_klusters_, 'Separator', 'on');
+uimenu_(mh_file,'Label', 'Exit', 'Callback', @exit_manual_, 'Separator', 'on', 'Accelerator', 'Q', 'Separator', 'on');
 
 mh_edit = uimenu_(hFig,'Label','Edit'); 
 uimenu_(mh_edit,'Label', '[M]erge', 'Callback', @(h,e)keyPressFcn_cell_(hFig, 'm'));
@@ -6527,7 +6529,7 @@ switch lower(event.Key)
     case 'a', update_spikes_(S0); clu_info_(S0);        
     case 'f', clu_info_(S0);               
     case 'h', msgbox_(S_fig.csHelp, 1);
-    case 'w', toggleVisible_(S_fig.hSpkAll); %toggle spike waveforms        
+    case 'w', toggleVisible_(S_fig.hSpkAll); %toggle spike waveforms 
     case 't', plot_FigTime_(S0); % time view        
     case 'j', plot_FigProj_(S0); %projection view        
     case 'n'
@@ -7598,6 +7600,7 @@ if isempty(S_fig)
     S_fig.hPatch = patch(S_fig.mrPatchX, S_fig.mrPatchY, mrVpp, ...
         'EdgeColor', 'k', 'FaceColor', 'flat');
     S_fig.alim = [min(S_fig.mrPatchX(:)), max(S_fig.mrPatchX(:)), min(S_fig.mrPatchY(:)), max(S_fig.mrPatchY(:))];
+    S_fig.cell_alim = get_lim_shank_(P);
     colormap jet;
     mouse_figure(hFig);   
     nSites = size(P.mrSiteXY,1);    
@@ -7608,8 +7611,15 @@ if isempty(S_fig)
 else    
     set(S_fig.hPatch, 'CData', mrVpp);    
 end
-title_(S_fig.hAx, sprintf('Max: %0.1f uVpp', max(vrVpp)));
-axis_(S_fig.hAx, S_fig.alim);
+try
+    iShank1 = P.viShank_site(S_clu.viSite_clu(S0.iCluCopy));
+    axis_(S_fig.hAx, S_fig.cell_alim{iShank1});
+    vcTitle = sprintf('Max: %0.1f uVpp (Shank %d)', max(vrVpp), iShank1);
+catch
+    axis_(S_fig.hAx, S_fig.alim);
+    vcTitle = sprintf('Max: %0.1f uVpp', max(vrVpp));
+end
+title_(S_fig.hAx, vcTitle);
 caxis(S_fig.hAx, [0, max(vrVpp)]);
 
 set(hFig, 'UserData', S_fig);
@@ -7622,6 +7632,27 @@ vrX = [0 0 1 1] * P.vrSiteHW(2);
 vrY = [0 1 1 0] * P.vrSiteHW(1);
 mrPatchX = bsxfun(@plus, P.mrSiteXY(:,1)', vrX(:));
 mrPatchY = bsxfun(@plus, P.mrSiteXY(:,2)', vrY(:));
+end %func
+
+
+%--------------------------------------------------------------------------
+function cell_alim = get_lim_shank_(P)
+
+nSites = size(P.mrSiteXY,1);
+viShank_site = get_set_(P, 'viShank_site', ones(nSites,1));
+if isempty(viShank_site), viShank_site = ones(nSites,1); end
+
+viShank_unique = 1:max(viShank_site);
+cell_alim = cell(size(viShank_unique));
+[dx, dy] = deal(abs(P.vrSiteHW(2)), abs(P.vrSiteHW(1)));
+for iShank = 1:numel(viShank_unique)
+    viSite1 = find(viShank_site == iShank);
+    vrX1 = P.mrSiteXY(viSite1,1);
+    vrY1 = P.mrSiteXY(viSite1,2);    
+    xlim1 = [min(vrX1), max(vrX1)] + [-1,2] * dx;
+    ylim1 = [min(vrY1), max(vrY1)] + [-1,2] * dy;
+    cell_alim{iShank} = [xlim1, ylim1];
+end
 end %func
 
 
@@ -7692,7 +7723,8 @@ if isempty(S_fig)
 else
     cla(S_fig.hAx); hold(S_fig.hAx, 'on');
 end
-plot_unit_(S_clu1, S_fig.hAx, [0 0 0]);
+fPlot_spk = isempty(S_clu2);
+plot_unit_(S_clu1, S_fig.hAx, [0 0 0], fPlot_spk);
 %vrPosXY1 = [S_clu.vrPosX_clu(S_clu1.iClu), S_clu.vrPosY_clu(S_clu1.iClu)] / P.um_per_pix;
 vrPosXY1 = [S_clu.vrPosX_clu(S_clu1.iClu), S_clu.vrPosY_clu(S_clu1.iClu)];
 nSpk1 = S_clu.vnSpk_clu(S_clu1.iClu);
@@ -7706,7 +7738,7 @@ if isempty(S_clu2)
 else
     nSpk2 = S_clu.vnSpk_clu(S_clu2.iClu);
     vrPosXY2 = [S_clu.vrPosX_clu(S_clu2.iClu), S_clu.vrPosY_clu(S_clu2.iClu)];
-    plot_unit_(S_clu2, S_fig.hAx, [1 0 0]);
+    plot_unit_(S_clu2, S_fig.hAx, [1 0 0], fPlot_spk);
     vcTitle = sprintf('Units %d/%d (black/red); (%d/%d) spikes\nSNR=%0.1f/%0.1f; (X,Y)=(%0.1f/%0.1f, %0.1f/%0.1f)um', ...
         S_clu1.iClu, S_clu2.iClu, nSpk1, nSpk2, S_clu1.snr, S_clu2.snr, ...
         vrPosXY1(1), vrPosXY2(1), vrPosXY1(2), vrPosXY2(2));
@@ -7717,10 +7749,12 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function plot_unit_(S_clu1, hAx, vcColor0)
+function [hSpk, hSpkAll] = plot_unit_(S_clu1, hAx, vcColor0, fPlot_spk)
 if isempty(S_clu1), return; end
 if nargin<2, hAx = axes_new_('FigWav'); end
 if nargin<3, vcColor0 = [0 0 0]; end
+if nargin<4, fPlot_spk = true; end
+
 [S0, P, S_clu] = get0_();
 [~, S_figWav] = get_fig_cache_('FigWav');
 maxAmp = S_figWav.maxAmp;
@@ -7729,13 +7763,12 @@ nSamples = size(S_clu1.mrWav_clu,1);
 vrX = (1:nSamples)'/nSamples;
 vrX([1,end])=nan; % line break
 
-if ~isequal(vcColor0, [0 0 0])
+if ~fPlot_spk %~isequal(vcColor0, [0 0 0])
     trWav1 = zeros(1,1,0);
 else
     trWav1 = S_clu1.trWav;
 end
 
-% show example traces
 for iWav = size(trWav1,3):-1:0
     if iWav==0
         mrY1 = S_clu1.mrWav_clu / maxAmp;
@@ -7752,6 +7785,7 @@ for iWav = size(trWav1,3):-1:0
     mrX1 = bsxfun(@plus, repmat(vrX, [1, size(mrY1, 2)]), vrX1_site');
     line(mrX1(:), mrY1(:), 'Color', vcColor, 'Parent', hAx, 'LineWidth', lineWidth);
 end
+
 xlabel(hAx, 'X pos [pix]');
 ylabel(hAx, 'Z pos [pix]');
 grid(hAx, 'on');
@@ -7808,15 +7842,6 @@ S_clu = S0.S_clu;
 ylim_(S_fig.hAx, [0, 1] * S_fig.maxAmp);
 imrect_set_(S_fig.hRect, [], [0, S_fig.maxAmp]);
 iSite = S_clu.viSite_clu(S0.iCluCopy);
-
-% switch lower(P.vcFet_show)
-%     case {'vpp', 'vmin'} %voltage feature
-%         vcYlabel = sprintf('Site %d (\\mu%s)', iSite, P.vcFet_show);
-%     otherwise %other feature options
-%         vcYlabel = sprintf('Site %d (%s)', iSite, P.vcFet_show);
-% end
-% ylabel(S_fig.hAx, vcYlabel);
-
 end %func
 
 
@@ -11225,6 +11250,7 @@ function vl = matchFileExt_(csFiles, vcExt, vlDir)
 % ignore dir
 % matchFileExt_(csFiles, vcExt, vlDir)
 % matchFileExt_(csFiles, csExt, vlDir) %multiple extension check
+if isempty(csFiles), vl = false; return; end
 if ischar(csFiles), csFiles={csFiles}; end
 vl = false(size(csFiles));
 
@@ -19221,7 +19247,8 @@ switch lower(vcExt)
         makeprm_template_(vcFile_bin, vcFile_prb, vcFile_template);
     case '.ns5'
         [vcFile_prm, P] = import_nsx_(vcFile_bin, vcFile_prb, vcFile_template);
-    case '.yaml'
+    case '.xml'
+        [vcFile_prm, P] = import_xml_neuroscope_(vcFile_bin, vcFile_prb, vcFile_template);
 end
 set(0, 'UserData', []); %clear memory
 
@@ -21754,8 +21781,8 @@ end %func
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_(vcFile_prm)
 if nargin<1, vcFile_prm = ''; end
-vcVer = 'v4.8.7';
-vcDate = '6/28/2019';
+vcVer = 'v4.8.8';
+vcDate = '7/1/2019';
 vcHash = file2hash_();
 
 if nargout==0
@@ -28472,7 +28499,10 @@ end %func
 
 %--------------------------------------------------------------------------
 % 11/19/2018 JJJ: Generate a prb file from various probe files
-function makeprb_(vcFile_in, vcFile_prb)
+function S_prb = makeprb_(vcFile_in, vcFile_prb)
+% makeprb_(vcFile_in, vcFile_prb)
+% S_prb = makeprb_(vcFile_in)
+
 if nargin<2, vcFile_prb = ''; end
 if isempty(vcFile_prb)
     vcFile_prb = subsFileExt_(vcFile_in, '.prb');
@@ -28511,8 +28541,10 @@ switch lower(vcExt)
         disperr_('invalid format');
         return;
 end %switch
-struct2file_(S_prb, vcFile_prb);
-probe_(vcFile_prb);
+if nargout==0
+    struct2file_(S_prb, vcFile_prb);
+    probe_(vcFile_prb);
+end
 end %func
 
 
@@ -29090,13 +29122,24 @@ uV_per_bit = (voltageRange / amplification * 1e6) / 2 ^ nBits;
 % fh_site2chan = @(x)fliplr(cellfun(@(y)str2num_(y.Text), x)) + 1;
 cS_channels = S_xml1.parameters.anatomicalDescription.channelGroups.group;
 if ~iscell(cS_channels), cS_channels = {cS_channels}; end
+cviSite2chan = cell(size(cS_channels));
 for iCell = 1:numel(cS_channels)
     cS_channel1 = cS_channels{iCell}.channel;
     if ~iscell(cS_channel1), cS_channel1 = {cS_channel1}; end
     viSite2chan_ = fliplr(cellfun(@(x)str2num_(x.Text), cS_channel1)) + 1;
     eval(sprintf('viSite2chan%d = viSite2chan_;', iCell));
+    cviSite2chan{iCell} = viSite2chan_;
 end
-S_xml = makeStruct_(sRateHz, nChans, uV_per_bit, viSite2chan1, viSite2chan2, viSite2chan3, nBits);
+try
+    viSite2Chan = cell2mat_(cviSite2chan);
+    viShank_site = cell2mat_(arrayfun(@(x,y)repmat(y,1,x), ...
+        cellfun(@numel, cviSite2chan), 1:numel(cviSite2chan), ...
+        'UniformOutput', 0));
+catch
+    [viSite2Chan, viShank_site] = deal([]);
+end
+S_xml = makeStruct_(sRateHz, nChans, uV_per_bit, nBits, ...
+    viSite2chan1, viSite2chan2, viSite2chan3, viSite2Chan, viShank_site);
 end %func
         
         
@@ -31701,4 +31744,95 @@ if ~strcmpi(class_(mn), class_(vn))
     end
 end
 mn = bsxfun(fh, mn, vn);
+end %func
+
+
+%--------------------------------------------------------------------------
+function [vcFile_prm, P] = import_xml_neuroscope_(vcFile_xml, vcFile_prb, vcFile_template)
+
+% default input
+if nargin<2, vcFile_prb = ''; end
+if nargin<3, vcFile_template = ''; end
+if isempty(vcFile_template)
+    vcFile_template = ircpath_(read_cfg_('default_prm'));
+end
+
+% Make a .prm file
+S_xml = load_xml_neuroscope_(vcFile_xml);
+P = struct_copy_(S_xml, 'sRateHz', 'nChans', 'uV_per_bit', 'viSite2Chan', 'viShank_site');
+
+% output directory
+[vcDir_prm, vcFile_, ~] = fileparts(vcFile_xml);
+P.vcFile = fullfile(vcDir_prm, [vcFile_ , '.dat']);
+if ~exist_file_(P.vcFile)
+    P.vcFile = fullfile(vcDir_prm, [vcFile_ , '.bin']);
+    assert(exist_file_(P.vcFile), 'import_xml_neuroscope_: binary file (.dat or .bin) does not exist');
+end
+vcFile_prm = fullfile(vcDir_prm, [vcFile_, '.prm']);
+P.vcFile_prm = vcFile_prm;
+
+% Import a probe file
+if ~matchFileExt_(vcFile_prb, '.prb')
+%     P = load_prb_(vcFile_prb, P);
+% else    
+	if matchFileName_(vcFile_prb, 'chanMap.mat')
+        vcFile_chanMap = vcFile_prb;
+    else
+        vcFile_chanMap = fullfile(vcDir_prm, 'chanMap.mat');
+    end
+    assert(exist_file_(vcFile_chanMap), 'import_xml_neuroscope_: please specify the probe file (irc myparam.xml chanMap.mat)');
+    S_chanMap = load(vcFile_chanMap);
+    S_prb = struct('channels', P.viSite2Chan, ...
+        'geometry', [S_chanMap.xcoords(:), S_chanMap.ycoords(:)], ...
+        'shank', S_chanMap.kcoords(:), 'pad', [1 1], 'um_per_pix', 1);
+    vcFile_prb = subsFileExt_(vcFile_chanMap, '.prb');
+    struct2file_(S_prb, vcFile_prb);
+    fprintf('Created %s from %s\n', vcFile_prb, vcFile_chanMap);
+end
+P.probe_file = vcFile_prb;
+
+% output
+P.version = version_();
+copyfile(vcFile_template, P.vcFile_prm, 'f');
+edit_prm_file_(P, P.vcFile_prm);
+vcPrompt = sprintf('Created a new parameter file\n\t%s', P.vcFile_prm);
+disp(vcPrompt);
+edit_(P.vcFile_prm);
+end %func
+
+
+%--------------------------------------------------------------------------
+function flag = matchFileName_(vcFile1, vcFile2)
+[~, vcFile_, vcExt_] = fileparts(vcFile1);
+flag = strcmpi([vcFile_, vcExt_], vcFile2);
+end %func
+
+
+%--------------------------------------------------------------------------
+function export_klusters_()
+P = get0_('P');
+vcDir_out = fullfile(get_dir_(P.vcFile_prm), 'klusters'); 
+
+csAns = inputdlg_('Export to location', 'Export to location', 1, {vcDir_out});
+if isempty(csAns), return; end
+vcDir_out = csAns{1};
+
+hFig_wait = figure_wait_(1);
+hMsg = msgbox_open_('Exporting to Klusters');
+figure(hMsg);
+try
+    irc2klusters(P.vcFile_prm, vcDir_out);
+catch
+    errordlg(lasterr());
+end
+close_(hMsg);
+figure_wait_(0, hFig_wait);
+msgbox_(sprintf('Exported to %s', vcDir_out), 1);
+end %func
+
+
+%--------------------------------------------------------------------------
+function vcDir = get_dir_(vcFile)
+vcDir = fileparts(vcFile);
+if isempty(vcDir), vcDir = pwd(); end
 end %func

@@ -13,7 +13,7 @@ t1 = tic;
 if nargin<2, vcDir_out=''; end
 if isempty(vcDir_out)
     vcDir_out = fullfile(fileparts(vcFile_prm), 'klusters'); 
-    mkdir(vcDir_out);
+    mkdir_(vcDir_out);
 end
 
 [S0, P] = irc('call', 'load_cached_', {vcFile_prm});
@@ -25,7 +25,7 @@ viTime_spk = uint64(S0.viTime_spk(:));
 viClu_spk = uint32(S_clu.viClu(:));
 viShank_site = P.viShank_site(:);
 [~, vcFile_base] = fileparts(vcFile_prm);
-[nChans, samples] = deal(P.nChans, sum(S0.vnSamples_file));
+% [nChans, samples] = deal(P.nChans, sum(S0.vnSamples_file));
 
 
 % compute template
@@ -220,3 +220,8 @@ for iiShank = 1:nShanks
     write_file_(vcFile_par1, csLines_);
 end % for
 end %func
+
+
+%--------------------------------------------------------------------------
+function mkdir_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
+%function out1 = title_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
