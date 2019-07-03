@@ -228,7 +228,7 @@ switch lower(vcCmd)
     case {'sort', 'cluster', 'clust', 'sort-verify', 'sort-validate', 'sort-manual'}
         sort_(P);
         describe_(P.vcFile_prm);
-    case {'auto', 'auto-verify', 'auto-manual', 'auto-validate'}
+    case {'auto', 'auto-verify', 'auto-manual', 'auto-validate', 'merge', 'merge-validate', 'merge-manual'}
         auto_(P); describe_(P.vcFile_prm);
     case 'manual-test'
         manual_(P, 'debug'); manual_test_(P); return;          
@@ -3274,22 +3274,20 @@ S_clu = S_clu_refresh_(S_clu);
 S_clu.viClu_premerge = S_clu.viClu;
 
 switch get_set_(P, 'post_merge_mode', 1) %1 previously 1
-    case 6
-        S_clu = post_merge_drift_(S_clu, P);
-    case 5
-        S_clu = drift_merge_post_(S_clu, P);
-    case 4
-        S_clu = graph_merge_(S_clu, P);
+    case 10, S_clu = post_merge_knn(templateMatch_post_(post_merge_knn(S_clu, P), P), P);
+    case 9, S_clu = post_merge_knn(templateMatch_post_(S_clu, P), P);
+    case 8, S_clu = templateMatch_post_(post_merge_knn(S_clu, P), P);
+    case 7, S_clu = post_merge_drift_(post_merge_drift_(S_clu, P), P);
+    case 6, S_clu = post_merge_drift_(S_clu, P);
+    case 5, S_clu = drift_merge_post_(S_clu, P);
+    case 4, S_clu = graph_merge_(S_clu, P);
     case 3
         for iRepeat = 1:2
             S_clu = driftMatch_post_(S_clu, P); 
         end
-    case 2
-        S_clu = featureMatch_post_(S_clu, P);
-    case 1
-        if get_set_(P, 'fTemplateMatch_post', 1)
-            S_clu = templateMatch_post_(S_clu, P);
-        end
+    case 2, S_clu = featureMatch_post_(S_clu, P);
+    case 1, S_clu = templateMatch_post_(S_clu, P);
+    otherwise, fprintf('No post-merge is performed\n'); 
 end %switch
 
 % S_clu = fix_overlap_(S_clu, P); % halo detection (vlHalo)    
@@ -12304,6 +12302,7 @@ if fDebug_ui==1, hMsg = []; return; end
 hFig = gcf;
 hMsg = msgbox(vcMessage);  
 figure(hFig); %drawnow_();
+figure(hFig);
 end
 
 
@@ -21781,8 +21780,8 @@ end %func
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_(vcFile_prm)
 if nargin<1, vcFile_prm = ''; end
-vcVer = 'v4.8.8';
-vcDate = '7/1/2019';
+vcVer = 'v4.8.9';
+vcDate = '7/2/2019';
 vcHash = file2hash_();
 
 if nargout==0
@@ -31819,7 +31818,6 @@ vcDir_out = csAns{1};
 
 hFig_wait = figure_wait_(1);
 hMsg = msgbox_open_('Exporting to Klusters');
-figure(hMsg);
 try
     irc2klusters(P.vcFile_prm, vcDir_out);
 catch

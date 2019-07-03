@@ -3,6 +3,17 @@ IronClust, written by J. James Jun, Flatiron Institute, Simons Foundation
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [4.8.9] - 2019-7-2
+### Added
+- New automated merging is added
+  - Enable by setting `post_merge_mode=9`
+  - This step performs merging based on outgroup/ingroup divergence ratio using the KNN graph.
+
+### Fixed
+- NeuroSuite Klusters exporter GUI error is fixed.
+  - This happened when the `Klusters` directory didn't exist.
+
+
 ## [4.8.8] - 2019-7-1
 ### Added
 - `nBatch_max_drift` parameter is introduced.

@@ -13,8 +13,8 @@ t1 = tic;
 if nargin<2, vcDir_out=''; end
 if isempty(vcDir_out)
     vcDir_out = fullfile(fileparts(vcFile_prm), 'klusters'); 
-    mkdir_(vcDir_out);
 end
+mkdir_(vcDir_out);
 
 [S0, P] = irc('call', 'load_cached_', {vcFile_prm});
 assert(isfield(S0, 'viTime_spk') && isfield(S0, 'S_clu'), 'incorrect format');

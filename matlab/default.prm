@@ -115,11 +115,11 @@ step_sec_drift = 20;          % compute anatomical similarity every n sec
 fSpatialMask_clu = 1;       % Apply spatial mask calculated from the distances between sites to the peak site (half-scale: P.mnPcPerChanaxDist_site_um). circa v3.1.10
 
 % #Post-cluster auto-merging parameters (run "jrc auto" after change)
-post_merge_mode = 1;
-delta_cut = 1.0;              % Cutoff value for the Delta outlier in KNN-based Rodriguez-Laio clustering
-maxWavCor = .985;           % merge if waveform correlation is greater than maxWavCor.
 min_count = 30;             % Minimum cluster size (min_count will be set to 2*#features if lower).
+delta_cut = 1.0;            % Cutoff value for the Delta outlier in KNN-based Rodriguez-Laio clustering
 knn_merge_thresh = 1;       % Number of spikes shared between two peaks to be merged
+post_merge_mode = 9;        % Automated merging mode
+maxWavCor = .985;           % merge if waveform correlation is greater than maxWavCor.
 thresh_mad_clu = 7.5;       % This sets the MAD score threshold to remove outlier spikes for each cluster.
 maxCluPerSite = 20;         % Maximum clusters per site allowed if local detrending is used.
 spkLim_factor_merge = 1;    % Waveform range for computing the correlation. spkLim_factor_merge <= spkLim_raw_factor_merge. circa v3.1.8
@@ -297,7 +297,6 @@ vcFile_bonsai = '';         % bonsai 5-column output (x,y are 2 and 3)
 %nDelays_xcov = 4;           % Used for vcCluster='xcov'. Number of delays for channel-pair covariance 
 
 % post-merge
-%fTemplateMatch_post = 1;    % Perform template matching on the outer part of the cluster cloud
 %vcDetrend_postclu = 'global'; % 'none', 'hidehiko', 'global', 'local', 'logz'
 %nRepeat_merge = 10;         % # of repeats for average unit raw waveform based merging
 %nTemplates_clu = 100;       % Number of template waveforms per cluster to perform post-hoc merging and cluster assignment on the outer edge of clusters
