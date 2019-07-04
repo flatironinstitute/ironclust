@@ -174,7 +174,7 @@ switch lower(vcCmd)
     case {'kilosort', 'ksort'}, kilosort_(vcFile_prm); import_ksort_(vcFile_prm, 0); 
     case 'export-imec-sync', export_imec_sync_(vcFile_prm);
     case 'export-prm', export_prm_(vcFile_prm, vcArg2);
-    case {'export-phy', 'phy'}, irc2phy(vcFile_prm, vcArg2);
+%     case {'export-phy', 'phy'}, irc2phy(vcFile_prm, vcArg2);
     case {'export-klusters', 'klusters', 'neurosuite'}, irc2klusters(vcFile_prm, vcArg2);
     case 'dir'
         if any(vcFile_prm=='*')
@@ -21780,8 +21780,8 @@ end %func
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_(vcFile_prm)
 if nargin<1, vcFile_prm = ''; end
-vcVer = 'v4.8.9';
-vcDate = '7/2/2019';
+vcVer = 'v4.8.10';
+vcDate = '7/3/2019';
 vcHash = file2hash_();
 
 if nargout==0

@@ -3,6 +3,12 @@ IronClust, written by J. James Jun, Flatiron Institute, Simons Foundation
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [4.8.10] - 2019-7-3
+### Changed
+- Default setting changed to `post_merge_mode=8`.
+  - It performs waveform-based merging first and graph-based merging second.
+
+
 ## [4.8.9] - 2019-7-2
 ### Added
 - New automated merging is added

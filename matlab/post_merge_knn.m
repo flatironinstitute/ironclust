@@ -2,7 +2,7 @@
 % 7/2/2019 JJJ: Merge using knn relationship, not using waveforms (fast)
 function S_clu = post_merge_knn(S_clu, P)
 
-KNN = 15;
+KNN = 8;
 merge_thresh = get_set_(P, 'out_in_ratio_merge', 1/8);
 knn = min(KNN, size(S_clu.miKnn,1));
 miKnn = S_clu.miKnn(1:knn,:);
