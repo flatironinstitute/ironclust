@@ -3,6 +3,21 @@ IronClust, written by J. James Jun, Flatiron Institute, Simons Foundation
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+
+## [4.9.1] - 2019-7-8
+### Changed
+- `post_merge_mode=1` behavior is changed (currently the default option).
+  - It only includes neighboring spikes having greater density values (16 nearest neighbors).
+  - It previously included all neighboring spikes (8 nearest neighbors)
+  - The new method computes average waveforms using higher density events (akin to the core set concept).
+- Default setting changed to `maxWavCor=.975` (previously .985).
+
+### Fixed
+- Backward compatibility is added
+  - Introduced in v4.8.0 (Jun 19, 2019) when `nSites_fet` parameter is introduced.
+  - Parameters are now updated when an older file format is loaded.
+
+
 ## [4.8.10] - 2019-7-3
 ### Changed
 - Default setting changed to `post_merge_mode=8`.

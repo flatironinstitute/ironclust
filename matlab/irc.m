@@ -1157,6 +1157,7 @@ try
     end
 %     P = upgrade_param_(S0, P0);
     S0.P = P;
+    set_userdata_(0, P);
 catch hErr
     disperr_('load_cached_ error', hErr);
 end
@@ -3274,6 +3275,7 @@ S_clu = S_clu_refresh_(S_clu);
 S_clu.viClu_premerge = S_clu.viClu;
 
 switch get_set_(P, 'post_merge_mode', 1) %1 previously 1
+    case 11, S_clu = post_merge_knn(S_clu, P);
     case 10, S_clu = post_merge_knn(templateMatch_post_(post_merge_knn(S_clu, P), P), P);
     case 9, S_clu = post_merge_knn(templateMatch_post_(S_clu, P), P);
     case 8, S_clu = templateMatch_post_(post_merge_knn(S_clu, P), P);
@@ -21780,8 +21782,8 @@ end %func
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_(vcFile_prm)
 if nargin<1, vcFile_prm = ''; end
-vcVer = 'v4.8.10';
-vcDate = '7/3/2019';
+vcVer = 'v4.9.1';
+vcDate = '7/8/2019';
 vcHash = file2hash_();
 
 if nargout==0
@@ -30727,11 +30729,13 @@ end %func
 % no membership reassignment, no core calculation
 function S_clu = templateMatch_post_(S_clu, P)
 
+KNN = 16;
 fUse_raw = 0;
-nAve_knn = min(8, get_set_(P, 'knn', 30));
+nAve_knn = min(KNN, get_set_(P, 'knn', 30));
 
 fprintf('Automated merging (post-hoc)\n'); t1=tic;
-[viClu_spk, miKnn] = struct_get_(S_clu, 'viClu', 'miKnn');
+[viClu_spk, miKnn, vrRho_spk] = struct_get_(S_clu, 'viClu', 'miKnn', 'rho');
+miKnn = miKnn(1:nAve_knn,:);
 viSite_spk = get0_('viSite_spk');
 frac_thresh = get_set_(P, 'thresh_core_knn', .75);
 nTemplates = get_set_(P, 'nTemplates_clu', 100); %P.knn;
@@ -30766,7 +30770,6 @@ switch 1
     case 2, nDrift = get_set_(P, 'nTime_clu', 1);
 end
 nSpk_min = get_set_(P, 'knn', 30);
-[viClu_spk, vrRho_spk] = deal(S_clu.viClu, S_clu.rho);
 fprintf('\tComputing template\n\t'); t_template = tic;
 
 
@@ -30776,27 +30779,30 @@ for iClu = 1:S_clu.nClu
     viiSpk1 = round(linspace(1, numel(viSpk1), nDrift+1));
     [vlKeep_clu1, viSite_clu1] = deal(true(nDrift, 1), zeros(nDrift,1));
     trWav_clu1 = zeros(size(tnWav_spk,1), size(tnWav_spk,2), nDrift, 'single');
+    [miKnn1, vrRho1] = deal(miKnn(:,viSpk1), vrRho_spk(viSpk1)');
     for iDrift = 1:nDrift
         vii1 = viiSpk1(iDrift):viiSpk1(iDrift+1);
-        switch 3
+        [viSpk11, vrRho11, miKnn11] = deal(viSpk1(vii1), vrRho1(vii1), miKnn1(:,vii1));
+        
+        switch 5 %3 % expand selection using miKnn
+            case 5 % only connect to neighbors with higher density
+                viSpk11 = miKnn11(vrRho_spk(miKnn11) >= vrRho11);
+                iSite11 = mode(viSite_spk(viSpk11));
+                viSpk11 = viSpk11(viSite_spk(viSpk11) == iSite11);   
             case 4
-                viSpk11 = viSpk1(vii1);
-                vrRho11 = vrRho_spk(viSpk11);
                 viSpk11 = viSpk11(vrRho11 > median(vrRho11));
-                viSpk11 = miKnn(1:nAve_knn, viSpk11);
+                viSpk11 = miKnn(:, viSpk11);
                 viSpk11 = viSpk11(:); % density based selection                
                 iSite11 = mode(viSite_spk(viSpk11));
                 viSpk11 = viSpk11(viSite_spk(viSpk11) == iSite11);   
             case 3     
-                viSpk11 = viSpk1(vii1);
-                viSpk11 = miKnn(1:nAve_knn, viSpk11);
+                viSpk11 = miKnn(:, viSpk11);
                 viSpk11 = viSpk11(:); % density based selection                
                 iSite11 = mode(viSite_spk(viSpk11));
                 viSpk11 = viSpk11(viSite_spk(viSpk11) == iSite11);   
             case 2                
-                viSpk11 = miKnn(1:nAve_knn, viSpk1(vii1));
+                viSpk11 = miKnn(:, viSpk11);
                 viSpk11 = viSpk11(:);
-                vrRho11 = vrRho_spk(viSpk11);
                 viSpk11 = viSpk11(vrRho11 > quantile(vrRho11, frac_thresh));
                 viSpk11 = viSpk11(viClu_spk(viSpk11) == iClu);
                 iSite11 = mode(viSite_spk(viSpk11));
@@ -30807,7 +30813,7 @@ for iClu = 1:S_clu.nClu
                 iSpk11 = viSpk1(vii1(ii11)); % center spike index
                 iSite11 = viSite_spk(iSpk11);
                 % find neighbors around the local peak
-                viSpk11 = miKnn(1:nAve_knn, miKnn(:,iSpk11));
+                viSpk11 = miKnn(:, miKnn(:,iSpk11));
                 viSpk11 = viSpk11(:);
                 viSpk11 = viSpk11(viSite_spk(viSpk11) == iSite11 & viClu_spk(viSpk11) == iClu);     
         end

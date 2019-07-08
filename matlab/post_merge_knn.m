@@ -2,10 +2,11 @@
 % 7/2/2019 JJJ: Merge using knn relationship, not using waveforms (fast)
 function S_clu = post_merge_knn(S_clu, P)
 
-KNN = 8;
+KNN = 16;
 merge_thresh = get_set_(P, 'out_in_ratio_merge', 1/8);
 knn = min(KNN, size(S_clu.miKnn,1));
 miKnn = S_clu.miKnn(1:knn,:);
+vrRho_spk = S_clu.rho(:)';
 
 fprintf('Automated merging using KNN (post-hoc)\n\t'); t_merge=tic;
 
@@ -36,14 +37,21 @@ trDist_clu = nan(nClu, nDrift, nClu);
 fh_member = @(x,y)mean(ismember(x,y));    
 miSites_clu = P.miSites(1:P.nSites_fet, S_clu.viSite_clu);
 for iClu = 1:nClu
-    viSpk1 = S_clu.cviSpk_clu{iClu};
+    viSpk1 = S_clu.cviSpk_clu{iClu};    
     miKnn1 = miKnn(:,viSpk1);
     viClu2 = find(ismember(S_clu.viSite_clu, miSites_clu(:,iClu)));
+    vrRho1 = vrRho_spk(viSpk1);
     for iDrift = 1:nDrift        
         viiSpk1 = find(ismember(viSpk1, cviSpk_drift{iDrift}));
-        if numel(viiSpk1) >= P.min_count
-            viSpk_out1 = miKnn1(:,viiSpk1);
-            vr_ = cellfun(@(y)fh_member(viSpk_out1(:), y), S_clu.cviSpk_clu(viClu2));
+        if numel(viiSpk1) >= P.min_count            
+            switch 2
+                case 2
+                    miSpk_out11 = miKnn1(:,viiSpk1);
+                    viSpk_out11 = miSpk_out11(vrRho_spk(miSpk_out11) >=  vrRho1(viiSpk1));
+                case 1
+                    viSpk_out11 = miKnn1(:,viiSpk1);
+            end
+            vr_ = cellfun(@(y)fh_member(viSpk_out11(:), y), S_clu.cviSpk_clu(viClu2));
             trDist_clu(viClu2,iDrift,iClu) = vr_;
         end
     end %for    
