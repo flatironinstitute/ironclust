@@ -1154,8 +1154,11 @@ try
         catch
             disperr_();
         end        
-    end
-%     P = upgrade_param_(S0, P0);
+    end    
+    
+    % Upgrade P format
+    [nSites_spk, P.nSites_fet] = deal(size(tnWav_spk,2), size(trFet_spk,1)/P.nPcPerChan);
+    P.miSites = P.miSites(1:nSites_spk,:);
     S0.P = P;
     set_userdata_(0, P);
 catch hErr
@@ -3275,6 +3278,7 @@ S_clu = S_clu_refresh_(S_clu);
 S_clu.viClu_premerge = S_clu.viClu;
 
 switch get_set_(P, 'post_merge_mode', 1) %1 previously 1
+    case 12, S_clu = post_merge_knnwav(S_clu, get0_('viSite_spk'), P);
     case 11, S_clu = post_merge_knn(S_clu, P);
     case 10, S_clu = post_merge_knn(templateMatch_post_(post_merge_knn(S_clu, P), P), P);
     case 9, S_clu = post_merge_knn(templateMatch_post_(S_clu, P), P);
@@ -10214,6 +10218,7 @@ end %func
 %--------------------------------------------------------------------------
 function mrWav_clu1 = nanmean_int16_(tnWav0, dimm_mean, fUseCenterSpk, iSite1, viSite0, P); % * S0.P.uV_per_bit;
 fMedian = strcmpi(get_set_(P, 'vcCluWavMode'), 'median');
+nSites_spk = size(tnWav0,2);
 if fUseCenterSpk
     if fMedian
         mrWav_clu1 = median(single(tnWav0), dimm_mean);
@@ -10221,11 +10226,11 @@ if fUseCenterSpk
         mrWav_clu1 = mean(single(tnWav0), dimm_mean);
     end
 else
-    viSite1 = P.miSites(:, iSite1);
+    viSite1 = P.miSites(1:nSites_spk, iSite1);
     trWav = nan([size(tnWav0,1), numel(viSite1), numel(viSite0)], 'single');
     viSites_uniq = unique(viSite0);
     nSites_uniq = numel(viSites_uniq);
-    miSites_uniq = P.miSites(:, viSites_uniq);
+    miSites_uniq = P.miSites(1:nSites_spk, viSites_uniq);
     for iSite_uniq1 = 1:nSites_uniq
         iSite_uniq = viSites_uniq(iSite_uniq1);
         viSpk_ = find(viSite0 == iSite_uniq);
@@ -21782,8 +21787,8 @@ end %func
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_(vcFile_prm)
 if nargin<1, vcFile_prm = ''; end
-vcVer = 'v4.9.1';
-vcDate = '7/8/2019';
+vcVer = 'v4.9.2';
+vcDate = '7/9/2019';
 vcHash = file2hash_();
 
 if nargout==0

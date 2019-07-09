@@ -835,22 +835,6 @@ end
 end %func
 
 
-%==========================================================================
-% call irc.m
-
-function xylabel_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
-function out1 = title_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
-function out1 = str2num_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
-function out1 = read_cfg_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
-function out1 = ircpath_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
-function out1 = exist_file_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
-function out1 = file2cellstr_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
-function out1 = file2struct_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
-function out1 = struct2str_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
-function out1 = ifeq_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
-function out1 = pad_cs_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
-
-
 %--------------------------------------------------------------------------
 function S = makeStruct_(varargin)
 %MAKESTRUCT all the inputs must be a variable. 
@@ -1124,3 +1108,19 @@ for iInput = 1:numel(csInput1)
 end
 viRecording1 = find(vlRecording);
 end %func
+
+
+%==========================================================================
+% call irc.m
+
+function xylabel_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
+function out1 = title_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
+function out1 = str2num_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
+function out1 = read_cfg_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
+function out1 = ircpath_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
+function out1 = exist_file_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
+function out1 = file2cellstr_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
+function out1 = file2struct_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
+function out1 = struct2str_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
+function out1 = ifeq_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
+function out1 = pad_cs_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end

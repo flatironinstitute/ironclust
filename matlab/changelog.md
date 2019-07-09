@@ -3,6 +3,14 @@ IronClust, written by J. James Jun, Flatiron Institute, Simons Foundation
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [4.9.2] - 2019-7-9
+### Changed
+- Default setting changed to `maxWavCor=.985` (previously .975)
+  - Based on the parameter optimization
+
+### Fixed
+- Backward compatibility is added to the output files pre-dating v4.8.0.
+
 
 ## [4.9.1] - 2019-7-8
 ### Changed
