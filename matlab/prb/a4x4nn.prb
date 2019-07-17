@@ -1,0 +1,18 @@
+% Order of the probe sites in the recording file
+channels = 1:64; % assuming linear mapping between sites to channels. Refer to the NeuroNexus documentation for correct channel mapping.
+
+% Site location in micrometers (x and y)
+fh_col = @(x)x(:);
+geometry = repmat([0, -17.6777, 17.6777, 0; 0, 17.6777, 17.6777, 35.3554]',[16,1]);
+geometry(:,1) = geometry(:,1) + fh_col(repmat([0,200,400,600],[16,1]));
+geometry(:,2) = geometry(:,2) + repmat(fh_col(repmat([0,150,300,450],[4,1])),[4,1]);
+
+
+% Recording contact pad size in micrometers. Height x width
+pad = [11 11];
+
+% Shanks
+shank = fh_col(repmat(1:16,[4,1]))';
+
+% Micrometers per center-to-center vertical site spacing
+um_per_pix = 17.6777;            
