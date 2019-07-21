@@ -993,8 +993,8 @@ switch lower(vcDetect)
         S0 = detect_xcov_(P, viTime_spk0, viSite_spk0);
 end
 if get_set_(P, 'fRamCache', 1)
-    tnWav_raw = load_spkraw_(S0, P);
-    tnWav_spk = load_spkwav_(S0, P);    
+    tnWav_spk = load_spkwav_(S0, P);
+    tnWav_raw = load_spkraw_(S0, P);        
 end
 trFet_spk = load_spkfet_(S0, P);
 S0.mrPos_spk = spk_pos_(S0, trFet_spk);
@@ -3278,6 +3278,8 @@ S_clu = S_clu_refresh_(S_clu);
 S_clu.viClu_premerge = S_clu.viClu;
 
 switch get_set_(P, 'post_merge_mode', 1) %1 previously 1
+    case 14, S_clu = post_merge_cc_(templateMatch_post_(S_clu, P), P);
+    case 13, S_clu = templateMatch_post_burst_(S_clu, P);
     case 12, S_clu = post_merge_knnwav(S_clu, get0_('viSite_spk'), P);
     case 11, S_clu = post_merge_knn(S_clu, P);
     case 10, S_clu = post_merge_knn(templateMatch_post_(post_merge_knn(S_clu, P), P), P);
@@ -3296,12 +3298,7 @@ switch get_set_(P, 'post_merge_mode', 1) %1 previously 1
     otherwise, fprintf('No post-merge is performed\n'); 
 end %switch
 
-% S_clu = fix_overlap_(S_clu, P); % halo detection (vlHalo)    
-% S_clu = S_clu_remove_count_(S_clu, P); %remove low-count clusters
 S_clu = post_merge_wav_(S_clu, 0, P);
-% S_clu = S_clu_cleanup_(S_clu, P);
-% S_clu = S_clu_remove_count_(S_clu, P); %remove low-count clusters
-
 S_clu = S_clu_sort_(S_clu, 'viSite_clu');
 S_clu = S_clu_update_wav_(S_clu, P);
 
@@ -3313,243 +3310,6 @@ S_clu = S_clu_position_(S_clu);
 S_clu.csNote_clu = cell(S_clu.nClu, 1);  %reset note
 S_clu = S_clu_quality_(S_clu, P);
 [S_clu, S0] = S_clu_commit_(S_clu, 'post_merge_');
-end %func
-
-
-%--------------------------------------------------------------------------
-% 10/1/2018 JJJ: template matching at the cluster outer edge using core set
-% assume all spikes come from the same site
-function S_clu = templateMatch_post1_(S_clu, P)
-% global tnWav_spk
-% only for tetrode
-% if ~all(get0_('viSite_spk')==1)
-%     fprintf(2, 'templateMatch_post_: skipped\n');
-%     return;
-% end
-fUse_raw = 0;
-nAve_knn = min(8, get_set_(P, 'knn', 30));
-
-fprintf('Template matching (post-hoc)\n'); t1=tic;
-[viClu, miKnn] = struct_get_(S_clu, 'viClu', 'miKnn');
-viSite_spk = get0_('viSite_spk');
-frac_thresh = get_set_(P, 'thresh_core_knn', .75);
-nTemplates = get_set_(P, 'nTemplates_clu', 100); %P.knn;
-nShift_max = ceil(diff(P.spkLim) * P.frac_shift_merge / 2);
-viShift = -nShift_max:nShift_max;
-
-tnWav_spk = get_spkwav_(P, fUse_raw); % use raw waveform
-switch 0
-    case 2 %subtract reference
-        tnWav_spk = trWav_car_(tnWav_spk, P);
-    case 1 %denoise using knn
-        tnWav_spk = tr_denoise_knn_(tnWav_spk, miKnn, P);
-    case 0
-        ; %no preconditioning
-end
-
-% create template (nTemplate per cluster)
-[cviSpk_in_clu, cviSpk_out_clu, ctrWav_in_clu, cviSite_in_clu] = deal(cell(S_clu.nClu, 1));
-fh_car = @(tr)tr - repmat(mean(tr,2), [1,size(tr,2),1]);
-fh_wav = @(vi)single(tnWav_spk(:,:,vi));
-switch 1
-    case 3 % knn smoothed waveform returned
-        fh_trimmean = @(vi)tr2mr_trimmean_(fh_wav(vi));
-        fh_mr = @(vi)tr2mr_mean_knn_(tnWav_spk, miKnn, viSite_spk, vi); 
-    case 2 % spatial ref
-        fh_trimmean = @(vi)tr2mr_trimmean_(fh_car(fh_wav(vi)));
-        fh_mr = @(vi)reshape(fh_car(fh_wav(vi)), [], numel(vi));        
-    case 1 
-        fh_trimmean = @(vi)tr2mr_trimmean_(fh_wav(vi));
-        fh_mr = @(vi)single(reshape(tnWav_spk(:,:,vi), [], numel(vi)));
-end
-fh_med = @(vi)single(median(tnWav_spk(:,:,vi),3));
-fh_mean = @(vi)single(mean(tnWav_spk(:,:,vi),3));
-fh_pv1 = @(vi)tr_pv1_(single(tnWav_spk(:,:,vi)));
-fh_meanalign = @(vi)tr_mean_align_(single(tnWav_spk(:,:,vi)));
-fh_denoise = @(vi)tr2mr_denoise_(single(tnWav_spk(:,:,vi)));
-nSites = max(viSite_spk);
-vlCore_spk = false(size(viSite_spk));
-
-fprintf('\tComputing template\n\t'); t_template = tic;
-for iClu = 1:S_clu.nClu
-    % identify spikes to recluster by segregating into core-set and outer-set     
-    viSpk1 = find(S_clu.viClu == iClu);
-    viSpk1 = viSpk1(:);
-    viSite_clu1 = viSite_spk(viSpk1);
-    miKnn_clu1 = miKnn(:,viSpk1);
-    vrFracSame_spk1 = mean(viClu(miKnn_clu1) == iClu);
-    switch 2
-        case 2
-            vrRho1 = S_clu.rho(viSpk1);
-            vlCore1 = vrRho1 > quantile(vrRho1, frac_thresh);
-        case 1, vlCore1 = vrFracSame_spk1 >= frac_thresh;
-    end 
-    vlCore_spk(viSpk1) = vlCore1;
-    viSpk_clu1 = viSpk1(vlCore1);
-    cviSpk_in_clu{iClu} = viSpk_clu1;
-    cviSpk_out_clu{iClu} = viSpk1(~vlCore1);
-    
-    % create a template using core-set members
-    viiSpk1 = subsample_vr_(find(vlCore1), nTemplates);   % template selection
-    if isempty(viiSpk1), continue; end
-    trWav11 = zeros(size(tnWav_spk,1), size(tnWav_spk,2), numel(viiSpk1), 'single');
-    viSite11 = viSite_spk(viSpk1(viiSpk1));
-    miKnn11 = miKnn_clu1(:,viiSpk1);
-    vlKeep11 = true(size(viiSpk1));
-    for ii1 = 1:numel(viiSpk1)
-        iSite11 = viSite11(ii1);
-        viSpk11 = miKnn11(:,ii1);   
-        if isempty(viSpk11), continue; end
-        viSpk11 = miKnn(1:nAve_knn, viSpk11);
-        viSpk11 = viSpk11(:);
-        viSpk11 = viSpk11(viSite_spk(viSpk11) == iSite11);
-        if numel(viSpk11) < P.knn
-            vlKeep11(ii1) = 0;
-            continue;
-        end        
-%         trWav11(:,:,ii1) = fh_denoise(viSpk11);
-        trWav11(:,:,ii1) = fh_trimmean(viSpk11);
-%         trWav11(:,:,ii1) = fh_meanalign(viSpk11(viSite11(ii1) == viSite_spk(viSpk11)));
-%           trWav11(:,:,ii1) = fh_meanalign(viSpk11(viSite11(ii1) == viSite_spk(viSpk11)));
-%         trWav11(:,:,ii1) = fh_pv1(viSpk11);
-%         trWav11(:,:,ii1) = fh_mean(viSpk11);
-    end
-    ctrWav_in_clu{iClu} = trWav11(:,:,vlKeep11);
-    cviSite_in_clu{iClu} = viSite11(vlKeep11);
-    fprintf('.');
-end
-fprintf('\n\ttook %0.1fs\n', toc(t_template));
-
-% Match outer-set members to cluster templates
-viSpk_out = cell2mat_(cviSpk_out_clu);
-viSite_spkout = viSite_spk(viSpk_out);
-cviiSpk_out_site = arrayfun(@(i)find(viSite_spkout==i), 1:nSites, 'UniformOutput', 0);
-fh_dist = @(mr, vr)sum(bsxfun(@minus, mr, vr).^2);
-viClu_spkout = zeros(numel(viSpk_out), 1);
-% find template locations by sites
-[ctrWav_in_site, cviClu_in_site] = deal(cell(1, nSites));
-for iSite = 1:nSites
-    [ctrWav_, cviClu_] = deal(cell(1, S_clu.nClu));
-    for iClu = 1:S_clu.nClu
-        [trWav_in1, viSite_in1] = deal(ctrWav_in_clu{iClu}, cviSite_in_clu{iClu});
-        vl_ = viSite_in1==iSite;
-        if ~any(vl_), continue; end
-        ctrWav_{iClu} = trWav_in1(:,:,vl_);
-        cviClu_{iClu} = repmat(iClu, sum(vl_), 1);
-    end
-    ctrWav_in_site{iSite} = cat(3, ctrWav_{:});
-    cviClu_in_site{iSite} = cat(1, cviClu_{:});
-end
-
-% template matching step
-fprintf('\tReassigning spikes\n\t');
-switch 0
-    case 2 % find the nearest point in the core set
-        viSpk_out = find(~vlCore_spk);
-        for ii1 = 1:numel(viSpk_out) 
-            iSpk_out1 = viSpk_out(ii1);
-            viSpk1 = miKnn(:,iSpk_out1);
-            vii_in1 = find(vlCore_spk(viSpk1));
-            while isempty(vii_in1)
-                viSpk1 = miKnn(1:4,viSpk1);
-                viSpk1 = viSpk1(:);
-                vii_in1 = find(vlCore_spk(viSpk1));
-            end
-            viSpk_in1 = viSpk1(vii_in1);
-            viClu(iSpk_out1) = mode(viClu(viSpk_in1));
-        end
-        S_clu.viClu_prematch = S_clu.viClu;
-        S_clu.viClu = viClu;
-        frac_changed = mean(S_clu.viClu_prematch ~= S_clu.viClu);
-
-    case 1
-        for iSite = 1:nSites
-            [vii_spkout1, trWav_in1, viClu_in1] = ...
-                deal(cviiSpk_out_site{iSite}, ctrWav_in_site{iSite}, cviClu_in_site{iSite});
-            if isempty(viClu_in1), continue; end
-            if isempty(vii_spkout1), continue; end
-            mrWav_spkout1 = fh_mr(viSpk_out(vii_spkout1))';
-            nClu_site1 = size(trWav_in1,3);
-            trWav_in1 = gpuArray_(trWav_in1, P.fGpu);
-            mrWav_spkout1 = gpuArray_(mrWav_spkout1, P.fGpu);
-            mrDist1 = inf(numel(vii_spkout1), numel(viShift), 'like', mrWav_spkout1);
-            miiClu_min1 = zeros(numel(vii_spkout1), numel(viShift), 'int32');
-            vrWin11 = std(mrWav_spkout1);
-            for iShift = 1:numel(viShift)
-                mrTemplate11 = shift_tr2mr_(trWav_in1, viShift(iShift))';
-                switch 1
-                    case 5
-%                         vrWin11 = std(mrTemplate11);
-%                         vrWin11 = hanning(size(mrTemplate11,2))';
-                        [mrDist1(:,iShift), vii_] = pdist2(mrTemplate11.*vrWin11, mrWav_spkout1.*vrWin11, 'euclidean', 'Smallest', 1);            
-                    case 4
-                        [mrDist1(:,iShift), vii_] = pdist2(mrTemplate11, mrWav_spkout1, 'euclidean', 'Smallest', 1);
-                    case 3
-                        [mrDist1(:,iShift), vii_] = min(pdist2(mrTemplate11, mrWav_spkout1, 'cityblock'),[],1);              
-                    case 2
-                        [mrDist1(:,iShift), vii_] = min(maddist2_(mrTemplate11, mrWav_spkout1),[],1);                  
-                    case 1
-                        try
-                            [mrDist1(:,iShift), vii_] = min(pdist2_(mrTemplate11, mrWav_spkout1),[],1);  
-                        catch
-                            disperr_();
-                        end
-                end
-                miiClu_min1(:,iShift) = gather_(vii_);
-            end
-            [~, viMin1] = min(mrDist1, [], 2);
-            vi_ = sub2ind(size(mrDist1), (1:size(mrDist1,1))', viMin1);
-            viClu_spkout(vii_spkout1) = viClu_in1(miiClu_min1(vi_));
-            fprintf('.');
-        end
-        S_clu.viClu_prematch = S_clu.viClu;
-        S_clu.viClu(viSpk_out) = viClu_spkout;
-        frac_changed = mean(S_clu.viClu_prematch ~= S_clu.viClu);
-    case 0
-        frac_changed = 0;
-end %switch
-fprintf('\n\tReassigned %0.1f%% spikes, took %0.1fs\n', frac_changed*100, toc(t1));
-
-% merge the templates
-if 1
-    nClu = S_clu.nClu;
-    fprintf('Merging templates\n\t'); t_merge=tic;
-    fh_norm = @(x)bsxfun(@rdivide, x, std(x,1)*sqrt(size(x,1)));
-    switch 2
-        case 2, fh_norm_tr = @(x)fh_norm(reshape(x, [], size(x,3)));
-        case 1, fh_norm_tr = @(x)fh_norm(reshape(meanSubt_(x), [], size(x,3)));
-    end
-    mrDist_clu = nan(S_clu.nClu, 'single');
-    for iClu1 = 1:S_clu.nClu
-        viSite1 = cviSite_in_clu{iClu1};
-        if isempty(viSite1), continue; end
-        mr1_ = fh_norm_tr(ctrWav_in_clu{iClu1});
-        if 1 %shift template in time
-            mr1_ = fh_norm_tr(shift_trWav_(ctrWav_in_clu{iClu1}, viShift));
-            viSite1 = repmat(viSite1(:), numel(viShift), 1);
-        end
-        for iClu2 = iClu1+1:S_clu.nClu
-            viSite2 = cviSite_in_clu{iClu2};
-            viSite12 = intersect(viSite1, viSite2);
-            if isempty(viSite12), continue; end
-            mr2_ = fh_norm_tr(ctrWav_in_clu{iClu2});        
-            for iSite12_ = 1:numel(viSite12)
-                iSite12 = viSite12(iSite12_);
-                mrDist12 = mr2_(:, viSite2==iSite12)' * mr1_(:, viSite1==iSite12);
-                mrDist_clu(iClu2, iClu1) = max(mrDist_clu(iClu2, iClu1), max(mrDist12(:)));
-            end
-        end
-        fprintf('.');
-    end %for
-    mlWavCor_clu = mrDist_clu >= P.maxWavCor;
-    viMap_clu = int32(ml2map_(mlWavCor_clu));
-    vlPos = S_clu.viClu > 0;
-    S_clu.viClu(vlPos) = viMap_clu(S_clu.viClu(vlPos)); %translate cluster number
-    S_clu = S_clu_refresh_(S_clu);
-    nClu_post = S_clu.nClu;
-    nClu_pre = nClu;
-    fprintf('\nMerged %d waveforms (%d->%d), took %0.1fs\n', nClu-nClu_post, nClu, nClu_post, toc(t_merge));
-end
 end %func
 
 
@@ -22055,7 +21815,13 @@ function tnWav_raw = load_spkraw_(S0, P)
 if nargin<1, S0 = get(0, 'UserData'); end
 if nargin<2, P = S0.P; end
 type_raw = get_set_(S0, 'type_raw', 'int16');
-tnWav_raw = load_bin_(strrep(S0.P.vcFile_prm, '.prm', '_spkraw.jrc'), type_raw, S0.dimm_raw);
+try
+    tnWav_raw = load_bin_(strrep(S0.P.vcFile_prm, '.prm', '_spkraw.jrc'), type_raw, S0.dimm_raw);
+catch
+    fprintf(2, 'load_spkraw_: Load error\n\t');
+    disp(lasterr());
+    tnWav_raw = [];
+end
 end %func
 
 
@@ -24482,6 +24248,7 @@ vrKnn = zeros([n1, 1], 'like', mrFet);
 for i1 = 1:nStep_knn:n1
     vi1_ = i1:min(i1+nStep_knn-1, n1);
     [mrKnn1, miKnn(:,vi1_)] = pdist2(mrFet2_T, mrFet1(:,vi1_)', 'euclidean', 'Smallest', knn);
+%     [mrKnn1, miKnn(:,vi1_)] = pdist2(mrFet2_T, mrFet1(:,vi1_)', 'cosine', 'Smallest', knn);
     vrKnn(vi1_) = mrKnn1(end,:);
 end %for
 if ~isempty(vi2), miKnn = vi2(miKnn); end
@@ -24620,7 +24387,7 @@ viNneigh1 = zeros([n1, 1], 'uint32');
 [mrFet2, mrFet1] = deal(mrFet(:,vi2), mrFet(:,vi1));
 [vrRho2, vrRho1] = deal(vrRho(vi2), vrRho(vi1));
 fh_dist_ = @(y)bsxfun(@plus, sum(y.^2), bsxfun(@minus, sum(mrFet2.^2)', 2*mrFet2'*y));
-
+%fh_dist_ = @(y)pdist2(y', mrFet2', 'cosine')';
 for i1 = 1:nStep_knn:n1
     vi1_ = i1:min(i1+nStep_knn-1, n1);
     mrD_ = fh_dist_(mrFet1(:,vi1_));
@@ -30737,11 +30504,12 @@ function S_clu = templateMatch_post_(S_clu, P)
 KNN = 16;
 fUse_raw = 0;
 nAve_knn = min(KNN, get_set_(P, 'knn', 30));
+MIN_COUNT = get_set_(P, 'min_count');
 
 fprintf('Automated merging (post-hoc)\n'); t1=tic;
 [viClu_spk, miKnn, vrRho_spk] = struct_get_(S_clu, 'viClu', 'miKnn', 'rho');
 miKnn = miKnn(1:nAve_knn,:);
-viSite_spk = get0_('viSite_spk');
+[viSite_spk, viTime_spk] = get0_('viSite_spk', 'viTime_spk');
 frac_thresh = get_set_(P, 'thresh_core_knn', .75);
 nTemplates = get_set_(P, 'nTemplates_clu', 100); %P.knn;
 nShift_max = ceil(diff(P.spkLim) * P.frac_shift_merge / 2);
@@ -30750,7 +30518,7 @@ viShift = -nShift_max:nShift_max;
 tnWav_spk = get_spkwav_(P, fUse_raw); % use raw waveform
 
 % create template (nTemplate per cluster)
-[cviSpk_in_clu, cviSpk_out_clu, ctrWav_in_clu, cviSite_in_clu] = deal(cell(S_clu.nClu, 1));
+[ctrWav_clu, cviSite_clu] = deal(cell(S_clu.nClu, 1));
 fh_car = @(tr)tr - repmat(mean(tr,2), [1,size(tr,2),1]);
 fh_wav = @(vi)single(tnWav_spk(:,:,vi));
 switch 1
@@ -30792,6 +30560,7 @@ for iClu = 1:S_clu.nClu
         switch 5 %3 % expand selection using miKnn
             case 5 % only connect to neighbors with higher density
                 viSpk11 = miKnn11(vrRho_spk(miKnn11) >= vrRho11);
+                viSpk11 = unique(viSpk11);
                 iSite11 = mode(viSite_spk(viSpk11));
                 viSpk11 = viSpk11(viSite_spk(viSpk11) == iSite11);   
             case 4
@@ -30826,8 +30595,13 @@ for iClu = 1:S_clu.nClu
         if numel(viSpk11) < nSpk_min
             vlKeep_clu1(iDrift) = false;
             continue;
-        end             
+        end    
         switch 1
+            case 16 % bursting
+                viSpk11 = unique(viSpk11);
+                vl_ = diff(viTime_spk(viSpk11)) > 32*20; % remove bursting spikes
+                tnWav_spk11 = tnWav_spk(:,:,viSpk11);
+                mr_ = mean(single(tnWav_spk11(:,:,vl_)),3);
             case 15
                 tr_ = single(tnWav_spk(:,:,viSpk11));
                 mr_ = mean(tr_,3);
@@ -30870,8 +30644,8 @@ for iClu = 1:S_clu.nClu
         end
         trWav_clu1(:,:,iDrift) = mr_;
     end
-    ctrWav_in_clu{iClu} = trWav_clu1(:,:,vlKeep_clu1);
-    cviSite_in_clu{iClu} = viSite_clu1(vlKeep_clu1);
+    ctrWav_clu{iClu} = trWav_clu1(:,:,vlKeep_clu1);
+    cviSite_clu{iClu} = viSite_clu1(vlKeep_clu1);
     fprintf('.');
 end
 fprintf('\n\ttook %0.1fs\n', toc(t_template));
@@ -30887,19 +30661,16 @@ switch 2
 end
 mrDist_clu = nan(S_clu.nClu, 'single');
 for iClu1 = 1:S_clu.nClu
-    viSite_clu1 = cviSite_in_clu{iClu1};
+    viSite_clu1 = cviSite_clu{iClu1};
     if isempty(viSite_clu1), continue; end
-    mr1_ = fh_norm_tr(ctrWav_in_clu{iClu1});
-    if 1 %shift template in time
-        mr1_ = fh_norm_tr(shift_trWav_(ctrWav_in_clu{iClu1}, viShift));
-        viSite_clu1 = repmat(viSite_clu1(:), numel(viShift), 1);
-    end
+    mr1_ = fh_norm_tr(shift_trWav_(ctrWav_clu{iClu1}, viShift));
+    viSite_clu1 = repmat(viSite_clu1(:), numel(viShift), 1);
     vrDist_clu1 = zeros(S_clu.nClu, 1, 'single');
     for iClu2 = iClu1+1:S_clu.nClu
-        viSite2 = cviSite_in_clu{iClu2};
+        viSite2 = cviSite_clu{iClu2};
         viSite12 = intersect(viSite_clu1, viSite2);
         if isempty(viSite12), continue; end
-        mr2_ = fh_norm_tr(ctrWav_in_clu{iClu2});        
+        mr2_ = fh_norm_tr(ctrWav_clu{iClu2});   
         for iSite12_ = 1:numel(viSite12)
             iSite12 = viSite12(iSite12_);
             mrDist12 = mr2_(:, viSite2==iSite12)' * mr1_(:, viSite_clu1==iSite12);
@@ -30921,79 +30692,96 @@ end %func
 
 
 %--------------------------------------------------------------------------
-% 4/12/2019 JJJ: merge clusters based on cosine distance of feature vectors
+% 4/12/2019 JJJ: Template merging cluster
 % no membership reassignment, no core calculation
-function S_clu = templateMatch_post3_(S_clu, P)
-global trFet_spk
+function S_clu = templateMatch_post_burst_(S_clu, P)
 
-nAve_knn = min(15, get_set_(P, 'knn', 30));
+KNN = 16;
+fUse_raw = 0;
+nAve_knn = min(KNN, get_set_(P, 'knn', 30));
+MIN_COUNT = get_set_(P, 'min_count');
 
-fprintf('Template matching (post-hoc)\n'); t1=tic;
-[viClu_spk, miKnn] = struct_get_(S_clu, 'viClu', 'miKnn');
-viSite_spk = get0_('viSite_spk');
+fprintf('Automated merging (post-hoc)\n'); t1=tic;
+[viClu_spk, miKnn, vrRho_spk] = struct_get_(S_clu, 'viClu', 'miKnn', 'rho');
+miKnn = miKnn(1:nAve_knn,:);
+[viSite_spk, viTime_spk] = get0_('viSite_spk', 'viTime_spk');
+frac_thresh = get_set_(P, 'thresh_core_knn', .75);
+nTemplates = get_set_(P, 'nTemplates_clu', 100); %P.knn;
+nShift_max = ceil(diff(P.spkLim) * P.frac_shift_merge / 2);
+viShift = -nShift_max:nShift_max;
 
-% create template
+tnWav_spk = get_spkwav_(P, fUse_raw); % use raw waveform
+
+% create template (nTemplate per cluster)
+[ctrWav_b_clu, ctrWav_clu, cviSite_clu] = deal(cell(S_clu.nClu, 1));
+fh_car = @(tr)tr - repmat(mean(tr,2), [1,size(tr,2),1]);
+fh_wav = @(vi)single(tnWav_spk(:,:,vi));
+switch 1
+    case 3 % knn smoothed waveform returned
+        fh_trimmean = @(vi)tr2mr_trimmean_(fh_wav(vi));
+        fh_mr = @(vi)tr2mr_mean_knn_(tnWav_spk, miKnn, viSite_spk, vi); 
+    case 2 % spatial ref
+        fh_trimmean = @(vi)tr2mr_trimmean_(fh_car(fh_wav(vi)));
+        fh_mr = @(vi)reshape(fh_car(fh_wav(vi)), [], numel(vi));        
+    case 1 
+        fh_trimmean = @(vi)tr2mr_trimmean_(fh_wav(vi));
+        fh_mr = @(vi)single(reshape(tnWav_spk(:,:,vi), [], numel(vi)));
+end
+fh_med = @(vi)single(median(tnWav_spk(:,:,vi),3));
+fh_mean = @(vi)single(mean(tnWav_spk(:,:,vi),3));
+fh_pv1 = @(vi)tr_pv1_(single(tnWav_spk(:,:,vi)));
+fh_meanalign = @(vi)tr_mean_align_(single(tnWav_spk(:,:,vi)));
+fh_denoise = @(vi)tr2mr_denoise_(single(tnWav_spk(:,:,vi)));
 nSites = max(viSite_spk);
-nDrift = get_set_(P, 'nTime_drift', 64);
+switch 1
+    case 1, nDrift = get_set_(P, 'nTime_drift', 64);
+    case 2, nDrift = get_set_(P, 'nTime_clu', 1);
+end
 nSpk_min = get_set_(P, 'knn', 30);
-[viClu_spk, vrRho_spk] = deal(S_clu.viClu, S_clu.rho);
 fprintf('\tComputing template\n\t'); t_template = tic;
-switch 2
-    case 3, fh_normalize = @(x)zscore(x,1) / sqrt(size(x,1));
-    case 2, fh_normalize = @(x)x./sqrt(sum(x.^2));
-    case 1, fh_normalize = @(x)bsxfun(@rdivide, x, std(x,1)*sqrt(size(x,1)));
-end 
+
 
 for iClu = 1:S_clu.nClu
     viSpk1 = find(S_clu.viClu == iClu);
     viSpk1 = viSpk1(:);
     viiSpk1 = round(linspace(1, numel(viSpk1), nDrift+1));
     [vlKeep_clu1, viSite_clu1] = deal(true(nDrift, 1), zeros(nDrift,1));
-    mrFet_clu1 = zeros(size(trFet_spk,1), nDrift, 'double');
+    [trWav_clu1, trWav_b_clu1] = deal(zeros(size(tnWav_spk,1), size(tnWav_spk,2), nDrift, 'single'));
+    [miKnn1, vrRho1] = deal(miKnn(:,viSpk1), vrRho_spk(viSpk1)');
     for iDrift = 1:nDrift
         vii1 = viiSpk1(iDrift):viiSpk1(iDrift+1);
-        switch 3
-            case 4
-                viSpk11 = viSpk1(vii1);
-                vrRho11 = vrRho_spk(viSpk11);
-                viSpk11 = viSpk11(vrRho11 > median(vrRho11));
-                viSpk11 = miKnn(1:nAve_knn, viSpk11);
-                viSpk11 = viSpk11(:); % density based selection                
-                iSite11 = mode(viSite_spk(viSpk11));
-                viSpk11 = viSpk11(viSite_spk(viSpk11) == iSite11);   
-            case 3     
-                viSpk11 = viSpk1(vii1);
-                viSpk11 = miKnn(1:nAve_knn, viSpk11);
-                viSpk11 = viSpk11(:); % density based selection                
-                iSite11 = mode(viSite_spk(viSpk11));
-                viSpk11 = viSpk11(viSite_spk(viSpk11) == iSite11);   
-            case 2                
-                viSpk11 = miKnn(1:nAve_knn, viSpk1(vii1));
-                viSpk11 = viSpk11(:);
-                vrRho11 = vrRho_spk(viSpk11);
-                viSpk11 = viSpk11(vrRho11 > quantile(vrRho11, frac_thresh));
-                viSpk11 = viSpk11(viClu_spk(viSpk11) == iClu);
-                iSite11 = mode(viSite_spk(viSpk11));
-                viSpk11 = viSpk11(viSite_spk(viSpk11) == iSite11);
-            case 1 % find local peak
-                vrRho1 = S_clu.rho(viSpk1);
-                [~,ii11] = max(vrRho1(vii1)); % local peak
-                iSpk11 = viSpk1(vii1(ii11)); % center spike index
-                iSite11 = viSite_spk(iSpk11);
-                % find neighbors around the local peak
-                viSpk11 = miKnn(1:nAve_knn, miKnn(:,iSpk11));
-                viSpk11 = viSpk11(:);
-                viSpk11 = viSpk11(viSite_spk(viSpk11) == iSite11 & viClu_spk(viSpk11) == iClu);     
-        end
+        [vrRho11, miKnn11] = deal(vrRho1(vii1), miKnn1(:,vii1));        
+        viSpk11 = miKnn11(vrRho_spk(miKnn11) >= vrRho11);
+        iSite11 = mode(viSite_spk(viSpk11));
+        viSpk11 = viSpk11(viSite_spk(viSpk11) == iSite11);   
         viSite_clu1(iDrift) = iSite11;
         if numel(viSpk11) < nSpk_min
             vlKeep_clu1(iDrift) = false;
             continue;
-        end      
-        mrFet_clu1(:,iDrift) = squeeze_(mean(trFet_spk(:,1,viSpk11),3), 2);
+        end    
+        mr_b_ = [];
+        switch 2
+            case 2
+                viSpk11 = unique(viSpk11);
+                vl_ = diff(viTime_spk(viSpk11)) > 32*20; % remove bursting spikes
+                tnWav_spk11 = tnWav_spk(:,:,viSpk11);
+                mr_ = mean(single(tnWav_spk11(:,:,vl_)),3);
+                if sum(~vl_) >= MIN_COUNT
+                    mr_b_ = mean(single(tnWav_spk11(:,:,~vl_)),3); % bursting waveforms
+                else
+                    mr_b_ = [];
+                end
+               
+            case 1, mr_ = mean(single(tnWav_spk(:,:,viSpk11)),3);
+        end
+        trWav_clu1(:,:,iDrift) = mr_;
+        if ~isempty(mr_b_)
+            trWav_b_clu1(:,:,iDrift) = mr_b_;
+        end
     end
-    cmrFet_in_clu{iClu} = fh_normalize(mrFet_clu1(:,vlKeep_clu1));
-    cviSite_in_clu{iClu} = viSite_clu1(vlKeep_clu1);
+    ctrWav_clu{iClu} = trWav_clu1(:,:,vlKeep_clu1);
+    ctrWav_b_clu{iClu} = trWav_b_clu1(:,:,vlKeep_clu1);
+    cviSite_clu{iClu} = viSite_clu1(vlKeep_clu1);
     fprintf('.');
 end
 fprintf('\n\ttook %0.1fs\n', toc(t_template));
@@ -31002,27 +30790,42 @@ fprintf('\n\ttook %0.1fs\n', toc(t_template));
 % merge the templates: todo, faster code
 nClu = S_clu.nClu;
 fprintf('Merging templates\n\t'); t_merge=tic;
-mrDist_clu = nan(S_clu.nClu, 'double');
-parfor iClu1 = 1:S_clu.nClu
-    viSite_clu1 = cviSite_in_clu{iClu1};
+fh_norm = @(x)bsxfun(@rdivide, x, std(x,1)*sqrt(size(x,1)));
+switch 2
+    case 2, fh_norm_tr = @(x)fh_norm(reshape(x, [], size(x,3)));
+    case 1, fh_norm_tr = @(x)fh_norm(reshape(meanSubt_(x), [], size(x,3)));
+end
+mrDist_clu = nan(S_clu.nClu, 'single');
+for iClu1 = 1:S_clu.nClu
+    viSite_clu1 = cviSite_clu{iClu1};
     if isempty(viSite_clu1), continue; end
-    mr1_ = cmrFet_in_clu{iClu1};
+    mr1_ = fh_norm_tr(ctrWav_clu{iClu1});
+    mr1b_ = fh_norm_tr(ctrWav_b_clu{iClu1});
+    if 1 %shift template in time
+        mr1_ = fh_norm_tr(shift_trWav_(ctrWav_clu{iClu1}, viShift));
+        viSite_clu1 = repmat(viSite_clu1(:), numel(viShift), 1);
+        mr1b_ = fh_norm_tr(shift_trWav_(ctrWav_clu{iClu1}, viShift));
+    end
     vrDist_clu1 = zeros(S_clu.nClu, 1, 'single');
     for iClu2 = iClu1+1:S_clu.nClu
-        viSite2 = cviSite_in_clu{iClu2};
+        viSite2 = cviSite_clu{iClu2};
         viSite12 = intersect(viSite_clu1, viSite2);
         if isempty(viSite12), continue; end
-        mr2_ = cmrFet_in_clu{iClu2};      
+        mr2_ = fh_norm_tr(ctrWav_clu{iClu2});   
+        mr2b_ = fh_norm_tr(ctrWav_b_clu{iClu2});
         for iSite12_ = 1:numel(viSite12)
             iSite12 = viSite12(iSite12_);
             mrDist12 = mr2_(:, viSite2==iSite12)' * mr1_(:, viSite_clu1==iSite12);
-            vrDist_clu1(iClu2) = max(vrDist_clu1(iClu2), max(mrDist12(:)));
+            mrDist1b2 = mr2_(:, viSite2==iSite12)' * mr1b_(:, viSite_clu1==iSite12);
+            mrDist12b = mr2b_(:, viSite2==iSite12)' * mr1_(:, viSite_clu1==iSite12);
+            max_ = max([max(mrDist12(:)), max(mrDist12b(:)), max(mrDist1b2(:))]);
+            vrDist_clu1(iClu2) = max(vrDist_clu1(iClu2), max_);
         end
     end
     mrDist_clu(:, iClu1) = vrDist_clu1;
 %     fprintf('.');
 end %for
-mlWavCor_clu = mrDist_clu >= .997; %P.maxWavCor;
+mlWavCor_clu = mrDist_clu >= P.maxWavCor;
 viMap_clu = int32(ml2map_(mlWavCor_clu));
 vlPos = S_clu.viClu > 0;
 S_clu.viClu(vlPos) = viMap_clu(S_clu.viClu(vlPos)); %translate cluster number
@@ -31844,4 +31647,91 @@ end %func
 function vcDir = get_dir_(vcFile)
 vcDir = fileparts(vcFile);
 if isempty(vcDir), vcDir = pwd(); end
+end %func
+
+
+%--------------------------------------------------------------------------
+function trCC = correlogram_(S_clu, viTime_spk, P)
+burst_interval_ms = get_set_(P, 'burst_interval_ms', 20);
+binsize_ms = 1;
+
+binsize = round(binsize_ms * P.sRateHz/1000); % 1 ms bin
+nbins_shift = ceil(burst_interval_ms / binsize_ms);
+% cviTime_clu = cellfun_(@(x)viTime_spk(x), S_clu.cviSpk_clu);
+cviTime_clu = arrayfun(@(x)viTime_spk(S_clu.viClu==x), 1:S_clu.nClu, 'UniformOutput', 0);
+viShift = int32([3:nbins_shift]); % 20 msec window
+nShift = numel(viShift);
+nClu = numel(cviTime_clu);
+trCC = zeros(nShift, nClu, nClu, 'double');
+cviTime_b_clu = cellfun_(@(x)unique(int32(ceil(double(x(:))/binsize))), cviTime_clu);
+max_time = max(cellfun(@max, cviTime_b_clu));
+fprintf('Computing correlogram\n\t'); t1=tic;
+mr_ = zeros(nShift, nClu);
+mrDist_clu = squareform(pdist(P.mrSiteXY(S_clu.viSite_clu,:)));
+for iClu1 = 1:nClu
+    vlTime1 = false(max_time,1);
+    vlTime1(cviTime_b_clu{iClu1}) = true;
+    mr_ = zeros(nShift, nClu, 'double');
+    viClu2 = find(mrDist_clu(:,iClu1) <= P.maxDist_site_um);
+    viClu2 = setdiff(viClu2, iClu1);
+    n1 = numel(cviTime_b_clu{iClu1});
+    if isempty(viClu2), continue; end
+    viClu2 = viClu2(:)';
+    for iClu2 = viClu2
+        miTime2 = cviTime_b_clu{iClu2} + viShift;
+        miTime2 = min(max(miTime2,1),max_time);
+%         n2 = numel(cviTime_b_clu{iClu2});
+%         mr_(:,iClu2) = sum(vlTime1(miTime2)) / sqrt(numel(cviTime_b_clu{iClu2}) * n1); 
+        mr_(:,iClu2) = mean(vlTime1(miTime2));
+    end
+%     mr_ = conv2(mr_, [.25;.5;.25], 'same');
+    trCC(:,:,iClu1) = mr_;
+    fprintf('.');
+end
+fprintf('\n\ttook %0.1fs\n', toc(t1));
+end %func
+
+
+%--------------------------------------------------------------------------
+% merge based on cross correlogram
+function S_clu = post_merge_cc_(S_clu, P)
+[bursting_factor, z_threshold] = deal(2, 8);
+viTime_spk = get0_('viTime_spk');
+
+trCC = correlogram_(S_clu, viTime_spk, P);
+% nClu = size(trCC,3);
+% vn_clu = arrayfun(@(x)max(trCC(:,x,x)), 1:nClu);
+% mrCC = zeros(nClu);
+% trCC1 = permute(trCC, [1,3,2]);
+% nT = round((size(trCC1,1)-1)/2);
+% trCC1(nT-3:nT+3,:,:) = 0; % kill refractory period
+% for iClu = 1:nClu
+%     mr1 = trCC1(:,:,iClu);
+%     mrCC(:,iClu) = max(mr1) ./ vn_clu(iClu);
+%     mrCC(iClu,iClu) = 0;
+% end
+
+% compare left and right
+switch 1
+    case 3, mlWavCor_clu = mrCC >= .3;
+    case 2 % jeremy heuristics
+        n1 = floor((size(trCC,1)-1)/2)-1;
+        mrD1 = squeeze_(sum(trCC(1:n1,:,:)));
+        mrD2 = squeeze_(sum(trCC(end-n1+1:end,:,:)));
+        mrD3 = mrD1*bursting_factor;  % excpected count
+        mrD4 = mrD3; mrD4(mrD3<15)=15; % 
+        mlWavCor_clu = (mrD2-mrD3) ./ sqrt(mrD4) > z_threshold; % z_threshold
+    case 1
+        mrCC = squeeze_(sum(trCC));
+        mlWavCor_clu = mrCC >= get_set_(P, 'merge_thresh_cc', .15);
+end %switch
+
+fprintf('post_merge_cc_\n'); t_merge = tic;
+nClu_pre = S_clu.nClu;
+viMap_clu = int32(ml2map_(mlWavCor_clu));
+vlPos = S_clu.viClu > 0;
+S_clu.viClu(vlPos) = viMap_clu(S_clu.viClu(vlPos)); %translate cluster number
+S_clu = S_clu_refresh_(S_clu);
+nClu_post = S_clu.nClu;
+fprintf('\n\tMerged %d waveforms (%d->%d), took %0.1fs\n', nClu_pre-nClu_post, nClu_pre, nClu_post, toc(t_merge));
 end %func
