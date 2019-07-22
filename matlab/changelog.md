@@ -3,6 +3,13 @@ IronClust, written by J. James Jun, Flatiron Institute, Simons Foundation
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [4.9.3] - 2019-7-21
+### Added
+- Automatically remove refractory-period violating spikes
+  - Useful when spike waveforms have multiple peaks (complex waveforms)
+  - Introduced a new parameter (`spkRefrac_merge_ms=2`)
+
+
 ## [4.9.2] - 2019-7-9
 ### Changed
 - Default setting changed to `maxWavCor=.985` (previously .975)

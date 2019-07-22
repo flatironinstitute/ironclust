@@ -3300,7 +3300,9 @@ end %switch
 
 S_clu = post_merge_wav_(S_clu, 0, P);
 S_clu = S_clu_sort_(S_clu, 'viSite_clu');
+S_clu = S_clu_refrac_(S_clu, P); % refractory violation removal
 S_clu = S_clu_update_wav_(S_clu, P);
+S_clu.mrCC = correlogram_(S_clu, get0('viTime_spk'), P);
 
 % set diagonal element
 [S_clu, S0] = S_clu_commit_(S_clu, 'post_merge_');
@@ -10105,7 +10107,7 @@ else
     if isempty(viSpk1), return; end
 
     viTime1 = viTime_spk(viSpk1);
-    nRefrac = round(P.spkRefrac_ms * P.sRateHz / 1000);
+    nRefrac = round(get_set_(P, 'spkRefrac_merge_ms', 2) * P.sRateHz / 1000);
 
     % removal loop
     vlKeep1 = true(size(viTime1));
@@ -21547,8 +21549,8 @@ end %func
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_(vcFile_prm)
 if nargin<1, vcFile_prm = ''; end
-vcVer = 'v4.9.2';
-vcDate = '7/9/2019';
+vcVer = 'v4.9.3';
+vcDate = '7/21/2019';
 vcHash = file2hash_();
 
 if nargout==0
@@ -31651,43 +31653,32 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function trCC = correlogram_(S_clu, viTime_spk, P)
+function mrCC = correlogram_(S_clu, viTime_spk, P)
 burst_interval_ms = get_set_(P, 'burst_interval_ms', 20);
 binsize_ms = 1;
 
 binsize = round(binsize_ms * P.sRateHz/1000); % 1 ms bin
 nbins_shift = ceil(burst_interval_ms / binsize_ms);
-% cviTime_clu = cellfun_(@(x)viTime_spk(x), S_clu.cviSpk_clu);
 cviTime_clu = arrayfun(@(x)viTime_spk(S_clu.viClu==x), 1:S_clu.nClu, 'UniformOutput', 0);
-viShift = int32([3:nbins_shift]); % 20 msec window
-nShift = numel(viShift);
 nClu = numel(cviTime_clu);
-trCC = zeros(nShift, nClu, nClu, 'double');
 cviTime_b_clu = cellfun_(@(x)unique(int32(ceil(double(x(:))/binsize))), cviTime_clu);
 max_time = max(cellfun(@max, cviTime_b_clu));
-fprintf('Computing correlogram\n\t'); t1=tic;
-mr_ = zeros(nShift, nClu);
+fprintf('Computing correlogram...'); t1=tic;
+mnCC = nan(nClu);
 mrDist_clu = squareform(pdist(P.mrSiteXY(S_clu.viSite_clu,:)));
+%vl_conv = true(nbins_shift*2+1,1);
+vl_conv = [true(nbins_shift+1,1); false(nbins_shift,1)];
 for iClu1 = 1:nClu
     vlTime1 = false(max_time,1);
     vlTime1(cviTime_b_clu{iClu1}) = true;
-    mr_ = zeros(nShift, nClu, 'double');
+    vlTime1 = conv(vlTime1, vl_conv, 'same');
     viClu2 = find(mrDist_clu(:,iClu1) <= P.maxDist_site_um);
-    viClu2 = setdiff(viClu2, iClu1);
-    n1 = numel(cviTime_b_clu{iClu1});
     if isempty(viClu2), continue; end
-    viClu2 = viClu2(:)';
-    for iClu2 = viClu2
-        miTime2 = cviTime_b_clu{iClu2} + viShift;
-        miTime2 = min(max(miTime2,1),max_time);
-%         n2 = numel(cviTime_b_clu{iClu2});
-%         mr_(:,iClu2) = sum(vlTime1(miTime2)) / sqrt(numel(cviTime_b_clu{iClu2}) * n1); 
-        mr_(:,iClu2) = mean(vlTime1(miTime2));
-    end
-%     mr_ = conv2(mr_, [.25;.5;.25], 'same');
-    trCC(:,:,iClu1) = mr_;
-    fprintf('.');
+    mnCC(viClu2,iClu1) = cellfun(@(x)sum(vlTime1(x)), cviTime_b_clu(viClu2));
 end
+vnCC = mnCC(sub2ind(size(mnCC), 1:nClu, 1:nClu));
+mrCC = mnCC ./ vnCC;
+mrCC(sub2ind(size(mrCC), 1:nClu, 1:nClu)) = nan; % kill diagonal elements
 fprintf('\n\ttook %0.1fs\n', toc(t1));
 end %func
 
@@ -31698,7 +31689,7 @@ function S_clu = post_merge_cc_(S_clu, P)
 [bursting_factor, z_threshold] = deal(2, 8);
 viTime_spk = get0_('viTime_spk');
 
-trCC = correlogram_(S_clu, viTime_spk, P);
+mrCC = correlogram_(S_clu, viTime_spk, P);
 % nClu = size(trCC,3);
 % vn_clu = arrayfun(@(x)max(trCC(:,x,x)), 1:nClu);
 % mrCC = zeros(nClu);
@@ -31713,7 +31704,6 @@ trCC = correlogram_(S_clu, viTime_spk, P);
 
 % compare left and right
 switch 1
-    case 3, mlWavCor_clu = mrCC >= .3;
     case 2 % jeremy heuristics
         n1 = floor((size(trCC,1)-1)/2)-1;
         mrD1 = squeeze_(sum(trCC(1:n1,:,:)));
@@ -31721,9 +31711,7 @@ switch 1
         mrD3 = mrD1*bursting_factor;  % excpected count
         mrD4 = mrD3; mrD4(mrD3<15)=15; % 
         mlWavCor_clu = (mrD2-mrD3) ./ sqrt(mrD4) > z_threshold; % z_threshold
-    case 1
-        mrCC = squeeze_(sum(trCC));
-        mlWavCor_clu = mrCC >= get_set_(P, 'merge_thresh_cc', .15);
+    case 1, mlWavCor_clu = mrCC >= get_set_(P, 'merge_thresh_cc', .8);
 end %switch
 
 fprintf('post_merge_cc_\n'); t_merge = tic;
