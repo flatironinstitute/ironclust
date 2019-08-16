@@ -1,60 +1,41 @@
-function irc2phy(vcFile_prm, savePath)
-%PHY Export JRCLUST data to .npy format for Phy
-if exist('writeNPY', 'file') ~= 2
-    warning('Please make sure you have npy-matlab installed (https://github.com/kwikteam/npy-matlab)');
-    return;
+function irc2phy(vcFile_prm, vcDir_out)
+% J. James Jun 2019 Aug 16
+% Code cited from
+%   https://github.com/JaneliaSciComp/JRCLUST/blob/9e77b8422c9a16dc65231c60977ba6af2b52fe91/%2Bjrclust/%2Bexport/phy.m
+% phy data format:
+%   https://phy.readthedocs.io/en/latest/visualization/
+
+% Input
+% ----
+% EXPORT_MODE: 1 for loading all recordings to memory, 2 for paged read
+
+if nargin<2, vcDir_out=''; end
+if isempty(vcDir_out)
+    vcDir_out = fullfile(fileparts(vcFile_prm), 'phy'); 
+end
+mkdir_(vcDir_out);
+
+[S0, P] = irc('call', 'load_cached_', {vcFile_prm});
+
+[vnAmp_spk, viTime_spk, viSite_spk, S_clu] = deal(S0.vrAmp_spk, S0.viTime_spk, S0.viSite_spk, get_(S0, 'S_clu'));
+if ~isempty(S_clu)
+    viClu_spk = S_clu.viClu;
+    viClu_spk(viClu_spk<0) = 0;
 end
 
-res = load(hCfg.resFile);
+writeNPY_ = @(x,y)writeNPY(x, fullfile(vcDir_out, y));
 
-if ~isfield(res, 'spikeTimes')
-    return;
+writeNPY_(uint64(vnAmp_spk), 'amplitudes.npy');
+writeNPY_(uint64(viTime_spk), 'spike_times.npy');
+writeNPY_(int32(viSite_spk) - 1, 'spike_sites.npy');
+writeNPY_(int32(P.viSite2Chan) - 1, 'channel_map.npy');
+writeNPY_(P.mrSiteXY, 'channel_positions.npy'); % dimension?
+if ~isempty(S_clu)
+    writeNPY_(uint32(viClu_spk) - 1, 'spike_clusters.npy'); % -1 for zero indexing
 end
 
-% spikeAmps/amplitudes
-ampFile = fullfile(hCfg.outputDir, 'amplitudes.npy');
-writeNPY(uint64(res.spikeAmps), ampFile);
-hCfg.updateLog('phy', sprintf('Saved spikeAmps to %s', ampFile), 0, 0);
-
-% spikeTimes/spike_times
-timeFile = fullfile(hCfg.outputDir, 'spike_times.npy');
-writeNPY(uint64(res.spikeTimes), timeFile);
-hCfg.updateLog('phy', sprintf('Saved spikeTimes to %s', timeFile), 0, 0);
-
-% spikeSites/spike_sites (0 offset)
-siteFile = fullfile(hCfg.outputDir, 'spike_sites.npy');
-writeNPY(int32(res.spikeSites) - 1, siteFile); % -1 for zero indexing
-hCfg.updateLog('phy', sprintf('Saved spikeSites to %s', siteFile), 0, 0);
-
-% siteMap/channel_map (0 offset)
-mapFile = fullfile(hCfg.outputDir, 'channel_map.npy');
-writeNPY(int32(hCfg.siteMap) - 1, mapFile); % -1 for zero indexing
-hCfg.updateLog('phy', sprintf('Saved siteMap to %s', mapFile), 0, 0);
-
-% siteLoc/channel_positions
-locFile = fullfile(hCfg.outputDir, 'channel_positions.npy');
-writeNPY(hCfg.siteLoc, locFile);
-hCfg.updateLog('phy', sprintf('Saved siteLoc to %s', locFile), 0, 0);
-
-% spikeClusters/spike_clusters
-if isfield(res, 'hClust') && ~isempty(res.hClust.spikeClusters)
-    spikeClusters = res.hClust.spikeClusters;
-elseif isfield(res, 'spikeClusters')
-    spikeClusters = res.spikeClusters;
-else
-    spikeClusters = [];
-end
-spikeClusters(spikeClusters < 0) = 0;
-
-clusterFile = fullfile(hCfg.outputDir, 'spike_clusters.npy');
-writeNPY(uint32(spikeClusters) - 1, clusterFile); % -1 for zero indexing
-hCfg.updateLog('phy', sprintf('Saved spikeClusters to %s', clusterFile), 0, 0);
-
-% write out PC features
-if ismember(hCfg.clusterFeature, {'pca', 'gpca'})
-    fid = fopen(hCfg.featuresFile, 'r');
-    spikeFeatures = reshape(fread(fid, inf, '*single'), res.featuresShape);
-    fclose(fid);
+% read feature file and write to it
+writeNPY_(pcFeatures, 'pc_features.npy');
 
     [nSites, nSpikes] = deal(res.featuresShape(1), res.featuresShape(3));
 
@@ -77,7 +58,6 @@ if ismember(hCfg.clusterFeature, {'pca', 'gpca'})
     indFile = fullfile(hCfg.outputDir, 'pc_feature_ind.npy');
     writeNPY(uint32(hCfg.siteNeighbors(1:nSites, res.spikeSites)') - 1, indFile); % -1 for zero indexing
     hCfg.updateLog('phy', sprintf('Saved spikeFeature indices to %s', indFile), 0, 0);
-end
 
 % param file
 if exist(fullfile(hCfg.outputDir, 'params.py'), 'file') ~= 2
@@ -118,5 +98,3 @@ function dtype = dtype2NPY(dtype)
     end
 end
 
-%--------------------------------------------------------------------------
-function writeNPY_

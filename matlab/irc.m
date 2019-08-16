@@ -77,7 +77,7 @@ switch lower(vcCmd)
     case 'convert-mda-gnode', convert_mda('gnode', vcArg1, vcArg2);
     case 'convert-mda-waveclus', convert_mda('waveclus', vcArg1, vcArg2);
     case 'convert-mda-crcns', convert_mda_crcns_(vcArg1, vcArg2);
-    case 'convert-mda-english', convert_mda_english_(vcArg1, vcArg2);        
+    case {'convert-mda-english', 'juxta-gui', 'juxtagui'}, convert_mda_english_(vcArg1, vcArg2);        
     case 'convert-mda-buzsaki-intra', convert_mda_buzsaki_intra_(vcArg1, vcArg2);
     case 'convert-mda-juxta', convert_mda_juxta_(vcArg1, vcArg2); 
         
@@ -158,7 +158,7 @@ switch lower(vcCmd)
     case {'make-trial', 'maketrial', 'load-trial', 'loadtrial'}, make_trial_(vcFile_prm, 0);
     case {'loadtrial-imec', 'load-trial-imec', 'make-trial-imec', 'maketrial-imec'}, make_trial_(vcFile_prm, 1);
     case 'edit', edit_(vcFile_prm); 
-        
+    
     case 'batch', batch_(vcArg1, vcArg2); 
 %     case 'batch-makeprm' batch_makeprm_(vcArg1, vcArg2);
     case {'batch-verify', 'batch-validate'}, batch_verify_(vcArg1, vcArg2); 
@@ -174,8 +174,10 @@ switch lower(vcCmd)
     case {'kilosort', 'ksort'}, kilosort_(vcFile_prm); import_ksort_(vcFile_prm, 0); 
     case 'export-imec-sync', export_imec_sync_(vcFile_prm);
     case 'export-prm', export_prm_(vcFile_prm, vcArg2);
-%     case {'export-phy', 'phy'}, irc2phy(vcFile_prm, vcArg2);
+    case {'export-phy', 'phy'}, irc2phy(vcFile_prm, vcArg2);
     case {'export-klusters', 'klusters', 'neurosuite'}, irc2klusters(vcFile_prm, vcArg2);
+    case 'save-wav', save_wav(vcFile_prm); return;
+                
     case 'dir'
         if any(vcFile_prm=='*')
             dir_files_(vcFile_prm, vcArg2, vcArg3);
@@ -1301,6 +1303,8 @@ if nargin < 2, vcMode = 'r'; end
 try
     if matchFileExt_(vcFile, {'.ns5', '.ns2'})
         [fid, nBytes, header_offset] = fopen_nsx_(vcFile);
+    elseif matchFileExt_(vcFile, '.mda')
+        [fid, nBytes, header_offset] = fopen_mda_(vcFile, vcMode);
     else
         fid = fopen(vcFile, vcMode);
         nBytes = getBytes_(vcFile);   
@@ -1339,17 +1343,6 @@ if isempty(max_memory)
 else
     nBytes = max_memory;
 end
-% 
-% if fGpu
-%     try
-%         S = gpuDevice(); % does not reset GPU
-%         nBytes = floor(S(1).AvailableMemory());
-%         nBytes = floor(nBytes / get_set_(P, 'nLoads_gpu', 16));
-%     catch
-%         fGpu = 0;
-%     end
-% end
-% if ~fGpu
 end %func
 
 
@@ -1634,7 +1627,7 @@ if isempty(get_(P, 'nTime_clu'))
     try
         batch_sec_drift = get_set_(P, 'batch_sec_drift', 300);
         P.nTime_clu = max(round(recording_duration_(P) / batch_sec_drift), 1);
-        P.nTime_clu = min(P.nTime_clu, get_set_(P, 'nBatch_max_drift', 8));
+        P.nTime_clu = min(P.nTime_clu, get_set_(P, 'nBatch_max_drift', 32));
         if fEditFile
             fprintf('\tnTime_clu = %d (batch_sec_drift = %0.1f s)\n', P.nTime_clu, batch_sec_drift);
         end
@@ -3184,25 +3177,6 @@ end %func
 
 
 %--------------------------------------------------------------------------
-% 17/11/20 JJJ: created
-% function vr1 = fft_align_mean_(mr)
-% % take the median phase
-% if ndims(mr)==3
-%     mr1 = zeros(size(mr,1), size(mr,2), 'like', mr);
-%     for i1=1:size(mr,2)
-%         mr1(:,i1) = fft_align_mean_(squeeze(mr(:,i1,:)));
-%     end
-%     vr1 = mr1;
-%     return;
-% end
-% mrF = fft(mr);
-% vrAbs1 = mean(abs(mrF),2);
-% vrAng1 = median(unwrap(angle(mrF)),2);
-% vr1 = real(ifft(complex(vrAbs1.*cos(vrAng1), vrAbs1.*sin(vrAng1))));
-% end %func
-
-
-%--------------------------------------------------------------------------
 function [via1, via2, via3, via4, vib1, vib2, vib3, vib4] = sgfilt4_(n1, fGpu)
 persistent n1_prev_ via1_ via2_ via3_ via4_ vib1_ vib2_ vib3_ vib4_
 if nargin<2, fGpu=0; end
@@ -3278,6 +3252,7 @@ S_clu = S_clu_refresh_(S_clu);
 S_clu.viClu_premerge = S_clu.viClu;
 
 switch get_set_(P, 'post_merge_mode', 1) %1 previously 1
+    case 15, S_clu = post_merge_similarity_cc_(S_clu, P);
     case 14, S_clu = post_merge_cc_(templateMatch_post_(S_clu, P), P);
     case 13, S_clu = templateMatch_post_burst_(S_clu, P);
     case 12, S_clu = post_merge_knnwav(S_clu, get0_('viSite_spk'), P);
@@ -4243,7 +4218,41 @@ end %func
 
 
 %--------------------------------------------------------------------------
+% 190816 JJJ: Faster implementation
 function [viMapClu_new, viUniq_, viMapClu] = ml2map_(ml)
+nRepeat = 1;
+
+nCl = size(ml,1);
+mlConn = set_diag_(ml | ml', true(nCl,1)); %format ml;
+for iRepeat = 1:nRepeat 
+    mlConn_prev = mlConn;
+    viClu = find(sum(mlConn) > 1);
+    for iCl = viClu
+        vi1_ = find(mlConn(:,iCl));
+        mlConn(vi1_,vi1_) = true;
+    end    
+    if all(mlConn_prev(:) == mlConn(:))
+        fprintf('\ndone\n'); 
+        break; 
+    end
+    fprintf('.');
+end
+
+viMapClu = 1:nCl;
+for iCl = 1:nCl
+    iCl1 = min(find(mlConn(:,iCl)));
+    if ~isempty(iCl1), viMapClu(iCl) = iCl1; end
+end
+
+% Compact the map so the index doesn't have a gap
+viUniq_ = unique(viMapClu);
+viMap_(viUniq_) = 1:numel(viUniq_);
+viMapClu_new = viMap_(viMapClu);
+end %func
+
+
+%--------------------------------------------------------------------------
+function [viMapClu_new, viUniq_, viMapClu] = ml2map_1_(ml)
 % ml: connectivity matrix to merge
 % viMapClu: old to new index
 nRepeat = 32;
@@ -4943,11 +4952,23 @@ end %func
 
 
 %--------------------------------------------------------------------------
+% 2019/8/15 JJJ: can handle arrays or cells file handle
 function fid = fclose_(fid, fVerbose)
 % Sets fid = [] if closed properly
 if nargin<2, fVerbose = 0; end
 if isempty(fid), return; end
 if ischar(fid), return; end
+if numel(fid)>1
+    for iFile=1:numel(fid)
+        if iscell(fid)
+            fclose_(fid{iFile}, fVerbose);
+        else
+            fclose_(fid(iFile), fVerbose);
+        end
+    end
+    return;
+end
+
 try 
     fclose(fid); 
     fid = [];
@@ -5027,60 +5048,6 @@ else
     vnWav2_mean = [];
 end
 end %func
-
-
-% %--------------------------------------------------------------------------
-% function mnWav1 = fftdiff_(mnWav, P)
-%     
-% fGpu = isGpu_(mnWav);
-% nLoads_gpu = get_set_(P, 'nLoads_gpu', 8);  % GPU load limit    
-% 
-% % [fGpu, nLoads_gpu] = deal(0, 1); %debug
-% 
-% nSamples = size(mnWav,1);
-% [nLoad1, nSamples_load1, nSamples_last1] = partition_load_(nSamples, round(nSamples/nLoads_gpu));
-% mnWav1 = zeros(size(mnWav), 'like', mnWav);    
-% freqLim_ = P.freqLim / (P.sRateHz / 2);
-% for iLoad = 1:nLoad1
-%     iOffset = (iLoad-1) * nSamples_load1;
-%     if iLoad<nLoad1
-%         vi1 = (1:nSamples_load1) + iOffset;
-%     else
-%         vi1 = (1:nSamples_last1) + iOffset;
-%     end
-%     mnWav1_ = mnWav(vi1,:);
-%     if fGpu % use GPU
-%         try 
-%             mnWav1(vi1,:) = fftdiff__(mnWav1_, freqLim_);
-%         catch
-%             fGpu = 0;
-%         end
-%     end
-%     if ~fGpu % use CPU 
-%         mnWav1(vi1,:) = fftdiff__(gather_(mnWav1_), freqLim_);
-%     end
-% end %for
-% end %func
-% 
-% 
-% %--------------------------------------------------------------------------
-% function mnWav1 = fftdiff__(mnWav, freqLim_)
-% % apply fft to diffrentiate
-% % mnWav = gather_(mnWav);
-% 
-% n = size(mnWav,1);
-% % n1 = round(n/2*freqLim_(1));
-% % n2 = round(n/2*diff(freqLim_));
-% 
-% n1 = round(n/2 * freqLim_(2));
-% npow2 = 2^nextpow2(n);
-% % w = single([linspace(0, 1, n2), linspace(1, 0, n2)])';
-% % w = [zeros(n1, 1, 'single'); w; zeros(npow2-2*n1-4*n2, 1, 'single'); -w; zeros(n1, 1, 'single')];
-% % w = single(pi*1i) * w;
-% w = single(pi*1i) * single([linspace(0, 1, n1), linspace(1, -1, npow2-2*n1), linspace(-1, 0, n1)]');
-% mnWav1 = real(ifft(bsxfun(@times, fft(single(mnWav), npow2), w), 'symmetric'));
-% mnWav1 = cast(mnWav1(1:n,:), class_(mnWav));
-% end %func
 
 
 %--------------------------------------------------------------------------
@@ -19464,13 +19431,19 @@ end %func
 % 8/2/17 JJJ: Documentation and test
 function n = bytesPerSample_(vcDataType)
 % Return number of bytes per data type
+% syntax
+% -----
+% n = bytesPerSample_(vcDataType)   % pass string
+% n = bytesPerSample_(variable) % pass variable
 
+if ~ischar(vcDataType), vcDataType = class_(vcDataType); end
+    
 switch lower(vcDataType)
-    case {'char', 'byte', 'int8', 'uint8'}
+    case {'char', 'byte', 'int8', 'uint8', 'uchar'}
         n = 1;    
     case {'int16', 'uint16'}
         n = 2;
-    case {'single', 'float', 'int32', 'uint32'}
+    case {'single', 'float', 'int32', 'uint32', 'float32'}
         n = 4;
     case {'double', 'int64', 'uint64'}
         n = 8;
@@ -21549,8 +21522,8 @@ end %func
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_(vcFile_prm)
 if nargin<1, vcFile_prm = ''; end
-vcVer = 'v4.9.3';
-vcDate = '7/21/2019';
+vcVer = 'v4.9.4';
+vcDate = '8/16/2019';
 vcHash = file2hash_();
 
 if nargout==0
@@ -21962,10 +21935,10 @@ end %func
 % 10/11/17 JJJ: created 
 function fSuccess = fwrite_(fid, vr)
 try
-    fwrite(fid, vr, class(vr));
-    fSucces = 1;
+    fwrite(fid, vr, class_(vr));
+    fSuccess = 1;
 catch
-    fSucces = 0;
+    fSuccess = 0;
 end
 end %func
 
@@ -23047,6 +23020,48 @@ P.header_offset = 0;
 traces_(P, 0, [], 1); % don't show spikes, don't set P to S0
 end %func
 
+
+%--------------------------------------------------------------------------
+function [fid, nBytes, header_offset] = fopen_mda_(vcFile, vcMode)
+fid = fopen(vcFile, vcMode);
+
+% read the first header sample: data type
+code=fread(fid,1,'int32');
+
+% read the second header sample: number of dimensions
+if (code>0) 
+    num_dims=code;
+    code=-1;
+else
+    fread(fid,1,'int32');
+    num_dims=fread(fid,1,'int32');    
+end
+
+switch code
+    case -1, dtype = 'single';
+    case -2, dtype = 'uchar';
+    case -3, dtype = 'single';
+    case -4, dtype = 'int16';
+    case -5, dtype = 'int32';
+    case -6, dtype = 'uint16';
+    case -7, dtype = 'double';
+    case -8, dtype = 'uint32';
+    otherwise, error('Unsupported data type code: %d',code);
+end
+
+% read the length per dimension
+dim_type_str='int32';
+if (num_dims<0)
+    num_dims=-num_dims;
+    dim_type_str='int64';
+end;
+
+% read length per dimension
+S = fread(fid, num_dims, dim_type_str)';
+nSamples = prod(S);
+nBytes = nSamples * bytesPerSample_(dtype);
+header_offset = ftell(fid);
+end %func
 
 %--------------------------------------------------------------------------
 function [A, P] = readmda_(fname)
@@ -28973,6 +28988,10 @@ vcFile_dat1 = csFiles_dat{iFile};
 vcDir_out1 = fullfile(vcDir_out, sprintf('%s_%s', vcDir11, vcDir12));
 S_cfg = file2struct_('dan_english.cfg');
 switch lower(h.Label)
+    case 'edit settings'
+        edit_('dan_english.cfg');
+    case 'load'
+        
     case {'convert and next', 'convert', 'convert and summarize recording'}
         figure_wait_(1, hFig);
         try
@@ -30499,9 +30518,7 @@ end %func
 
 
 %--------------------------------------------------------------------------
-% 4/12/2019 JJJ: Template merging cluster
-% no membership reassignment, no core calculation
-function S_clu = templateMatch_post_(S_clu, P)
+function mrDist_clu = waveform_similarity_clu_(S_clu, P)
 
 KNN = 16;
 fUse_raw = 0;
@@ -30654,8 +30671,7 @@ fprintf('\n\ttook %0.1fs\n', toc(t_template));
 
 
 % merge the templates: todo, faster code
-nClu = S_clu.nClu;
-fprintf('Merging templates\n\t'); t_merge=tic;
+% nClu = S_clu.nClu;
 fh_norm = @(x)bsxfun(@rdivide, x, std(x,1)*sqrt(size(x,1)));
 switch 2
     case 2, fh_norm_tr = @(x)fh_norm(reshape(x, [], size(x,3)));
@@ -30682,14 +30698,47 @@ for iClu1 = 1:S_clu.nClu
     mrDist_clu(:, iClu1) = vrDist_clu1;
 %     fprintf('.');
 end %for
+end %func
+
+
+%--------------------------------------------------------------------------
+% 4/12/2019 JJJ: Template merging cluster
+% no membership reassignment, no core calculation
+function S_clu = templateMatch_post_(S_clu, P)
+
+fprintf('Merging templates\n\t'); t_merge=tic;
+
+mrDist_clu = waveform_similarity_clu_(S_clu, P); % calculate distance similarity
+nClu_pre = S_clu.nClu;
+
 mlWavCor_clu = mrDist_clu >= P.maxWavCor;
 viMap_clu = int32(ml2map_(mlWavCor_clu));
 vlPos = S_clu.viClu > 0;
 S_clu.viClu(vlPos) = viMap_clu(S_clu.viClu(vlPos)); %translate cluster number
 S_clu = S_clu_refresh_(S_clu);
 nClu_post = S_clu.nClu;
-nClu_pre = nClu;
-fprintf('\nMerged %d waveforms (%d->%d), took %0.1fs\n', nClu-nClu_post, nClu, nClu_post, toc(t_merge));
+fprintf('\nMerged %d waveforms (%d->%d), took %0.1fs\n', nClu_pre-nClu_post, nClu_pre, nClu_post, toc(t_merge));
+end %func
+
+
+%--------------------------------------------------------------------------
+% 4/12/2019 JJJ: Template merging cluster
+% no membership reassignment, no core calculation
+function S_clu = post_merge_similarity_cc_(S_clu, P)
+
+fprintf('merge_similarity_cc_post_\n\t'); t_merge=tic;
+mrSimilarity_clu = waveform_similarity_clu_(S_clu, P); % calculate distance similarity
+mrCC_clu = correlogram_(S_clu, get0_('viTime_spk'), P);
+mlWavCor_clu = mrSimilarity_clu >= get_set_(P, 'maxWavCor', .985) | mrCC_clu >= get_set_(P, 'merge_thresh_cc', .8);
+nClu_pre = S_clu.nClu;
+
+% merge
+viMap_clu = int32(ml2map_(mlWavCor_clu));
+vlPos = S_clu.viClu > 0;
+S_clu.viClu(vlPos) = viMap_clu(S_clu.viClu(vlPos)); %translate cluster number
+S_clu = S_clu_refresh_(S_clu);
+nClu_post = S_clu.nClu;
+fprintf('\nMerged %d waveforms (%d->%d), took %0.1fs\n', nClu_pre-nClu_post, nClu_pre, nClu_post, toc(t_merge));
 end %func
 
 
@@ -31723,3 +31772,13 @@ S_clu = S_clu_refresh_(S_clu);
 nClu_post = S_clu.nClu;
 fprintf('\n\tMerged %d waveforms (%d->%d), took %0.1fs\n', nClu_pre-nClu_post, nClu_pre, nClu_post, toc(t_merge));
 end %func
+
+
+%--------------------------------------------------------------------------
+% get bytes of the array
+function nBytes = get_bytes_(mr)
+dimm1 = size(mr);
+nBytes = prod(dimm1) * bytesPerSample_(class_(mr));
+end %func
+
+

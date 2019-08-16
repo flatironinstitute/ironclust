@@ -114,6 +114,7 @@ nThreads = 128;             % number of GPU threads for clustering
 batch_sec_drift = 300;        % batch duration in seconds. clustering time duration
 step_sec_drift = 20;          % compute anatomical similarity every n sec
 fSpatialMask_clu = 1;       % Apply spatial mask calculated from the distances between sites to the peak site (half-scale: P.mnPcPerChanaxDist_site_um). circa v3.1.10
+nBatch_max_drift = 32;      % max number of batch size
 
 % #Post-cluster auto-merging parameters (run "jrc auto" after change)
 min_count = 30;             % Minimum cluster size (min_count will be set to 2*#features if lower).
@@ -201,6 +202,9 @@ cvrDepth_drift = {};        % Time range (s) and depth to correct manually
 tbin_drift = [];            % drift correcting time step in sec. Set to empty to skip drift correction
 nT_drift = [];             % Number of time steps for drift correction. Set to empty to skip drift correction
 ybin_drift = 2;             % drift correcting depth step in um
+
+% Export options
+scale_export = 200;         % scale factor to export data as int16
 
 
 %--------------------------------------------------------------------------
@@ -302,4 +306,3 @@ vcFile_bonsai = '';         % bonsai 5-column output (x,y are 2 and 3)
 %nRepeat_merge = 10;         % # of repeats for average unit raw waveform based merging
 %nTemplates_clu = 100;       % Number of template waveforms per cluster to perform post-hoc merging and cluster assignment on the outer edge of clusters
 %thresh_core_knn = .8;      % Fraction of KNN from the same cluster to be considered as the core member of a cluster
-

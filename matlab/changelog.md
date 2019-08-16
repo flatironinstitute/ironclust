@@ -3,6 +3,15 @@ IronClust, written by J. James Jun, Flatiron Institute, Simons Foundation
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [4.9.4] - 2019-8-16
+### Fixed
+- `irc export-klusters` memory error is fixed when exporting a large recording
+
+### Changed
+- Faster automated merging based on knn
+  - New knn-graph merging algorithm is used
+ 
+
 ## [4.9.3] - 2019-7-21
 ### Added
 - Automatically remove refractory-period violating spikes
