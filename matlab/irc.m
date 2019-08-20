@@ -16108,6 +16108,21 @@ end %func
 
 
 %--------------------------------------------------------------------------
+function csFile_merge = get_raw_files_(P)
+if isempty(P.csFile_merge)
+    if ~exist_file_(P.vcFile), P.vcFile = subsDir_(P.vcFile, P.vcFile_prm); end
+    csFile_merge = {P.vcFile};    
+else
+    csFile_merge = filter_files_(P.csFile_merge);
+    if isempty(csFile_merge)
+        P.csFile_merge = subsDir_(P.csFile_merge, P.vcFile_prm);
+        csFile_merge = filter_files_(P.csFile_merge);
+    end
+end
+end %func
+
+
+%--------------------------------------------------------------------------
 function S0 = file2spk_(P, viTime_spk0, viSite_spk0)
 % function [tnWav_raw, tnWav_spk, trFet_spk, S0] = file2spk_(P, viTime_spk0, viSite_spk0)
 % file loading routine. keep spike waveform (tnWav_spk) in memory
@@ -16128,16 +16143,7 @@ viTime_spk0 = viTime_spk0(:);
 viSite_spk0 = viSite_spk0(:);
 clear_filters_();
 
-if isempty(P.csFile_merge)
-    if ~exist_file_(P.vcFile), P.vcFile = subsDir_(P.vcFile, P.vcFile_prm); end
-    csFile_merge = {P.vcFile};    
-else
-    csFile_merge = filter_files_(P.csFile_merge);
-    if isempty(csFile_merge)
-        P.csFile_merge = subsDir_(P.csFile_merge, P.vcFile_prm);
-        csFile_merge = filter_files_(P.csFile_merge);
-    end
-end
+csFile_merge = get_raw_files_(P);
 if ~isempty(get_(P, 'vcFile_thresh'))
     try
         S_thresh = load(P.vcFile_thresh);
@@ -21522,8 +21528,8 @@ end %func
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_(vcFile_prm)
 if nargin<1, vcFile_prm = ''; end
-vcVer = 'v4.9.4';
-vcDate = '8/16/2019';
+vcVer = 'v4.9.5';
+vcDate = '8/19/2019';
 vcHash = file2hash_();
 
 if nargout==0

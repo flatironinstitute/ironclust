@@ -3,6 +3,12 @@ IronClust, written by J. James Jun, Flatiron Institute, Simons Foundation
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [4.9.5] - 2019-8-19
+### Added
+- `phy` exporter is added
+  - run `irc export-phy myparam.prm`
+
+
 ## [4.9.4] - 2019-8-16
 ### Fixed
 - `irc export-klusters` memory error is fixed when exporting a large recording
