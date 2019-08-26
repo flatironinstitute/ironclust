@@ -23,11 +23,43 @@ fprintf('calc_dist_knn_clu (run_mode=%d)\n\t', run_mode);
 t1 = tic;
 
 switch run_mode % 11, 5, run_mode
+    case 17 % optimized version of 14
+        mnKnn_clu = zeros(nClu);
+        vnSpk_clu = zeros(nClu, 1);
+        for iClu1 = 1:nClu
+            vl_ = viClu_spk==iClu1;
+            vnSpk_clu(iClu1) = sum(vl_);
+            viSpk_clu1 = miKnn(:,vl_);
+            viSpk_clu1 = unique(viSpk_clu1(:));
+            iClu2 = mode(viClu_spk(viSpk_clu1));
+            if iClu2 > 0
+                mrDist_clu(iClu2, iClu1) = 1;
+            end
+        end %for
+        
+    case 16
+        nDrift = numel(S_drift.cviSpk_drift);
+        mnKnn_clu = zeros(nClu);
+        vnSpk_clu = zeros(nClu, 1);
+        for iClu1 = 1:nClu                    
+            vl_ = viClu_spk==iClu1;
+            vnSpk_clu(iClu1) = sum(vl_);
+            viSpk_clu1 = miKnn(:,vl_);
+            viSpk_clu1 = unique(viSpk_clu1(:));
+            viClu_clu1 = viClu_spk(viSpk_clu1);
+            for iDrift = 1:nDrift
+                viSpk1 = cell2mat(S_drift.cviSpk_drift(S_drift.mlDrift(:,iDrift)));
+                iClu2 = mode(viClu_clu1(ismember(viSpk_clu1, viSpk1)));
+                if iClu2>0
+                    mrDist_clu(iClu2, iClu1) = 1;
+                end
+            end
+        end
+        
     case 15        
         nDrift = numel(S_drift.cviSpk_drift);        
         for iDrift = 1:nDrift            
-            viDrift1 = find(S_drift.mlDrift(:,iDrift));
-            viSpk1 = cell2mat(S_drift.cviSpk_drift(viDrift1));    
+            viSpk1 = cell2mat(S_drift.cviSpk_drift(S_drift.mlDrift(:,iDrift)));    
             viClu1 = viClu_spk(viSpk1);
             [vnUniq_, viUniq_] = unique_count1_(viClu1);
             viClu_uniq1 = viUniq_(vnUniq_ >= MIN_COUNT & viUniq_ > 0);
@@ -35,17 +67,19 @@ switch run_mode % 11, 5, run_mode
             
             nClu1 = numel(viClu_uniq1);                        
             miKnn1 = miKnn(:,viSpk1);
-            mnKnn_clu = zeros(nClu);
             for iiClu1 = 1:nClu1
-                iClu11 = viClu_uniq1(iiClu1);
-                viSpk11 = miKnn1(:,viClu1==iClu11);  
-                viSpk11 = unique(viSpk11(:));
-                [vn_,vi_] = unique_count1_(viClu_spk(viSpk11));
+                iClu1 = viClu_uniq1(iiClu1);
+                viSpk11 = miKnn1(:,viClu1==iClu1);                
+%                 viSpk11 = miKnn(:,viSpk11); 
+
+%                 iClu2 = mode(viClu_spk(unique(viSpk11(:))));                
+                viSpk11 = sort(viSpk11(:));
+                iClu2 = mode(viClu_spk(viSpk11(diff(viSpk11) > 0)));
                 
-                mnKnn_clu(:, iiClu1) = histcounts(viClu_spk(viSpk_clu1), 1:nClu+1);
+                if iClu2>0
+                    mrDist_clu(iClu2, iClu1) = 1;
+                end
             end %for            
-            [~,viMax] = max(mnKnn_clu);
-            mrDist_clu(sub2ind([nClu,nClu], viMax, 1:nClu)) = 1;
             fprintf('.');
         end %for
         
@@ -76,12 +110,12 @@ switch run_mode % 11, 5, run_mode
             nClu1 = numel(viClu_uniq1);            
             miKnn1 = miKnn(:,viSpk1);
             for iiClu1 = 1:nClu1
-                iClu11 = viClu_uniq1(iiClu1);
-                viSpk11 = miKnn1(:,viClu1==iClu11);  
+                iClu1 = viClu_uniq1(iiClu1);
+                viSpk11 = miKnn1(:,viClu1==iClu1);  
                 viSpk11 = unique(viSpk11(:));
                 [vn_,vi_] = unique_count1_(viClu_spk(viSpk11));
-                vi = vi_(vn_ > vn_(vi_==iClu11) & vi_>0);    
-                mrDist_clu(vi,iClu11) = 1;
+                vi = vi_(vn_ > vn_(vi_==iClu1) & vi_>0);    
+                mrDist_clu(vi,iClu1) = 1;
             end %for
             fprintf('.');
         end %for
@@ -212,6 +246,13 @@ if nargout>=2
     fprintf('S_clu_peak_merge_: %d->%d cluster centers (knn_merge_thresh=%d)\n', ...
         nClu, numel(viUniq_), knn_merge_thresh);
 end
+end %func
+
+
+%--------------------------------------------------------------------------
+function viU = unique_(vi)
+viU = sort(vi);
+viU = viU(diff(viU) > 0);
 end %func
 
 

@@ -9539,12 +9539,25 @@ if get_set_(P, 'f_assign_site_clu', 0)
 end
 
 nClu_pre = numel(S_clu.icl);
-switch 8 % 4
+switch 9 % 8, 4
+    case 9
+        [S_clu.viClu, S_clu.icl] = assignCluster_(S_clu.viClu, S_clu.ordrho, S_clu.nneigh, S_clu.icl);
+        [S_clu.viClu, S_clu.icl] = dpclus_remove_count_(S_clu.viClu, S_clu.icl, P.min_count);
+        [~, S_clu, nClu_pre] = S_clu_peak_merge_(S_clu, P, 12); % merge peaks based on their waveforms       
+        %[~, S_clu, nClu_pre] = S_clu_peak_merge_(S_clu, P, 17); % merge peaks based on their waveforms
+        for iRepeat=1:3
+            [~, S_clu, nClu_post] = S_clu_peak_merge_(S_clu, P, 15); % merge peaks based on their waveforms
+            if nClu_pre == nClu_post, break; end
+            nClu_pre = nClu_post;
+        end
+        S_clu = S_clu_refresh_(S_clu); % reassign cluster number?
+        nClu_rm = nClu_pre - S_clu.nClu;      
+        
     case 8
         [S_clu.viClu, S_clu.icl] = assignCluster_(S_clu.viClu, S_clu.ordrho, S_clu.nneigh, S_clu.icl);
         [S_clu.viClu, S_clu.icl] = dpclus_remove_count_(S_clu.viClu, S_clu.icl, P.min_count);
         [~, S_clu] = S_clu_peak_merge_(S_clu, P, 12); % merge peaks based on their waveforms        
-        [~, S_clu] = S_clu_peak_merge_(S_clu, P, 14); % merge peaks based on their waveforms         
+        [~, S_clu] = S_clu_peak_merge_(S_clu, P, 17); % merge peaks based on their waveforms         
         S_clu = S_clu_refresh_(S_clu); % reassign cluster number?
         nClu_rm = nClu_pre - S_clu.nClu;      
         
@@ -9659,7 +9672,7 @@ end %func
 
 %--------------------------------------------------------------------------
 % 9/17/2018 JJJ: merge peaks based on their waveforms
-function [viMap, S_clu] = S_clu_peak_merge_(S_clu, P, run_mode) 
+function [viMap, S_clu, nClu_post] = S_clu_peak_merge_(S_clu, P, run_mode) 
 if nargin<3, run_mode = 11; end
 
 knn_merge_thresh = get_set_(P, 'knn_merge_thresh', 1);
@@ -9672,9 +9685,10 @@ nClu = numel(setdiff(unique(S_clu.viClu), 0));
 mnKnn_clu = calc_dist_knn_clu(S_clu, P, run_mode);
 
 [viMap, viUniq_] = ml2map_(mnKnn_clu >= knn_merge_thresh);
+nClu_post = numel(viUniq_);
 viMap = viMap(:);
 fprintf('S_clu_peak_merge_: %d->%d cluster centers (knn_merge_thresh=%d)\n', ...
-    nClu, numel(viUniq_), knn_merge_thresh);
+    nClu, nClu_post, knn_merge_thresh);
 
 if nargout >= 2
     S_clu.viClu = map_index_(viMap, S_clu.viClu, 0);
@@ -30553,24 +30567,6 @@ switch 1
     case 1
         tnWav_spk = get_spkwav_(P, fUse_raw); % use raw waveform   
         dimm_spk = size(tnWav_spk);
-%         fh_car = @(tr)tr - repmat(mean(tr,2), [1,size(tr,2),1]);
-%         fh_wav = @(vi)single(tnWav_spk(:,:,vi));
-%         switch 1
-%             case 3 % knn smoothed waveform returned
-%                 fh_trimmean = @(vi)tr2mr_trimmean_(fh_wav(vi));
-%                 fh_mr = @(vi)tr2mr_mean_knn_(tnWav_spk, miKnn, viSite_spk, vi); 
-%             case 2 % spatial ref
-%                 fh_trimmean = @(vi)tr2mr_trimmean_(fh_car(fh_wav(vi)));
-%                 fh_mr = @(vi)reshape(fh_car(fh_wav(vi)), [], numel(vi));        
-%             case 1 
-%                 fh_trimmean = @(vi)tr2mr_trimmean_(fh_wav(vi));
-%                 fh_mr = @(vi)single(reshape(tnWav_spk(:,:,vi), [], numel(vi)));
-%         end
-%         fh_med = @(vi)single(median(tnWav_spk(:,:,vi),3));
-%         fh_mean = @(vi)single(mean(tnWav_spk(:,:,vi),3));
-%         fh_pv1 = @(vi)tr_pv1_(single(tnWav_spk(:,:,vi)));
-%         fh_meanalign = @(vi)tr_mean_align_(single(tnWav_spk(:,:,vi)));
-%         fh_denoise = @(vi)tr2mr_denoise_(single(tnWav_spk(:,:,vi)));        
 end
 
 % create template (nTemplate per cluster)
