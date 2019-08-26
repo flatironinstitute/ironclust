@@ -9543,13 +9543,13 @@ switch get_set_(P, 'post_merge_mode0', 9) % 8, 4
     case 9
         [S_clu.viClu, S_clu.icl] = assignCluster_(S_clu.viClu, S_clu.ordrho, S_clu.nneigh, S_clu.icl);
         [S_clu.viClu, S_clu.icl] = dpclus_remove_count_(S_clu.viClu, S_clu.icl, P.min_count);
-        [~, S_clu, nClu_pre] = S_clu_peak_merge_(S_clu, P, 12); % merge peaks based on their waveforms       
-        %[~, S_clu, nClu_pre] = S_clu_peak_merge_(S_clu, P, 17); % merge peaks based on their waveforms
+        [~, S_clu, nClu_pre] = S_clu_peak_merge_(S_clu, P, 12); % merge peaks based on their waveforms               
         for iRepeat=1:3
             [~, S_clu, nClu_post] = S_clu_peak_merge_(S_clu, P, 15); % merge peaks based on their waveforms
             if nClu_pre == nClu_post, break; end
             nClu_pre = nClu_post;
         end
+        [~, S_clu, nClu_pre] = S_clu_peak_merge_(S_clu, P, 17); % merge peaks based on their waveforms
         S_clu = S_clu_refresh_(S_clu); % reassign cluster number?
         nClu_rm = nClu_pre - S_clu.nClu;      
         
