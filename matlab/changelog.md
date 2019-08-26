@@ -3,6 +3,16 @@ IronClust, written by J. James Jun, Flatiron Institute, Simons Foundation
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+
+## [4.9.7] - 2019-8-26
+### Added
+- Improved automated merging
+  - pre-merging operation uses KNNs for each cluster in each drift snapshot 
+    to determine optimal merging partners.
+  - For each drift snapshot in each cluster, the KNNs of the subset of spikes are found, 
+    and the mode of their cluster IDs are set as the merging pair.
+
+
 ## [4.9.6] - 2019-8-21
 ### Changed
 - Waveform-based merging uses averaged waveform obtained after SVD denoising

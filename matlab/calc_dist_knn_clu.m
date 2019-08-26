@@ -23,6 +23,39 @@ fprintf('calc_dist_knn_clu (run_mode=%d)\n\t', run_mode);
 t1 = tic;
 
 switch run_mode % 11, 5, run_mode
+    case 18
+        % use centroid. need xy center info
+        S0 = get(0, 'UserData');
+        mrPos_spk = S0.mrPos_spk;
+        nDrift = numel(S_drift.cviSpk_drift);    
+        trPos_clu_drift = nan(2, nClu, nDrift, 'single');
+        for iDrift = 1:nDrift            
+            %viSpk1 = cell2mat(S_drift.cviSpk_drift(S_drift.mlDrift(:,iDrift)));    
+            viSpk1 = S_drift.cviSpk_drift{iDrift};
+            viClu1 = viClu_spk(viSpk1);
+            [vnUniq_, viUniq_] = unique_count1_(viClu1);
+            viClu_uniq1 = viUniq_(vnUniq_ >= MIN_COUNT & viUniq_ > 0);
+            if isempty(viClu_uniq1), continue; end
+            
+            nClu1 = numel(viClu_uniq1);                        
+            mrPos1 = mrPos_spk(viSpk1,:);
+            for iiClu1 = 1:nClu1
+                iClu1 = viClu_uniq1(iiClu1);
+                mrPos11 = mrPos1(viClu1==iClu1,:);                    
+                trPos_clu_drift(:, iClu1, iDrift) = median(mrPos11);                
+            end %for            
+            fprintf('.');
+        end %for
+        trPos_clu_drift = permute(trPos_clu_drift, [3,2,1]);
+        [mrX_drift_clu, mrY_drift_clu] = deal(trPos_clu_drift(:,:,1), trPos_clu_drift(:,:,2));
+        viClu_use = find(mean(isnan(mrY_drift_clu)) < .1);
+        [vrX_drift, vrY_drift] = deal(nanmedian(mrX_drift_clu(:,viClu_use),2), nanmedian(mrY_drift_clu(:,viClu_use),2));
+        [mrX_clu, mrY_clu] = deal(mrX_drift_clu - vrX_drift, mrY_drift_clu - vrY_drift);
+        
+        viClu_plot = find(mean(isnan(mrY_drift_clu)) >= .1);
+%         figure; plot(mrY_drift_clu(:,viClu_plot));
+        
+        
     case 17 % optimized version of 14
         mnKnn_clu = zeros(nClu);
         vnSpk_clu = zeros(nClu, 1);
@@ -69,10 +102,13 @@ switch run_mode % 11, 5, run_mode
             miKnn1 = miKnn(:,viSpk1);
             for iiClu1 = 1:nClu1
                 iClu1 = viClu_uniq1(iiClu1);
-                viSpk11 = miKnn1(:,viClu1==iClu1);                
+%                 viiSpk1 = find(viClu1==iClu1);
+                viSpk11 = miKnn1(:,viClu1==iClu1);    
+%                 viSpk11 = unique_(viSpk11(:));
+%                 viSpk11 = setdiff(viSpk11, viSpk1(viiSpk1));
 %                 viSpk11 = miKnn(:,viSpk11); 
 
-%                 iClu2 = mode(viClu_spk(unique(viSpk11(:))));                
+%                 iClu2 = mode(viClu_spk(viSpk11));
                 viSpk11 = sort(viSpk11(:));
                 iClu2 = mode(viClu_spk(viSpk11(diff(viSpk11) > 0)));
                 
