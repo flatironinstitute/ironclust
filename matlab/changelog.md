@@ -3,6 +3,12 @@ IronClust, written by J. James Jun, Flatiron Institute, Simons Foundation
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [4.9.6] - 2019-8-21
+### Changed
+- Waveform-based merging uses averaged waveform obtained after SVD denoising
+  - nComponents=3
+
+
 ## [4.9.5] - 2019-8-19
 ### Added
 - `phy` exporter is added

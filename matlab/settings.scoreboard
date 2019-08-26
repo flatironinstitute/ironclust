@@ -17,8 +17,8 @@ pc_per_chan = {2};
 fSpatialMask_clu = {1};
 
 % #Auto-merging
-maxWavCor = {.975, .985};
-fGpu={1};
+maxWavCor = {.985};
+fGpu={0};
 fGpu_sort={1};
 
 % #Drift
@@ -31,4 +31,5 @@ delta_cut = {1};
 
 % #Sort mode
 sort_mode = {1};
-post_merge_mode = {1, 12};
+post_merge_mode = {1,16};
+post_merge_mode2 = {19};
