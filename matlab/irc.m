@@ -1159,8 +1159,10 @@ try
     end    
     
     % Upgrade P format
-    [nSites_spk, P.nSites_fet] = deal(size(tnWav_spk,2), size(trFet_spk,1)/P.nPcPerChan);
-    P.miSites = P.miSites(1:nSites_spk,:);
+    if ~isempty(tnWav_spk)
+        [nSites_spk, P.nSites_fet] = deal(size(tnWav_spk,2), size(trFet_spk,1)/P.nPcPerChan);
+        P.miSites = P.miSites(1:nSites_spk,:);        
+    end
     S0.P = P;
     set_userdata_(0, P);
 catch hErr
@@ -1932,9 +1934,13 @@ end %func
 function flag = is_detected_(P)
 % return true if already detected. .spkwav file must exist
 
-[vcFile_jrc_mat, vcFile_spkwav, vcFile3, vcFile4] = ...
+[vcFile_jrc_mat, vcFile_spkwav, vcFile_spkraw, vcFile_spkfet] = ...
     subsFileExt_(P.vcFile_prm, '_jrc.mat', '_spkwav.jrc', '_spkraw.jrc', '_spkfet.jrc');    
-flag = all(exist_file_({vcFile_jrc_mat, vcFile_spkwav, vcFile3, vcFile4}));
+if get_set_(P, 'fSave_spkwav', 1)
+    flag = all(exist_file_({vcFile_jrc_mat, vcFile_spkwav, vcFile_spkraw, vcFile_spkfet}));
+else
+    flag = all(exist_file_({vcFile_jrc_mat, vcFile_spkfet}));
+end
 
 % flag = all(exist_file_({vcFile_spkwav, vcFile_jrc_mat, vcFile_fet}));
 % if flag, flag = getBytes_(vcFile_spkwav) > 0; end
@@ -2334,6 +2340,7 @@ fprintf('\tClustering took %0.1f s\n', S_clu.t_runtime);
 
 fprintf('\nauto-merging...\n'); t_automerge=tic;
 if get_set_(P, 'fRepeat_clu', 0), S_clu = S_clu_reclust_(S_clu, S0, P); end
+
 S_clu = post_merge_(S_clu, P, 0);
 t_automerge = toc(t_automerge);
 fprintf('\n\tauto-merging took %0.1fs\n', t_automerge);
@@ -2600,7 +2607,7 @@ end %func
 
 %--------------------------------------------------------------------------
 % 2018/6/29 JJJ
-function cvi1 = vi2cell_(vi, nCell);
+function cvi1 = vi2cell_(vi, nCell)
 cvi1 = cell(nCell, 1);
 nPerCell = ceil(numel(vi) / nCell);
 viEdge = [1, (1:nCell-1)*nPerCell, numel(vi)];
@@ -3264,16 +3271,27 @@ if fPostCluster, S_clu = postCluster_(S_clu, P); end
 S_clu = S_clu_refresh_(S_clu);
 S_clu.viClu_premerge = S_clu.viClu;
 
-switch get_set_(P, 'post_merge_mode', 1) %1 previously 1
+% do not use waveform info
+if ~get_set_(P, 'fSave_spkwav', 1)
+    S_clu = S_clu_sort_(S_clu, 'viSite_clu');    
+    S_clu.P = P;
+    S_clu = S_clu_position_(S_clu);
+    S_clu.csNote_clu = cell(S_clu.nClu, 1);  %reset note
+    [S_clu, S0] = S_clu_commit_(S_clu, 'post_merge_');
+    return;
+end
+
+    
+switch get_set_(P, 'post_merge_mode', 1)
     case 16, S_clu = post_merge_local_(S_clu, P);
     case 15, S_clu = post_merge_similarity_cc_(S_clu, P);
     case 14, S_clu = post_merge_cc_(templateMatch_post_(S_clu, P), P);
     case 13, S_clu = templateMatch_post_burst_(S_clu, P);
     case 12, S_clu = post_merge_knnwav(S_clu, get0_('viSite_spk'), P);
-    case 11, S_clu = post_merge_knn(S_clu, P);
-    case 10, S_clu = post_merge_knn(templateMatch_post_(post_merge_knn(S_clu, P), P), P);
-    case 9, S_clu = post_merge_knn(templateMatch_post_(S_clu, P), P);
-    case 8, S_clu = templateMatch_post_(post_merge_knn(S_clu, P), P);
+    case 11, S_clu = post_merge_knn1(S_clu, P);
+    case 10, S_clu = post_merge_knn1(templateMatch_post_(post_merge_knn1(S_clu, P), P), P);
+    case 9, S_clu = post_merge_knn1(templateMatch_post_(S_clu, P), P);
+    case 8, S_clu = templateMatch_post_(post_merge_knn1(S_clu, P), P);
     case 7, S_clu = post_merge_drift_(post_merge_drift_(S_clu, P), P);
     case 6, S_clu = post_merge_drift_(S_clu, P);
     case 5, S_clu = drift_merge_post_(S_clu, P);
@@ -3608,6 +3626,7 @@ end % func
 function S_clu = post_merge_wav_(S_clu, fMerge, P)
 fRemove_duplicate = get_set_(P, 'fRemove_duplicate', 1);
 S_clu = rmfield_(S_clu, 'trWav_raw_clu', 'tmrWav_raw_clu', 'mrWavCor');
+if ~get_set_(P, 'fSave_spkwav', 1), return; end
 
 mrDist_site = pdist(P.mrSiteXY); 
 dist_merge = min(mrDist_site(mrDist_site>0));
@@ -4982,7 +5001,9 @@ if numel(fid)>1
 end
 
 try 
-    fclose(fid); 
+    if ~isempty(fid)
+        fclose(fid); 
+    end
     fid = [];
     if fVerbose, disp('File closed.'); end
 catch
@@ -9539,18 +9560,14 @@ if get_set_(P, 'f_assign_site_clu', 0)
 end
 
 nClu_pre = numel(S_clu.icl);
-switch get_set_(P, 'post_merge_mode0', 9) % 8, 4
+switch get_set_(P, 'post_merge_mode0', 10) % 8, 4
     case 10
         [S_clu.viClu, S_clu.icl] = assignCluster_(S_clu.viClu, S_clu.ordrho, S_clu.nneigh, S_clu.icl);
         [S_clu.viClu, S_clu.icl] = dpclus_remove_count_(S_clu.viClu, S_clu.icl, P.min_count);
-        [~, S_clu, nClu_pre] = S_clu_peak_merge_(S_clu, P, 12); % merge peaks based on their waveforms               
-        for iRepeat=1:3
-            [~, S_clu, nClu_post] = S_clu_peak_merge_(S_clu, P, 15); % merge peaks based on their waveforms
-            if nClu_pre == nClu_post, break; end
-            nClu_pre = nClu_post;
-        end
-        [~, S_clu, nClu_pre] = S_clu_peak_merge_(S_clu, P, 17); % merge peaks based on their waveforms
-        [~, S_clu, nClu_pre] = S_clu_peak_merge_(S_clu, P, 18); % merge peaks based on their waveforms
+        [~, S_clu] = S_clu_peak_merge_(S_clu, P, 12); % merge peaks based on their waveforms   
+        [~, S_clu] = S_clu_peak_merge_(S_clu, P, 17); % merge peaks based on their waveforms        
+        [~, S_clu] = S_clu_peak_merge_(S_clu, P, 15); % merge peaks based on their waveforms
+        [~, S_clu] = S_clu_peak_merge_(S_clu, P, 19); % merge peaks based on their waveforms
         S_clu = S_clu_refresh_(S_clu); % reassign cluster number?
         nClu_rm = nClu_pre - S_clu.nClu;
         
@@ -9833,6 +9850,7 @@ end
 
 % Compute spkwav
 tnWav_ = get_spkwav_(P, 0);
+if isempty(tnWav_), return; end
 for iClu=1:nClu       
     if vlClu_update(iClu)
         if ~isempty(tmrWav_spk_lo_clu)
@@ -16188,7 +16206,7 @@ nFiles = numel(csFile_merge);
 [nSamples_total, nLoads] = deal(0); % initialize the counter
 [vrFilt_spk, mrPv_global] = deal([]); % reset the template
 set0_(mrPv_global, vrFilt_spk); % reeset mrPv_global and force it to recompute
-write_spk_(P.vcFile_prm);
+write_spk_(P);
 for iFile=1:nFiles
     clear load_file_
     fprintf('File %d/%d: detecting spikes from %s\n', iFile, nFiles, csFile_merge{iFile});
@@ -17927,7 +17945,7 @@ viMatch_c = cellfun(@(vi)~isempty(vi), cellfun(@(cs)regexp(cs, '^c\w*_clu$'), cs
 viMatch_m = cellfun(@(vi)~isempty(vi), cellfun(@(cs)regexp(cs, '^m\w*_clu$'), csNames, 'UniformOutput', false));
 [viMatch_v, viMatch_t, viMatch_c, viMatch_m] = multifun_(@find, viMatch_v, viMatch_t, viMatch_c, viMatch_m);
 csNames_m = csNames(viMatch_m);
-csNames_m{end+1} = 'mrWavCor';
+if isfield(S_clu, 'mrWavCor'), csNames_m{end+1} = 'mrWavCor'; end
 nClu = S_clu.nClu;
 
 vlError_v = cellfun(@(vc)numel(S_clu.(vc)) ~= nClu, csNames(viMatch_v)); 
@@ -21555,8 +21573,8 @@ end %func
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_(vcFile_prm)
 if nargin<1, vcFile_prm = ''; end
-vcVer = 'v4.9.7';
-vcDate = '8/26/2019';
+vcVer = 'v4.9.8';
+vcDate = '8/27/2019';
 vcHash = file2hash_();
 
 if nargout==0
@@ -21822,6 +21840,9 @@ end %func
 function tnWav_raw = load_spkraw_(S0, P)
 if nargin<1, S0 = get(0, 'UserData'); end
 if nargin<2, P = S0.P; end
+
+if ~get_set_(P, 'fSave_spkwav', 1), tnWav_raw = []; return; end
+
 type_raw = get_set_(S0, 'type_raw', 'int16');
 try
     tnWav_raw = load_bin_(strrep(S0.P.vcFile_prm, '.prm', '_spkraw.jrc'), type_raw, S0.dimm_raw);
@@ -21838,6 +21859,9 @@ end %func
 function tnWav_spk = load_spkwav_(S0, P)
 if nargin<1, S0 = get(0, 'UserData'); end
 if nargin<2, P = S0.P; end
+
+if ~get_set_(P, 'fSave_spkwav', 1), tnWav_spk = []; return; end
+
 type_spk = get_set_(S0, 'type_spk', 'int16');
 tnWav_spk = load_bin_(strrep(S0.P.vcFile_prm, '.prm', '_spkwav.jrc'), type_spk, S0.dimm_spk);
 end %func
@@ -21939,6 +21963,7 @@ end %func
 function write_spk_(varargin)
 % [Usage]
 % write_spk_(vcFile_prm) %open file
+% write_spk_(P) %open file
 % write_spk_(tnWav_raw, tnWav_spk, trFet_spk)
 % write_spk_() % close and clear
 
@@ -21951,9 +21976,23 @@ switch nargin
         fid_fet = fclose_(fid_fet); 
     case 1
         vcFile_prm = varargin{1};
-        fid_raw = fopen(strrep(vcFile_prm, '.prm', '_spkraw.jrc'), 'W'); 
-        fid_spk = fopen(strrep(vcFile_prm, '.prm', '_spkwav.jrc'), 'W'); 
-        fid_fet = fopen(strrep(vcFile_prm, '.prm', '_spkfet.jrc'), 'W'); 
+        if ischar(vcFile_prm)
+            fid_raw = fopen(strrep(vcFile_prm, '.prm', '_spkraw.jrc'), 'W'); 
+            fid_spk = fopen(strrep(vcFile_prm, '.prm', '_spkwav.jrc'), 'W'); 
+            fid_fet = fopen(strrep(vcFile_prm, '.prm', '_spkfet.jrc'), 'W'); 
+        elseif isstruct(vcFile_prm)
+            P = vcFile_prm;
+            vcFile_prm = P.vcFile_prm;
+            if get_set_(P, 'fSave_spkwav', 1)
+                fid_raw = fopen(strrep(vcFile_prm, '.prm', '_spkraw.jrc'), 'W'); 
+                fid_spk = fopen(strrep(vcFile_prm, '.prm', '_spkwav.jrc'), 'W');                 
+            else
+                [fid_raw, fid_spk] = deal([]);
+            end
+            fid_fet = fopen(strrep(vcFile_prm, '.prm', '_spkfet.jrc'), 'W'); 
+        else
+            error('write_spk_: invalid format');
+        end
     case 3
         fwrite_(fid_raw, varargin{1});
         fwrite_(fid_spk, varargin{2});
@@ -21966,9 +22005,11 @@ end %func
 
 %--------------------------------------------------------------------------
 % 10/11/17 JJJ: created 
-function fSuccess = fwrite_(fid, vr)
+function fSuccess = fwrite_(fid, vr)    
 try
-    fwrite(fid, vr, class_(vr));
+    if ~isempty(fid)
+        fwrite(fid, vr, class_(vr));
+    end
     fSuccess = 1;
 catch
     fSuccess = 0;
@@ -21986,6 +22027,10 @@ if isempty(P), P = get0_('P'); end
 if nargin<2, fRaw = P.fWav_raw_show; end
 
 fRamCache = get_set_(P, 'fRamCache', 1);
+if ~get_set_(P, 'fSave_spkwav', 1)
+    [tnWav_spk, tnWav_raw, tnWav_] = deal([]);
+    return;
+end
 if fRaw
     if ~fRamCache, tnWav_spk = []; end % clear spk
     if isempty(tnWav_raw), tnWav_raw = load_spkraw_(); end
@@ -23731,7 +23776,7 @@ end
 % copy fields (don't copy empty fields)
 P = struct_copyas_(P, S_txt, ...
     {'detect_threshold', 'pc_per_chan', 'merge_thresh', 'scale_factor'}, ...
-    {'qqFactor', 'nPcPerChan', 'maxWavCor', 'uV_per_bit'}, 1);
+    {'qqFactor', 'nPcPerChan', 'maxWavCor', 'uV_per_bit', 'fSave_spkwav'}, 1);
 
 % String parameters
 P = struct_copyas_(P, S_txt, {'filter_type', 'feature_type'}, {'vcFilter', 'vcFet'});

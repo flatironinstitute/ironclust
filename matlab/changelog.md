@@ -3,6 +3,14 @@ IronClust, written by J. James Jun, Flatiron Institute, Simons Foundation
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [4.9.8] - 2019-8-27
+### Added
+- Memory usage is reduced by ~10x
+  - Set `fSave_spkwav` to skip waveform saving for GUI (turned on by default)
+  - Set `fSave_spkwav = true` if you want to do waveform similarity-based 
+    merging by setting `maxavCor` = (0..1)
+  - Turn it off in order to automatically merge using graph-connectivity only (kNN)
+
 
 ## [4.9.7] - 2019-8-26
 ### Added
