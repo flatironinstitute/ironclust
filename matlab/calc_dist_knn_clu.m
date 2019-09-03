@@ -84,7 +84,7 @@ switch run_mode % 11, 5, run_mode
 %         figure; plot(mrY_drift_clu(:,viClu_plot));
         
         
-    case 17 % optimized version of 14
+    case 17 % cluster expansion overlap (optimized version of 14)
         vnSpk_clu = zeros(nClu, 1);
         for iClu1 = 1:nClu
             vl_ = viClu_spk==iClu1;
@@ -115,7 +115,7 @@ switch run_mode % 11, 5, run_mode
             end
         end
         
-    case 15        
+    case 15 % drift cluster expansion overlap  
         nDrift = numel(S_drift.cviSpk_drift);        
         for iDrift = 1:nDrift            
             viSpk1 = cell2mat(S_drift.cviSpk_drift(S_drift.mlDrift(:,iDrift)));    

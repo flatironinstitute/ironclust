@@ -1950,23 +1950,13 @@ end %func
 %--------------------------------------------------------------------------
 function flag = is_sorted_(P)
 % return true if already detected. .spkwav file must exist
-flag = 0;
 
-try    
-    [vcFile_jrc, vcFile2, vcFile3, vcFile4] = ...
-        subsFileExt_(P.vcFile_prm, '_jrc.mat', '_spkwav.jrc', '_spkraw.jrc', '_spkfet.jrc');    
-    if ~all(exist_file_({vcFile_jrc, vcFile2, vcFile3, vcFile4})), return; end
-    
-    csNames = whos('-file', vcFile_jrc);
-    csNames = {csNames.name};
-    flag = ismember('S_clu', csNames);
-catch    
-    return;
+flag = is_detected_(P);
+
+if flag
+    csNames = whos('-file', subsFileExt_(P.vcFile_prm, '_jrc.mat'));
+    flag = ismember('S_clu', {csNames.name});    
 end
-
-% S0 = load0_();
-% S_clu = get_(S0, 'S_clu');
-% flag = ~isempty(S_clu);
 end %func
 
 
@@ -9560,21 +9550,30 @@ if get_set_(P, 'f_assign_site_clu', 0)
 end
 
 nClu_pre = numel(S_clu.icl);
-switch get_set_(P, 'post_merge_mode0', 10) % 8, 4
+switch get_set_(P, 'post_merge_mode0', 11) % 8, 4
+    case 11
+        [S_clu.viClu, S_clu.icl] = assignCluster_(S_clu.viClu, S_clu.ordrho, S_clu.nneigh, S_clu.icl);
+        [S_clu.viClu, S_clu.icl] = dpclus_remove_count_(S_clu.viClu, S_clu.icl, P.min_count);
+        [~, S_clu, nClu_pre] = S_clu_peak_merge_(S_clu, P, [12, 17, 15]);  % knn overlap merging
+        for iRepeat = 1:3
+            [~, S_clu, nClu_post] = S_clu_peak_merge_(S_clu, P, [19, 17]);  % cluster expansion overlap 
+            if nClu_pre == nClu_post, break; end
+            nClu_pre = nClu_post;
+        end
+        S_clu = S_clu_refresh_(S_clu); % reassign cluster number?
+        nClu_rm = nClu_pre - S_clu.nClu;
+        
     case 10
         [S_clu.viClu, S_clu.icl] = assignCluster_(S_clu.viClu, S_clu.ordrho, S_clu.nneigh, S_clu.icl);
         [S_clu.viClu, S_clu.icl] = dpclus_remove_count_(S_clu.viClu, S_clu.icl, P.min_count);
-        [~, S_clu] = S_clu_peak_merge_(S_clu, P, 12); % merge peaks based on their waveforms   
-        [~, S_clu] = S_clu_peak_merge_(S_clu, P, 17); % merge peaks based on their waveforms        
-        [~, S_clu] = S_clu_peak_merge_(S_clu, P, 15); % merge peaks based on their waveforms
-        [~, S_clu] = S_clu_peak_merge_(S_clu, P, 19); % merge peaks based on their waveforms
-        S_clu = S_clu_refresh_(S_clu); % reassign cluster number?
+        [~, S_clu] = S_clu_peak_merge_(S_clu, P, [12,17,15,19]);
+        S_clu = S_clu_refresh_(S_clu);
         nClu_rm = nClu_pre - S_clu.nClu;
         
     case 9
         [S_clu.viClu, S_clu.icl] = assignCluster_(S_clu.viClu, S_clu.ordrho, S_clu.nneigh, S_clu.icl);
         [S_clu.viClu, S_clu.icl] = dpclus_remove_count_(S_clu.viClu, S_clu.icl, P.min_count);
-        [~, S_clu, nClu_pre] = S_clu_peak_merge_(S_clu, P, 12); % merge peaks based on their waveforms               
+        [~, S_clu, nClu_pre] = S_clu_peak_merge_(S_clu, P, 12); 
         for iRepeat=1:1 % do not repeat, false positive increases
             [~, S_clu, nClu_post] = S_clu_peak_merge_(S_clu, P, 15); % merge peaks based on their waveforms
             if nClu_pre == nClu_post, break; end
@@ -9587,8 +9586,7 @@ switch get_set_(P, 'post_merge_mode0', 10) % 8, 4
     case 8
         [S_clu.viClu, S_clu.icl] = assignCluster_(S_clu.viClu, S_clu.ordrho, S_clu.nneigh, S_clu.icl);
         [S_clu.viClu, S_clu.icl] = dpclus_remove_count_(S_clu.viClu, S_clu.icl, P.min_count);
-        [~, S_clu] = S_clu_peak_merge_(S_clu, P, 12); % merge peaks based on their waveforms        
-        [~, S_clu] = S_clu_peak_merge_(S_clu, P, 17); % merge peaks based on their waveforms         
+        [~, S_clu] = S_clu_peak_merge_(S_clu, P, [12,17]); 
         S_clu = S_clu_refresh_(S_clu); % reassign cluster number?
         nClu_rm = nClu_pre - S_clu.nClu;      
         
@@ -9702,9 +9700,17 @@ end %func
 
 
 %--------------------------------------------------------------------------
+% 9/3/2019 JJJ: run_mode can be an array (sequential merge)
 % 9/17/2018 JJJ: merge peaks based on their waveforms
 function [viMap, S_clu, nClu_post] = S_clu_peak_merge_(S_clu, P, run_mode) 
 if nargin<3, run_mode = 11; end
+
+if numel(run_mode) > 1
+    for i_mode = 1:numel(run_mode)
+        [viMap, S_clu, nClu_post] = S_clu_peak_merge_(S_clu, P, run_mode(i_mode));
+    end %for
+    return;
+end
 
 knn_merge_thresh = get_set_(P, 'knn_merge_thresh', 1);
 % viMap = (1:numel(S_clu.icl))'; return;
