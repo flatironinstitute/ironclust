@@ -9550,7 +9550,21 @@ if get_set_(P, 'f_assign_site_clu', 0)
 end
 
 nClu_pre = numel(S_clu.icl);
-switch get_set_(P, 'post_merge_mode0', 12) % 8, 4
+switch get_set_(P, 'post_merge_mode0', 9) % 8, 4
+    case 14
+        [S_clu.viClu, S_clu.icl] = assignCluster_(S_clu.viClu, S_clu.ordrho, S_clu.nneigh, S_clu.icl);
+        [S_clu.viClu, S_clu.icl] = dpclus_remove_count_(S_clu.viClu, S_clu.icl, P.min_count);
+        [~, S_clu, nClu_pre] = S_clu_peak_merge_(S_clu, P, [12, 17, 15, 19]);  % knn overlap merging
+        S_clu = S_clu_refresh_(S_clu); % reassign cluster number?
+        nClu_rm = nClu_pre - S_clu.nClu;
+        
+    case 13
+        [S_clu.viClu, S_clu.icl] = assignCluster_(S_clu.viClu, S_clu.ordrho, S_clu.nneigh, S_clu.icl);
+        [S_clu.viClu, S_clu.icl] = dpclus_remove_count_(S_clu.viClu, S_clu.icl, P.min_count);
+        [~, S_clu, nClu_pre] = S_clu_peak_merge_(S_clu, P, [12, 19, 15, 17]);  % knn overlap merging
+        S_clu = S_clu_refresh_(S_clu); % reassign cluster number?
+        nClu_rm = nClu_pre - S_clu.nClu;
+        
     case 12
         [S_clu.viClu, S_clu.icl] = assignCluster_(S_clu.viClu, S_clu.ordrho, S_clu.nneigh, S_clu.icl);
         [S_clu.viClu, S_clu.icl] = dpclus_remove_count_(S_clu.viClu, S_clu.icl, P.min_count);
@@ -27568,6 +27582,7 @@ if nargin<1, vcDir_out = ''; end
 if ~assert_(exist_func_('mcc'), 'Matlab Compiler Toolbox is not installed.')
    return; 
 end
+cd(ircpath_());
 fprintf('Compiling run_irc.m\n'); t1=tic;
 vcEval = 'mcc -m -v -R ''-nodesktop, -nosplash -singleCompThread -nojvm'' -a *.ptx -a *.cu -a ./mdaio/* -a ./jsonlab-1.5/* -a ./npy-matlab/* -a default.* -a ./prb/* -a *_template.prm run_irc.m';
 if ~isempty(vcDir_out)
