@@ -9550,7 +9550,14 @@ if get_set_(P, 'f_assign_site_clu', 0)
 end
 
 nClu_pre = numel(S_clu.icl);
-switch get_set_(P, 'post_merge_mode0', 11) % 8, 4
+switch get_set_(P, 'post_merge_mode0', 12) % 8, 4
+    case 12
+        [S_clu.viClu, S_clu.icl] = assignCluster_(S_clu.viClu, S_clu.ordrho, S_clu.nneigh, S_clu.icl);
+        [S_clu.viClu, S_clu.icl] = dpclus_remove_count_(S_clu.viClu, S_clu.icl, P.min_count);
+        [~, S_clu, nClu_pre] = S_clu_peak_merge_(S_clu, P, [12, 15, 17, 19]);  % knn overlap merging
+        S_clu = S_clu_refresh_(S_clu); % reassign cluster number?
+        nClu_rm = nClu_pre - S_clu.nClu;
+        
     case 11
         [S_clu.viClu, S_clu.icl] = assignCluster_(S_clu.viClu, S_clu.ordrho, S_clu.nneigh, S_clu.icl);
         [S_clu.viClu, S_clu.icl] = dpclus_remove_count_(S_clu.viClu, S_clu.icl, P.min_count);
@@ -9573,13 +9580,7 @@ switch get_set_(P, 'post_merge_mode0', 11) % 8, 4
     case 9
         [S_clu.viClu, S_clu.icl] = assignCluster_(S_clu.viClu, S_clu.ordrho, S_clu.nneigh, S_clu.icl);
         [S_clu.viClu, S_clu.icl] = dpclus_remove_count_(S_clu.viClu, S_clu.icl, P.min_count);
-        [~, S_clu, nClu_pre] = S_clu_peak_merge_(S_clu, P, 12); 
-        for iRepeat=1:1 % do not repeat, false positive increases
-            [~, S_clu, nClu_post] = S_clu_peak_merge_(S_clu, P, 15); % merge peaks based on their waveforms
-            if nClu_pre == nClu_post, break; end
-            nClu_pre = nClu_post;
-        end
-        [~, S_clu, nClu_pre] = S_clu_peak_merge_(S_clu, P, 17); % merge peaks based on their waveforms
+        [~, S_clu] = S_clu_peak_merge_(S_clu, P, [12, 15, 17]); 
         S_clu = S_clu_refresh_(S_clu); % reassign cluster number?
         nClu_rm = nClu_pre - S_clu.nClu;      
         
