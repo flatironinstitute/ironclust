@@ -179,7 +179,7 @@ switch run_mode % 11, 5, run_mode
 %             fprintf('.');
         end %for
         
-    case 12
+    case 12 % KNN overlap
         for iClu1 = 1:nClu
             viKnn1 = miKnn_clu(:,iClu1);
             mrDist_clu(:,iClu1) = sum(ismember(miKnn_clu, viKnn1));
