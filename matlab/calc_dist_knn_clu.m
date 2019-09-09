@@ -188,8 +188,6 @@ switch run_mode % 11, 5, run_mode
         mrDist_clu = zeros(nClu);
         for iClu1 = 1:nClu
             viSpk1 = miKnn(:,viClu_spk==iClu1); viSpk1 = unique(viSpk1(:));
-%             viSpk1 = miKnn(:,viSpk1(:));  %viSpk1 = unique(viSpk1(:));
-%             viSpk1 = miKnn1(:,viSpk1);  viSpk1 = (viSpk1(:));
             [vn_,vi_] = unique_count1_(viClu_spk(viSpk1));
             vi = vi_(vn_ > vn_(vi_==iClu1) & vi_>0);    
             mrDist_clu(vi,iClu1) = 1;
