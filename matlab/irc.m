@@ -1,7 +1,6 @@
 %--------------------------------------------------------------------------
 % IronClust (irc)
 % James Jun, Flatiron Institute
-% 2019/06/05: after filter data is in float32 format
 
 function varargout = irc(varargin)
 % Memory-efficient version 
@@ -3260,18 +3259,19 @@ S_clu = struct_copy_(S_clu, 'rho', 'delta', 'ordrho', 'nneigh', 'P', ...
 if fPostCluster, S_clu = postCluster_(S_clu, P); end
 
 S_clu = S_clu_refresh_(S_clu);
-S_clu.viClu_premerge = S_clu.viClu;
 
+
+S_clu = S_clu_sort_(S_clu, 'viSite_clu');    
+S_clu.P = P;
+S_clu = S_clu_position_(S_clu);
+S_clu.viClu_premerge = S_clu.viClu;
+S_clu.csNote_clu = cell(S_clu.nClu, 1);  %reset note
+    
 % do not use waveform info
-if ~get_set_(P, 'fSave_spkwav', 1)
-    S_clu = S_clu_sort_(S_clu, 'viSite_clu');    
-    S_clu.P = P;
-    S_clu = S_clu_position_(S_clu);
-    S_clu.csNote_clu = cell(S_clu.nClu, 1);  %reset note
+if ~get_set_(P, 'fSave_spkwav', 1)    
     [S_clu, S0] = S_clu_commit_(S_clu, 'post_merge_');
     return;
 end
-
     
 switch get_set_(P, 'post_merge_mode', 1)
     case 16, S_clu = post_merge_local_(S_clu, P);
@@ -9551,7 +9551,7 @@ if get_set_(P, 'f_assign_site_clu', 0)
 end
 
 nClu_pre = numel(S_clu.icl);
-post_merge_mode0 = get_set_(P, 'post_merge_mode0', [15, 19, 17]); % [12 15 17], previously mode 9
+post_merge_mode0 = get_set_(P, 'post_merge_mode0', [12, 15, 17]);
 if numel(post_merge_mode0) > 1
     [S_clu.viClu, S_clu.icl] = assignCluster_(S_clu.viClu, S_clu.ordrho, S_clu.nneigh, S_clu.icl);
     [S_clu.viClu, S_clu.icl] = dpclus_remove_count_(S_clu.viClu, S_clu.icl, P.min_count);
@@ -10056,10 +10056,13 @@ if nargin==2
     nClu = max(S_clu.viClu);
     P.fShow_refrac = 1;
     nRemoved = 0;
+    nTotal = sum(S_clu.viClu>0);
     for iClu=1:nClu
         [S_clu, nRemoved1] = S_clu_refrac_(S_clu, P, iClu);
         nRemoved = nRemoved + nRemoved1;
     end
+    fprintf('Removed %d/%d (%0.1f%%) duplicate spikes\n', ...
+        nRemoved, nTotal, nRemoved/nTotal*100);
     return;
 else
 %     iClu1 = varargin{1};
@@ -10997,68 +11000,6 @@ if nargin >= 3
     vl = vl | vlDir; %matches if it's directory
 end
 end %func
-
-
-% %--------------------------------------------------------------------------
-% function P = file2struct_(vcFile_file2struct)
-% % Run a text file as .m script and result saved to a struct P
-% % _prm and _prb can now be called .prm and .prb files
-% 
-% try 
-%     P = file2struct__(vcFile_file2struct); % new version
-% catch
-%     P = file2struct_1_(vcFile_file2struct); % old version
-% end
-% % if isempty(P)
-% %     copyfile(vcFile_file2struct, 'temp_eval.m', 'f');
-% %     try
-% %         eval('temp_eval.m');
-% %     catch
-% %         disp(lasterr());
-% %     end
-% % end
-% end %func
-
-
-%--------------------------------------------------------------------------
-% function P = file2struct_1_(vcFile_file2struct)
-% if ~exist_file_(vcFile_file2struct)
-%     fprintf(2, '%s does not exist.\n', vcFile_file2struct);
-%     P = [];
-%     return;
-% end
-% 
-% % load text file
-% fid=fopen(vcFile_file2struct, 'r');
-% csCmd = textscan(fid, '%s', 'Delimiter', '\n');
-% fclose(fid);
-% csCmd = csCmd{1};
-% 
-% % parse command
-% for iCmd=1:numel(csCmd)
-%     try
-%         vcLine1 = strtrim(csCmd{iCmd});
-%         if isempty(vcLine1), continue; end
-%         if find(vcLine1=='%', 1, 'first')==1, continue; end
-%         iA = find(vcLine1=='=', 1, 'first');
-%         if isempty(iA), continue; end            
-%         iB = find(vcLine1=='(', 1, 'first');
-%         if ~isempty(iB) && iB<iA, iA=iB; end
-%         eval(vcLine1);
-%         vcVar1 = strtrim(vcLine1(1:iA-1));
-%         eval(sprintf('P.(vcVar1) = %s;', vcVar1));
-%     catch
-%         fprintf(2, lasterr);
-%     end
-% end %for
-% end %func
-
-
-%--------------------------------------------------------------------------
-% function P = appendStruct_(P, varargin)
-% % backward compatibility
-% P = struct_merge_(P, varargin{:});
-% end
 
 
 %--------------------------------------------------------------------------
@@ -21530,7 +21471,7 @@ end %func
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_(vcFile_prm)
 if nargin<1, vcFile_prm = ''; end
-vcVer = 'v4.9.9';
+vcVer = 'v4.9.10';
 vcDate = '9/10/2019';
 vcHash = file2hash_();
 

@@ -3,6 +3,13 @@ IronClust, written by J. James Jun, Flatiron Institute, Simons Foundation
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [4.9.10] - 2019-9-10
+### Changed
+- Comment changed in `default.prm` regarding `qqFactor` parameter
+- Default value changaed for `post_merge_mode0 = [12, 15, 17]`
+  - Previously was [15, 19, 17]
+
+
 ## [4.9.9] - 2019-9-10
 ### Added
 - New pre-merging mode based on KNN and drift (`post_merge_mode0 = [15, 19, 17]`)
