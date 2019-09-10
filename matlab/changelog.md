@@ -3,6 +3,14 @@ IronClust, written by J. James Jun, Flatiron Institute, Simons Foundation
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [4.9.9] - 2019-9-10
+### Added
+- New pre-merging mode based on KNN and drift (`post_merge_mode0 = [15, 19, 17]`)
+  - step 1 (mode=15), merge based on KNN and time including the temporal neighbors
+  - step 2 (mode=19), merge based on KNN and time
+  - step 3 (mode=17), merge based on KNN only
+
+
 ## [4.9.8] - 2019-8-27
 ### Added
 - Memory usage is reduced by ~10x

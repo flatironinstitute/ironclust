@@ -123,7 +123,7 @@ delta_cut = 1.0;            % Cutoff value for the Delta outlier in KNN-based Ro
 knn_merge_thresh = 1;       % Number of spikes shared between two peaks to be merged
 post_merge_mode = 1;        % Automated merging mode
 post_merge_mode0 = [15, 19, 17];        % Automated merging mode
-maxWavCor = 1;              % merge if waveform correlation is greater than maxWavCor.
+maxWavCor = .985;           % merge if waveform correlation is greater than maxWavCor.
 thresh_mad_clu = 7.5;       % This sets the MAD score threshold to remove outlier spikes for each cluster.
 maxCluPerSite = 20;         % Maximum clusters per site allowed if local detrending is used.
 spkLim_factor_merge = 1;    % Waveform range for computing the correlation. spkLim_factor_merge <= spkLim_raw_factor_merge. circa v3.1.8
