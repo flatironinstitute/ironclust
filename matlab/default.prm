@@ -32,7 +32,7 @@ sec_per_load_preview = 1;   % Recording duration (sec) per continuous segment to
 nLoads_max_preview = 30;    % Number of time segments to load for preview
 offset_sec_preview = 0;     % Time offset (sec) to apply to the preview
 fCacheRam = 1;              % Cache spikew aveform information in RAM. Uses more RAM but faster
-fRamCache = 1;              % Cache both raw and filtered spike waveforms in RAM (greater memory demand)
+fRamCache = 0;              % Cache both raw and filtered spike waveforms in RAM (greater memory demand)
 fSavePlot_RD = 0;           % Save the Rho-Delta plot as .png file (prefix: '_RD.png' at the end of the .prm file name)
 vcAlgorithm = 'ironclust';  % Number of supported algorithms: {'ironclust', 'kilosort', 'yass', 'mountainsort', 'spykingcircus'} 
 

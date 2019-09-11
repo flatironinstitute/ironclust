@@ -995,7 +995,7 @@ switch lower(vcDetect)
     case 'xcov'
         S0 = detect_xcov_(P, viTime_spk0, viSite_spk0);
 end
-if get_set_(P, 'fRamCache', 1)
+if get_set_(P, 'fRamCache', 1) && get_set_(P, 'fSave_spkwav', 1)
     tnWav_spk = load_spkwav_(S0, P);
     tnWav_raw = load_spkraw_(S0, P);        
 end
@@ -5280,6 +5280,7 @@ catch
     [~, vc] = system('getconf PAGESIZE');
     pagesize = str2double(strtrim(vc)); % in bytes
     mem = (str2double(cs{2}) - str2double(cs{3})) * pagesize;
+%     mem = (str2double(cs{2})) * pagesize;
 end
 end %func
 
