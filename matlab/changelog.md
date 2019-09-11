@@ -3,6 +3,15 @@ IronClust, written by J. James Jun, Flatiron Institute, Simons Foundation
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [4.9.11] - 2019-9-1
+### Added
+- Peak memory usage is reported in `irc describe` command
+  -Unit is in gigabytes (GiB)
+
+### Changed
+- `run_irc` will use `argfile.txt` instead of `params.json` if present
+
+
 ## [4.9.10] - 2019-9-10
 ### Changed
 - Comment changed in `default.prm` regarding `qqFactor` parameter

@@ -983,6 +983,7 @@ if nargin<3, viSite_spk0 = []; end
 
 global tnWav_raw tnWav_spk trFet_spk;
 runtime_detect = tic;
+memory_init = memory_matlab_();
 % Clear memory (S0 is cleared)
 set(0, 'UserData', []);
 [tnWav_raw, tnWav_spk, trFet_spk] = deal([]);
@@ -1001,8 +1002,10 @@ end
 trFet_spk = load_spkfet_(S0, P);
 S0.mrPos_spk = spk_pos_(S0, trFet_spk);
 
-% measure time
+% measure time and memory
 S0.runtime_detect = toc(runtime_detect);
+S0.memory_init = memory_init;
+S0.memory_detect = memory_matlab_();
 fprintf('Detection took %0.1fs for %s\n', S0.runtime_detect, P.vcFile_prm);
 
 set(0, 'UserData', S0);
@@ -1063,7 +1066,8 @@ S_clu = fet2clu_(S0, P);
 % measure time
 runtime_sort = toc(runtime_sort);
 fprintf('Sorting took %0.1fs for %s\n', runtime_sort, P.vcFile_prm);
-S0 = set0_(runtime_sort, P);
+memory_sort = memory_matlab_();
+S0 = set0_(runtime_sort, P, memory_sort);
 S0 = clear_log_(S0);
 
 save0_(strrep(P.vcFile_prm, '.prm', '_jrc.mat'));
@@ -5220,11 +5224,14 @@ try
 catch
     ;
 end
+    
 try
     csDesc{end+1} = sprintf('Execution:');
     csDesc{end+1} = sprintf('    IronClust version:      %s', version_());
     csDesc{end+1} = sprintf('    fGpu (GPU use):         %d', P.fGpu);
     csDesc{end+1} = sprintf('    fParfor (parfor use):   %d', P.fParfor);
+    csDesc{end+1} = sprintf('    fSave_spkwav:           %d', get_set_(P, 'fSave_spkwav', 1));    
+    csDesc{end+1} = sprintf('    memory usage (GiB):     %0.3f', get_peak_memory_(S0)/2^30);
     csDesc{end+1} = sprintf('    Parameter file:         %s', P.vcFile_prm);
 catch
     ;
@@ -5233,6 +5240,15 @@ if nargout==0
     cellfun(@(x)disp(x), csDesc);
 end
 
+end %func
+
+
+%--------------------------------------------------------------------------
+% returns in bytes
+function memory_peak = get_peak_memory_(S0)
+[memory_init, memory_detect, memory_sort] = ...
+    struct_get_(S0, 'memory_init', 'memory_detect', 'memory_sort');
+memory_peak = max(memory_detect, memory_sort) - memory_init;
 end %func
 
 
@@ -5246,6 +5262,25 @@ ilim = round(P.tlim * P.sRateHz);
 viSpk1 = find(P.viSpk >= ilim(1) & P.viSpk < ilim(end));
 viTime1 = P.viSpk(viSpk1) - ilim(1);
 viSite1 = P.viSite(viSpk1);
+end %func
+
+
+%--------------------------------------------------------------------------
+% os independent memory function
+% units in bytes
+% memory index values: % {'size', 'resident', 'share', 'text', 'lib', 'data', 'dt'}
+% https://stackoverflow.com/questions/10400751/how-do-vmrss-and-resident-set-size-match
+function mem = memory_matlab_()
+try
+    user = memory();
+    mem = user.MemUsedMATLAB;
+catch
+    [~, vc]=system(sprintf('cat /proc/%d/statm', feature('GetPid')));
+    cs = strsplit(strtrim(vc));
+    [~, vc] = system('getconf PAGESIZE');
+    pagesize = str2double(strtrim(vc)); % in bytes
+    mem = (str2double(cs{2}) - str2double(cs{3})) * pagesize;
+end
 end %func
 
 
@@ -21471,8 +21506,8 @@ end %func
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_(vcFile_prm)
 if nargin<1, vcFile_prm = ''; end
-vcVer = 'v4.9.10';
-vcDate = '9/10/2019';
+vcVer = 'v4.9.11';
+vcDate = '9/11/2019';
 vcHash = file2hash_();
 
 if nargout==0
@@ -23682,15 +23717,12 @@ P = struct_copyas_(P, S_txt, {'filter_type', 'feature_type'}, {'vcFilter', 'vcFe
 % same name
 P = struct_copyas_(P, S_txt, ...
     {'knn', 'batch_sec_drift', 'step_sec_drift', 'min_count', 'nSites_whiten', ...
-    'fft_thresh', 'delta_cut', 'fft_thresh_low', 'post_merge_mode', 'sort_mode', 'fSave_spkwav'});
+    'fft_thresh', 'delta_cut', 'fft_thresh_low', 'post_merge_mode', 'sort_mode'});
 
-% set GPU use
-vcGpu = get_(S_txt, 'fGpu');
-if strcmpi(vcGpu, 'True')
-    P.fGpu = 1;
-elseif strcmpi(vcGpu, 'False')
-    P.fGpu = 0;
-end
+% set boolean
+P = set_bool_(P, 'fGpu', S_txt);
+P = set_bool_(P, 'fSave_spkwav', S_txt);
+
 
 % create prb file from geom.csv file
 if matchFileEnd_(vcFile_prb, '.csv')
@@ -23732,6 +23764,19 @@ edit_prm_file_(P, P.vcFile_prm);
 disp(sprintf('Created %s', P.vcFile_prm));
 % edit_(P.vcFile_prm);
 set0_(P);
+end %func
+
+
+%--------------------------------------------------------------------------
+function S1 = set_bool_(S1, vcName1, S2, vcName2)
+if nargin<4, vcName2 = vcName1; end
+
+vc = get_(S2, vcName2);
+if strcmpi(vc, 'True')
+    S1.(vcName1) = 1;
+elseif strcmpi(vc, 'False')
+    S1.(vcName1) = 0;
+end
 end %func
 
 

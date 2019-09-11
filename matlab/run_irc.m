@@ -38,7 +38,11 @@ end
 fForceRerun = irc('call', 'read_cfg', {'fForceRerun'});
 if ~exist_file_(firings_out_fname) || fForceRerun
     geom_fname = fullfile(vcDir_in, 'geom.csv');
-    prm_fname = fullfile(vcDir_in, 'params.json');
+    if exist_file_(fullfile(vcDir_in, 'argfile.txt'))
+        prm_fname = fullfile(vcDir_in, 'argfile.txt');
+    else
+        prm_fname = fullfile(vcDir_in, 'params.json');
+    end
     vcFile_prm = irc('makeprm-mda', raw_fname, geom_fname, prm_fname, vcDir_out, vcFile_template);    
     irc('clear', vcFile_prm);
     irc('run', vcFile_prm);
