@@ -40,7 +40,15 @@ switch lower(vcCmd)
     case 'wiki-download', wiki_download_();
     case 'install', install_(vcArg1);
     case 'which', return;    
-
+    case 'memory'
+        mem = memory_matlab_();
+        if nargout==0
+            fprintf('Matlab used %0.3f GiB.\n', mem/2^30);
+        else
+            varargout{1} = mem;
+        end
+        return;
+        
     % one argument
     case 'github', web_(read_cfg_('repoURL')); return;
     case 'copyto-voms', copyto_voms_(vcArg1); return;     
@@ -91,6 +99,8 @@ switch lower(vcCmd)
     case 'convert-mda-yass', convert_mda('yass', vcArg1, vcArg2); return;
     case 'convert-mda-buzsaki', convert_mda('buzsaki', vcArg1, vcArg2); return;
     case 'convert-mda-int16', convert_mda('int16', vcArg1, vcArg2); return;        
+        
+    case {'benchmark', 'bench'}, varargout{1} = benchmark_(vcArg1, vcArg2); return;
         
     % three or more arguments
     case 'validate-mda', validate_mda_(vcArg1, vcArg2, vcArg3);    
@@ -995,6 +1005,8 @@ switch lower(vcDetect)
     case 'xcov'
         S0 = detect_xcov_(P, viTime_spk0, viSite_spk0);
 end
+
+% memory_init = memory_matlab_();
 if get_set_(P, 'fRamCache', 1) && get_set_(P, 'fSave_spkwav', 1)
     tnWav_spk = load_spkwav_(S0, P);
     tnWav_raw = load_spkraw_(S0, P);        
@@ -5214,12 +5226,12 @@ try
     catch
         [t_cluster, t_automerge] = deal(0);
     end
-    csDesc{end+1} = sprintf('Runtime:');
-    csDesc{end+1} = sprintf('    Detect + feature        %0.1fs', S0.runtime_detect);    
-    csDesc{end+1} = sprintf('    Cluster + auto-merge    %0.1fs', S0.runtime_sort);
-    csDesc{end+1} = sprintf('        Cluster             %0.1fs', t_cluster);
-    csDesc{end+1} = sprintf('        auto-merge          %0.1fs', t_automerge);
-    csDesc{end+1} = sprintf('    Total                   %0.1fs', runtime_total);
+    csDesc{end+1} = sprintf('Runtime (s):');
+    csDesc{end+1} = sprintf('    Detect + feature (s):   %0.1fs', S0.runtime_detect);    
+    csDesc{end+1} = sprintf('    Cluster + merge (s):    %0.1fs', S0.runtime_sort);
+    csDesc{end+1} = sprintf('      Cluster runtime (s):  %0.1fs', t_cluster);
+    csDesc{end+1} = sprintf('      merge runtime (s):    %0.1fs', t_automerge);
+    csDesc{end+1} = sprintf('    Total runtime (s):      %0.1fs', runtime_total);
     csDesc{end+1} = sprintf('    Runtime speed           x%0.1f realtime', tDur / runtime_total);    
 catch
     ;
@@ -5270,6 +5282,7 @@ end %func
 % units in bytes
 % memory index values: % {'size', 'resident', 'share', 'text', 'lib', 'data', 'dt'}
 % https://stackoverflow.com/questions/10400751/how-do-vmrss-and-resident-set-size-match
+% precise if the memory >= 20MB
 function mem = memory_matlab_()
 try
     user = memory();
@@ -23076,6 +23089,55 @@ header_offset = ftell(fid);
 end %func
 
 %--------------------------------------------------------------------------
+% write a header for mda file and return the write function handle
+function [fid, fh_write] = fwrite_mda_(fname, size_x, dtype)
+
+vcDir = fileparts(fname);
+if ~exist_dir_(vcDir), mkdir_(vcDir); end
+fid = fopen(fname,'w');
+fh_write = @(x)fwrite(fid, x, dtype);
+
+switch dtype
+    case 'complex32'
+        fwrite(fid, -1, 'int32');
+        fwrite(fid, 8, 'int32');       
+        fh1 = @(x,y)[x(:), y(:)]';
+        fh_write = @(x)fwrite(fid, fh1(real(x), imag(x)), 'single');
+        
+    case {'float32', 'single'}
+        fwrite(fid, -3, 'int32');
+        fwrite(fid, 4, 'int32');
+        
+    case {'float64', 'double'}
+        fwrite(fid, -7, 'int32');
+        fwrite(fid, 8, 'int32');
+
+    case 'int32'
+        fwrite(fid, -5, 'int32');
+        fwrite(fid, 4, 'int32');
+    
+    case 'int16'
+        fwrite(fid, -4, 'int32');
+        fwrite(fid, 2, 'int32');
+
+    case 'uint16'
+        fwrite(fid, -6, 'int32');
+        fwrite(fid, 2, 'int32');
+
+    case 'uint32'
+        fwrite(fid, -8, 'int32');
+        fwrite(fid, 4, 'int32');
+
+    otherwise        
+        fclose(fid);
+        error('Unknown dtype %s',dtype);
+end %switch
+fwrite(fid, numel(size_x),'int32');
+fwrite(fid, size_x, 'int32');
+end %func
+
+
+%--------------------------------------------------------------------------
 function [A, P] = readmda_(fname)
 % Author: Jeremy Magland, modified by JJJ
 % Jan 2015; Last revision: 15-Feb-2106
@@ -31885,3 +31947,53 @@ system('git add -u .');
 system(sprintf('git commit -m "%s"', vc));
 system('git push');
 end %func
+
+
+%--------------------------------------------------------------------------
+function S_bench = benchmark_(vcFile1, vcParam1)
+if nargin<2, vcParam1 = ''; end
+
+[~, vcConsoleOut] = system(sprintf('./run_irc %s '''' %s', vcFile1, vcParam1));
+
+% parse the output
+[memory_gb, vcFile_prm, runtime_sec, runtime_detect_sec, runtime_sort_sec, runtime_merge_sec] = ...
+    parse_console_out_(vcConsoleOut, ...
+        'memory usage (GiB):', 'Parameter file:', 'Total runtime (s):', ...
+        'Detect + feature (s):', 'Cluster runtime (s):', 'merge runtime (s):');
+str2num_strip_ = @(x)str2double(x(x>='0' & x<='9'));
+S_bench = makeStruct_func_(str2num_strip_, memory_gb, runtime_sec, runtime_detect_sec, runtime_sort_sec, runtime_merge_sec);
+S_bench = struct_add_(S_bench, vcFile_prm, vcConsoleOut);
+end %func
+
+
+%--------------------------------------------------------------------------
+function S = makeStruct_func_(varargin)
+% pass the function handle and add the field to the struct after applying a
+% function
+
+S = struct();
+fh = varargin{1};
+for i = 2:nargin
+    S.(inputname(i)) =  fh(varargin{i}); 
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+% returns string for a given argument
+function varargout = parse_console_out_(varargin)
+% [val1, val2, ...] = parse_system_out_(system_out, name1, name2, ...)
+
+cs1 = strsplit(varargin{1}, '\n');
+for iArg_out = 1:nargout
+    iLine1 = find(contains(cs1, varargin{iArg_out+1}), 1, 'first');
+    if ~isempty(iLine1)
+        cs2 = strsplit(cs1{iLine1}, ' ');
+        varargout{iArg_out} = cs2{end};
+    else
+        varargout{iArg_out} = [];
+    end
+end %for
+end %func
+        
+
