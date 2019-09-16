@@ -3290,6 +3290,7 @@ if ~get_set_(P, 'fSave_spkwav', 1)
 end
     
 switch get_set_(P, 'post_merge_mode', 1)
+    case 17, S_clu = templateMatch_post_(S_clu, P, clu_wave_similarity_paged(S_clu, P));
     case 16, S_clu = post_merge_local_(S_clu, P);
     case 15, S_clu = post_merge_similarity_cc_(S_clu, P);
     case 14, S_clu = post_merge_cc_(templateMatch_post_(S_clu, P), P);
@@ -28440,9 +28441,11 @@ end %func
 %--------------------------------------------------------------------------
 % 11/28/2018 JJJ: string to number
 function varargout = str2num_(varargin)
-for iArg = 1:nargin()
+for iArg = 1:nargin
     val1 = varargin{iArg};
     if ischar(val1)
+        % strip non numeric characters
+        val1 = val1((val1>='0' & val1<='9') | val1=='.');
         varargout{iArg} = str2num(val1);
     else
         varargout{iArg} = nan;
@@ -31950,20 +31953,35 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function S_bench = benchmark_(vcFile1, vcParam1)
+function S_bench = benchmark_(vcDir_in1, vcParam1)
 if nargin<2, vcParam1 = ''; end
 
-[~, vcConsoleOut] = system(sprintf('./run_irc %s '''' %s', vcFile1, vcParam1));
-
+% specify the output folder
+vcDir_out0 = strrep(vcDir_in1, '/groundtruth/', sprintf('/irc_%s/', irc('version')));
+vcDir_out1 = fullfile(vcDir_out0, strrep(vcParam1, '.prm', ''));
+vcFile_mat1 = dir_(fullfile(vcDir_out1, '*_jrc.mat'));
+if isempty(vcFile_mat1)
+    % process the data
+    fprintf('Running benchmark: ''%s'' using ''%s'': ', vcDir_in1, vcParam1); t1=tic;
+    [~, vcConsoleOut] = system(sprintf('./run_irc %s '''' %s', vcDir_in1, vcParam1));
+    fprintf('took %0.1fs\n', toc(t1));
+else
+    % load already processed data
+    vcFile_prm1 = strrep(vcFile_mat1{1}, '_jrc.mat', '.prm');
+    vcConsoleOut = evalc(sprintf('irc(''describe'', ''%s'');', vcFile_prm1));
+    fprintf('Loaded benchmark: ''%s'' using ''%s''\n', vcDir_in1, vcParam1);
+end
 % parse the output
 [memory_gb, vcFile_prm, runtime_sec, runtime_detect_sec, runtime_sort_sec, runtime_merge_sec] = ...
     parse_console_out_(vcConsoleOut, ...
         'memory usage (GiB):', 'Parameter file:', 'Total runtime (s):', ...
         'Detect + feature (s):', 'Cluster runtime (s):', 'merge runtime (s):');
-str2num_strip_ = @(x)str2double(x(x>='0' & x<='9'));
-S_bench = makeStruct_func_(str2num_strip_, memory_gb, runtime_sec, runtime_detect_sec, runtime_sort_sec, runtime_merge_sec);
+% str2num_strip_ = @(x)str2double(x((x>='0' & x<='9') | x=='.'));
+S_bench = makeStruct_func_(@(x)str2num_(x), memory_gb, runtime_sec, runtime_detect_sec, runtime_sort_sec, runtime_merge_sec);
 S_bench = struct_add_(S_bench, vcFile_prm, vcConsoleOut);
+
 end %func
+
 
 
 %--------------------------------------------------------------------------

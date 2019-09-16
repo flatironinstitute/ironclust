@@ -57,7 +57,10 @@ for iChan_pow = viChan_pow
         duration1 = duration0 * nRepeat;
         nSamples1 = int32(size(mnWav1,2)) * nRepeat;        
         vcDir_out1 = fullfile(vcDir0, sprintf('rec_%dc_%ds', nChans1, duration1));
-        if exist_dir_(vcDir_out1), continue; end
+        if exist_dir_(vcDir_out1)
+            fprintf('%s already exists\n', vcDir_out1); 
+            continue; 
+        end
         mkdir_(vcDir_out1);
         
         % write raw.mda
@@ -92,37 +95,31 @@ end
 
 %% 3. loop over the files, exract values
 
-% change paramter
+csParams = {'param_set1.prm', 'param_set2.prm'};
+vnChans_uniq = 64 * 2.^[-3:3];
+vrDuration_uniq = 1200 * 2.^[-2:3];
 
 % loop over the files
-vS_dir1 = dir(fullfile(vcDir0, 'rec_*')); 
-csFiles_batch = {vS_dir1.name};
-% csFiles_batch = {'rec_16c_1200s_11', 'rec_16c_600s_11', 'rec_32c_1200s_11', ...
-%     'rec_32c_600s_11', 'rec_64c_600s_11', ...
-%     'rec_64c_1200s_11', 'rec_64c_2400s_11', 'rec_64c_4800s_11', ...
-%     'rec_128c_1200s_11', 'rec_128c_2400s_11', 'rec_128c_4800s_11', ...
-%     'rec_256c_1200s_11', 'rec_256c_2400s_11', 'rec_256c_4800s_11'};
+[xx1,yy1] = meshgrid(1:numel(vnChans_uniq), 1:numel(vrDuration_uniq));
+vnChans_batch = vnChans_uniq(xx1(:));
+vrMinutes_batch = vrDuration_uniq(yy1(:))/60;
+csFiles_batch = arrayfun(@(x,y)...
+    fullfile(vcDir0, sprintf('rec_%dc_%ds', vnChans_uniq(x), vrDuration_uniq(y))), ...
+        xx1(:), yy1(:), 'UniformOutput', 0);
 
-csParams = {'param_set1.prm', 'param_set2.prm'};
-
+% recording x parameter loop
 [xx,yy] = meshgrid(1:numel(csFiles_batch), 1:numel(csParams));
+fh_bench = @(x,y)irc('benchmark', csFiles_batch{x}, csParams{y});
 
-fh_bench = @(x,y)irc('benchmark', fullfile(vcDir0, csFiles_batch{x}), csParams{y});
+% parse output
 cS_bench = arrayfun(@(x,y)fh_bench(x,y), xx, yy, 'UniformOutput', 0);
 vS_bench = cell2mat(cS_bench);
 mrPeakMem_batch = [vS_bench.memory_gb];
 mrRuntime_batch = [vS_bench.runtime_sec];
 
-cell_index_ = @(x,y)x{y};
-str2num_strip_ = @(x)str2double(x(x>='0' & x<='9'));
-strsplit2num_ = @(x,y,z)str2num_strip_(cell_index_(strsplit(x, y), z));
-vnChans_batch = cellfun(@(x)strsplit2num_(x, '_', 2), csFiles_batch);
-vrMinutes_batch = cellfun(@(x)strsplit2num_(x, '_', 3), csFiles_batch) / 60;
-
-%% unshuffle the data being processed
 
 
-%% 4. plot result (create two tables), also consider creating a bar plot
+% 4. plot result (create two tables), also consider creating a bar plot
 for iParam = 1:numel(csParams)
     vcParam1 = csParams{iParam};
     
@@ -136,7 +133,7 @@ for iParam = 1:numel(csParams)
     table(peakMemory_GiB, nChans, duration_min, MB_per_chan_min, MB_per_chan, MB_per_min, 'rownames', csFiles_batch) %{'PeakMem_GiB', 'nChans', 'duration_sec'})
 
     img_table1 = peakMemory_GiB;
-    img_table1(sub2ind(size(img_table1), vnChans_batch, vrMinutes_batch) = img_table1;
+    img_table1(sub2ind(size(img_table1), vnChans_batch, vrMinutes_batch)) = img_table1;
 
     figure; 
     imagesc(reshape(MB_per_chan_min, 2,3), 'xdata', unique(vnChans_batch), 'ydata', unique(vrMinutes_batch)); % may need to unravel
