@@ -6953,7 +6953,22 @@ end
 if ismatrix(trWav2_spk)
     [~, viMax_spk] = max(abs(cmrPv{1}' * trWav2_spk));
 else
-    [~, viMax_spk] = max(abs(cmrPv{1}' * trWav2_spk(:,:,1)));
+    switch 1 % 9/19/2019
+        case 4 % single channel centering
+            [~, viMax_spk] = max(abs(cmrPv{1}' * meanSubt_(trWav2_spk(:,:,1))));        
+        case 3 % mean subt of multi channel centering on the first component
+            mr_ = meanSubt_(reshape(trWav2_spk, size(trWav2_spk,1), []));
+            mr_ = reshape(cmrPv{1}' * mr_, numel(viShift), size(trWav2_spk,2), []);
+            [~, viMax_spk] = max(sum(abs(mr_),3),[],1); 
+            viMax_spk = viMax_spk(:);        
+        case 2 % multi channel centering on the first component
+            mr_ = reshape(trWav2_spk, size(trWav2_spk,1), []);
+            mr_ = reshape(cmrPv{1}' * mr_, numel(viShift), size(trWav2_spk,2), []);
+            [~, viMax_spk] = max(sum(abs(mr_),3),[],1); 
+            viMax_spk = viMax_spk(:);
+        case 1 % single channel centering
+            [~, viMax_spk] = max(abs(cmrPv{1}' * trWav2_spk(:,:,1)));            
+    end %switch
 end
 for iFet = 1:nFet
     mrFet_ = cmrFet{iFet};
@@ -24429,6 +24444,9 @@ for iDrift = 1:nT_drift
     if isempty(vrDelta1)
         vrDelta1 = zeros([1, n1], 'like', vrDelta1_);
         viNneigh1 = zeros([1, n1], 'like', viNneigh1_);
+    elseif ~isGpu_(vrDelta1) && fGpu
+        vrDelta1_ = gather_(vrDelta1_);
+        viNneigh1_ = gather_(viNneigh1_);
     end
     vrDelta1(vi1_) = vrDelta1_;
     viNneigh1(vi1_) = viNneigh1_;

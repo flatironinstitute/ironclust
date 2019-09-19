@@ -96,8 +96,8 @@ end
 %% 3. loop over the files, exract values
 
 csParams = {'param_set1.prm', 'param_set2.prm'};
-vnChans_uniq = 64 * 2.^[-3:3];
-vrDuration_uniq = 1200 * 2.^[-2:3];
+vnChans_uniq = 64 * 2.^[-3:2]; % capable up to 3
+vrDuration_uniq = 1200 * 2.^[-2:2]; % capable up to 3
 
 % loop over the files
 [xx1,yy1] = meshgrid(1:numel(vnChans_uniq), 1:numel(vrDuration_uniq));
@@ -112,7 +112,7 @@ csFiles_batch = arrayfun(@(x,y)...
 fh_bench = @(x,y)irc('benchmark', csFiles_batch{x}, csParams{y});
 
 % parse output
-cS_bench = arrayfun(@(x,y)fh_bench(x,y), xx, yy, 'UniformOutput', 0);
+cS_bench = arrayfun(@(x,y)fh_bench(x,y), xx', yy', 'UniformOutput', 0);
 vS_bench = cell2mat(cS_bench);
 mrPeakMem_batch = [vS_bench.memory_gb];
 mrRuntime_batch = [vS_bench.runtime_sec];
