@@ -8088,10 +8088,18 @@ fRealign_spk = get_set_(P, 'fRealign_spk', 0); %0,1,2
 % viTime_spk = gpuArray_(viTime_spk, fGpu);
 % viSite_spk = gpuArray_(viSite_spk, fGpu);
 if isempty(viSite_spk)
-    tnWav_raw = permute(mr2tr_(mnWav_raw, spkLim_raw, viTime_spk), [1,3,2]);
+    if ~isempty(mnWav_raw)
+        tnWav_raw = permute(mr2tr_(mnWav_raw, spkLim_raw, viTime_spk), [1,3,2]);
+    else
+        tnWav_raw = [];
+    end
     tnWav_spk = permute(mr2tr_(mnWav_spk, spkLim_wav, viTime_spk), [1,3,2]);
 else
-    tnWav_raw = zeros(diff(spkLim_raw) + 1, nSites_spk, nSpks, 'like', mnWav_raw);
+    if ~isempty(mnWav_raw)
+        tnWav_raw = zeros(diff(spkLim_raw) + 1, nSites_spk, nSpks, 'like', mnWav_raw);
+    else
+        tnWav_raw = [];
+    end
     tnWav_spk = zeros(diff(spkLim_wav) + 1, nSites_spk, nSpks, 'like', mnWav_spk);
     for iSite = 1:nSites
         viiSpk11 = find(viSite_spk == iSite);
@@ -8107,7 +8115,9 @@ else
                 tnWav_spk1 = spkwav_align_(tnWav_spk1, P);
             end
             tnWav_spk(:,:,viiSpk11) = permute(tnWav_spk1, [1,3,2]);
-            tnWav_raw(:,:,viiSpk11) = permute(mr2tr_(mnWav_raw, spkLim_raw, viTime_spk11, viSite11), [1,3,2]); %raw
+            if ~isempty(mnWav_raw)
+                tnWav_raw(:,:,viiSpk11) = permute(mr2tr_(mnWav_raw, spkLim_raw, viTime_spk11, viSite11), [1,3,2]); %raw
+            end
         catch % GPU failure
             disperr_('mn2tn_wav_: GPU failed'); 
         end
@@ -8115,7 +8125,9 @@ else
 end
 if 1 %10/19/2018 JJJ
     tnWav_spk = meanSubt_spk_(tnWav_spk);
-    tnWav_raw = meanSubt_spk_(tnWav_raw);
+    if ~isempty(tnWav_raw)
+        tnWav_raw = meanSubt_spk_(tnWav_raw);
+    end
 end
 end %func
 
@@ -19165,6 +19177,7 @@ dimm=zeros(1,num_dims);
 for j=1:num_dims
     dimm(j)=fread(fid_r,1,dim_type_str);
 end
+nBytes_header = ftell(fid_r);
 
 if (code==-1)
     vcDataType = 'single';
@@ -19186,8 +19199,13 @@ else
     vcDataType = ''; % unknown
 end %if
 
+% integrity check
+nBytes_data = prod(dimm) * bytesPerSample_(vcDataType);
+nBytes_missing = nBytes_data - filesize_(fname) + nBytes_header;
+
 S_mda = struct('dimm', dimm, 'vcDataType', vcDataType, ...
-    'nBytes_header', ftell(fid_r), 'nBytes_sample', nBytes_sample);
+    'nBytes_header', nBytes_header, 'nBytes_sample', nBytes_sample, ...
+    'nBytes_missing', nBytes_missing, 'nBytes_data', nBytes_data);
 
 if nargout<2, fclose(fid_r); end
 end %func
@@ -27497,7 +27515,7 @@ try
 catch
     addpath(vcPath);
 end
-fprintf('Added path to %s\n', vcPath);
+% fprintf('Added path to %s\n', vcPath);
 end %func
 
 
