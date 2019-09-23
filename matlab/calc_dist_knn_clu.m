@@ -14,7 +14,11 @@ miKnn = int32(S_clu.miKnn);
 miKnn1 = miKnn(1:nknn,:);
 viSpk_nn_spk = int32(S_clu.nneigh);
 viClu_spk = S_clu.viClu;
-S_drift = S_clu.S_drift;
+try
+    S_drift = S_clu.S_drift;
+catch
+    S_drift = [];
+end
 
 % deprecated
 miKnn_clu = miKnn(:,S_clu.icl);

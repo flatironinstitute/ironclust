@@ -9629,70 +9629,74 @@ end
 
 nClu_pre = numel(S_clu.icl);
 post_merge_mode0 = get_set_(P, 'post_merge_mode0', [12, 15, 17]);
-if numel(post_merge_mode0) > 1
-    [S_clu.viClu, S_clu.icl] = assignCluster_(S_clu.viClu, S_clu.ordrho, S_clu.nneigh, S_clu.icl);
-    [S_clu.viClu, S_clu.icl] = dpclus_remove_count_(S_clu.viClu, S_clu.icl, P.min_count);
-    [~, S_clu, nClu_pre] = S_clu_peak_merge_(S_clu, P, post_merge_mode0);  % knn overlap merging
-else
-    switch post_merge_mode0
-        case 7
-            S_clu.icl = S_clu_peak_prune_(S_clu, P);
-            [S_clu.viClu, S_clu.icl] = assignCluster_(S_clu.viClu, S_clu.ordrho, S_clu.nneigh, S_clu.icl);
-            [S_clu.viClu, S_clu.icl] = dpclus_remove_count_(S_clu.viClu, S_clu.icl, P.min_count);
-            
-        case 6
-            [S_clu.viClu, S_clu.icl] = assignCluster_(S_clu.viClu, S_clu.ordrho, S_clu.nneigh, S_clu.icl);
-            viMap = S_clu_peak_merge_(S_clu, P, 11); % merge peaks based on their waveforms
-            S_clu.viClu = map_index_(viMap, S_clu.viClu, 0);
+switch post_merge_mode0
+    case 7
+        S_clu.icl = S_clu_peak_prune_(S_clu, P);
+        [S_clu.viClu, S_clu.icl] = assignCluster_(S_clu.viClu, S_clu.ordrho, S_clu.nneigh, S_clu.icl);
+        [S_clu.viClu, S_clu.icl] = dpclus_remove_count_(S_clu.viClu, S_clu.icl, P.min_count);
 
-        case 5
-            [S_clu.viClu, S_clu.icl] = assignCluster_(S_clu.viClu, S_clu.ordrho, S_clu.nneigh, S_clu.icl);
-            [S_clu.viClu, S_clu.icl] = dpclus_remove_count_(S_clu.viClu, S_clu.icl, P.min_count);
+    case 6
+        [S_clu.viClu, S_clu.icl] = assignCluster_(S_clu.viClu, S_clu.ordrho, S_clu.nneigh, S_clu.icl);
+        viMap = S_clu_peak_merge_(S_clu, P, 11); % merge peaks based on their waveforms
+        S_clu.viClu = map_index_(viMap, S_clu.viClu, 0);
 
-        case 4
-            [S_clu.viClu, S_clu.icl] = assignCluster_(S_clu.viClu, S_clu.ordrho, S_clu.nneigh, S_clu.icl);
-            [S_clu.viClu, S_clu.icl] = dpclus_remove_count_(S_clu.viClu, S_clu.icl, P.min_count);
-            viMap = S_clu_peak_merge_(S_clu, P, 11); % merge peaks based on their waveforms
-            S_clu.viClu = map_index_(viMap, S_clu.viClu, 0);
+    case 5
+        [S_clu.viClu, S_clu.icl] = assignCluster_(S_clu.viClu, S_clu.ordrho, S_clu.nneigh, S_clu.icl);
+        [S_clu.viClu, S_clu.icl] = dpclus_remove_count_(S_clu.viClu, S_clu.icl, P.min_count);
 
-        case 1 % don't use small clusters
-            vlKill_spk = false(size(S_clu.ordrho));
-            for iRepeat=1:nRepeat_max % repeat 1000 times max  
-                [S_clu.viClu, S_clu.icl] = assignCluster_(S_clu.viClu, S_clu.ordrho, S_clu.nneigh, S_clu.icl);   
+    case 4
+        [S_clu.viClu, S_clu.icl] = assignCluster_(S_clu.viClu, S_clu.ordrho, S_clu.nneigh, S_clu.icl);
+        [S_clu.viClu, S_clu.icl] = dpclus_remove_count_(S_clu.viClu, S_clu.icl, P.min_count);
+        viMap = S_clu_peak_merge_(S_clu, P, 11); % merge peaks based on their waveforms
+        S_clu.viClu = map_index_(viMap, S_clu.viClu, 0);
 
-                % remove clusters unused
-                viClu_remove = find(S_clu.vnSpk_clu <= P.min_count);
-                vlKill_spk(ismember(S_clu.viClu, viClu_remove)) = true;
-                if isempty(viClu_remove), break; end
-                S_clu.icl(viClu_remove) = []; 
-                S_clu.viClu=[];
-                if iRepeat==nRepeat_max
-                    fprintf(2, 'assign_clu_count_: exceeded nRepeat_max=%d\n', nRepeat_max);
-                end
+    case 1 % don't use small clusters
+        vlKill_spk = false(size(S_clu.ordrho));
+        for iRepeat=1:nRepeat_max % repeat 1000 times max  
+            [S_clu.viClu, S_clu.icl] = assignCluster_(S_clu.viClu, S_clu.ordrho, S_clu.nneigh, S_clu.icl);   
+
+            % remove clusters unused
+            viClu_remove = find(S_clu.vnSpk_clu <= P.min_count);
+            vlKill_spk(ismember(S_clu.viClu, viClu_remove)) = true;
+            if isempty(viClu_remove), break; end
+            S_clu.icl(viClu_remove) = []; 
+            S_clu.viClu=[];
+            if iRepeat==nRepeat_max
+                fprintf(2, 'assign_clu_count_: exceeded nRepeat_max=%d\n', nRepeat_max);
             end
-            S_clu.viClu(vlKill_spk) = 0;
+        end
+        S_clu.viClu(vlKill_spk) = 0;
 
-        case 2 % merge small clusters to large clusters
-            for iRepeat=1:nRepeat_max % repeat 1000 times max  
-                [S_clu.viClu, S_clu.icl] = assignCluster_(S_clu.viClu, S_clu.ordrho, S_clu.nneigh, S_clu.icl);   
+    case 2 % merge small clusters to large clusters
+        for iRepeat=1:nRepeat_max % repeat 1000 times max  
+            [S_clu.viClu, S_clu.icl] = assignCluster_(S_clu.viClu, S_clu.ordrho, S_clu.nneigh, S_clu.icl);   
 
-                % remove clusters unused
-                viClu_remove = find(S_clu.vnSpk_clu <= P.min_count);
-                if isempty(viClu_remove), break; end
-                S_clu.icl(viClu_remove) = []; 
-                S_clu.viClu=[];
-                if iRepeat==nRepeat_max
-                    fprintf(2, 'assign_clu_count_: exceeded nRepeat_max=%d\n', nRepeat_max);
-                end
+            % remove clusters unused
+            viClu_remove = find(S_clu.vnSpk_clu <= P.min_count);
+            if isempty(viClu_remove), break; end
+            S_clu.icl(viClu_remove) = []; 
+            S_clu.viClu=[];
+            if iRepeat==nRepeat_max
+                fprintf(2, 'assign_clu_count_: exceeded nRepeat_max=%d\n', nRepeat_max);
             end
+        end
 
-        case 3
-            [S_clu.viClu, S_clu.icl] = assignCluster_(S_clu.viClu, S_clu.ordrho, S_clu.nneigh, S_clu.icl);
-            viMap = S_clu_peak_merge_(S_clu, P, 11); % merge peaks based on their waveforms
-            S_clu.viClu = map_index_(viMap, S_clu.viClu, 0);
-            S_clu = S_clu_remove_count_(S_clu, P);
-    end % switch
-end
+    case 3
+        [S_clu.viClu, S_clu.icl] = assignCluster_(S_clu.viClu, S_clu.ordrho, S_clu.nneigh, S_clu.icl);
+        viMap = S_clu_peak_merge_(S_clu, P, 11); % merge peaks based on their waveforms
+        S_clu.viClu = map_index_(viMap, S_clu.viClu, 0);
+        S_clu = S_clu_remove_count_(S_clu, P);
+        
+    case 0
+        [S_clu.viClu, S_clu.icl] = assignCluster_(S_clu.viClu, S_clu.ordrho, S_clu.nneigh, S_clu.icl);
+        [S_clu.viClu, S_clu.icl] = dpclus_remove_count_(S_clu.viClu, S_clu.icl, P.min_count);
+        nClu_pre = numel(S_clu.icl);
+        
+    otherwise
+        [S_clu.viClu, S_clu.icl] = assignCluster_(S_clu.viClu, S_clu.ordrho, S_clu.nneigh, S_clu.icl);
+        [S_clu.viClu, S_clu.icl] = dpclus_remove_count_(S_clu.viClu, S_clu.icl, P.min_count);
+        [~, S_clu, nClu_pre] = S_clu_peak_merge_(S_clu, P, post_merge_mode0);  % knn overlap merging
+end % switch
 
 S_clu = S_clu_refresh_(S_clu);
 fprintf('\n\ttook %0.1fs. Pre-merged %d clusters: %d->%d\n', ...
