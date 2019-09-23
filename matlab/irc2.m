@@ -271,7 +271,7 @@ for iSite = 1:nSites
     [mrFet12, viSpk12, n1, n2] = pc2fet_site_(trPc_spk, cviSpk_site, P, iSite);
     vrRho12 = vrRho(viSpk12);
     if ~isempty(gcp_)
-        vS_out(iSite) = parfeval(gcp_, @(x,y,z)delta_knn_(x,y,z,P,fGpu), 2, mrFet12, viSpk12, vrRho12, n1);
+        vS_out(iSite) = parfeval(gcp_, @(x,y,z,a)delta_knn_(x,y,z,a,P,fGpu), 2, mrFet12, viSpk12, vrRho12, n1);
     else
         [cvrDelta{iSite}, cviNneigh{iSite}, fGpu] = delta_knn_(mrFet12, viSpk12, vrRho12, n1, P, fGpu);
     end
