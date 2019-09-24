@@ -23968,14 +23968,13 @@ viDrift_spk = cell2mat(arrayfun(@(i)repmat(int32(i), 1, vnSpk_bin(i)), 1:nTime_d
 
 % collect stats
 switch 2
-    case 2 % 1D drift case        
-        switch 1
-            case 2
-                [mrPos_spk, vrAmp_spk] = spk_pos_(S0);
-                vrAmp_spk = single(vrAmp_spk(:));                
-            case 1
-                mrPos_spk = S0.mrPos_spk;
-                vrAmp_spk = single(S0.vrAmp_spk(:));
+    case 2 % 1D drift case  
+        if isfield(S0, 'mrPos_spk')
+            mrPos_spk = S0.mrPos_spk;
+            vrAmp_spk = single(S0.vrAmp_spk(:));
+        else
+            [mrPos_spk, vrAmp_spk] = spk_pos_(S0);
+            vrAmp_spk = single(vrAmp_spk(:));                
         end
         vrAmp_quantile = quantile(vrAmp_spk, (0:nAmp_drift)/nAmp_drift);
         vrPos_spk = single(mrPos_spk(:,2));
@@ -24195,9 +24194,8 @@ P.dc_subsample = 1000;
 SINGLE_INF = 3.402E+38;
 nSites = numel(P.viSite2Chan);
 
-[miSort_drift, cviSpk_drift, nTime_drift, viDrift_spk] = drift_similarity_(S0, P);
-mlDrift = mi2ml_drift_(miSort_drift); %gpuArray_(mi2ml_drift_(miSort_drift), P.fGpu);
-S_drift = makeStruct_(miSort_drift, cviSpk_drift, nTime_drift, viDrift_spk, mlDrift);
+S_drift = calc_drift_(S0, P);
+[viDrift_spk, mlDrift, cviSpk_drift] = struct_get_(S_drift, 'viDrift_spk', 'mlDrift', 'cviSpk_drift');
 
 %-----
 % Calculate Rho
@@ -24282,6 +24280,18 @@ trFet_dim = size(trFet_spk); %[1, size(mrFet1,1), size(mrFet1,2)]; %for postClus
 S_clu = struct('rho', vrRho, 'delta', vrDelta, 'ordrho', ordrho, 'nneigh', viNneigh, ...
     'P', P, 't_runtime', t_runtime, 'halo', [], 'viiSpk', [], ...
     'trFet_dim', trFet_dim, 'vrDc2_site', vrDc2_site, 'miKnn', miKnn, 'S_drift', S_drift);
+end %func
+
+
+%--------------------------------------------------------------------------
+% 9/24/2019 JJJ: Map index
+function S_drift = calc_drift_(S0, P)
+if nargin<2, P = []; end
+if isempty(P), P = S0.P; end
+
+[miSort_drift, cviSpk_drift, nTime_drift, viDrift_spk] = drift_similarity_(S0, P);
+mlDrift = mi2ml_drift_(miSort_drift); %gpuArray_(mi2ml_drift_(miSort_drift), P.fGpu);
+S_drift = makeStruct_(miSort_drift, cviSpk_drift, nTime_drift, viDrift_spk, mlDrift);
 end %func
 
 

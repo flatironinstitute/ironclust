@@ -1,5 +1,8 @@
 % works on mda format only for now
 % no manual interface now
+% analyzes single mda file format
+% todo: multiple mda files
+% todo: multiple formats
 
 %--------------------------------------------------------------------------
 function irc2(vcDir_in, vcDir_out, vcFile_arg)
@@ -22,6 +25,7 @@ if isempty(struct_get_(S0, 'S_clu'))
     set(0, 'UserData', S0);
 end
 S0 = auto_(S0, P);
+set(0, 'UserData', S0);
 describe_(S0);
 
 % output
@@ -41,7 +45,7 @@ end %func
 %--------------------------------------------------------------------------
 function csDesc = describe_(S0, vcFile_firings_mda)
 runtime_total = S0.runtime_detect + S0.runtime_sort + S0.runtime_automerge;
-tDur = S0.P.nSamples / S0.P.sRateHz;
+tDur = recording_duration_(S0.P, S0); 
 memory_sort = S0.memory_sort - S0.memory_init;
 memory_detect = S0.memory_detect - S0.memory_init;
 
@@ -79,16 +83,83 @@ fprintf('\nauto-merging...\n'); runtime_automerge=tic;
 P.post_merge_mode0 = 12;
 S0.S_clu = postCluster_(S0.S_clu, P); % peak merging
 
-P.maxWavCor = .96;
-
-% mrDist_clu = wave_similarity_clu_(S0, P, 4);
-% S0.S_clu = templateMatch_post_(S0.S_clu, P, mrDist_clu);
-
-mrDist_clu = wave_similarity_clu_(S0, P, 1);
+P.maxWavCor = .975;
+mrDist_clu = pos_similarity_clu_(S0, P);
 S0.S_clu = templateMatch_post_(S0.S_clu, P, mrDist_clu);
+% mrDist_clu = wave_similarity_clu_(S0, P, 1);
+% S0.S_clu = templateMatch_post_(S0.S_clu, P, mrDist_clu);
 
 S0.runtime_automerge = toc(runtime_automerge);
 fprintf('\n\tauto-merging took %0.1fs\n', S0.runtime_automerge);
+end %func
+
+
+%--------------------------------------------------------------------------
+function mrDist_clu = pos_similarity_clu_(S0, P)
+% output
+% -----
+% mrDist_clu: 0..1, 1 being most similar, 0 being most dissimilar
+S_clu = S0.S_clu;
+MIN_COUNT = P.min_count;
+if nargin<3, mode_sim = []; end
+if isempty(mode_sim), mode_sim = 4; end
+
+% compute average waveforms by clusters
+nClu = max(S_clu.viClu);
+% compute average clu waveforms (sort by centers)
+[viClu, vrPos_spk, mrPos_spk] = deal(S_clu.viClu, S0.vrPow_spk, S0.mrPos_spk);
+
+[cviSpk_drift, mlDrift] = struct_get_(S0.S_clu.S_drift, 'cviSpk_drift', 'mlDrift');
+unique_vec_ = @(x)unique(x(:));
+if ~isempty(cviSpk_drift)
+    mrDist_clu = zeros(nClu);
+    for iDrift = 1:numel(cviSpk_drift)
+        switch 3
+            case 4
+                viSpk1 = cell2mat_(cviSpk_drift(find(mlDrift(:, iDrift))));
+                viSpk1 = unique_vec_(S0.S_clu.miKnn(:,viSpk1));
+            case 3, viSpk1 = unique_vec_(S0.S_clu.miKnn(:,cviSpk_drift{iDrift}));
+            case 2, viSpk1 = cviSpk_drift{iDrift};
+            case 1, viSpk1 = cell2mat_(cviSpk_drift(find(mlDrift(:, iDrift))));
+        end
+        [viClu1, mrPos_spk1, vrPow_spk1] = deal(viClu(viSpk1), mrPos_spk(viSpk1,:), vrPos_spk(viSpk1));
+        mrDist_clu1 = pos_dist_clu_(viClu1, mrPos_spk1, vrPow_spk1, nClu, MIN_COUNT);
+        mrDist_clu = max(mrDist_clu, mrDist_clu1);
+    end
+else
+    mrDist_clu = pos_dist_clu_(viClu, mrPos_spk, vrPos_spk, nClu, MIN_COUNT);
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+function mrDist_clu = pos_dist_clu_(viClu, mrPos_spk, vrPow_spk, nClu, MIN_COUNT)
+
+switch 2
+    case 3, fh_pow_ = @(x)sqrt(x);
+    case 2, fh_pow_ = @(x)log(x);
+    case 1, fh_pow_ = @(x)x;
+end
+
+% compute average pc per cluster per site
+cviSpk_clu = arrayfun(@(x)find(viClu==x), 1:nClu, 'UniformOutput', 0);
+[mrPos_mu_clu, mrPos_sd_clu] = deal(nan(size(mrPos_spk,2)+1, nClu));
+for iClu = 1:nClu
+    viSpk1 = cviSpk_clu{iClu};
+    if numel(viSpk1) >= MIN_COUNT
+        mrPos_spk1 = [mrPos_spk(viSpk1,:), fh_pow_(vrPow_spk(viSpk1))];
+        [mrPos_sd_clu(:,iClu), mrPos_mu_clu(:,iClu)] = sd_mad_(mrPos_spk1);
+    end
+end
+
+% compare cluster by cluster
+mrDist_clu = zeros(nClu);
+for iClu1 = 1:nClu
+    [mu1, sd1] = deal(mrPos_mu_clu(:,iClu1), mrPos_sd_clu(:,iClu1));
+    vrCorr12 = (mrPos_mu_clu - mu1) ./ sd1;  
+    vrCorr12 = sqrt(mean(vrCorr12.^2))';
+    mrDist_clu(:,iClu1) = 1 - min(vrCorr12/10,1);
+end
 end %func
 
 
@@ -103,64 +174,79 @@ if isempty(mode_sim), mode_sim = 4; end
 nClu = max(S_clu.viClu);
 cviSpk_clu = arrayfun(@(x)find(S_clu.viClu==x), 1:nClu, 'UniformOutput', 0);
 % compute average clu waveforms (sort by centers)
-[ctrPc_clu, cviSite_clu] = deal(cell(nClu,1));
+[ctrPc_clu, ctrPos_clu, cviSite_clu] = deal(cell(nClu,1));
 dimm_pc = size(S0.trPc_spk); 
 dimm_pc(2) = min(dimm_pc(2), P.nSites_fet);
 dimm_pc(1) = min(dimm_pc(1), P.nPcPerChan);
-
+dimm_pos = size(S0.mrPos_spk);
+switch 1
+    case 2, fh_pow_ = @(x)log(x);
+    case 1, fh_pow_ = @(x)x;
+end
 % compute average pc per cluster per site
+% find centroid of the cluster
 for iClu = 1:nClu
     viSpk1 = cviSpk_clu{iClu};
     viSite1 = S0.viSite_spk(viSpk1);
     [viSite1_uniq1, vn_uniq1, cviSpk1_uniq1] = unique_count_(viSite1);
     trPc_spk1 = S0.trPc_spk(1:dimm_pc(1), 1:dimm_pc(2), viSpk1);
+    mrPos_spk1 = [S0.mrPos_spk(viSpk1,:), fh_pow_(S0.vrPow_spk(viSpk1))];
     [viSite1_uniq1, cviSpk1_uniq1] = ...
         multifun_(@(x)x(vn_uniq1>=MIN_COUNT), viSite1_uniq1, cviSpk1_uniq1);
     trPc1 = zeros(dimm_pc(1), dimm_pc(2), numel(cviSpk1_uniq1), 'single');
+    trPos1 = zeros(dimm_pos(2)+1, 2, numel(cviSpk1_uniq1), 'single');    
     for iiSite1 = 1:numel(cviSpk1_uniq1)
         % compute average waveforms by peak sites
-        trPc1(:,:,iiSite1) = mean(trPc_spk1(:,:,cviSpk1_uniq1{iiSite1}), 3);
+        viSpk11 = cviSpk1_uniq1{iiSite1};
+        trPc1(:,:,iiSite1) = mean(trPc_spk1(:,:,viSpk11), 3);
+        [sd_, med_] = sd_mad_(mrPos_spk1(viSpk11,:));
+        trPos1(:,:,iiSite1) = [med_(:), sd_(:)];
     end
-    [ctrPc_clu{iClu}, cviSite_clu{iClu}] = deal(trPc1, viSite1_uniq1);
+    [ctrPc_clu{iClu}, ctrPos_clu{iClu}, cviSite_clu{iClu}] = deal(trPc1, trPos1, viSite1_uniq1);
 end
 % construct arrays and sites
 [viSite_all, viClu_all] = cvr2vr_vi_(cviSite_clu);
-trPc_all = cat(3, ctrPc_clu{:});
+[trPc_all, trPos_all] = deal(cat(3, ctrPc_clu{:}), cat(3, ctrPos_clu{:}));
 
 % compare cluster by cluster
 mrPv_global = S0.mrPv_global(:,1:dimm_pc(1));
 mr2vr_ = @(x)x(:);
 tr2mr_ = @(x)reshape(x,[],size(x,3));
 mrDist_clu = zeros(nClu);
+norm_mean_ = @(x)sqrt(mean(x.^2));
+norm_sum_ = @(x)sqrt(sum(x.^2));
+normalize_mean_ = @(x)x ./ sqrt(mean(x.^2));
+normalize_sum_ = @(x)x ./ sqrt(sum(x.^2));
 for iClu1 = 1:nClu
-    [trPc1, viSite1] = deal(ctrPc_clu{iClu1}, cviSite_clu{iClu1});
+    [trPc1, viSite1, trPos1] = deal(ctrPc_clu{iClu1}, cviSite_clu{iClu1}, ctrPos_clu{iClu1});
     vrDist_clu1 = zeros(nClu,1);
     for iiSite1 = 1:numel(viSite1)
-        mrPc1 = trPc1(:,:,iiSite1);
+        [mrPc1, mrPos1] = deal(trPc1(:,:,iiSite1), trPos1(:,:,iiSite1));
         vi_all2 = find(viSite_all == viSite1(iiSite1) & viClu_all ~= iClu1);
         if isempty(vi_all2), continue; end
         viClu2 = viClu_all(vi_all2);
-        trPc2 = trPc_all(:,:,vi_all2);
+        [trPc2, trPos2] = deal(trPc_all(:,:,vi_all2), trPos_all(:,:,vi_all2));
         switch mode_sim
+            case 7 % centroid merging
+                [mu1, sd1] = deal(mrPos1(:,1), mrPos1(:,2));
+                mu2 = squeeze_(trPos2(:,1,:), 2);
+                vrCorr12 = norm_mean_((mu1-mu2) ./ sd1);
+                vrCorr12 = 1 - min(vrCorr12/10,1);
             case 6
-                norm_ = @(x)x ./ sqrt(sum(x.^2));
-                a = norm_(mr2vr_(pc2wav_(mrPv_global, mrPc1)));
-                b = norm_(tr2mr_(pc2wav_(mrPv_global, trPc2)));
+                a = normalize_sum_(mr2vr_(pc2wav_(mrPv_global, mrPc1)));
+                b = normalize_sum_(tr2mr_(pc2wav_(mrPv_global, trPc2)));
                 c = a'*a;
                 vrCorr12 = 1-abs(c-a'*b) ./ c;
             case 5 % rms after normalization
-                norm_ = @(x)x ./ sqrt(sum(x.^2));
-                a = norm_(mr2vr_(pc2wav_(mrPv_global, mrPc1)));
-                b = norm_(tr2mr_(pc2wav_(mrPv_global, trPc2)));
+                a = normalize_sum_(mr2vr_(pc2wav_(mrPv_global, mrPc1)));
+                b = normalize_sum_(tr2mr_(pc2wav_(mrPv_global, trPc2)));
                 vrCorr12 = 1 - std(a-b, 1); % standardized rms
             case 4 % rms after normalization, .97 threshold
-                norm_ = @(x)x ./ sqrt(sum(x.^2));
-                a = norm_(mrPc1(:));
-                b = norm_(reshape(trPc2, [], size(trPc2,3)));
+                a = normalize_sum_(mrPc1(:));
+                b = normalize_sum_(reshape(trPc2, [], size(trPc2,3)));
                 vrCorr12 = 1 - std(a-b, 1); % standardized rms
             case 3
-                norm_ = @(x)x ./ sqrt(sum(x.^2));
-                vrCorr12 = norm_(mrPc1(:))' * norm_(tr2mr_(trPc2));
+                vrCorr12 = normalize_sum_(mrPc1(:))' * normalize_sum_(tr2mr_(trPc2));
             case 2
                 vrCorr12 = 1-pdist2(mrPc1(:)', reshape(trPc2, [], size(trPc2,3))', 'cosine');
             case 1
@@ -171,6 +257,21 @@ for iClu1 = 1:nClu
     end
     mrDist_clu(:,iClu1) = vrDist_clu1;
 end
+end %func
+
+
+%--------------------------------------------------------------------------
+function [vr, vr_med] = sd_mad_(mr)
+vr_med = median_(mr);
+vr = median_(abs(mr - vr_med)) / .6745;
+end % func
+
+
+%--------------------------------------------------------------------------
+function vr = median_(mr)
+vr = sort(mr);
+imid = ceil(size(mr,1)/2);
+vr = vr(imid,:);
 end %func
 
 
@@ -219,8 +320,8 @@ function S0 = sort_(S0, P)
 fprintf('Clustering\n'); 
 runtime_sort = tic;
 
-[nPc_fet, nSites_fet, miSites, fGpu, knn] = ...
-    struct_get_(P, 'nPcPerChan', 'nSites_fet', 'miSites', 'fGpu', 'knn');
+[nPc_fet, nSites_fet, miSites, knn] = ...
+    struct_get_(P, 'nPcPerChan', 'nSites_fet', 'miSites', 'knn');
 trPc_spk = S0.trPc_spk(1:nPc_fet, :, :);
 nSites = max(S0.viSite_spk);
 cviSpk_site = arrayfun(@(x)find(S0.viSite_spk==x), 1:nSites, 'UniformOutput', 0)';
@@ -233,19 +334,27 @@ if get_set_(P, 'fParfor', 1)
 else
     gcp_ = [];
 end
+if 1
+    [S0.mrPos_spk, S0.vrPow_spk] = calc_pos_spk_(S0.trPc_spk, S0.viSite_spk, P);
+end
+S_drift = calc_drift_(S0, P);
+[viDrift_spk, mlDrift] = struct_get_(S_drift, 'viDrift_spk', 'mlDrift');
 
 % Calculate Rho
+P_sort = struct_set_(P, 'mlDrift', mlDrift, 'fSort_drift', 1);
 [vrRho, vrDelta] = deal(zeros(nSpk, 1, 'single'));
 miKnn = zeros(knn, nSpk, 'int32');
 fprintf('Calculating Rho\n\t'); t1=tic;
 [cvrRho, cmiKnn, cvrDelta, cviNneigh] = deal(cell(nSites,1));
 % send jobs
 for iSite = 1:nSites
-    [mrFet12, viSpk12, n1, n2] = pc2fet_site_(trPc_spk, cviSpk_site, P, iSite);    
+    [mrFet12, viSpk12, viDrift12, n1, n2] = pc2fet_site_(trPc_spk, cviSpk_site, viDrift_spk, P_sort, iSite);
     if ~isempty(gcp_)
-        vS_out(iSite) = parfeval(gcp_, @(x,y,z)rho_knn_(x,y,z,P,fGpu), 2, mrFet12, viSpk12, n1);
+        vS_out(iSite) = parfeval(gcp_, ...
+            @(x,y,z,a)rho_knn_(x,y,z,a, P_sort), 2, mrFet12, viSpk12, viDrift12, n1);
     else
-        [cvrRho{iSite}, cmiKnn{iSite}, fGpu] = rho_knn_(mrFet12, viSpk12, n1, P, fGpu);      
+        [cvrRho{iSite}, cmiKnn{iSite}, P_sort.fGpu] = ...
+            rho_knn_(mrFet12, viSpk12, viDrift12, n1, P_sort);      
     end
 end %for
 % collect jobs
@@ -261,19 +370,21 @@ for iSite = 1:nSites
     if isempty(viSpk1), continue; end
     [vrRho(viSpk1), miKnn(:,viSpk1)] = deal(cvrRho{iSite}, cmiKnn{iSite});
 end %for
-fprintf('\n\ttook %0.1fs (fGpu=%d)\n', toc(t1), fGpu);
+fprintf('\n\ttook %0.1fs (fGpu=%d)\n', toc(t1), P_sort.fGpu);
 
 
 % Calculate Delta
 fprintf('Calculating Delta\n\t'); t2=tic;
 % send jobs
 for iSite = 1:nSites
-    [mrFet12, viSpk12, n1, n2] = pc2fet_site_(trPc_spk, cviSpk_site, P, iSite);
+    [mrFet12, viSpk12, viDrift12, n1, n2] = pc2fet_site_(trPc_spk, cviSpk_site, viDrift_spk, P_sort, iSite);
     vrRho12 = vrRho(viSpk12);
     if ~isempty(gcp_)
-        vS_out(iSite) = parfeval(gcp_, @(x,y,z,a)delta_knn_(x,y,z,a,P,fGpu), 2, mrFet12, viSpk12, vrRho12, n1);
+        vS_out(iSite) = parfeval(gcp_, ...
+            @(x,y,z,a)delta_knn_(x,y,z,a,b, P_sort), 2, mrFet12, viSpk12, vrRho12, viDrift12, n1);
     else
-        [cvrDelta{iSite}, cviNneigh{iSite}, fGpu] = delta_knn_(mrFet12, viSpk12, vrRho12, n1, P, fGpu);
+        [cvrDelta{iSite}, cviNneigh{iSite}, P_sort.fGpu] = ...
+            delta_knn_(mrFet12, viSpk12, vrRho12, viDrift12, n1, P_sort);
     end
 end %for
 % collect jobs
@@ -289,70 +400,81 @@ for iSite = 1:nSites
     if isempty(viSpk1), continue; end
     [vrDelta(viSpk1), viNneigh(viSpk1)] = deal(cvrDelta{iSite}, cviNneigh{iSite});
 end %for
-fprintf('\n\ttook %0.1fs (fGpu=%d)\n', toc(t2), fGpu);
-
+vrRho = vrRho / max(vrRho) / 10;     % divide by 10 to be compatible with previous version displays
+fprintf('\n\ttook %0.1fs (fGpu=%d)\n', toc(t2), P_sort.fGpu);
 
 % output
-vrRho = vrRho / max(vrRho) / 10;     % divide by 10 to be compatible with previous version displays
 runtime_sort = toc(runtime_sort);
 [~, ordrho] = sort(vrRho, 'descend');
 memory_sort = memory_matlab_();
 S0.S_clu = struct('rho', vrRho, 'delta', vrDelta, 'ordrho', ordrho, 'nneigh', viNneigh, ...
-    'P', P, 'miKnn', miKnn, 'S_drift', []);
+    'P', P, 'miKnn', miKnn, 'S_drift', S_drift);
 S0.runtime_sort = runtime_sort;
 S0.memory_sort = memory_sort;
 end %func
 
 
 %--------------------------------------------------------------------------
-function [vrDelta1, viNneigh1, fGpu] = delta_knn_(mrFet12, viSpk12, vrRho12, n1, P, fGpu)
+function [vrDelta1, viNneigh1, fGpu] = delta_knn_(mrFet12, viSpk12, vrRho12, viDrift12, n1, P)
 if isempty(mrFet12)
     [vrDelta1, viNneigh1] = deal([]);
     return;
 end
-P1 = setfield(P, 'fGpu', fGpu);
-SINGLE_INF = 3.402E+38;
-vrRho12 = vrRho12(:);
-[vi12, vi1] = deal(1:size(mrFet12,2), 1:n1);
+switch get_set_(P, 'fSort_drift', 1)
+    case 1
+        [vrDelta1, viNneigh1, fGpu] = delta_drift_knn_(mrFet12, viDrift12, P.mlDrift, vrRho12, n1, P);
+        viNneigh1 = viSpk12(viNneigh1);
+    case 0
+        SINGLE_INF = 3.402E+38;
+        vrRho12 = vrRho12(:);
+        [vi12, vi1] = deal(1:size(mrFet12,2), 1:n1);
 
-% do cuda
-[vrDelta1, viNneigh1, fGpu] = cuda_delta_knn_(mrFet12, vrRho12, vi12, vi1, P1);
+        % do cuda
+        [vrDelta1, viNneigh1, fGpu] = cuda_delta_knn_(mrFet12, vrRho12, vi12, vi1, P);
 
-vrDelta1 = gather_(vrDelta1) .* vrRho12(vi1);
-viNneigh1 = viSpk12(gather_(viNneigh1));
-viNan = find(isnan(vrDelta1) | isinf(vrDelta1));
-viNneigh1(viNan) = viNan;
-vrDelta1(viNan) = sqrt(SINGLE_INF);
+        vrDelta1 = gather_(vrDelta1) .* vrRho12(vi1);
+        viNneigh1 = viSpk12(gather_(viNneigh1));
+        viNan = find(isnan(vrDelta1) | isinf(vrDelta1));
+        viNneigh1(viNan) = viNan;
+        vrDelta1(viNan) = sqrt(SINGLE_INF);
+end %switch
 end %func
 
 
 %--------------------------------------------------------------------------
-function [vrRho1, miKnn1, fGpu] = rho_knn_(mrFet12, viSpk12, n1, P, fGpu)
+function [vrRho1, miKnn1, fGpu] = rho_knn_(mrFet12, viSpk12, viDrift12, n1, P)
 if isempty(mrFet12)
     [vrRho1, miKnn1] = deal([]);
     return;
 end
-knn = get_set_(P, 'knn', 30);
-[vi12, vi1] = deal(1:size(mrFet12,2), 1:n1);
-P1 = setfield(P, 'fGpu', fGpu);
-[vrKnn1, fGpu, miKnn1] = cuda_knn_(mrFet12, vi12, vi1, P1);
-vrRho1 = gather_(1./vrKnn1);
+switch get_set_(P, 'fSort_drift', 1)
+    case 1
+        [vrRho1, fGpu, miKnn1] = rho_drift_knn_(mrFet12, viDrift12, P.mlDrift, n1, P);  
+        miKnn1 = viSpk12(miKnn1);
+    case 0
+        knn = get_set_(P, 'knn', 30);
+        [vi12, vi1] = deal(1:size(mrFet12,2), 1:n1);
+        [vrKnn1, fGpu, miKnn1] = cuda_knn_(mrFet12, vi12, vi1, P);
+        vrRho1 = gather_(1./vrKnn1);
 
-n_ = size(miKnn1,1);
-if n_ == knn
-    miKnn1(:,:) = gather_(miKnn1);
-else        
-    miKnn1(1:n_,:) = gather_(miKnn1);
-    miKnn1(n_+1:end,:) = repmat(gather_(miKnn1(end,:)), [knn-n_, 1]);
-end
-miKnn1 = viSpk12(miKnn1);    
+        n_ = size(miKnn1,1);
+        if n_ == knn
+            miKnn1(:,:) = gather_(miKnn1);
+        else        
+            miKnn1(1:n_,:) = gather_(miKnn1);
+            miKnn1(n_+1:end,:) = repmat(gather_(miKnn1(end,:)), [knn-n_, 1]);
+        end
+        miKnn1 = viSpk12(miKnn1);    
+end %switch
 end %func
 
 
 %--------------------------------------------------------------------------
-function [mrFet12_, viSpk12_, n1_, n2_] = pc2fet_site_(trPc_spk, cviSpk_site, P, iSite)
+function [mrFet12, viSpk12, viDrift12, n1, n2] = pc2fet_site_(trPc_spk, cviSpk_site, viDrift_spk, P, iSite)
+
 if isempty(cviSpk_site{iSite})
-    [mrFet12_, viSpk12_, n1_, n2_] = deal([], [], 0, 0);
+    [mrFet12, viSpk12, viDrift12] = deal([]);
+    [n1, n2] = deal(0); 
     return;
 end
 [nSites_fet, miSites] = struct_get_(P, 'nSites_fet', 'miSites');
@@ -371,25 +493,26 @@ miSites2 = mi2(end-nSites_fet+1:end, viSites2); % sites to index
 % extract fet and build distance matrix
 switch 1
     case 2
-        mrFet12_ = mrFet1;
+        mrFet12 = mrFet1;
     case 1
         cmrFet2 = cell(1, numel(viSites2));
         for iiSite2 = 1:numel(viSites2)
             trFet2_ = trPc_spk(:, miSites2(:,iiSite2), cviSpk_site{viSites2(iiSite2)});
             cmrFet2{iiSite2} = reshape(trFet2_, [], size(trFet2_,3));
         end
-        mrFet12_ = [mrFet1, cell2mat_(cmrFet2)];
+        mrFet12 = [mrFet1, cell2mat_(cmrFet2)];
 end
-n1_ = numel(cviSpk_site{iSite});
-n2_ = size(mrFet12_,2) - n1_;
-viSpk12_ = cell2mat(cviSpk_site([iSite, viSites2]));
+n1 = numel(cviSpk_site{iSite});
+n2 = size(mrFet12,2) - n1;
+viSpk12 = cell2mat(cviSpk_site([iSite, viSites2]));
+viDrift12 = viDrift_spk(viSpk12);
 
 % spatial mask
 if 0
     if get_set_(P, 'fSpatialMask_clu', 1) && nSites_fet >= get_set_(P, 'nChans_min_car', 8)
         vrSpatialMask = spatialMask_(P, iSite, nSites_fet, P.maxDist_site_um);
         vrSpatialMask = repmat(vrSpatialMask(:)', [P.nPcPerChan, 1]);
-        mrFet12_ = bsxfun(@times, mrFet12_, vrSpatialMask(:));
+        mrFet12 = bsxfun(@times, mrFet12, vrSpatialMask(:));
     end
 end
 end %func
@@ -443,14 +566,73 @@ if ~isempty(gcp_)
         cS_detect{completedIdx+1} = S_;
     end
 end
-runtime_detect = toc(runtime_detect);
-memory_detect = memory_matlab_();
+[viSite_spk, viTime_spk, vrAmp_spk, trPc_spk] = detect_merge_(cS_detect, viOffset_load);
+[mrPos_spk, vrPow_spk] = calc_pos_spk_(trPc_spk, viSite_spk, P);
 
 % Save output
-[viSite_spk, viTime_spk, vrAmp_spk, trPc_spk] = detect_merge_(cS_detect, viOffset_load);
-S0 = makeStruct_(viSite_spk, viTime_spk, vrAmp_spk, trPc_spk, ...
-    vrThresh_site, mrPv_global, runtime_detect, P, memory_detect, memory_init);
+runtime_detect = toc(runtime_detect);
+memory_detect = memory_matlab_();
+S0 = makeStruct_(viSite_spk, viTime_spk, vrAmp_spk, trPc_spk, vrPow_spk, ...
+    vrThresh_site, mrPv_global, runtime_detect, P, memory_detect, memory_init, mrPos_spk);
 fprintf('detect_: took %0.1fs (fParfor=%d, fGpu=%d)\n', runtime_detect, P.fParfor, P.fGpu);
+end %func
+
+
+%--------------------------------------------------------------------------
+function [mrPos_spk, vrPow_spk] = calc_pos_spk_(trPc_spk, viSite_spk, P)
+[~, nSites_spk, nSpk] = size(trPc_spk);
+switch 2
+    case 3, mrW = squeeze_(sum(trPc_spk(1:P.nPcPerChan,:,:).^2),1);
+    case 2, mrW = squeeze_(sum(trPc_spk.^2),1);
+    case 1, mrW = squeeze_(trPc_spk(1,:,:),1) .^2;
+end
+vrPow_spk = sum(mrW)';
+
+switch 2
+    case 1 % centroid        
+        miSites_spk = single(P.miSites(:, viSite_spk));
+        vrX = sum(mrW .* reshape(P.mrSiteXY(miSites_spk,1), size(miSites_spk)));
+        vrY = sum(mrW .* reshape(P.mrSiteXY(miSites_spk,2), size(miSites_spk)));
+        mrPos_spk = [vrX(:), vrY(:)] ./ vrPow_spk;
+        % figure; plot3(mrPos_spk(:,1), mrPos_spk(:,2), log(mean(mrW)'), '.');
+    case 2 % 2d peak (non-uniform kernel)
+        mrPos_spk = zeros(nSpk, 2);
+        nSites = max(viSite_spk);
+        cviSpk_site = arrayfun(@(x)find(viSite_spk==x), 1:nSites, 'UniformOutput', 0)';
+        for iSite = 1:nSites
+            [viSpk1, viSite1] = deal(cviSpk_site{iSite}, P.miSites(:,iSite));
+            [mrSiteXY1, mrW1] = deal(P.mrSiteXY(viSite1,:), mrW(:,viSpk1));
+            [mrPos_spk(viSpk1,:), ~] = ...
+                find_peak_2d_(mrSiteXY1, mrW1);
+        end
+end %switch
+end %func
+
+
+%--------------------------------------------------------------------------
+function [mrXY_spk1, vrA_spk1] = find_peak_2d_(mrXY1, mrW1)
+mrW1=double(mrW1);
+F = scatteredInterpolant(mrXY1(:,1), mrXY1(:,2), mrW1(:,1), 'natural');
+
+% define grid
+d_min = pdist(mrXY1); d_min = min(d_min(d_min>0));
+dxy = d_min / 10; %10x interp
+xy_min = min(mrXY1);
+xy_max = max(mrXY1);
+[xx,yy] = meshgrid(xy_min(1):dxy:xy_max(1), xy_min(2):dxy:xy_max(2));
+zz = F(xx, yy);
+figure; mesh(xx,yy,zz);
+hold on; plot3(mrXY1(:,1), mrXY1(:,2), mrW1(:,1), 'ro');
+
+% convolve and evaluate
+mrXY2 = [xx(:), yy(:)];
+A = 2.^(-(pdist2(mrXY1, mrXY2) / d_min).^2)/2;
+mrW2 = reshape(mrW1(:,1)' * A, size(xx));
+[~,i_]=max(mrW2(:));
+figure; mesh(xx,yy,mrW2);
+hold on; plot3(mrXY1(:,1), mrXY1(:,2), mrW1(:,1), 'ro');
+hold on; plot3(xx(i_), yy(i_), mrW2(i_), 'r*');
+
 end %func
 
 
@@ -636,7 +818,7 @@ end %func
 function mnWav2 = filter_(mnWav1, P)
 %-----
 % Filter
-fprintf('\tFiltering spikes...\n\t'); t_filter = tic;
+fprintf('\tFiltering spikes...'); t_filter = tic;
 if get_set_(P, 'fSmooth_spatial', 0)
     mnWav1 = spatial_smooth_(mnWav1, P);
 end
@@ -650,6 +832,7 @@ catch % GPU failure
     mnWav1_ = cast_(mnWav1, vcDataType_filter);
     [mnWav2, vnWav11] = filt_car_(mnWav1_, P);    
 end
+fprintf(' took %0.1fs\n', toc(t_filter));
 end %func
 
 
@@ -729,7 +912,7 @@ P.vcFile = fullfile(vcDir_in, 'raw.mda');
 P.vcDir_out = vcDir_out;
 S_mda = readmda_header_(P.vcFile);
 P.nChans = S_mda.dimm(1);
-P.nSamples = S_mda.dimm(2);
+P.vnSamples_file = S_mda.dimm(2); % scalar
 
 % probe file
 P.mrSiteXY = csvread(fullfile(vcDir_in, 'geom.csv'));
@@ -779,9 +962,7 @@ if isempty(get_(P, 'nTime_clu'))
         batch_sec_drift = get_set_(P, 'batch_sec_drift', 300);
         P.nTime_clu = max(round(recording_duration_(P) / batch_sec_drift), 1);
         P.nTime_clu = min(P.nTime_clu, get_set_(P, 'nBatch_max_drift', 32));
-        if fEditFile
-            fprintf('\tnTime_clu = %d (batch_sec_drift = %0.1f s)\n', P.nTime_clu, batch_sec_drift);
-        end
+        fprintf('\tnTime_clu = %d (batch_sec_drift = %0.1f s)\n', P.nTime_clu, batch_sec_drift);
     catch
         P.nTime_clu = 1;
     end
@@ -790,9 +971,7 @@ if isempty(get_(P, 'nTime_drift'))
     try
         step_sec_drift = get_set_(P, 'step_sec_drift', 10);
         P.nTime_drift = max(round(recording_duration_(P) / step_sec_drift), 1);
-        if fEditFile
-            fprintf('\tnTime_drift = %d (step_sec_drift = %0.1f s)\n', P.nTime_drift, step_sec_drift);
-        end
+        fprintf('\tnTime_drift = %d (step_sec_drift = %0.1f s)\n', P.nTime_drift, step_sec_drift);
     catch
         P.nTime_drift = 64;
     end
@@ -966,6 +1145,10 @@ function out1 = meanSubt_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name
 function out1 = zscore_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = templateMatch_post_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = memory_matlab_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
+function out1 = calc_drift_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
+function out1 = recording_duration_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
+function out1 = squeeze_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
+function out1 = struct_set_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 
 function [out1, out2] = readmda_header_(varargin), fn=dbstack(); [out1, out2] = irc('call', fn(1).name, varargin); end
 function [out1, out2] = mr2thresh_(varargin), fn=dbstack(); [out1, out2] = irc('call', fn(1).name, varargin); end
@@ -979,5 +1162,8 @@ function [out1, out2, out3] = detect_spikes_(varargin), fn=dbstack(); [out1, out
 function [out1, out2, out3] = cuda_delta_knn_(varargin), fn=dbstack(); [out1, out2, out3] = irc('call', fn(1).name, varargin); end
 function [out1, out2, out3] = cuda_knn_(varargin), fn=dbstack(); [out1, out2, out3] = irc('call', fn(1).name, varargin); end
 function [out1, out2, out3] = unique_count_(varargin), fn=dbstack(); [out1, out2, out3] = irc('call', fn(1).name, varargin); end
+function [out1, out2, out3] = rho_drift_knn_(varargin), fn=dbstack(); [out1, out2, out3] = irc('call', fn(1).name, varargin); end
+function [out1, out2, out3] = delta_drift_knn_(varargin), fn=dbstack(); [out1, out2, out3] = irc('call', fn(1).name, varargin); end
+
 
 
