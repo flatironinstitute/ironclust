@@ -28,7 +28,7 @@ warning off;
 % Command type A: supporting functions
 fExit = 1;
 switch lower(vcCmd)
-    % No arguments        
+    % No arguments    
     case 'scoreboard', irc_scoreboard(); return;
     case 'hash', varargout{1} = file2hash_(); return; 
     case 'addpath', addpath_(); return; %add path of current irc
@@ -50,6 +50,7 @@ switch lower(vcCmd)
         return;
         
     % one argument
+    case 'plot', plot0_(vcArg1); return;
     case 'github', web_(read_cfg_('repoURL')); return;
     case 'copyto-voms', copyto_voms_(vcArg1); return;     
     case 'copyfrom-voms', copyfrom_voms_(vcArg1); return;     
@@ -2891,27 +2892,32 @@ if isempty(fPlot_gt), fPlot_gt = get_(S_cfg, 'fPlot_gt'); end
 if isUsingBuiltinEditor_() && fPlot_gt>0    
     try
         vrAccuracy = S_score.S_score_clu.vrAccuracy;   
+        try
+            viClu_match = S_score.S_score_clu.viCluMatch;
+        catch
+            viClu_match = [];
+        end
         switch fPlot_gt
             case 5 % variance ratio
                 figure;
                 set(gcf,'Color','w', 'Name', P.vcFile_prm);
                 RMS_var = S_score.S_gt.vrSnr_sd_clu.^2;
-                plot_gt_2by2_(RMS_var, vrAccuracy, vrFp, vrFn);
+                plot_gt_2by2_(RMS_var, vrAccuracy, vrFp, vrFn, viClu_match);
             case 4
                 figure;
                 set(gcf,'Color','w', 'Name', P.vcFile_prm);
                 SNR_min = vrSnr;
-                plot_gt_2by2_(SNR_min, vrAccuracy, vrFp, vrFn);
+                plot_gt_2by2_(SNR_min, vrAccuracy, vrFp, vrFn, viClu_match);
             case 3
                 figure;
                 set(gcf,'Color','w', 'Name', P.vcFile_prm);
                 vrVmin = abs(S_score.S_gt.vrVmin_clu);
-                plot_gt_2by2_(vrVmin, vrAccuracy, vrFp, vrFn);
+                plot_gt_2by2_(vrVmin, vrAccuracy, vrFp, vrFn, viClu_match);
             case 2
                 vrVpp = S_score.S_gt.vrVpp_clu;
                 figure;
                 set(gcf,'Color','w', 'Name', P.vcFile_prm);
-                plot_gt_2by2_(vrVpp, vrAccuracy, vrFp, vrFn);   
+                plot_gt_2by2_(vrVpp, vrAccuracy, vrFp, vrFn, viClu_match);   
             case 1
                 plot_gt_(S_score, P);
                 return;
@@ -4735,42 +4741,78 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function plot_gt_2by2_(vrSnr, vrAccuracy, vrFp, vrFn)
+function plot_gt_2by2_(vrSnr, vrAccuracy, vrFp, vrFn, viClu_match)
+if nargin<5, viClu_match = []; end
+
 accuracy_thresh = read_cfg_('accuracy_thresh_plot_gt');
 snr_thresh = read_cfg_('snr_thresh_plot_gt');
-
+[vrSnr, vrAccuracy, vrFp, vrFn] = multifun_(@(x)x(:), vrSnr, vrAccuracy, vrFp, vrFn);
 try
     markerSize = 10;
+    viClu_gt_plot = find(vrSnr>snr_thresh);
     fh_text = @(vr)sprintf('%0.2f/%0.2f(%d)(%0.2f>S%0.1f); %0.2f-%0.2f', ...
-        nanmean(vr), nanstd(vr), sum(~isnan(vr)), mean(vr(vrSnr>snr_thresh)), snr_thresh, quantile(vr,.25), quantile(vr,.75));
-
-    vcXlabel = sprintf('Amplitude (%s)', inputname(1));
+        nanmean(vr), nanstd(vr), sum(~isnan(vr)), mean(vr(viClu_gt_plot)), ...
+        snr_thresh, quantile(vr,.25), quantile(vr,.75));
+    vcAmpl = sprintf('Amplitude (%s)', inputname(1));
+    if ~isempty(viClu_match)
+        csCluMatch = arrayfun_(@(x,y)sprintf('%d',x), viClu_match)';        
+    else
+        csCluMatch = {};   
+    end
     for iPlot = 1:4
-        subplot(2,2,iPlot);
+        subplot(2,2,iPlot); hold on;
+        vcTitle1 = '';
         switch iPlot
-            case 1
-                plot_(vrSnr, vrAccuracy, '.', 'MarkerSize', markerSize); 
-                xylabel_(gca, vcXlabel, 'Accuracy', fh_text(vrAccuracy));
-            case 2
-                plot_(vrSnr, vrFp, '.', 'MarkerSize', markerSize); 
-                xylabel_(gca, vcXlabel, '');
-                xylabel_(gca, vcXlabel, 'False Positive', fh_text(vrFp));
-            case 3
-                plot_(vrSnr, vrFn, '.', 'MarkerSize', markerSize); 
-                xylabel_(gca, vcXlabel, 'False Negative', fh_text(vrFn));
-            case 4
-                plot_(vrFp, vrFn, '.', 'MarkerSize', markerSize); 
+            case 1, [vrX1, vrY1, vcX1, vcY1] = deal(vrSnr, vrAccuracy, vcAmpl, 'Accuracy');
+            case 2, [vrX1, vrY1, vcX1, vcY1] = deal(vrSnr, vrFp, vcAmpl, 'False Positive');
+            case 3, [vrX1, vrY1, vcX1, vcY1] = deal(vrSnr, vrFn, vcAmpl, 'False Negative');
+            case 4, [vrX1, vrY1, vcX1, vcY1] = deal(vrFp, vrFn, 'False Positive', 'False Negative');
                 nUnits1 = sum(vrAccuracy>=accuracy_thresh);
-                vcTitle1 = sprintf('%d units >= %0.2f accuracy', nUnits1, accuracy_thresh);
-                xylabel_(gca, 'False Positive', 'False Negative', vcTitle1);                   
-                set(gca,'XLim', [-.05, 1.05], 'XTick', 0:.2:1); 
+                vcTitle1 = sprintf('%d units >= %0.2f accuracy', nUnits1, accuracy_thresh);                
         end %switch
+        plot_(vrX1, vrY1, '.', 'MarkerSize', markerSize);
+        if ~isempty(csCluMatch)
+            text_(vrX1, vrY1, csCluMatch, 'VerticalAlignment', 'bottom', 'HorizontalAlignment', 'left');    
+        end
+        if isempty(vcTitle1)
+            xylabel_(gca, vcX1, vcY1, fh_text(vrY1));
+            set(gca,'YLim', [0, 1], 'YTick', 0:.2:1);
+        else
+            xylabel_(gca, vcX1, vcY1, vcTitle1);
+            set(gca,'XLim', [-.05, 1.05], 'XTick', 0:.2:1); 
+        end
         grid on;
         %set(gca,'YLim', [-.05, 1.05], 'YTick', 0:.2:1);   
-        set(gca,'YLim', [0, 1], 'YTick', 0:.2:1);   
+           
     end %for
 catch
     disperr_('plot_gt_2by2_');
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+function text_(varargin)
+%         text_(vrX1, vrY1, csTxt1, ...)
+[vrX1, vrY1, csTxt1] = ...
+    deal(double(varargin{1}), double(varargin{2}), varargin{3});
+if nargin>3
+    arrayfun(@(x)text(vrX1(x), vrY1(x), csTxt1{x}, varargin{4:end}), 1:numel(vrX1));
+else
+    arrayfun(@(x)text(vrX1(x), vrY1(x), csTxt1{x}), 1:numel(vrX1));
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+function text3_(varargin)
+%         text3_(vrX1, vrY1, vrZ1, csTxt1, ...)
+[vrX1, vrY1, vrZ1, csTxt1] = ...
+    deal(double(varargin{1}), double(varargin{2}), double(varargin{3}), varargin{4});
+if nargin>4
+    arrayfun(@(x)text(vrX1(x), vrY1(x), vrZ1(x), csTxt1{x}, varargin{5:end}), 1:numel(vrX1));
+else
+    arrayfun(@(x)text(vrX1(x), vrY1(x), vrZ1(x), csTxt1{x}), 1:numel(vrX1));
 end
 end %func
 
@@ -31510,6 +31552,22 @@ end %func
 
 
 %--------------------------------------------------------------------------
+function varargout = arrayfun_(varargin)
+if nargout == 0
+    arrayfun(varargin{:}, 'UniformOutput', 0);
+elseif nargout==1
+    varargout{1} = arrayfun(varargin{:}, 'UniformOutput', 0);
+elseif nargout==2
+    [varargout{1}, varargout{2}] = arrayfun(varargin{:}, 'UniformOutput', 0);    
+elseif nargout==3
+    [varargout{1}, varargout{2}, varargout{3}] = arrayfun(varargin{:}, 'UniformOutput', 0);    
+else
+    error('arrayfun_: nargout exceeds 3');
+end   
+end %func
+
+
+%--------------------------------------------------------------------------
 % May 14, 2019 JJJ
 function S_clu = drift_merge_post_(S_clu, P)
 
@@ -32071,3 +32129,35 @@ end %for
 end %func
         
 
+%--------------------------------------------------------------------------
+function plot0_(vcMode)
+S0 = get(0, 'UserData');
+P = S0.P;
+S_clu = S0.S_clu;
+
+nClu = max(S_clu.viClu);
+cviSpk_clu = arrayfun_(@(x)find(S_clu.viClu==x), (1:nClu)');
+mrXY_clu = cell2mat_(cellfun_(@(x)median(S0.mrPos_spk(x,:)), cviSpk_clu));
+
+hFig = create_figure_([], [0 0 .5 1], P.vcFile, 1, 1);
+switch lower(vcMode)
+    case 'scatter'
+        [vrX1, vrY1] = deal(S0.mrPos_spk(:,1), S0.mrPos_spk(:,2));
+        scatter(vrX1, vrY1, 1, S_clu.viClu);
+        text_(mrXY_clu(:,1), mrXY_clu(:,2), arrayfun_(@num2str, 1:nClu), ...
+            'VerticalAlignment', 'bottom', 'HorizontalAlignment', 'left');
+        xylabel_([], 'x pos (um)', 'y pos (um)', P.vcFile); grid on;
+    case 'scatter3'
+        vrLogP_clu = cellfun(@(x)median(log(S0.vrPow_spk(x))), cviSpk_clu);
+        scatter3(S0.mrPos_spk(:,1), S0.mrPos_spk(:,2), log(S0.vrPow_spk), 1, S_clu.viClu);
+        text3_(mrXY_clu(:,1), mrXY_clu(:,2), vrLogP_clu, arrayfun_(@num2str, 1:nClu), ...
+            'VerticalAlignment', 'bottom', 'HorizontalAlignment', 'left');
+        xylabel_([], 'x pos (um)', 'y pos (um)', P.vcFile); grid on;
+        zlabel('log power');
+    case 'probe'
+        plot_probe_(P.mrSiteXY, [12 12], P.viSite2Chan);
+        axis equal;
+    otherwise
+        error('plot0_: invalid option');
+end %switch
+end %func
