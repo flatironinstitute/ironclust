@@ -50,7 +50,7 @@ switch lower(vcCmd)
         return;
         
     % one argument
-    case 'plot', plot0_(vcArg1); return;
+    case 'plot', plot0_(vcArg1, vcArg2); return;
     case 'github', web_(read_cfg_('repoURL')); return;
     case 'copyto-voms', copyto_voms_(vcArg1); return;     
     case 'copyfrom-voms', copyfrom_voms_(vcArg1); return;     
@@ -2881,10 +2881,10 @@ end
 set0_(S_score);       
 assignWorkspace_(S_score); %put in workspace
 
-vnSpk_gt = cellfun(@numel, S_score_clu.cviSpk_gt_hit) + cellfun(@numel, S_score_clu.cviSpk_gt_miss);
-[vrSnr, vrFp, vrFn, vrAccuracy, vnSite, vnSpk, fVerbose] = ...
+vnSpk = cellfun(@numel, S_score_clu.cviSpk_gt_hit) + cellfun(@numel, S_score_clu.cviSpk_gt_miss);
+[vrSnr, vrFp, vrFn, vrAccuracy, vnSite, fVerbose] = ...
     deal(S_score.vrSnr_min_gt, S_score_clu.vrFp, S_score_clu.vrMiss, ...
-        S_score_clu.vrAccuracy, S_score.vnSite_gt, vnSpk_gt, 0);
+        S_score_clu.vrAccuracy, S_score.vnSite_gt, 0);
 disp_score_(makeStruct_(vrSnr, vrFp, vrFn, vrAccuracy, vnSite, vnSpk, fVerbose, S_burst, S_overlap));
 
 % plot if not running from the cluster
@@ -2893,31 +2893,37 @@ if isUsingBuiltinEditor_() && fPlot_gt>0
     try
         vrAccuracy = S_score.S_score_clu.vrAccuracy;   
         try
-            viClu_match = S_score.S_score_clu.viCluMatch;
+            viCluMatch_gt = S_score.S_score_clu.viCluMatch;
         catch
-            viClu_match = [];
+            viCluMatch_gt = [];
         end
+        hFig = figure('Color','w','Name', [P.vcFile_prm, ': groundtruth (blue)']);
         switch fPlot_gt
-            case 5 % variance ratio
-                figure;
-                set(gcf,'Color','w', 'Name', P.vcFile_prm);
-                RMS_var = S_score.S_gt.vrSnr_sd_clu.^2;
-                plot_gt_2by2_(RMS_var, vrAccuracy, vrFp, vrFn, viClu_match);
-            case 4
-                figure;
-                set(gcf,'Color','w', 'Name', P.vcFile_prm);
+            case 6 % plot clu    
                 SNR_min = vrSnr;
-                plot_gt_2by2_(SNR_min, vrAccuracy, vrFp, vrFn, viClu_match);
+                plot_gt_2by2_(SNR_min, vrAccuracy, vrFp, vrFn, viCluMatch_gt);
+                
+                hFig = figure('Color','w','Name', ...
+                    [P.vcFile, ': groundtruth (blue); clustered (orange)']);
+                viRank_gt = rankorder_(vrAccuracy, 'descend');
+                plot_gt_2by2_(viRank_gt, vrAccuracy, vrFp, vrFn, viCluMatch_gt);
+                
+                [vrFp_clu, vrFn_clu, vrAccuracy_clu, viCluMatch_clu] = struct_get_(...
+                    S_score.S_score_gt_clu.S_score_clu, 'vrFp', 'vrMiss', 'vrAccuracy', 'viCluMatch');
+                viRank_clu = rankorder_(vrAccuracy_clu, 'descend');
+                plot_gt_2by2_(viRank_clu, vrAccuracy_clu, vrFp_clu, vrFn_clu, viCluMatch_clu);
+            case 5 % variance ratio
+                RMS_var = S_score.S_gt.vrSnr_sd_clu.^2;
+                plot_gt_2by2_(RMS_var, vrAccuracy, vrFp, vrFn, viCluMatch_gt);
+            case 4
+                SNR_min = vrSnr;
+                plot_gt_2by2_(SNR_min, vrAccuracy, vrFp, vrFn, viCluMatch_gt);
             case 3
-                figure;
-                set(gcf,'Color','w', 'Name', P.vcFile_prm);
                 vrVmin = abs(S_score.S_gt.vrVmin_clu);
-                plot_gt_2by2_(vrVmin, vrAccuracy, vrFp, vrFn, viClu_match);
+                plot_gt_2by2_(vrVmin, vrAccuracy, vrFp, vrFn, viCluMatch_gt);
             case 2
                 vrVpp = S_score.S_gt.vrVpp_clu;
-                figure;
-                set(gcf,'Color','w', 'Name', P.vcFile_prm);
-                plot_gt_2by2_(vrVpp, vrAccuracy, vrFp, vrFn, viClu_match);   
+                plot_gt_2by2_(vrVpp, vrAccuracy, vrFp, vrFn, viCluMatch_gt);   
             case 1
                 plot_gt_(S_score, P);
                 return;
@@ -3356,10 +3362,34 @@ end %func
 
 
 %--------------------------------------------------------------------------
+% fast median for matrix
 function vr = median_(mr)
 vr = sort(mr);
 imid = ceil(size(mr,1)/2);
 vr = vr(imid,:);
+end %func
+
+
+%--------------------------------------------------------------------------
+% fast median for 3D array
+function B = median3_(A,idimm)
+if nargin<2, idimm=1; end
+
+A = sort(A,idimm);
+imid = ceil(size(A,idimm)/2);
+if idimm==1
+    B = A(imid,:,:);
+elseif idimm==2
+    B = A(:,imid,:);
+else
+    B = A(:,:,imid);
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+function mat = cell2matfun_(varargin)
+mat = cell2mat(cellfun(varargin{1}, varargin{2:end}, 'UniformOutput', 0));
 end %func
 
 
@@ -4860,7 +4890,7 @@ P = get0_('P');
 snr_thresh_gt = read_cfg_('snr_thresh_gt');
 if isempty(fVerbose), fVerbose = 0; end
 fSort_snr = 1;
-fprintf('SNR(%s)>%d Groundtruth Units\n', read_cfg_('vcSnr_gt'), snr_thresh_gt);
+fprintf('SNR(%s)>%0.1f Groundtruth Units\n', read_cfg_('vcSnr_gt'), snr_thresh_gt);
 [vrSnr, vrFp, vrFn, vrAccuracy, vnSite, vnSpk] = ...
     multifun_(@(x)x(:), vrSnr, vrFp, vrFn, vrAccuracy, vnSite, vnSpk);
 [vrFp_pct, vrFn_pct, vrAccuracy_pct] = deal(vrFp*100, vrFn*100, vrAccuracy*100);
@@ -31286,16 +31316,20 @@ S_score = struct_(...
     'vrVpp_clu', S_gt.vrVpp_clu, 'vrVmin_clu', S_gt.vrVmin_clu);
 
 % Compare S_clu with S_gt
-nSamples_jitter = round(P.sRateHz / 1000); %1 ms jitter
+spkJitter_ms_gt = read_cfg_('spkJitter_ms_gt');
+if isempty(spkJitter_ms_gt), spkJitter_ms_gt = 1; end
+nSamples_jitter = round(spkJitter_ms_gt * P.sRateHz / 1000); %1 ms jitter
 fprintf('verifying cluster...\n'); 
 
-[mrMiss, mrFp, vnCluGt, miCluMatch, S_score_clu] = ...
-    clusterVerify(S_gt.viClu, S_gt.viTime, S_clu.viClu, S0.viTime_spk, nSamples_jitter);  %S_gt.viTime
+S_score_clu_gt = clusterVerify(S_gt.viClu, S_gt.viTime, S_clu.viClu, S0.viTime_spk, nSamples_jitter);  %S_gt.viTime
+[mrMiss, mrFp, vnCluGt, miCluMatch, S_score_clu] = struct_get_(S_score_clu_gt, ...
+    'mrMiss','mrFp','vnCluGt','miCluMatch','S_score_clu');
 [S_score_ksort, S_burst, S_overlap] = deal([]);
 if fMergeCheck_gt
     try
         t_mergeCheck = tic;
-        S_score_ksort = compareClustering2_(S_gt.viClu, S_gt.viTime, S_clu.viClu+1, S0.viTime_spk); 
+        vl_ = S_clu.viClu>0;
+        S_score_ksort = compareClustering2_(S_gt.viClu, S_gt.viTime, S_clu.viClu(vl_), S0.viTime_spk(vl_)); 
         fprintf('\tmerge check took %0.1fs\n', toc(t_mergeCheck));
     catch
         disperr_('validate: fMergeCheck failed');
@@ -31303,6 +31337,7 @@ if fMergeCheck_gt
 end
 
 S_score = struct_add_(S_score, mrMiss, mrFp, vnCluGt, miCluMatch, P, S_gt, S_score_clu);
+
 if isfield(S_clu, 'cviSpk_clu')
     S_score.cviTime_clu = S_clu.cviSpk_clu(S_score_clu.viCluMatch)';
 else
@@ -31347,6 +31382,12 @@ catch
     ;
 end
 S_score = struct_add_(S_score, S_overlap, S_score_clu, S_score_ksort, S_burst);
+if 1 % flip the gt and clu
+    vl = S_clu.viClu>0;
+    S_score.S_score_gt_clu = ...
+        clusterVerify(S_clu.viClu(vl), S0.viTime_spk(vl), S_gt.viClu, S_gt.viTime, nSamples_jitter);
+    S_score.S_score_clu_gt = S_score_clu_gt;
+end
 end %func
 
 
@@ -32130,7 +32171,9 @@ end %func
         
 
 %--------------------------------------------------------------------------
-function plot0_(vcMode)
+function plot0_(vcMode, vcArg1)
+if nargin<2, vcArg1 = []; end
+
 S0 = get(0, 'UserData');
 P = S0.P;
 S_clu = S0.S_clu;
@@ -32138,25 +32181,66 @@ S_clu = S0.S_clu;
 nClu = max(S_clu.viClu);
 cviSpk_clu = arrayfun_(@(x)find(S_clu.viClu==x), (1:nClu)');
 mrXY_clu = cell2mat_(cellfun_(@(x)median(S0.mrPos_spk(x,:)), cviSpk_clu));
+if isempty(vcArg1)
+    viClu_plot = [];
+else
+    viClu_plot = str2num(vcArg1);
+    vl_spk = ismember(S_clu.viClu, viClu_plot);
+end
 
-hFig = create_figure_([], [0 0 .5 1], P.vcFile, 1, 1);
 switch lower(vcMode)
     case 'scatter'
+        hFig = create_figure_([], [0 0 .5 1], P.vcFile, 1, 1);
         [vrX1, vrY1] = deal(S0.mrPos_spk(:,1), S0.mrPos_spk(:,2));
-        scatter(vrX1, vrY1, 1, S_clu.viClu);
-        text_(mrXY_clu(:,1), mrXY_clu(:,2), arrayfun_(@num2str, 1:nClu), ...
-            'VerticalAlignment', 'bottom', 'HorizontalAlignment', 'left');
+        if isempty(viClu_plot)
+            scatter(vrX1, vrY1, 1, S_clu.viClu);
+            text_(mrXY_clu(:,1), mrXY_clu(:,2), arrayfun_(@num2str, 1:nClu), ...
+                'VerticalAlignment', 'bottom', 'HorizontalAlignment', 'left');
+        else
+            plot(vrX1(~vl_spk), vrY1(~vl_spk), '.', 'MarkerSize', 1, 'Color', ones(1,3)*.75); hold on;
+            scatter(vrX1(vl_spk), vrY1(vl_spk), 1, S_clu.viClu(vl_spk));
+            text_(mrXY_clu(viClu_plot,1), mrXY_clu(viClu_plot,2), arrayfun_(@num2str, viClu_plot), ...
+                'VerticalAlignment', 'bottom', 'HorizontalAlignment', 'left');
+        end
         xylabel_([], 'x pos (um)', 'y pos (um)', P.vcFile); grid on;
+        
+    case 'drift'
+        hFig = create_figure_([], [0 0 .5 1], P.vcFile, 1, 1);
+        [vrX1, vrY1] = deal(double(S0.viTime_spk)/P.sRateHz, S0.mrPos_spk(:,2));
+        if isempty(viClu_plot)
+            scatter(vrX1, vrY1, 1, S_clu.viClu);
+            text_(mrXY_clu(:,1), mrXY_clu(:,2), arrayfun_(@num2str, 1:nClu), ...
+                'VerticalAlignment', 'bottom', 'HorizontalAlignment', 'left');
+        else
+            plot(vrX1(~vl_spk), vrY1(~vl_spk), '.', 'MarkerSize', 1, 'Color', ones(1,3)*.75); hold on;
+            scatter(vrX1(vl_spk), vrY1(vl_spk), 1, S_clu.viClu(vl_spk));
+            text_(mrXY_clu(viClu_plot,1), mrXY_clu(viClu_plot,2), arrayfun_(@num2str, viClu_plot), ...
+                'VerticalAlignment', 'bottom', 'HorizontalAlignment', 'left');            
+        end
+        xylabel_([], 'Time (s)', 'y pos (um)', P.vcFile); grid on;
+        
     case 'scatter3'
+        hFig = create_figure_([], [0 0 .5 1], P.vcFile, 1, 1);
         vrLogP_clu = cellfun(@(x)median(log(S0.vrPow_spk(x))), cviSpk_clu);
-        scatter3(S0.mrPos_spk(:,1), S0.mrPos_spk(:,2), log(S0.vrPow_spk), 1, S_clu.viClu);
-        text3_(mrXY_clu(:,1), mrXY_clu(:,2), vrLogP_clu, arrayfun_(@num2str, 1:nClu), ...
-            'VerticalAlignment', 'bottom', 'HorizontalAlignment', 'left');
+        [vrX1, vrY1, vrZ1] = deal(S0.mrPos_spk(:,1), S0.mrPos_spk(:,2), log(S0.vrPow_spk));
+        if isempty(viClu_plot)
+            scatter3(vrX1, vrY1, vrZ1, 1, S_clu.viClu);
+            text3_(vrX1, vrY1, vrZ1, arrayfun_(@num2str, 1:nClu), ...
+                'VerticalAlignment', 'bottom', 'HorizontalAlignment', 'left');
+        else
+            plot3(vrX1(~vl_spk), vrY1(~vl_spk), vrZ1(~vl_spk), '.', 'MarkerSize', 1, 'Color', ones(1,3)*.75); hold on;
+            scatter3(vrX1(vl_spk), vrY1(vl_spk), vrZ1(vl_spk), 1, S_clu.viClu(vl_spk));
+            text3_(mrXY_clu(viClu_plot,1), mrXY_clu(viClu_plot,2), vrZ1(viClu_plot), arrayfun_(@num2str, viClu_plot), ...
+                'VerticalAlignment', 'bottom', 'HorizontalAlignment', 'left');        
+        end
         xylabel_([], 'x pos (um)', 'y pos (um)', P.vcFile); grid on;
         zlabel('log power');
     case 'probe'
+        hFig = create_figure_([], [0 0 .5 1], P.vcFile, 1, 1);
         plot_probe_(P.mrSiteXY, [12 12], P.viSite2Chan);
         axis equal;
+    case {'verify', 'validate'}
+        validate_(P, [], S0);
     otherwise
         error('plot0_: invalid option');
 end %switch

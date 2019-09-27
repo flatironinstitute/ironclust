@@ -1,7 +1,8 @@
 function [mrMiss, mrFp, vnCluGt, miCluMatch, S_score_clu] = clusterVerify(viCluGt, viTimeGt, viClu, viTime, jitter)
-% very rapid
-
-% fNorm_mode = 3; %normalize by the ground truth unit
+% usage
+% -----
+% [mrMiss, mrFp, vnCluGt, miCluMatch, S_score_clu] = clusterVerify(viCluGt, viTimeGt, viClu, viTime, jitter)
+% [S] = clusterVerify(viCluGt, viTimeGt, viClu, viTime, jitter)
 
 if nargin<5, jitter = 12; end
 
@@ -95,6 +96,10 @@ fprintf('\tScore (<%0.1f%%> %0.1f %0.1f %0.1f): %s\n', ...
     nanmean(vrScore)*100, func1(vrScore), sprintf('%0.1f ', vrScore*100));
 fprintf('\tCluster-size: %s\n', sprintf('%d, ', vnCluGt));
 fprintf('\tMatching clu: %s\n', sprintf('%d, ', viCluMatch));
+
+if nargout==1
+    mrMiss = makeStruct_(mrMiss, mrFp, vnCluGt, miCluMatch, S_score_clu);
+end
 end %func
 
 

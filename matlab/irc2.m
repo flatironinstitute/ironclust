@@ -9,10 +9,24 @@ function irc2(vcDir_in, vcDir_out, vcFile_arg)
 if nargin<1, vcDir_in = ''; end
 if nargin<2, vcDir_out = ''; end
 if nargin<3, vcFile_arg = ''; end
+[vcCmd, vcArg1, vcArg2] = deal(vcDir_in, vcDir_out, vcFile_arg); 
 
-if isempty(vcDir_in),  vcDir_in = get_test_data_(); end
+if isempty(vcDir_in),  vcDir_in = get_test_data_('static'); end
 if isempty(vcDir_out), vcDir_out = strrep(vcDir_in, 'groundtruth', 'irc'); end
+if isempty(vcFile_arg), vcFile_arg = struct('nPcPerChan',1,'fGpu',1,'qqFactor',4,'nPc_spk',6); end
 if ~exist_dir_(vcDir_out), mkdir(vcDir_out); end
+
+% special commands
+switch lower(vcCmd)
+    case 'plot', irc('plot', vcArg1, vcArg2); return;
+    case 'verify', irc('plot', 'verify'); return;
+    case 'clear', clear_(); return;
+    case 'clear-sort', clear_('sort'); return;
+    case 'test-static', clear_(); irc2(get_test_data_('static'), [], []); return;
+    case 'test-drift', clear_(); irc2(get_test_data_('drift'), [], []); return;
+    case 'sort', irc2(clear_('sort')); return; 
+    case 'export', irc('export', vcArg1); return;
+end
 
 P = makeParam_(vcDir_in, vcDir_out, vcFile_arg);
 S0 = get(0, 'UserData');
@@ -41,6 +55,27 @@ if exist_file_(vcFile_gt_mda)
 end
 end %func
 
+
+%--------------------------------------------------------------------------
+function vcDir_in = clear_(vcMode)
+if nargin<1, vcMode = 'all'; end
+
+switch vcMode
+    case 'all'
+        set(0, 'UserData', []);
+        disp('irc2: cleared all');
+        vcDir_in = '';
+    case 'sort'
+        S0 = set(0, 'UserData');
+        S0.S_clu = [];
+        disp('irc2: cleared sort');
+        try
+            vcDir_in = fileparts(S0.P.vcFile);
+        catch
+            vcDir_in = '';
+        end
+end
+end
 
 %--------------------------------------------------------------------------
 function csDesc = describe_(S0, vcFile_firings_mda)
@@ -80,20 +115,26 @@ end %func
 function S0 = auto_(S0, P)
 fprintf('\nauto-merging...\n'); runtime_automerge=tic;
 % auto merge
-P.post_merge_mode0 = 12;
+P.post_merge_mode0 = [12];
 S0.S_clu = postCluster_(S0.S_clu, P); % peak merging
 
-% P.maxWavCor = .99;
-% mrDist_clu = calc_dist_clu_(S0, P, 1);
-% S0.S_clu = templateMatch_post_(S0.S_clu, P, mrDist_clu);
+% fMode = 0;  P.maxWavCor = .90; %wavcor
+fMode = 3;  P.maxWavCor = .90; %82.1, RMS
+% fMode = 6;  P.maxWavCor = .95; % 81.6, correlation
+% fMode = 7;  P.maxWavCor = .95;  % 81.6, both
+switch fMode 
+    case 0
+        mrDist_clu = wave_similarity_clu_(S0, P, 1);
+        S0.S_clu = templateMatch_post_(S0.S_clu, P, mrDist_clu);
+    otherwise
+        mrDist_clu = calc_dist_clu_(S0, P, fMode);
+        S0.S_clu = templateMatch_post_(S0.S_clu, P, mrDist_clu);            
+end
 
-% P.maxWavCor = .97;
-% mrDist_clu = wave_similarity_clu_(S0, P, 1);
-% S0.S_clu = templateMatch_post_(S0.S_clu, P, mrDist_clu);
+% P.post_merge_mode0 = 19;
+% S0.S_clu = postCluster_(S0.S_clu, P); % peak merging
 
-P.maxWavCor = .97;
-mrDist_clu = calc_dist_clu_(S0, P, 2);
-S0.S_clu = templateMatch_post_(S0.S_clu, P, mrDist_clu);
+S0.S_clu = S_clu_refresh_(S0.S_clu);
 
 S0.runtime_automerge = toc(runtime_automerge);
 fprintf('\n\tauto-merging took %0.1fs\n', S0.runtime_automerge);
@@ -110,15 +151,16 @@ MIN_COUNT = P.min_count;
 
 % compute average waveforms by clusters
 nClu = max(S_clu.viClu);
+nSites = max(S0.viSite_spk);
 % compute average clu waveforms (sort by centers)
 [viClu, vrPos_spk, mrPos_spk] = deal(S_clu.viClu, S0.vrPow_spk, S0.mrPos_spk);
-
+[nPc_spk, nSites_spk, nSpk] = size(S0.trPc_spk);
 [cviSpk_drift, mlDrift] = struct_get_(S0.S_clu.S_drift, 'cviSpk_drift', 'mlDrift');
 unique_vec_ = @(x)unique(x(:));
 if ~isempty(cviSpk_drift)
-    mrDist_clu = zeros(nClu);
+    mrDist_clu = zeros(nClu, 'single');
     for iDrift = 1:numel(cviSpk_drift)
-        switch 3
+        switch 1
             case 4
                 viSpk1 = cell2mat_(cviSpk_drift(find(mlDrift(:, iDrift))));
                 viSpk1 = unique_vec_(S0.S_clu.miKnn(:,viSpk1));
@@ -127,17 +169,40 @@ if ~isempty(cviSpk_drift)
             case 1, viSpk1 = cell2mat_(cviSpk_drift(find(mlDrift(:, iDrift))));
         end
         [viClu1, mrPos_spk1, vrPow_spk1] = deal(viClu(viSpk1), mrPos_spk(viSpk1,:), vrPos_spk(viSpk1));
-        switch fMode
-            case 1
-                mrDist_clu1 = pos_dist_clu_(viClu1, mrPos_spk1, vrPow_spk1, nClu, MIN_COUNT);
-                mrDist_clu1 = 1 - min(mrDist_clu1/100, 1);
-                mrDist_clu = max(mrDist_clu, mrDist_clu1);
-            case 2
-                trPc1 = S0.trPc_spk(:,:,viSpk1);
-                viSite1 = S0.viSite_spk(viSpk1);
-                mrDist_clu1 = wav_dist_clu_(viClu1, viSite1, trPc1, S0.mrPv_global, nClu, MIN_COUNT);
-                mrDist_clu = max(mrDist_clu, mrDist_clu1);
-        end %switch
+        for iMode = 1:numel(fMode)
+            switch fMode(iMode)
+                case 1
+                    trPc1 = S0.trPc_spk(:,:,viSpk1);
+                    viSite1 = S0.viSite_spk(viSpk1);
+                    mrDist_clu1 = wav_dist_clu_(viClu1, viSite1, trPc1, S0.mrPv_global, nClu, MIN_COUNT);
+                    mrDist_clu = max(mrDist_clu, mrDist_clu1);   
+                    
+                otherwise
+                    trPc1 = S0.trPc_spk(:,:,viSpk1);
+                    viSite1 = S0.viSite_spk(viSpk1);
+                    mrDist_clu1 = wav_dist_clu_(viClu1, viSite1, trPc1, fMode(iMode), nClu, MIN_COUNT);
+                    mrDist_clu = max(mrDist_clu, mrDist_clu1);                     
+                    
+%                 case 1
+%                     mrDist_clu1 = pos_dist_clu_(viClu1, mrPos_spk1, vrPow_spk1, nClu, MIN_COUNT);
+%                     mrDist_clu1 = 1 - min(mrDist_clu1/100, 1);
+%                     mrDist_clu = max(mrDist_clu, mrDist_clu1);
+%                 case 3 % spatial correlation
+%                     mrA1 = (squeeze_(S0.trPc_spk(1,:,viSpk1), 1)).^2;  
+%                     viSite1 = S0.viSite_spk(viSpk1);
+%                     mrA_clu = zeros(nSites, nClu, 'single');
+%                     for iClu = 1:nClu
+%                         vl11 = viClu1==iClu;
+%                         if ~any(vl11), continue; end
+%                         iSite11 = mode(viSite1(vl11));
+%                         vl11(viSite1~=iSite11) = false;                    
+%                         mrA_clu(P.miSites(:,iSite11),iClu) = mean(mrA1(:,vl11),2);
+%                     end
+%                     mrA_clu = mrA_clu ./ sqrt(sum(mrA_clu.^2));
+%                     mrDist_clu = mrA_clu' * mrA_clu;
+%                     
+            end %switch
+        end
         fprintf('.');
     end
 else
@@ -185,25 +250,29 @@ end %func
 function mrDist_clu = wav_dist_clu_(viClu, viSite_spk, trPc_spk, mrPv_global, nClu, MIN_COUNT)
 
 % compute average waveforms by clusters
-cviSpk_clu = arrayfun(@(x)find(viClu==x), 1:nClu, 'UniformOutput', 0);
+% cviSpk_clu = arrayfun(@(x)find(viClu==x), 1:nClu, 'UniformOutput', 0);
 [ctrPc_clu, cviSite_clu] = deal(cell(nClu,1));
 dimm_pc = size(trPc_spk);
 
 % compute average pc per cluster per site
 % find centroid of the cluster
 for iClu = 1:nClu
-    viSpk1 = cviSpk_clu{iClu};
-    viSite1 = viSite_spk(viSpk1);
-    [viSite1_uniq1, vn_uniq1, cviSpk1_uniq1] = unique_count_(viSite1);
-    trPc_spk1 = trPc_spk(:,:, viSpk1);
+    viSpk1 = find(viClu==iClu);
+    if isempty(viSpk1), continue; end
+    viSite1 = viSite_spk(viSpk1);   
+    
+    [viSite1_uniq1, vn_uniq1, cviSpk1_uniq1] = unique_count_(viSite1);    
     [viSite1_uniq1, cviSpk1_uniq1] = ...
         multifun_(@(x)x(vn_uniq1>=MIN_COUNT), viSite1_uniq1, cviSpk1_uniq1);
-    trPc1 = zeros(dimm_pc(1), dimm_pc(2), numel(cviSpk1_uniq1), 'single');
-    for iiSite1 = 1:numel(cviSpk1_uniq1)
-        % compute average waveforms by peak sites
-        viSpk11 = cviSpk1_uniq1{iiSite1};
-        trPc1(:,:,iiSite1) = mean(trPc_spk1(:,:,viSpk11), 3);
-    end
+    if isempty(cviSpk1_uniq1), continue; end    
+    if numel(cviSpk1_uniq1) == 1
+        trPc1 = median3_(trPc_spk(:,:,viSpk1),3);
+    else        
+        trPc_spk1 = permute(trPc_spk(:,:,viSpk1), [3,1,2]);
+%         trPc1 = cell2mat(cellfun(@(x)median(trPc_spk1(x,:,:)), cviSpk1_uniq1, 'UniformOutput', 0));
+        trPc1 = cell2matfun_(@(x)median3_(trPc_spk1(x,:,:)), cviSpk1_uniq1);
+        trPc1 = permute(trPc1, [2,3,1]);
+    end    
     [ctrPc_clu{iClu}, cviSite_clu{iClu}] = deal(trPc1, viSite1_uniq1);
 end
 % construct arrays and sites
@@ -215,17 +284,39 @@ mrDist_clu = zeros(nClu);
 for iClu1 = 1:nClu
     [trPc1, viSite1] = deal(ctrPc_clu{iClu1}, cviSite_clu{iClu1});
     vrDist_clu1 = zeros(nClu,1);
-    for iiSite1 = 1:numel(viSite1)
-        mrPc1 = trPc1(:,:,iiSite1);
+    for iiSite1 = 1:numel(viSite1)        
         vi_all2 = find(viSite_all == viSite1(iiSite1) & viClu_all ~= iClu1);
         if isempty(vi_all2), continue; end
+        mrPc1 = trPc1(:,:,iiSite1);
         viClu2 = viClu_all(vi_all2);
         trPc2 = trPc_all(:,:,vi_all2);
-        vrCorr12 = wavcor_(pc2wav_(mrPv_global, mrPc1), pc2wav_(mrPv_global, trPc2), 0);
+        vrCorr12 = wavcor_pc_(mrPc1, trPc2, mrPv_global);
         vrDist_clu1(viClu2) = max(vrDist_clu1(viClu2), vrCorr12(:));
     end
     mrDist_clu(:,iClu1) = vrDist_clu1;
 end
+end %func
+
+
+%--------------------------------------------------------------------------
+function B = median3_(A,idimm)
+if nargin<2, idimm=1; end
+
+A = sort(A,idimm);
+imid = ceil(size(A,idimm)/2);
+if idimm==1
+    B = A(imid,:,:);
+elseif idimm==2
+    B = A(:,imid,:);
+else
+    B = A(:,:,imid);
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+function mat = cell2matfun_(varargin)
+mat = cell2mat(cellfun(varargin{1}, varargin{2:end}, 'UniformOutput', 0));
 end %func
 
 
@@ -328,16 +419,78 @@ end %func
 
 %--------------------------------------------------------------------------
 function [vr, vr_med] = sd_mad_(mr)
-vr_med = median_(mr);
-vr = median_(abs(mr - vr_med)) / .6745;
+vr_med = median2_(mr);
+vr = median2_(abs(mr - vr_med)) / .6745;
 end % func
 
 
 %--------------------------------------------------------------------------
-function vr = median_(mr)
+function vr = median2_(mr)
 vr = sort(mr);
 imid = ceil(size(mr,1)/2);
 vr = vr(imid,:);
+end %func
+
+
+%--------------------------------------------------------------------------
+function vrCorr12 = wavcor_pc_(mrPc1, trPc2, fMode)
+if numel(fMode)>1
+    mrPv_global = fMode;
+    fMode = 1;
+end
+
+switch fMode 
+    case 1 % correlation distance of waveform
+        mrWav1 = mrPv_global * mrPc1;
+        a_ = zscore_(mrWav1(:), 1);
+        mrWav2 = mrPv_global * reshape(trPc2, size(trPc2,1), []);
+        b_ = zscore_(reshape(mrWav2, [], size(trPc2,3)), 1);
+        vrCorr12 = (a_'*b_) / size(mrWav1,1) / size(mrWav1,2);
+        
+    case 2 % RMS distance of PC
+        vr1 = mrPc1(:);
+        mrD = vr1 - reshape(trPc2,[],size(trPc2,3));
+        vrCorr12 = sqrt(sum(mrD.^2) ./ sum(vr1.^2));
+        vrCorr12 = 1 - min(vrCorr12/10,1);
+        
+    case 3 % RMS distance of PC
+        vr1 = mrPc1(:);
+        mrD = vr1 - reshape(trPc2,[],size(trPc2,3));
+        vrCorr12 = 1 - min(sum(mrD.^2) ./ sum(vr1.^2), 1);
+        
+    case 4 % RMS distance of PC. same result as 2
+        mrWav1 = mrPv_global * mrPc1;
+        vr1 = mrWav1(:);
+        mrWav2 = reshape(mrPv_global * reshape(trPc2, size(trPc2,1), []), [], size(trPc2,3));
+        mrD = vr1 - mrWav2;
+        vrCorr12 = sqrt(sum(mrD.^2) ./ sum(vr1.^2));
+        vrCorr12 = 1 - min(vrCorr12,1);
+        
+    case 5
+        mrWav1 = mrPv_global * mrPc1;
+        a_ = zscore_(mrWav1(:), 1);
+        mrWav2 = mrPv_global * reshape(trPc2, size(trPc2,1), []);
+        b_ = zscore_(reshape(mrWav2, [], size(trPc2,3)), 1);
+        vrCorr12 = (a_'*b_) / size(mrWav1,1) / size(mrWav1,2);
+        
+    case 6
+        vr1 = mrPc1(:);
+        mr1 = reshape(trPc2,[],size(trPc2,3));
+%         vrCorr1 = 1 - min(sum((vr1 - mr1).^2) ./ sum(vr1.^2), 1);
+        vr2 = vr1/sqrt(sum(vr1.^2));
+        mr2 = mr1./sqrt(sum(mr1.^2));
+        vrCorr12 = vr2' * mr2;
+        
+    case 7
+        vr1 = mrPc1(:);
+        mr1 = reshape(trPc2,[],size(trPc2,3));
+        vrCorr1 = 1 - min(sum((vr1 - mr1).^2) ./ sum(vr1.^2), 1);
+        vr2 = vr1/sqrt(sum(vr1.^2));
+        mr2 = mr1./sqrt(sum(mr1.^2));
+        vrCorr2 = vr2' * mr2;  
+        vrCorr12 = (vrCorr1 + vrCorr2)/2;
+        
+end %switch
 end %func
 
 
@@ -770,10 +923,14 @@ for iLoad = 1:numel(cS_detect)
     vrAmp_spk(viSpk1) = S1.vrAmp_spk;
     if isempty(trPc_spk)
         trPc_spk = zeros(size(S1.trPc_spk,1), size(S1.trPc_spk,2), nSpk, 'single');
-        mrVp_spk = zeros(size(S1.mrVp_spk,1), nSpk, 'single');
     end
     trPc_spk(:,:,viSpk1) = S1.trPc_spk;
-    mrVp_spk(:,viSpk1) = S1.mrVp_spk;
+    if 0
+        if isempty(mrVp_spk)
+            mrVp_spk = zeros(size(S1.mrVp_spk,1), nSpk, 'single');
+        end
+        mrVp_spk(:,viSpk1) = S1.mrVp_spk;
+    end
 end
 end %func
 
@@ -826,9 +983,13 @@ end%if
 
 % extract spike waveforms
 trWav_spk = get_spkwav_(mrWav2, viSite_spk, viTime_spk, P);
-lim1 = round(size(trWav_spk,1) * [1/4,3/4]);
-mrVp_spk = min(trWav_spk(lim1(1):lim1(2),:,:));  
-mrVp_spk = gather_(squeeze_(mrVp_spk,1));
+if 0
+    lim1 = round(size(trWav_spk,1) * [1/4,3/4]);
+    mrVp_spk = min(trWav_spk(lim1(1):lim1(2),:,:));  
+    mrVp_spk = gather_(squeeze_(mrVp_spk,1));
+else
+    mrVp_spk = [];
+end
 if 0
     dimm_spk = size(trWav_spk);
     trWav_spk = reshape(meanSubt_(reshape(trWav_spk, [], size(trWav_spk,3))), dimm_spk);
@@ -1010,12 +1171,15 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function vcDir_in = get_test_data_()
+function vcDir_in = get_test_data_(vcMode)
+if nargin<1, vcMode = 'static'; end
+
 if ispc()
-    vcDir_in = 'C:\tmp\groundtruth\hybrid_synth\static_siprobe\rec_64c_1200s_11'; 
+    vcDir_in = 'C:\tmp\groundtruth\hybrid_synth\%s_siprobe\rec_64c_1200s_11'; 
 elseif isunix()
-    vcDir_in = '~/ceph/groundtruth/hybrid_synth/static_siprobe/rec_64c_1200s_11'; 
+    vcDir_in = '~/ceph/groundtruth/hybrid_synth/%s_siprobe/rec_64c_1200s_11'; 
 end
+vcDir_in = strrep(vcDir_in, '%s', vcMode);
 end %func
 
 
@@ -1230,6 +1394,60 @@ end %func
 
 
 %--------------------------------------------------------------------------
+function [vi_uniq, vn_uniq, cvi_uniq] = unique_count_(vi)
+% count number of unique elements and sort by vn_uniq
+vi_uniq = unique(vi);
+cvi_uniq = arrayfun(@(x)find(vi==x), vi_uniq, 'UniformOutput', 0);
+vn_uniq = cellfun(@numel, cvi_uniq);
+[vn_uniq, ix] = sort(vn_uniq, 'descend');
+vi_uniq = vi_uniq(ix);
+cvi_uniq = cvi_uniq(ix);
+end %func
+
+
+%--------------------------------------------------------------------------
+% viSite1_uniq1, vn_uniq1, cviSpk1_uniq1
+function [viUnique, vnUnique, cvi_uniq] = unique_count__(vi)
+% vn = [1 1 1 1 4 4 4 8];
+% vn = [1 1 1 1];
+[viUnique, vnUnique, cvi_uniq] = deal([], [], {});
+if isempty(vi), return; end
+vi1 = sort(vi(:)');
+vi_ = find(diff(sort(vi1)) > 0);
+if isempty(vi_)
+    vnUnique = 1;
+    viUnique = vi1(1);
+else
+    vnUnique = diff([0, vi_, numel(vi)]);
+    viUnique = [vi1(1), vi1(vi_+1)];
+end
+if nargout >= 3
+    cvi_uniq = arrayfun(@(x)find(vi==x), viUnique, 'UniformOutput', 0);
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+function z = zscore_(x, flag, dim)
+if isempty(x), z=[]; return; end
+if nargin < 2, flag = 0; end
+if nargin < 3
+    % Figure out which dimension to work along.
+    dim = find(size(x) ~= 1, 1);
+    if isempty(dim), dim = 1; end
+end
+
+% Compute X's mean and sd, and standardize it
+mu = mean(x,dim);
+sigma = std(x,flag,dim);
+sigma0 = sigma;
+sigma0(sigma0==0) = 1;
+z = bsxfun(@minus,x, mu);
+z = bsxfun(@rdivide, z, sigma0);
+end %func
+
+
+%--------------------------------------------------------------------------
 function frewind_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
 function disperr_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
 function struct_save_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
@@ -1260,13 +1478,14 @@ function out1 = postCluster_(varargin), fn=dbstack(); out1 = irc('call', fn(1).n
 function out1 = gt2mda_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = exist_dir_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = meanSubt_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
-function out1 = zscore_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
+% function out1 = zscore_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = templateMatch_post_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = memory_matlab_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = calc_drift_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = recording_duration_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = squeeze_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = struct_set_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
+function out1 = S_clu_refresh_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 
 function [out1, out2] = readmda_header_(varargin), fn=dbstack(); [out1, out2] = irc('call', fn(1).name, varargin); end
 function [out1, out2] = mr2thresh_(varargin), fn=dbstack(); [out1, out2] = irc('call', fn(1).name, varargin); end
@@ -1280,7 +1499,7 @@ function [out1, out2, out3] = plan_load_(varargin), fn=dbstack(); [out1, out2, o
 function [out1, out2, out3] = detect_spikes_(varargin), fn=dbstack(); [out1, out2, out3] = irc('call', fn(1).name, varargin); end
 function [out1, out2, out3] = cuda_delta_knn_(varargin), fn=dbstack(); [out1, out2, out3] = irc('call', fn(1).name, varargin); end
 function [out1, out2, out3] = cuda_knn_(varargin), fn=dbstack(); [out1, out2, out3] = irc('call', fn(1).name, varargin); end
-function [out1, out2, out3] = unique_count_(varargin), fn=dbstack(); [out1, out2, out3] = irc('call', fn(1).name, varargin); end
+% function [out1, out2, out3] = unique_count_(varargin), fn=dbstack(); [out1, out2, out3] = irc('call', fn(1).name, varargin); end
 function [out1, out2, out3] = rho_drift_knn_(varargin), fn=dbstack(); [out1, out2, out3] = irc('call', fn(1).name, varargin); end
 function [out1, out2, out3] = delta_drift_knn_(varargin), fn=dbstack(); [out1, out2, out3] = irc('call', fn(1).name, varargin); end
 
