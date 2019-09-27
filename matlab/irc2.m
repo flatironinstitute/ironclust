@@ -13,7 +13,9 @@ if nargin<3, vcFile_arg = ''; end
 
 if isempty(vcDir_in),  vcDir_in = get_test_data_('static'); end
 if isempty(vcDir_out), vcDir_out = strrep(vcDir_in, 'groundtruth', 'irc'); end
-if isempty(vcFile_arg), vcFile_arg = struct('nPcPerChan',1,'fGpu',1,'qqFactor',4,'nPc_spk',6); end
+if isempty(vcFile_arg)
+    vcFile_arg = struct('nPcPerChan',1,'fGpu',1,'fParfor',1,'qqFactor',4,'nPc_spk',6); 
+end
 if ~exist_dir_(vcDir_out), mkdir(vcDir_out); end
 
 % special commands
@@ -137,7 +139,8 @@ end
 S0.S_clu = S_clu_refresh_(S0.S_clu);
 
 S0.runtime_automerge = toc(runtime_automerge);
-fprintf('\n\tauto-merging took %0.1fs\n', S0.runtime_automerge);
+fprintf('\n\tauto-merging took %0.1fs (fGpu=%d, fParfor=%d)\n', ...
+    S0.runtime_automerge, P.fGpu, P.fParfor);
 end %func
 
 
@@ -157,8 +160,14 @@ nSites = max(S0.viSite_spk);
 [nPc_spk, nSites_spk, nSpk] = size(S0.trPc_spk);
 [cviSpk_drift, mlDrift] = struct_get_(S0.S_clu.S_drift, 'cviSpk_drift', 'mlDrift');
 unique_vec_ = @(x)unique(x(:));
+if P.fParfor
+    gcp_ = gcp();
+else
+    gcp_ = [];
+end
 if ~isempty(cviSpk_drift)
     mrDist_clu = zeros(nClu, 'single');
+    cmrDist_clu = cell(size(cviSpk_drift));
     for iDrift = 1:numel(cviSpk_drift)
         switch 1
             case 4
@@ -168,43 +177,21 @@ if ~isempty(cviSpk_drift)
             case 2, viSpk1 = cviSpk_drift{iDrift};
             case 1, viSpk1 = cell2mat_(cviSpk_drift(find(mlDrift(:, iDrift))));
         end
-        [viClu1, mrPos_spk1, vrPow_spk1] = deal(viClu(viSpk1), mrPos_spk(viSpk1,:), vrPos_spk(viSpk1));
-        for iMode = 1:numel(fMode)
-            switch fMode(iMode)
-                case 1
-                    trPc1 = S0.trPc_spk(:,:,viSpk1);
-                    viSite1 = S0.viSite_spk(viSpk1);
-                    mrDist_clu1 = wav_dist_clu_(viClu1, viSite1, trPc1, S0.mrPv_global, nClu, MIN_COUNT);
-                    mrDist_clu = max(mrDist_clu, mrDist_clu1);   
-                    
-                otherwise
-                    trPc1 = S0.trPc_spk(:,:,viSpk1);
-                    viSite1 = S0.viSite_spk(viSpk1);
-                    mrDist_clu1 = wav_dist_clu_(viClu1, viSite1, trPc1, fMode(iMode), nClu, MIN_COUNT);
-                    mrDist_clu = max(mrDist_clu, mrDist_clu1);                     
-                    
-%                 case 1
-%                     mrDist_clu1 = pos_dist_clu_(viClu1, mrPos_spk1, vrPow_spk1, nClu, MIN_COUNT);
-%                     mrDist_clu1 = 1 - min(mrDist_clu1/100, 1);
-%                     mrDist_clu = max(mrDist_clu, mrDist_clu1);
-%                 case 3 % spatial correlation
-%                     mrA1 = (squeeze_(S0.trPc_spk(1,:,viSpk1), 1)).^2;  
-%                     viSite1 = S0.viSite_spk(viSpk1);
-%                     mrA_clu = zeros(nSites, nClu, 'single');
-%                     for iClu = 1:nClu
-%                         vl11 = viClu1==iClu;
-%                         if ~any(vl11), continue; end
-%                         iSite11 = mode(viSite1(vl11));
-%                         vl11(viSite1~=iSite11) = false;                    
-%                         mrA_clu(P.miSites(:,iSite11),iClu) = mean(mrA1(:,vl11),2);
-%                     end
-%                     mrA_clu = mrA_clu ./ sqrt(sum(mrA_clu.^2));
-%                     mrDist_clu = mrA_clu' * mrA_clu;
-%                     
-            end %switch
+        [viClu1, viSite1, trPc1] = deal(viClu(viSpk1), S0.viSite_spk(viSpk1), S0.trPc_spk(:,:,viSpk1));
+        if isempty(gcp_)
+            cmrDist_clu{iDrift} = wav_dist_clu_(viClu1, viSite1, trPc1, fMode, nClu, MIN_COUNT);
+        else
+            vS_out(iDrift) = parfeval(gcp_, ...
+                @(x,y,z)wav_dist_clu_(x,y,z, fMode, nClu, MIN_COUNT), 1, viClu1, viSite1, trPc1);
         end
-        fprintf('.');
+    end %for
+    if ~isempty(gcp_)
+        for iDrift1 = 1:numel(cviSpk_drift)
+            [iDrift, mrDist_clu1] = fetchNext(vS_out);
+            cmrDist_clu{iDrift} = mrDist_clu1;
+        end
     end
+    mrDist_clu = max(cat(3,cmrDist_clu{:}), [], 3);
 else
     mrDist_clu = pos_dist_clu_(viClu, mrPos_spk, vrPos_spk, nClu, MIN_COUNT);
 end
@@ -600,8 +587,8 @@ end %for
 % collect jobs
 if ~isempty(gcp_)
     for iSite1 = 1:nSites
-        [completedIdx, vrRho1, miKnn1] = fetchNext(vS_out);
-        [cvrRho{completedIdx}, cmiKnn{completedIdx}] = deal(vrRho1, miKnn1);
+        [iSite, vrRho1, miKnn1] = fetchNext(vS_out);
+        [cvrRho{iSite}, cmiKnn{iSite}] = deal(vrRho1, miKnn1);
     end
 end
 % assemble jobs
@@ -610,7 +597,7 @@ for iSite = 1:nSites
     if isempty(viSpk1), continue; end
     [vrRho(viSpk1), miKnn(:,viSpk1)] = deal(cvrRho{iSite}, cmiKnn{iSite});
 end %for
-fprintf('\n\ttook %0.1fs (fGpu=%d)\n', toc(t1), P_sort.fGpu);
+fprintf('\n\ttook %0.1fs (fGpu=%d, fParfor=%d)\n', toc(t1), P_sort.fGpu, P_sort.fParfor);
 
 
 % Calculate Delta
@@ -621,7 +608,7 @@ for iSite = 1:nSites
     vrRho12 = vrRho(viSpk12);
     if ~isempty(gcp_)
         vS_out(iSite) = parfeval(gcp_, ...
-            @(x,y,z,a)delta_knn_(x,y,z,a,b, P_sort), 2, mrFet12, viSpk12, vrRho12, viDrift12, n1);
+            @(x,y,z,a,b)delta_knn_(x,y,z,a,b, P_sort), 2, mrFet12, viSpk12, vrRho12, viDrift12, n1);
     else
         [cvrDelta{iSite}, cviNneigh{iSite}, P_sort.fGpu] = ...
             delta_knn_(mrFet12, viSpk12, vrRho12, viDrift12, n1, P_sort);
@@ -630,8 +617,8 @@ end %for
 % collect jobs
 if ~isempty(gcp_)
     for iSite1 = 1:nSites
-        [completedIdx, vrDelta1, viNneigh1] = fetchNext(vS_out);
-        [cvrDelta{completedIdx}, cviNneigh{completedIdx}] = deal(vrDelta1, viNneigh1);
+        [iSite, vrDelta1, viNneigh1] = fetchNext(vS_out);
+        [cvrDelta{iSite}, cviNneigh{iSite}] = deal(vrDelta1, viNneigh1);
     end
 end
 % assemble jobs
@@ -641,7 +628,7 @@ for iSite = 1:nSites
     [vrDelta(viSpk1), viNneigh(viSpk1)] = deal(cvrDelta{iSite}, cviNneigh{iSite});
 end %for
 vrRho = vrRho / max(vrRho) / 10;     % divide by 10 to be compatible with previous version displays
-fprintf('\n\ttook %0.1fs (fGpu=%d)\n', toc(t2), P_sort.fGpu);
+fprintf('\n\ttook %0.1fs (fGpu=%d, fParfor=%d)\n', toc(t2), P_sort.fGpu, P_sort.fParfor);
 
 % output
 runtime_sort = toc(runtime_sort);
