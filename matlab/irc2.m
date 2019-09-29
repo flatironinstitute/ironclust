@@ -14,7 +14,8 @@ if nargin<3, vcFile_arg = ''; end
 if isempty(vcDir_in),  vcDir_in = get_test_data_('static'); end
 if isempty(vcDir_out), vcDir_out = strrep(vcDir_in, 'groundtruth', 'irc'); end
 if isempty(vcFile_arg)
-    vcFile_arg = struct('nPcPerChan',1,'fGpu',1,'fParfor',1,'qqFactor',4,'nPc_spk',6); 
+    vcFile_arg = struct(...
+        'nPcPerChan',1,'fGpu',1,'fParfor',1,'qqFactor',4,'nPc_spk',6,'MAX_BYTES_LOAD',.5e9,'spkLim_ms',[-.5,1]); 
 end
 if ~exist_dir_(vcDir_out), mkdir(vcDir_out); end
 
@@ -120,19 +121,19 @@ fprintf('\nauto-merging...\n'); runtime_automerge=tic;
 P.post_merge_mode0 = [12];
 S0.S_clu = postCluster_(S0.S_clu, P); % peak merging
 
+% fMode = 3;  P.maxWavCor = .97; %82.1, RMS
+fMode = 3;  P.maxWavCor = .9; %82.1, RMS
 % fMode = 0;  P.maxWavCor = .90; %wavcor
-fMode = 3;  P.maxWavCor = .90; %82.1, RMS
-% fMode = 6;  P.maxWavCor = .95; % 81.6, correlation
+% fMode = 6;  P.maxWavCor = .97; % 81.6, correlation
 % fMode = 7;  P.maxWavCor = .95;  % 81.6, both
 switch fMode 
     case 0
         mrDist_clu = wave_similarity_clu_(S0, P, 1);
-        S0.S_clu = templateMatch_post_(S0.S_clu, P, mrDist_clu);
     otherwise
         mrDist_clu = calc_dist_clu_(S0, P, fMode);
-        S0.S_clu = templateMatch_post_(S0.S_clu, P, mrDist_clu);            
+                    
 end
-
+S0.S_clu = templateMatch_post_(S0.S_clu, P, mrDist_clu);
 % P.post_merge_mode0 = 19;
 % S0.S_clu = postCluster_(S0.S_clu, P); % peak merging
 
@@ -165,6 +166,8 @@ if P.fParfor
 else
     gcp_ = [];
 end
+
+fprintf('calc_dist_clu_ (fParfor=%d): \n\t', P.fParfor); t1=tic;
 if ~isempty(cviSpk_drift)
     mrDist_clu = zeros(nClu, 'single');
     cmrDist_clu = cell(size(cviSpk_drift));
@@ -179,11 +182,12 @@ if ~isempty(cviSpk_drift)
         end
         [viClu1, viSite1, trPc1] = deal(viClu(viSpk1), S0.viSite_spk(viSpk1), S0.trPc_spk(:,:,viSpk1));
         if isempty(gcp_)
-            cmrDist_clu{iDrift} = wav_dist_clu_(viClu1, viSite1, trPc1, fMode, nClu, MIN_COUNT);
+            cmrDist_clu{iDrift} = wav_dist_clu_(viClu1, viSite1, trPc1, fMode, nClu, P);
         else
             vS_out(iDrift) = parfeval(gcp_, ...
-                @(x,y,z)wav_dist_clu_(x,y,z, fMode, nClu, MIN_COUNT), 1, viClu1, viSite1, trPc1);
+                @(x,y,z)wav_dist_clu_(x,y,z, fMode, nClu, P), 1, viClu1, viSite1, trPc1);
         end
+        fprintf('.');
     end %for
     if ~isempty(gcp_)
         for iDrift1 = 1:numel(cviSpk_drift)
@@ -195,6 +199,7 @@ if ~isempty(cviSpk_drift)
 else
     mrDist_clu = pos_dist_clu_(viClu, mrPos_spk, vrPos_spk, nClu, MIN_COUNT);
 end
+fprintf('\n\ttook %0.1fs\n', toc(t1));
 end %func
 
 
@@ -234,10 +239,57 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function mrDist_clu = wav_dist_clu_(viClu, viSite_spk, trPc_spk, mrPv_global, nClu, MIN_COUNT)
+function mrDist_clu = wav_dist_clu_(viClu, viSite_spk, trPc_spk, mrPv_global, nClu, P)
+switch 1
+    case 2
+        % this uses new method of site referencing
+        mrDist_clu = wav_dist_clu2_(viClu, viSite_spk, trPc_spk, mrPv_global, nClu, P);
+    case 1
+        mrDist_clu = wav_dist_clu1_(viClu, viSite_spk, trPc_spk, mrPv_global, nClu, P);
+end %switch
+end %func
+
+
+%--------------------------------------------------------------------------
+function mrDist_clu = wav_dist_clu2_(viClu, viSite_spk, trPc_spk, mrPv_global, nClu, P)
 
 % compute average waveforms by clusters
-% cviSpk_clu = arrayfun(@(x)find(viClu==x), 1:nClu, 'UniformOutput', 0);
+MIN_COUNT = P.min_count;
+nSites = max(viSite_spk);
+mrDist_clu = zeros(nClu, 'single');
+
+% site loop
+cviSpk_site = arrayfun(@(x)find(viSite_spk==x), 1:nSites, 'UniformOutput', 0)';
+for iSite = 1:nSites
+    viSpk1 = find(viSite_spk==iSite);
+    [mrFet12, viSpk12, ~, n1, n2] = pc2fet_site_(trPc_spk, cviSpk_site, [], P, iSite);
+    if isempty(viSpk12), continue; end
+    viClu12 = viClu(viSpk12);
+    [viClu_uniq1, vnClu_uniq1, cviClu_uniq1] = unique_count_(viClu12);    
+    [viClu_uniq1, vnClu_uniq1, cviClu_uniq1] = ...
+        multifun_(@(x)x(vnClu_uniq1 >= MIN_COUNT & viClu_uniq1 ~= 0), viClu_uniq1, vnClu_uniq1, cviClu_uniq1);
+    if numel(viClu_uniq1)<2, continue; end
+    mrPc12 = cell2matfun_(@(x)median2_(mrFet12(:,x),2), cviClu_uniq1');
+%     mrPc12 = cell2matfun_(@(x)mean(mrFet12(:,x),2), cviClu_uniq1');
+    switch 2
+        case 2
+            mrDist1 = zeros(size(mrPc12,2), 'single');
+            for iClu1 = 1:size(mrPc12,2)
+                mrDist1(:,iClu1) = sum((mrPc12 - mrPc12(:,iClu1)).^2) ./ sum(mrPc12(:,iClu1).^2);
+            end
+            mrDist1 = 1 - min(mrDist1,1);
+        case 1, mrDist1 = corr(mrPc12);
+    end
+    mrDist_clu(viClu_uniq1,viClu_uniq1) = max(mrDist1, mrDist_clu(viClu_uniq1,viClu_uniq1));
+end %for
+end %func
+
+
+%--------------------------------------------------------------------------
+function mrDist_clu = wav_dist_clu1_(viClu, viSite_spk, trPc_spk, mrPv_global, nClu, P)
+
+% compute average waveforms by clusters
+MIN_COUNT = P.min_count;
 [ctrPc_clu, cviSite_clu] = deal(cell(nClu,1));
 dimm_pc = size(trPc_spk);
 
@@ -412,10 +464,16 @@ end % func
 
 
 %--------------------------------------------------------------------------
-function vr = median2_(mr)
-vr = sort(mr);
-imid = ceil(size(mr,1)/2);
-vr = vr(imid,:);
+function B = median2_(A,idimm)
+if nargin<2, idimm=1; end
+
+A = sort(A,idimm);
+imid = ceil(size(A,idimm)/2);
+if idimm==1
+    B = A(imid,:);
+else
+    B = A(:,imid);
+end
 end %func
 
 
@@ -732,7 +790,11 @@ end
 n1 = numel(cviSpk_site{iSite});
 n2 = size(mrFet12,2) - n1;
 viSpk12 = cell2mat(cviSpk_site([iSite, viSites2]));
-viDrift12 = viDrift_spk(viSpk12);
+if isempty(viDrift_spk)
+    viDrift12 = [];
+else
+    viDrift12 = viDrift_spk(viSpk12);
+end
 
 % spatial mask
 if 0
