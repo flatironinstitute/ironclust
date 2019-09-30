@@ -13,10 +13,10 @@ if nargin<3, vcFile_arg = ''; end
 % batch processing. it uses default param for now
 if iscell(vcDir_in) && iscell(vcDir_out)
     [csDir_in, csDir_out] = deal(vcDir_in, vcDir_out);
-    for iFile = 1:numel(csDir_in)
-        set(0,'UserData',[]); % clear
+    parfor iFile = 1:numel(csDir_in)
         try
             fprintf('irc2 batch-processing %s (%d/%d)\n', csDir_in{iFile}, iFile, numel(csDir_in));
+            irc2('clear');
             irc2(csDir_in{iFile}, csDir_out{iFile});
         catch
             disp(lasterr());
@@ -29,7 +29,7 @@ end
 if isempty(vcDir_out), vcDir_out = strrep(vcDir_in, 'groundtruth', 'irc'); end
 if isempty(vcFile_arg)
     vcFile_arg = struct(...
-        'nFet_max',12,'fGpu',1,'fParfor',1,'qqFactor',4,'nPc_spk',6,'MAX_BYTES_LOAD',.5e9,'spkLim_ms',[-.25,.75]*2,'maxWavCor',.95, 'step_sec_drift', 20, 'batch_sec_drift', 300); 
+        'nFet_max',10,'fGpu',1,'fParfor',1,'qqFactor',4,'nPc_spk',6,'MAX_BYTES_LOAD',.5e9,'spkLim_ms',[-.25,.75]*2,'maxWavCor',.95, 'step_sec_drift', 20, 'batch_sec_drift', 300); 
 end
 if ~exist_dir_(vcDir_out), mkdir(vcDir_out); end
 
@@ -41,6 +41,7 @@ switch lower(vcCmd)
     case 'clear-sort', clear_('sort'); return;
     case 'test-static', vcDir_in = get_test_data_('static');
     case 'test-drift', vcDir_in = get_test_data_('drift'); 
+    case 'test-tetrode', vcDir_in = get_test_data_('tetrode');
     case 'export', irc('export', vcArg1); return;   
 end
 
@@ -393,7 +394,7 @@ function mrDist_clu = wav_dist_clu2_(viClu, viSite_spk, trPc_spk, mrPv_global, n
 
 % compute average waveforms by clusters
 MIN_COUNT = P.min_count;
-nSites = max(viSite_spk);
+nSites = size(P.miSites,2);
 mrDist_clu = zeros(nClu, 'single');
 
 % site loop
@@ -661,13 +662,24 @@ switch fMode
         vr1 = mrPc1(:);
         mrD = vr1 - reshape(trPc2,[],size(trPc2,3));
         vrCorr12 = 1 - min(sum(mrD.^2) ./ sum(vr1.^2), 1);
-        
+
     case 3 % normalized difference
-        vr1 = mrPc1(:);
+        vr1 = mrPc1(:);        
+        mr2 = reshape(trPc2,[],size(trPc2,3));        
         vr1 = vr1 / sqrt(sum(vr1.^2));
-        mr2 = reshape(trPc2,[],size(trPc2,3));
         mr2 = mr2 ./ sqrt(sum(mr2.^2));
         vrCorr12 = 1 - min(sum((vr1 - mr2).^2), 1);        
+        
+    case 3.3 % both RMS distance and normalized difference power
+        vr1 = mrPc1(:);        
+        mr2 = reshape(trPc2,[],size(trPc2,3));
+        vr12 = sum((mr2-vr1).^2) ./ sum(vr1.^2);
+        
+        vr1 = vr1 / sqrt(sum(vr1.^2));
+        mr2 = mr2 ./ sqrt(sum(mr2.^2));
+        vr22 = sum((mr2-vr1).^2);
+        
+        vrCorr12 = 1 - min(min(vr12, vr22), 1);    
         
     case 4 % RMS distance of PC. same result as 2
         mrWav1 = mrPv_global * mrPc1;
@@ -779,9 +791,143 @@ runtime_sort = tic;
 % determine feature dimension
 nPcPerChan = floor(nFet_max / nSites_fet);
 nPcPerChan = min(max(nPcPerChan, 1), size(S0.trPc_spk,1));
+get_pc_ = @(x)reshape(x(1:nPcPerChan,1:nSites_fet,:), nPcPerChan*nSites_fet, 1, size(x,3));
+trPc_spk = cat(2, get_pc_(S0.trPc_spk), get_pc_(S0.trPc2_spk));
+
+nSites = size(P.miSites,2);
+cviSpk_site = arrayfun(@(x)find(S0.viSite_spk==x), 1:nSites, 'UniformOutput', 0)';
+cviSpk2_site = arrayfun(@(x)find(S0.viSite2_spk==x), 1:nSites, 'UniformOutput', 0)';
+% vnSpk_site = cellfun(@numel, cviSpk_site);
+nSpk = numel(S0.viSite_spk);
+
+% parfor loop
+if get_set_(P, 'fParfor', 1)
+    gcp_ = gcp();
+else
+    gcp_ = [];
+end
+if 0
+    [S0.mrPos_spk, S0.vrPow_spk] = calc_pos_spk_(S0.trPc_spk, S0.viSite_spk, P);
+end
+S_drift = calc_drift_(S0, P);
+[viDrift_spk, mlDrift] = struct_get_(S_drift, 'viDrift_spk', 'mlDrift');
+
+% Calculate Rho
+P_sort = struct_set_(P, 'mlDrift', mlDrift, 'fSort_drift', 1);
+[vrRho, vrDelta] = deal(zeros(nSpk, 1, 'single'));
+miKnn = zeros(knn, nSpk, 'int32');
+fprintf('Calculating Rho\n\t'); t1=tic;
+[cvrRho, cmiKnn, cvrDelta, cviNneigh] = deal(cell(nSites,1));
+% send jobs
+for iSite = 1:nSites
+    [mrFet12, viSpk12, viDrift12, n1, n2] = pc2fet_site2_(trPc_spk, cviSpk_site, cviSpk2_site, viDrift_spk, iSite);
+    if isempty(mrFet12), continue; end
+    if ~isempty(gcp_)
+        vS_out(iSite) = parfeval(gcp_, ...
+            @(x,y,z,a)rho_knn_(x,y,z,a, P_sort), 2, mrFet12, viSpk12, viDrift12, n1);
+    else
+        [cvrRho{iSite}, cmiKnn{iSite}, P_sort.fGpu] = ...
+            rho_knn_(mrFet12, viSpk12, viDrift12, n1, P_sort);      
+    end
+end %for
+% collect jobs
+if ~isempty(gcp_)
+    for iSite1 = 1:nSites
+        [iSite, vrRho1, miKnn1] = fetchNext(vS_out);
+        [cvrRho{iSite}, cmiKnn{iSite}] = deal(vrRho1, miKnn1);
+    end
+end
+% assemble jobs
+for iSite = 1:nSites     
+    viSpk1 = cviSpk_site{iSite};
+    if isempty(viSpk1), continue; end
+    [vrRho(viSpk1), miKnn(:,viSpk1)] = deal(cvrRho{iSite}, cmiKnn{iSite});
+end %for
+fprintf('\n\ttook %0.1fs (fGpu=%d, fParfor=%d)\n', toc(t1), P_sort.fGpu, P_sort.fParfor);
+
+
+% Calculate Delta
+fprintf('Calculating Delta\n\t'); t2=tic;
+% send jobs
+for iSite = 1:nSites
+    [mrFet12, viSpk12, viDrift12, n1, n2] = pc2fet_site2_(trPc_spk, cviSpk_site, cviSpk2_site, viDrift_spk, iSite);
+    if isempty(mrFet12), continue; end
+    vrRho12 = vrRho(viSpk12);
+    if ~isempty(gcp_)
+        vS_out(iSite) = parfeval(gcp_, ...
+            @(x,y,z,a,b)delta_knn_(x,y,z,a,b, P_sort), 2, mrFet12, viSpk12, vrRho12, viDrift12, n1);
+    else
+        [cvrDelta{iSite}, cviNneigh{iSite}, P_sort.fGpu] = ...
+            delta_knn_(mrFet12, viSpk12, vrRho12, viDrift12, n1, P_sort);
+    end
+end %for
+% collect jobs
+if ~isempty(gcp_)
+    for iSite1 = 1:nSites
+        [iSite, vrDelta1, viNneigh1] = fetchNext(vS_out);
+        [cvrDelta{iSite}, cviNneigh{iSite}] = deal(vrDelta1, viNneigh1);
+    end
+end
+% assemble jobs
+for iSite = 1:nSites     
+    viSpk1 = cviSpk_site{iSite};
+    if isempty(viSpk1), continue; end
+    [vrDelta(viSpk1), viNneigh(viSpk1)] = deal(cvrDelta{iSite}, cviNneigh{iSite});
+end %for
+vrRho = vrRho / max(vrRho) / 10;     % divide by 10 to be compatible with previous version displays
+fprintf('\n\ttook %0.1fs (fGpu=%d, fParfor=%d)\n', toc(t2), P_sort.fGpu, P_sort.fParfor);
+
+% output
+runtime_sort = toc(runtime_sort);
+[~, ordrho] = sort(vrRho, 'descend');
+memory_sort = memory_matlab_();
+S0.S_clu = struct('rho', vrRho, 'delta', vrDelta, 'ordrho', ordrho, 'nneigh', viNneigh, ...
+    'P', P, 'miKnn', miKnn, 'S_drift', S_drift);
+S0.runtime_sort = runtime_sort;
+S0.memory_sort = memory_sort;
+end %func
+
+
+%--------------------------------------------------------------------------
+function [mrFet12, viSpk12, viDrift12, n1, n2] = pc2fet_site2_(trPc_spk, cviSpk_site, cviSpk2_site, viDrift_spk, iSite)
+% decide whether to use 1, 2, or 3 features
+
+if isempty(cviSpk_site{iSite})
+    [mrFet12, viSpk12, viDrift12] = deal([]);
+    [n1, n2] = deal(0); 
+    return;
+end
+% [nSites_fet, miSites] = struct_get_(P, 'nSites_fet', 'miSites');
+
+[viSpk1, viSpk2] = deal(cviSpk_site{iSite}, cviSpk2_site{iSite});
+mrFet12 = [squeeze_(trPc_spk(:,1,viSpk1),2), squeeze_(trPc_spk(:,2,viSpk2),2)];
+viSpk12 = [viSpk1; viSpk2];
+[n1, n2] = deal(numel(viSpk1), numel(viSpk2));
+        
+if isempty(viDrift_spk)
+    viDrift12 = [];
+else
+    viDrift12 = viDrift_spk(viSpk12);
+end    
+end %func
+
+
+%--------------------------------------------------------------------------
+% todo: delayed execution, use parfeval
+function S0 = sort__(S0, P)
+
+% drift processing
+fprintf('Clustering\n'); 
+runtime_sort = tic;
+
+[nSites_fet, miSites, knn, nFet_max] = struct_get_(P, 'nSites_fet', 'miSites', 'knn', 'nFet_max');
+
+% determine feature dimension
+nPcPerChan = floor(nFet_max / nSites_fet);
+nPcPerChan = min(max(nPcPerChan, 1), size(S0.trPc_spk,1));
 trPc_spk = S0.trPc_spk(1:nPcPerChan,:,:);
 
-nSites = max(S0.viSite_spk);
+nSites = size(P.miSites,2);
 cviSpk_site = arrayfun(@(x)find(S0.viSite_spk==x), 1:nSites, 'UniformOutput', 0)';
 vnSpk_site = cellfun(@numel, cviSpk_site);
 nSpk = numel(S0.viSite_spk);
@@ -807,6 +953,7 @@ fprintf('Calculating Rho\n\t'); t1=tic;
 % send jobs
 for iSite = 1:nSites
     [mrFet12, viSpk12, viDrift12, n1, n2] = pc2fet_site_(trPc_spk, cviSpk_site, viDrift_spk, P_sort, iSite);
+    if isempty(mrFet12), continue; end
     if ~isempty(gcp_)
         vS_out(iSite) = parfeval(gcp_, ...
             @(x,y,z,a)rho_knn_(x,y,z,a, P_sort), 2, mrFet12, viSpk12, viDrift12, n1);
@@ -836,6 +983,7 @@ fprintf('Calculating Delta\n\t'); t2=tic;
 % send jobs
 for iSite = 1:nSites
     [mrFet12, viSpk12, viDrift12, n1, n2] = pc2fet_site_(trPc_spk, cviSpk_site, viDrift_spk, P_sort, iSite);
+    if isempty(mrFet12), continue; end
     vrRho12 = vrRho(viSpk12);
     if ~isempty(gcp_)
         vS_out(iSite) = parfeval(gcp_, ...
@@ -901,6 +1049,7 @@ end %func
 
 %--------------------------------------------------------------------------
 function [vrRho1, miKnn1, fGpu] = rho_knn_(mrFet12, viSpk12, viDrift12, n1, P)
+fGpu = P.fGpu;
 if isempty(mrFet12)
     [vrRho1, miKnn1] = deal([]);
     return;
@@ -1028,19 +1177,18 @@ if ~isempty(gcp_)
         cS_detect{completedIdx+1} = S_;
     end
 end
-[viSite_spk, viTime_spk, vrAmp_spk, trPc_spk, mrVp_spk] = detect_merge_(cS_detect, viOffset_load);
+S0 = detect_merge_(cS_detect, viOffset_load);
 switch 1
     case 2
-        trPc_spk1 = reshape(mrVp_spk, 1, size(mrVp_spk,1), size(mrVp_spk,2));
-        [mrPos_spk, vrPow_spk] = calc_pos_spk_(trPc_spk1, viSite_spk, P);
+        trPc_spk1 = reshape(S0.mrVp_spk, 1, size(S0.mrVp_spk,1), size(S0.mrVp_spk,2));
+        [mrPos_spk, vrPow_spk] = calc_pos_spk_(S0.trPc_spk1, S0.viSite_spk, P);
     case 1
-        [mrPos_spk, vrPow_spk] = calc_pos_spk_(trPc_spk, viSite_spk, P);
+        [mrPos_spk, vrPow_spk] = calc_pos_spk_(S0.trPc_spk, S0.viSite_spk, P);
 end %switch
 % Save output
 runtime_detect = toc(runtime_detect);
 memory_detect = memory_matlab_();
-S0 = makeStruct_(viSite_spk, viTime_spk, vrAmp_spk, trPc_spk, vrPow_spk, ...
-    vrThresh_site, mrPv_global, runtime_detect, P, memory_detect, memory_init, mrPos_spk, mrVp_spk);
+S0 = struct_add_(S0, vrPow_spk, vrThresh_site, mrPv_global, runtime_detect, P, memory_detect, memory_init, mrPos_spk);
 fprintf('detect_: took %0.1fs (fParfor=%d, fGpu=%d)\n', runtime_detect, P.fParfor, P.fGpu);
 end %func
 
@@ -1124,7 +1272,7 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function [viSite_spk, viTime_spk, vrAmp_spk, trPc_spk, mrVp_spk] = detect_merge_(cS_detect, viOffset_load)
+function S0 = detect_merge_(cS_detect, viOffset_load)
 
 vnSpk_load = cellfun(@(x)numel(x.viSite_spk), cS_detect);
 miSpk_load = [0; cumsum(vnSpk_load)];
@@ -1134,8 +1282,7 @@ nSpk = sum(vnSpk_load);
 [viSite_spk, viTime_spk, vrAmp_spk] = ...
     deal(zeros(nSpk, 1, 'int32'), zeros(nSpk, 1, 'int64'), zeros(nSpk, 1, 'single'));
 viOffset_load = int64(viOffset_load);
-trPc_spk = [];
-mrVp_spk = [];
+[trPc_spk, mrVp_spk, trPc2_spk, viSite2_spk] = deal([]);
 
 for iLoad = 1:numel(cS_detect)
     S1 = cS_detect{iLoad};
@@ -1147,6 +1294,14 @@ for iLoad = 1:numel(cS_detect)
         trPc_spk = zeros(size(S1.trPc_spk,1), size(S1.trPc_spk,2), nSpk, 'single');
     end
     trPc_spk(:,:,viSpk1) = S1.trPc_spk;
+    if ~isempty(S1.trPc2_spk)
+        if isempty(trPc2_spk)
+            trPc2_spk = zeros(size(trPc_spk), 'single'); 
+            viSite2_spk = zeros(size(viSite_spk), 'int32');
+        end
+        viSite2_spk(viSpk1) = S1.viSite2_spk;
+        trPc2_spk(:,:,viSpk1) = S1.trPc2_spk;
+    end
     if 0
         if isempty(mrVp_spk)
             mrVp_spk = zeros(size(S1.mrVp_spk,1), nSpk, 'single');
@@ -1154,6 +1309,8 @@ for iLoad = 1:numel(cS_detect)
         mrVp_spk(:,viSpk1) = S1.mrVp_spk;
     end
 end
+
+S0 = makeStruct_(viSite_spk, viTime_spk, vrAmp_spk, trPc_spk, mrVp_spk, viSite2_spk, trPc2_spk); 
 end %func
 
 
@@ -1197,6 +1354,13 @@ if isempty(vrThresh_site), [vrThresh_site, fGpu] = mr2thresh_(mrWav2, P); end
 [viTime_spk, vrAmp_spk, viSite_spk] = detect_spikes_(mrWav2, vrThresh_site, vlKeep_ref, P);
 [viTime_spk, vrAmp_spk, viSite_spk] = multifun_(@(x)gather_(x), viTime_spk, vrAmp_spk, viSite_spk);    
 
+if 0
+    nSites = size(mrWav2,2);
+    if nSites <= get_set_(P, 'nSites_global', 8)
+        viSite_spk=ones(size(viSite_spk), 'like', viSite_spk); 
+    end
+end
+
 % reject spikes within the overlap region
 if ~isempty(nlim_wav1)
     viKeep_spk = find(viTime_spk >= nlim_wav1(1) & viTime_spk <= nlim_wav1(2));
@@ -1222,11 +1386,19 @@ if isempty(mrPv_global)
     [mrPv_global, vrD_global] = get_pv_(trWav_spk, P); 
 end
 trPc_spk = gather_(project_pc_(trWav_spk, mrPv_global));
-%     trWav_spk1 = pc2spkwav_(trPc_spk, mrPv_global); % recover waveform
+
+if 1    
+    viSite2_spk = find_site_spk23_(trWav_spk, viSite_spk, P);
+    trWav_spk = []; %clear memory
+    trWav2_spk = mn2tn_wav_spk2_(mrWav2, viSite2_spk, viTime_spk, P);
+    trPc2_spk = gather_(project_pc_(trWav2_spk, mrPv_global));
+else
+    [viSite2_spk, trPc2_spk] = deal([]);
+end
 
 % return struct
 if nPad_pre > 0, viTime_spk = viTime_spk - nPad_pre; end
-S_detect = makeStruct_(trPc_spk, mrPv_global, viTime_spk, vrAmp_spk, viSite_spk, mrVp_spk);
+S_detect = makeStruct_(trPc_spk, mrPv_global, viTime_spk, vrAmp_spk, viSite_spk, mrVp_spk, trPc2_spk, viSite2_spk);
 end %func
 
 
@@ -1395,13 +1567,17 @@ end %func
 %--------------------------------------------------------------------------
 function vcDir_in = get_test_data_(vcMode)
 if nargin<1, vcMode = 'static'; end
-
-if ispc()
-    vcDir_in = 'C:\tmp\groundtruth\hybrid_synth\%s_siprobe\rec_64c_1200s_11'; 
-elseif isunix()
-    vcDir_in = '~/ceph/groundtruth/hybrid_synth/%s_siprobe/rec_64c_1200s_11'; 
+switch vcMode
+    case 'drift', vcDir_in = 'groundtruth\hybrid_synth\drift_siprobe\rec_64c_1200s_11'; 
+    case 'static', vcDir_in = 'groundtruth\hybrid_synth\static_siprobe\rec_64c_1200s_11'; 
+    case 'tetrode', vcDir_in = 'groundtruth\hybrid_synth\static_tetrode\rec_4c_1200s_11'; 
 end
-vcDir_in = strrep(vcDir_in, '%s', vcMode);
+if ispc()
+    vcDir_in = fullfile('C:\tmp', vcDir_in);
+elseif isunix()
+    vcDir_in = strrep(vcDir_in, '\', '/');
+    vcDir_in = fullfile('~/ceph', vcDir_in);
+end
 end %func
 
 
@@ -1668,6 +1844,22 @@ z = bsxfun(@minus,x, mu);
 z = bsxfun(@rdivide, z, sigma0);
 end %func
 
+%--------------------------------------------------------------------------
+function S = struct_add_(varargin)
+% S = struct_add_(S, var1, var2, ...)
+% output
+% S.var1=var1; S.var2=var2; ...
+
+S = varargin{1};
+for i=2:numel(varargin)
+    try
+        S.(inputname(i)) = varargin{i};
+    catch
+        disperr_();
+    end
+end
+end %func
+
 
 %--------------------------------------------------------------------------
 function frewind_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
@@ -1708,6 +1900,8 @@ function out1 = recording_duration_(varargin), fn=dbstack(); out1 = irc('call', 
 function out1 = squeeze_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = struct_set_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = S_clu_refresh_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
+function out1 = find_site_spk23_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
+function out1 = mn2tn_wav_spk2_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 
 function [out1, out2] = readmda_header_(varargin), fn=dbstack(); [out1, out2] = irc('call', fn(1).name, varargin); end
 function [out1, out2] = mr2thresh_(varargin), fn=dbstack(); [out1, out2] = irc('call', fn(1).name, varargin); end
@@ -1716,6 +1910,7 @@ function [out1, out2] = filt_car_(varargin), fn=dbstack(); [out1, out2] = irc('c
 function [out1, out2] = findNearSites_(varargin), fn=dbstack(); [out1, out2] = irc('call', fn(1).name, varargin); end
 function [out1, out2] = spatialMask_(varargin), fn=dbstack(); [out1, out2] = irc('call', fn(1).name, varargin); end
 function [out1, out2] = shift_range_(varargin), fn=dbstack(); [out1, out2] = irc('call', fn(1).name, varargin); end
+
 
 function [out1, out2, out3] = plan_load_(varargin), fn=dbstack(); [out1, out2, out3] = irc('call', fn(1).name, varargin); end
 function [out1, out2, out3] = detect_spikes_(varargin), fn=dbstack(); [out1, out2, out3] = irc('call', fn(1).name, varargin); end

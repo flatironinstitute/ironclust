@@ -2889,7 +2889,7 @@ disp_score_(makeStruct_(vrSnr, vrFp, vrFn, vrAccuracy, vnSite, vnSpk, fVerbose, 
 
 % plot if not running from the cluster
 if isempty(fPlot_gt), fPlot_gt = get_(S_cfg, 'fPlot_gt'); end
-if isUsingBuiltinEditor_() && fPlot_gt>0    
+if isUsingBuiltinEditor_() && fPlot_gt>0 
     try
         vrAccuracy = S_score.S_score_clu.vrAccuracy;   
         try
