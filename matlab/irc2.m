@@ -9,13 +9,30 @@ function irc2(vcDir_in, vcDir_out, vcFile_arg)
 if nargin<1, vcDir_in = ''; end
 if nargin<2, vcDir_out = ''; end
 if nargin<3, vcFile_arg = ''; end
+
+% batch processing. it uses default param for now
+if iscell(vcDir_in) && iscell(vcDir_out)
+    [csDir_in, csDir_out] = deal(vcDir_in, vcDir_out);
+    for iFile = 1:numel(csDir_in)
+        set(0,'UserData',[]); % clear
+        try
+            fprintf('irc2 batch-processing %s (%d/%d)\n', csDir_in{iFile}, iFile, numel(csDir_in));
+            irc2(csDir_in{iFile}, csDir_out{iFile});
+        catch
+            disp(lasterr());
+        end
+    end 
+    return;
+end
+
+
 [vcCmd, vcArg1, vcArg2] = deal(vcDir_in, vcDir_out, vcFile_arg); 
 
 if isempty(vcDir_in),  vcDir_in = get_test_data_('static'); end
 if isempty(vcDir_out), vcDir_out = strrep(vcDir_in, 'groundtruth', 'irc'); end
 if isempty(vcFile_arg)
     vcFile_arg = struct(...
-        'nPcPerChan',1,'fGpu',1,'fParfor',0,'qqFactor',4,'nPc_spk',6,'MAX_BYTES_LOAD',.5e9,'spkLim_ms',[-.25,.75]*2,'maxWavCor',.9, 'step_sec_drift', 20, 'batch_sec_drift', 300); 
+        'nPcPerChan',1,'fGpu',1,'fParfor',1,'qqFactor',4,'nPc_spk',6,'MAX_BYTES_LOAD',.5e9,'spkLim_ms',[-.25,.75]*2,'maxWavCor',.9, 'step_sec_drift', 20, 'batch_sec_drift', 300); 
 end
 if ~exist_dir_(vcDir_out), mkdir(vcDir_out); end
 
@@ -54,7 +71,8 @@ save_firings_mda_(S0, vcFile_firings_mda);
 vcFile_gt_mda = fullfile(vcDir_in, 'firings_true.mda');
 if exist_file_(vcFile_gt_mda)
     raw_fname = fullfile(vcDir_in, 'raw.mda');
-    irc('validate-mda', vcFile_gt_mda, vcFile_firings_mda, raw_fname); % assume that groundtruth file exists
+    S_score = irc('validate-mda', vcFile_gt_mda, vcFile_firings_mda, raw_fname); % assume that groundtruth file exists
+    struct_save_(S_score, fullfile(vcDir_out, 'raw_geom_score.mat'), 1);
 end
 end %func
 

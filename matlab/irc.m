@@ -104,7 +104,7 @@ switch lower(vcCmd)
     case {'benchmark', 'bench'}, varargout{1} = benchmark_(vcArg1, vcArg2); return;
         
     % three or more arguments
-    case 'validate-mda', validate_mda_(vcArg1, vcArg2, vcArg3);    
+    case 'validate-mda', varargout{1} = validate_mda_(vcArg1, vcArg2, vcArg3);    
     case {'makeprm', 'createprm', 'makeprm-all'}
         vcFile_prm_ = makeprm_(vcArg1, vcArg2, 1, vcArg3, vcArg4);
         if nargout>0, varargout{1} = vcFile_prm_; end
@@ -2810,7 +2810,7 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function validate_mda_(firings_true, firings_out, raw_mda)
+function S_score = validate_mda_(firings_true, firings_out, raw_mda)
 
 vcDir_in = fileparts(raw_mda);
 vcDir_out = fileparts(firings_out);
