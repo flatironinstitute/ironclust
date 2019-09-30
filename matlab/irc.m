@@ -32219,6 +32219,23 @@ switch lower(vcMode)
         end
         xylabel_([], 'Time (s)', 'y pos (um)', P.vcFile); grid on;
         
+    case 'drift-clu'
+        hFig = create_figure_([], [0 0 .5 1], P.vcFile, 1, 1);
+        find_spk_ = @(x,y)intersect(S_clu.cviSpk_clu{x}, S_clu.S_drift.cviSpk_drift{y});
+        [xx,yy]=meshgrid(1:S_clu.nClu, 1:S_clu.S_drift.nTime_drift);
+        vrY1 = arrayfun(@(x,y)median(S0.mrPos_spk(find_spk_(x,y),2)), xx, yy);
+        vrX1 = (1:S_clu.S_drift.nTime_drift) * P.step_sec_drift;
+        if isempty(viClu_plot)
+            plot(vrX1, vrY1, '.-');
+            text_(zeros(S_clu.nClu,1), mrXY_clu(:,2), arrayfun_(@num2str, 1:nClu), ...
+                'VerticalAlignment', 'bottom', 'HorizontalAlignment', 'left');
+        else
+            plot(vrX1, vrY1(:,viClu_plot), '.-');
+            text_(zeros(numel(viClu_plot),1), mrXY_clu(viClu_plot,2), arrayfun_(@num2str, viClu_plot), ...
+                'VerticalAlignment', 'bottom', 'HorizontalAlignment', 'left');
+        end
+        xylabel_([], 'Time (s)', 'y pos (um)', P.vcFile); grid on;        
+        
     case 'scatter3'
         hFig = create_figure_([], [0 0 .5 1], P.vcFile, 1, 1);
         vrLogP_clu = cellfun(@(x)median(log(S0.vrPow_spk(x))), cviSpk_clu);
