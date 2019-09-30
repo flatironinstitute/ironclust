@@ -21636,8 +21636,8 @@ end %func
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_(vcFile_prm)
 if nargin<1, vcFile_prm = ''; end
-vcVer = 'v4.9.11';
-vcDate = '9/11/2019';
+vcVer = 'v5.0.0';
+vcDate = '9/30/2019';
 vcHash = file2hash_();
 
 if nargout==0
@@ -32235,6 +32235,25 @@ switch lower(vcMode)
                 'VerticalAlignment', 'bottom', 'HorizontalAlignment', 'left');
         end
         xylabel_([], 'Time (s)', 'y pos (um)', P.vcFile); grid on;        
+        
+    case 'drift3-clu'
+        hFig = create_figure_([], [0 0 .5 1], P.vcFile, 1, 1);
+        find_spk_ = @(x,y)intersect(S_clu.cviSpk_clu{x}, S_clu.S_drift.cviSpk_drift{y});
+        [xx,yy]=meshgrid(1:S_clu.nClu, 1:S_clu.S_drift.nTime_drift);
+        vrZ1 = arrayfun(@(x,y)median(S0.mrPos_spk(find_spk_(x,y),1)), xx, yy);
+        vrY1 = arrayfun(@(x,y)median(S0.mrPos_spk(find_spk_(x,y),2)), xx, yy);
+        vrX1 = (1:S_clu.S_drift.nTime_drift) * P.step_sec_drift;
+        if isempty(viClu_plot)
+            plot3(vrX1, vrY1, vrZ1, '.-');
+            text3_(zeros(S_clu.nClu,1), mrXY_clu(:,2), mrXY_clu(:,1), arrayfun_(@num2str, 1:nClu), ...
+                'VerticalAlignment', 'bottom', 'HorizontalAlignment', 'left');
+        else
+            plot3(vrX1, vrY1(:,viClu_plot), vrZ1(:,viClu_plot), '.-');
+            text3_(zeros(numel(viClu_plot),1), mrXY_clu(viClu_plot,2), mrXY_clu(viClu_plot,1), arrayfun_(@num2str, viClu_plot), ...
+                'VerticalAlignment', 'bottom', 'HorizontalAlignment', 'left');
+        end
+        xylabel_([], 'Time (s)', 'y pos (um)', P.vcFile); grid on;       
+        zlabel('x pos (um)');
         
     case 'scatter3'
         hFig = create_figure_([], [0 0 .5 1], P.vcFile, 1, 1);

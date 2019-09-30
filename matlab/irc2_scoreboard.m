@@ -428,7 +428,7 @@ if nargin<2, vcKey = []; end
 persistent vcDir_in vcDir_out
 if isempty(vcDir_in) || isempty(vcDir_out)
     vcDir_in = read_cfg_('path_groundtruth');
-    vcDir_out = fullfile(read_cfg_('path_validation'), irc('version'));
+    vcDir_out = fullfile(read_cfg_('path_validation2'), irc('version'));
 end
 
 switch lower(vcType)    
@@ -442,7 +442,7 @@ switch lower(vcType)
         [~, vcPath] = find_files_(locate_('input', vcKey), '/**/raw.mda');
         
     case 'cache'
-        vcPath = fullfile(vcDir_out, 'scoreboard.mat');
+        vcPath = fullfile(vcDir_out, 'irc2_scoreboard.mat');
     case 'settings'
         vcPath = ircpath_('settings.scoreboard');
     case 'param'
