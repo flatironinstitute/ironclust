@@ -1,0 +1,19 @@
+% #Pre-processing
+
+qqFactor = {4};
+spkLim_ms = {[-.25, .75], [-.5, 1]}; 
+
+% #Auto-merging
+maxWavCor = {.97, .95};
+fGpu={0};
+
+% #Drift
+batch_sec_drift = {300};
+step_sec_drift = {20};
+
+% #Noise
+fft_thresh = {8};
+delta_cut = {1};
+
+% #Sort mode
+sort_mode = {1, 2};
