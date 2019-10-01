@@ -385,7 +385,7 @@ fWait = 1;
 nParams = numel(csParam);
 % run all param in parallel. create a GT if doesn't exist and run
 % validation
-fh_param = @(x)fullfile(vcDir_out, 'param', x);
+fh_param = @(x)fullfile(vcDir_out, 'param', [x, '_template.prm']);
 csDir_out = {};
 for iData = 1:numel(csInput)    
     vcInput1 = csInput{iData};
@@ -444,7 +444,7 @@ switch lower(vcType)
     case 'cache'
         vcPath = fullfile(vcDir_out, 'irc2_scoreboard.mat');
     case 'settings'
-        vcPath = ircpath_('settings.scoreboard');
+        vcPath = ircpath_('settings2.scoreboard');
     case 'param'
         if isempty(vcKey)
             vcPath = flipud(find_files_(vcDir_out, '/param/*_template.prm'));
@@ -501,7 +501,7 @@ drawnow;
 
 set(hFig, 'MenuBar','None');
 mh_file = uimenu(hFig,'Label','File'); 
-uimenu(mh_file,'Label', 'Edit `settings.scoreboard`', 'Callback', @(h,e)edit_('settings.scoreboard'));
+uimenu(mh_file,'Label', 'Edit `settings2.scoreboard`', 'Callback', @(h,e)edit_('settings2.scoreboard'));
 uimenu(mh_file,'Label', 'Edit `default.cfg`', 'Callback', @(h,e)edit_('default.cfg'));
 uimenu(mh_file,'Label', 'Edit `default.prm`', 'Callback', @(h,e)edit_('default.prm'));
 uimenu(mh_file,'Label', 'Delete cache', 'Callback', @(h,e)delete_(locate_('cache')));
@@ -558,9 +558,9 @@ end %func
 
 
 %--------------------------------------------------------------------------
-% generate *_template.prm files from settings.scoreboard
+% generate *_template.prm files from settings2.scoreboard
 function generate_param_(h,e)
-% load settings.scoreboard
+% load settings2.scoreboard
 S0 = irc('call', 'file2struct', {locate_('settings')});
 
 % generate struct arrays

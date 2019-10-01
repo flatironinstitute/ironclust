@@ -12,12 +12,12 @@ if nargin<3, vcFile_arg = ''; end
 
 % batch processing. it uses default param for now
 if iscell(vcDir_in) && iscell(vcDir_out)
-    [csDir_in, csDir_out] = deal(vcDir_in, vcDir_out);
-    parfor iFile = 1:numel(csDir_in)
+    [csDir_in, csDir_out, csFile_arg] = deal(vcDir_in, vcDir_out, vcFile_arg);
+    for iFile = 1:numel(csDir_in)
         try
             fprintf('irc2 batch-processing %s (%d/%d)\n', csDir_in{iFile}, iFile, numel(csDir_in));
             irc2('clear');
-            irc2(csDir_in{iFile}, csDir_out{iFile});
+            irc2(csDir_in{iFile}, csDir_out{iFile}, csFile_arg{iFile});
         catch
             disp(lasterr());
         end
@@ -28,8 +28,7 @@ end
 [vcCmd, vcArg1, vcArg2] = deal(vcDir_in, vcDir_out, vcFile_arg); 
 if isempty(vcDir_out), vcDir_out = strrep(vcDir_in, 'groundtruth', 'irc'); end
 if isempty(vcFile_arg)
-    vcFile_arg = struct(...
-        'nFet_max',10,'fGpu',1,'fParfor',1,'qqFactor',4,'nPc_spk',6,'MAX_BYTES_LOAD',.5e9,'spkLim_ms',[-.25,.75]*2,'maxWavCor',.95, 'step_sec_drift', 20, 'batch_sec_drift', 300); 
+    vcFile_arg = file2struct_(read_cfg_('default2_prm'));
 end
 if ~exist_dir_(vcDir_out), mkdir(vcDir_out); end
 
@@ -72,6 +71,15 @@ if exist_file_(vcFile_gt_mda)
     S_score = irc('validate-mda', vcFile_gt_mda, vcFile_firings_mda, raw_fname); % assume that groundtruth file exists
     struct_save_(S_score, fullfile(vcDir_out, 'raw_geom_score.mat'), 1);
 end
+end %func
+
+
+%--------------------------------------------------------------------------
+function S0 = sort_(S0, P)
+switch get_set_(P, 'sort_mode', 2)
+    case 2, S0 = sort2_(S0, P);
+    case 1, S0 = sort1_(S0, P);
+end %switch
 end %func
 
 
@@ -663,7 +671,7 @@ switch fMode
         mrD = vr1 - reshape(trPc2,[],size(trPc2,3));
         vrCorr12 = 1 - min(sum(mrD.^2) ./ sum(vr1.^2), 1);
 
-    case 3 % normalized difference
+    case 3.2 % normalized difference
         vr1 = mrPc1(:);        
         mr2 = reshape(trPc2,[],size(trPc2,3));        
         vr1 = vr1 / sqrt(sum(vr1.^2));
@@ -673,13 +681,18 @@ switch fMode
     case 3.3 % both RMS distance and normalized difference power
         vr1 = mrPc1(:);        
         mr2 = reshape(trPc2,[],size(trPc2,3));
-        vr12 = sum((mr2-vr1).^2) ./ sum(vr1.^2);
-        
+        vr12 = sum((mr2-vr1).^2) ./ sum(vr1.^2);        
         vr1 = vr1 / sqrt(sum(vr1.^2));
         mr2 = mr2 ./ sqrt(sum(mr2.^2));
-        vr22 = sum((mr2-vr1).^2);
-        
+        vr22 = sum((mr2-vr1).^2);        
         vrCorr12 = 1 - min(min(vr12, vr22), 1);    
+        
+    case 3
+        vr1 = mrPc1(:);        
+        mr2 = reshape(trPc2,[],size(trPc2,3));        
+        vr1 = vr1 / sqrt(sum(vr1.^2));
+        mr2 = mr2 ./ sqrt(sum(mr2.^2));
+        vrCorr12 = vr1' * mr2;
         
     case 4 % RMS distance of PC. same result as 2
         mrWav1 = mrPv_global * mrPc1;
@@ -780,14 +793,14 @@ end %func
 
 %--------------------------------------------------------------------------
 % todo: delayed execution, use parfeval
-function S0 = sort_(S0, P)
+function S0 = sort2_(S0, P)
 
 % drift processing
 fprintf('Clustering\n'); 
 runtime_sort = tic;
 
 [nSites_fet, miSites, knn, nFet_max] = struct_get_(P, 'nSites_fet', 'miSites', 'knn', 'nFet_max');
-
+% nSites_fet = size(S0.trPc_spk,1);
 % determine feature dimension
 nPcPerChan = floor(nFet_max / nSites_fet);
 nPcPerChan = min(max(nPcPerChan, 1), size(S0.trPc_spk,1));
@@ -912,9 +925,10 @@ end
 end %func
 
 
+
 %--------------------------------------------------------------------------
 % todo: delayed execution, use parfeval
-function S0 = sort__(S0, P)
+function S0 = sort1_(S0, P)
 
 % drift processing
 fprintf('Clustering\n'); 
@@ -1354,7 +1368,7 @@ if isempty(vrThresh_site), [vrThresh_site, fGpu] = mr2thresh_(mrWav2, P); end
 [viTime_spk, vrAmp_spk, viSite_spk] = detect_spikes_(mrWav2, vrThresh_site, vlKeep_ref, P);
 [viTime_spk, vrAmp_spk, viSite_spk] = multifun_(@(x)gather_(x), viTime_spk, vrAmp_spk, viSite_spk);    
 
-if 0
+if get_set_(P, 'nSites_global', 8) >= 1
     nSites = size(mrWav2,2);
     if nSites <= get_set_(P, 'nSites_global', 8)
         viSite_spk=ones(size(viSite_spk), 'like', viSite_spk); 
@@ -1587,7 +1601,9 @@ if nargin<2, vcDir_out = ''; end
 if nargin<3, vcFile_arg = ''; end
 
 % assume there is raw.mda, geom.csv, params.json, firings_true.mda
-P = file2struct_(ircpath_(read_cfg_('default_prm', 0)));  %P = defaultParam();
+P = file2struct_(ircpath_(read_cfg_('default_prm', 0)));
+P2 = file2struct_(ircpath_(read_cfg_('default2_prm', 0)));
+P = struct_merge_(P, P2);
 P.vcFile = fullfile(vcDir_in, 'raw.mda');
 P.vcDir_out = vcDir_out;
 S_mda = readmda_header_(P.vcFile);
@@ -1607,7 +1623,11 @@ P.fInverse_file = get_set_(S_json, 'spike_sign', -1) == -1;
 if isstruct(vcFile_arg)
     S_arg = vcFile_arg;
 elseif exist_file_(vcFile_arg)
-    S_arg = meta2struct_(vcFile_arg);
+    if matchFileExt_(vcFile_arg, '.prm')
+        S_arg = file2struct_(vcFile_arg);
+    else
+        S_arg = meta2struct_(vcFile_arg);
+    end
 else
     S_arg = [];
 end
@@ -1902,6 +1922,7 @@ function out1 = struct_set_(varargin), fn=dbstack(); out1 = irc('call', fn(1).na
 function out1 = S_clu_refresh_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = find_site_spk23_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = mn2tn_wav_spk2_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
+function out1 = matchFileExt_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 
 function [out1, out2] = readmda_header_(varargin), fn=dbstack(); [out1, out2] = irc('call', fn(1).name, varargin); end
 function [out1, out2] = mr2thresh_(varargin), fn=dbstack(); [out1, out2] = irc('call', fn(1).name, varargin); end
