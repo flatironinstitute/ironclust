@@ -6,14 +6,19 @@
 
 %--------------------------------------------------------------------------
 function irc2(vcDir_in, vcDir_out, vcFile_arg)
+% irc2(vcDir_in, vcDir_out, vcFile_arg)
+% irc2(vcCmd, vcArg1, vcArg2)
+
 if nargin<1, vcDir_in = ''; end
 if nargin<2, vcDir_out = ''; end
 if nargin<3, vcFile_arg = ''; end
 
+persistent vcFile_prm_
+
 % batch processing. it uses default param for now
 if iscell(vcDir_in) && iscell(vcDir_out)
     [csDir_in, csDir_out, csFile_arg] = deal(vcDir_in, vcDir_out, vcFile_arg);
-    for iFile = 1:numel(csDir_in)
+    parfor iFile = 1:numel(csDir_in)
         try
             fprintf('irc2 batch-processing %s (%d/%d)\n', csDir_in{iFile}, iFile, numel(csDir_in));
             irc2('clear');
@@ -26,25 +31,39 @@ if iscell(vcDir_in) && iscell(vcDir_out)
 end
 
 [vcCmd, vcArg1, vcArg2] = deal(vcDir_in, vcDir_out, vcFile_arg); 
-if isempty(vcDir_out), vcDir_out = strrep(vcDir_in, 'groundtruth', 'irc'); end
 if isempty(vcFile_arg)
     vcFile_arg = file2struct_(read_cfg_('default2_prm'));
 end
-if ~exist_dir_(vcDir_out), mkdir(vcDir_out); end
 
+P = []; 
+fPlot_gt = 0;
 % special commands
 switch lower(vcCmd)
+%     case 'detect-sort', P = file2struct_(
+    case {'detect-sort', 'sort', 'auto', ''}
+        if isempty(vcDir_out)
+            vcFile_prm = vcFile_prm_;
+        else
+            vcFile_prm = vcDir_out;
+        end
+        if isempty(vcFile_prm), fprintf(2, 'provide .prm file.\n'); return; end
+        P = file2struct_(vcFile_prm);
+        if strcmpi(vcCmd, 'detect-sort'); clear_();
+        elseif strcmpi(vcCmd, 'sort'); clear_('sort');
+        end
     case 'plot', irc('plot', vcArg1, vcArg2); return;
     case 'verify', irc('plot', 'verify'); return;
-    case 'clear', clear_(); return;
+    case 'clear', clear_(); vcFile_prm_=[]; return;
     case 'clear-sort', clear_('sort'); return;
-    case 'test-static', vcDir_in = get_test_data_('static');
-    case 'test-drift', vcDir_in = get_test_data_('drift'); 
-    case 'test-tetrode', vcDir_in = get_test_data_('tetrode');
-    case 'export', irc('export', vcArg1); return;   
+    case {'test-static', 'test-drift', 'test-tetrode', 'test-tetrode2', 'test-tetrode3'}
+        fPlot_gt = read_cfg_('fPlot_gt');        
+        vcDir_in = get_test_data_(strsplit_get_(vcCmd,'-',2));
+    case 'export', irc('export', vcArg1); return;
 end
-
-P = makeParam_(vcDir_in, vcDir_out, vcFile_arg);
+if isempty(P)
+    P = makeParam_(vcDir_in, vcDir_out, vcFile_arg);
+end
+vcFile_prm_ = P.vcFile_prm;
 S0 = get(0, 'UserData');
 
 if isempty(struct_get_(S0, 'trPc_spk'))
@@ -60,17 +79,26 @@ set(0, 'UserData', S0);
 describe_(S0);
 
 % output
-struct_save_(S0, fullfile(vcDir_out, 'out_irc.mat'), 1);
-vcFile_firings_mda = fullfile(vcDir_out, 'firings.mda');
+struct_save_(S0, strrep(P.vcFile_prm, '.prm', '_irc.mat'));
+vcFile_firings_mda = fullfile(P.vcDir_out, 'firings.mda');
 save_firings_mda_(S0, vcFile_firings_mda);
 
 % Validate
 vcFile_gt_mda = fullfile(vcDir_in, 'firings_true.mda');
 if exist_file_(vcFile_gt_mda)
     raw_fname = fullfile(vcDir_in, 'raw.mda');
-    S_score = irc('validate-mda', vcFile_gt_mda, vcFile_firings_mda, raw_fname); % assume that groundtruth file exists
-    struct_save_(S_score, fullfile(vcDir_out, 'raw_geom_score.mat'), 1);
+    S_score = irc('validate-mda', vcFile_gt_mda, vcFile_firings_mda, raw_fname, fPlot_gt); % assume that groundtruth file exists
+    struct_save_(S_score, fullfile(P.vcDir_out, 'raw_geom_score.mat'), 1);
 end
+end %func
+
+
+%--------------------------------------------------------------------------
+% negative index means from the end, 0 index means end index
+function vc1 = strsplit_get_(vc,delim,idx)
+cs = strsplit(vc, delim);
+idx = mod(idx-1,numel(cs))+1;
+vc1 = cs{idx};
 end %func
 
 
@@ -93,7 +121,7 @@ switch vcMode
         disp('irc2: cleared all');
         vcDir_in = '';
     case 'sort'
-        S0 = set(0, 'UserData');
+        S0 = get(0, 'UserData');
         S0.S_clu = [];
         set(0,'UserData',S0);
         disp('irc2: cleared sort');
@@ -107,6 +135,8 @@ end
 
 %--------------------------------------------------------------------------
 function csDesc = describe_(S0, vcFile_firings_mda)
+P=S0.P;
+
 runtime_total = S0.runtime_detect + S0.runtime_sort + S0.runtime_automerge;
 tDur = recording_duration_(S0.P, S0); 
 memory_sort = S0.memory_sort - S0.memory_init;
@@ -115,16 +145,21 @@ memory_detect = S0.memory_detect - S0.memory_init;
 csDesc = {};
 
 csDesc{end+1} = sprintf('Runtime (s):');
-csDesc{end+1} = sprintf('    Detect + feature (s):   %0.1fs', S0.runtime_detect);    
-csDesc{end+1} = sprintf('    Cluster (s):    %0.1fs', S0.runtime_sort);
-csDesc{end+1} = sprintf('    Automerge (s):    %0.1fs', S0.runtime_automerge);
-csDesc{end+1} = sprintf('    Total runtime (s):      %0.1fs', runtime_total);
-csDesc{end+1} = sprintf('    Runtime speed           x%0.1f realtime', tDur / runtime_total);    
+csDesc{end+1} = sprintf('    Detect + feature (s):	%0.1fs', S0.runtime_detect);    
+csDesc{end+1} = sprintf('    Cluster (s):           %0.1fs', S0.runtime_sort);
+csDesc{end+1} = sprintf('    Automerge (s):     	%0.1fs', S0.runtime_automerge);
+csDesc{end+1} = sprintf('    Total runtime (s):  	%0.1fs', runtime_total);
+csDesc{end+1} = sprintf('    Runtime speed      	x%0.1f realtime', tDur / runtime_total);    
 
 csDesc{end+1} = sprintf('memory usage (GiB):');
-csDesc{end+1} = sprintf('    detect(GiB):     %0.3f', memory_detect/2^30);
-csDesc{end+1} = sprintf('    sort(GiB):     %0.3f', memory_sort/2^30);
+csDesc{end+1} = sprintf('    detect(GiB):           %0.3f', memory_detect/2^30);
+csDesc{end+1} = sprintf('    sort(GiB):             %0.3f', memory_sort/2^30);
 
+csDesc{end+1} = sprintf('Execution:');
+csDesc{end+1} = sprintf('    fGpu (GPU use):      	%d', P.fGpu);
+csDesc{end+1} = sprintf('    fParfor (parfor use): 	%d', P.fParfor);
+csDesc{end+1} = sprintf('    Parameter file:      	%s', P.vcFile_prm);
+        
 if nargout==0
     cellfun(@(x)disp(x), csDesc);
 end
@@ -150,18 +185,11 @@ elseif isempty(P)
 end
 
 fprintf('\nauto-merging...\n'); runtime_automerge=tic;
-% auto merge
-P.post_merge_mode0 = [12];
 S0.S_clu = postCluster_(S0.S_clu, P); % peak merging
 
-% fMode = 6;  P.maxWavCor = .97; %82.1, RMS
-fMode = 3; %P.maxWavCor = .90;
-% fMode = 3;  P.maxWavCor = .97; %82.1, RMS
-% fMode = 0;  P.maxWavCor = .90; %wavcor
-% fMode = 6;  P.maxWavCor = .97; % 81.6, correlation
-% fMode = 7;  P.maxWavCor = .95;  % 81.6, both
+fMode = get_set_(P, 'merge_mode', 3);
 
-for iRepeat=1:1
+if P.maxWavCor<1
     switch fMode 
         case 0
             mrDist_clu = wave_similarity_clu_(S0, P, 1);
@@ -171,8 +199,7 @@ for iRepeat=1:1
     end
     S0.S_clu = templateMatch_post_(S0.S_clu, P, mrDist_clu);
 end
-% P.post_merge_mode0 = [12, 19];
-% S0.S_clu = postCluster_(S0.S_clu, P); % peak merging
+
 S0.S_clu = S_clu_refresh_(S0.S_clu);
 
 S0.runtime_automerge = toc(runtime_automerge);
@@ -441,7 +468,6 @@ MIN_COUNT = P.min_count;
 dimm_pc = size(trPc_spk);
 
 % compute average pc per cluster per site
-% find centroid of the cluster
 for iClu = 1:nClu
     viSpk1 = find(viClu==iClu);
     if isempty(viSpk1), continue; end
@@ -452,7 +478,12 @@ for iClu = 1:nClu
         multifun_(@(x)x(vn_uniq1>=MIN_COUNT), viSite1_uniq1, cviSpk1_uniq1);
     if isempty(cviSpk1_uniq1), continue; end    
     cviSite_clu{iClu} = viSite1_uniq1;
-    [ctrPc_mu_clu{iClu}, ctrPc_sd_clu{iClu}] = med_rms_tr_(trPc_spk(:,:,viSpk1), cviSpk1_uniq1);
+    switch 2
+        case 2
+            ctrPc_mu_clu{iClu} = mean_tr_(trPc_spk(:,:,viSpk1), cviSpk1_uniq1);
+        case 1
+            [ctrPc_mu_clu{iClu}, ctrPc_sd_clu{iClu}] = med_rms_tr_(trPc_spk(:,:,viSpk1), cviSpk1_uniq1);
+    end
 end
 % construct arrays and sites
 [viSite_all, viClu_all] = cvr2vr_vi_(cviSite_clu);
@@ -467,7 +498,11 @@ for iClu1 = 1:nClu
         vi_all2 = find(viSite_all == viSite1(iiSite1) & viClu_all ~= iClu1);
         if isempty(vi_all2), continue; end
         mrPc_mu1 = trPc_mu1(:,:,iiSite1);
-        mrPc_sd1 = trPc_sd1(:,:,iiSite1);
+        if ~isempty(trPc_sd1)
+            mrPc_sd1 = trPc_sd1(:,:,iiSite1);
+        else
+            mrPc_sd1 = [];
+        end
         viClu2 = viClu_all(vi_all2);
         trPc2 = trPc_all(:,:,vi_all2);
         vrCorr12 = wavcor_pc_(mrPc_mu1, trPc2, mrPv_global, mrPc_sd1);
@@ -475,6 +510,18 @@ for iClu1 = 1:nClu
     end
     mrDist_clu(:,iClu1) = vrDist_clu1;
 end
+end %func
+
+
+%--------------------------------------------------------------------------
+function trPc_site = mean_tr_(trPc, cviSpk_site)
+if numel(cviSpk_site) == 1
+    trPc_site = mean(trPc,3);
+else        
+    trPc1 = permute(trPc, [3,1,2]);
+    trPc_site = cell2matfun_(@(x)mean(trPc1(x,:,:)), cviSpk_site);    
+    trPc_site = permute(trPc_site, [2,3,1]);
+end   
 end %func
 
 
@@ -670,13 +717,6 @@ switch fMode
         vr1 = mrPc1(:);
         mrD = vr1 - reshape(trPc2,[],size(trPc2,3));
         vrCorr12 = 1 - min(sum(mrD.^2) ./ sum(vr1.^2), 1);
-
-    case 3.2 % normalized difference
-        vr1 = mrPc1(:);        
-        mr2 = reshape(trPc2,[],size(trPc2,3));        
-        vr1 = vr1 / sqrt(sum(vr1.^2));
-        mr2 = mr2 ./ sqrt(sum(mr2.^2));
-        vrCorr12 = 1 - min(sum((vr1 - mr2).^2), 1);        
         
     case 3.3 % both RMS distance and normalized difference power
         vr1 = mrPc1(:);        
@@ -707,14 +747,14 @@ switch fMode
         a_ = zscore_(mrWav1(:), 1);
         mrWav2 = mrPv_global * reshape(trPc2, size(trPc2,1), []);
         b_ = zscore_(reshape(mrWav2, [], size(trPc2,3)), 1);
-        vrCorr12 = (a_'*b_) / size(mrWav1,1) / size(mrWav1,2);
+        vrCorr12 = (a_'*b_) / size(mrWav1,1) / size(mrWav1,2);    
         
-    case 6
-        vr1 = mrPc1(:);
-        mr1 = reshape(trPc2,[],size(trPc2,3));
-        vr2 = vr1/sqrt(sum(vr1.^2));
-        mr2 = mr1./sqrt(sum(mr1.^2));
-        vrCorr12 = vr2' * mr2;
+    case 6 % normalized difference
+        vr1 = mrPc1(:);        
+        mr2 = reshape(trPc2,[],size(trPc2,3));        
+        vr1 = vr1 / sqrt(sum(vr1.^2));
+        mr2 = mr2 ./ sqrt(sum(mr2.^2));
+        vrCorr12 = 1 - min(sum((vr1 - mr2).^2), 1);               
         
     case 7
         vr1 = mrPc1(:);
@@ -1401,7 +1441,7 @@ if isempty(mrPv_global)
 end
 trPc_spk = gather_(project_pc_(trWav_spk, mrPv_global));
 
-if 1    
+if get_set_(P, 'sort_mode', 1) == 2    
     viSite2_spk = find_site_spk23_(trWav_spk, viSite_spk, P);
     trWav_spk = []; %clear memory
     trWav2_spk = mn2tn_wav_spk2_(mrWav2, viSite2_spk, viTime_spk, P);
@@ -1585,6 +1625,8 @@ switch vcMode
     case 'drift', vcDir_in = 'groundtruth\hybrid_synth\drift_siprobe\rec_64c_1200s_11'; 
     case 'static', vcDir_in = 'groundtruth\hybrid_synth\static_siprobe\rec_64c_1200s_11'; 
     case 'tetrode', vcDir_in = 'groundtruth\hybrid_synth\static_tetrode\rec_4c_1200s_11'; 
+    case 'tetrode2', vcDir_in = 'groundtruth\hybrid_synth\static_tetrode\rec_4c_1200s_21'; 
+    case 'tetrode3', vcDir_in = 'groundtruth\hybrid_synth\static_tetrode\rec_4c_1200s_31'; 
 end
 if ispc()
     vcDir_in = fullfile('C:\tmp', vcDir_in);
@@ -1600,18 +1642,24 @@ function P = makeParam_(vcDir_in, vcDir_out, vcFile_arg)
 if nargin<2, vcDir_out = ''; end
 if nargin<3, vcFile_arg = ''; end
 
+if isempty(vcDir_out), vcDir_out = strrep(vcDir_in, 'groundtruth', 'irc2'); end
+if ~exist_dir_(vcDir_out), mkdir(vcDir_out); end
+
 % assume there is raw.mda, geom.csv, params.json, firings_true.mda
 P = file2struct_(ircpath_(read_cfg_('default_prm', 0)));
 P2 = file2struct_(ircpath_(read_cfg_('default2_prm', 0)));
 P = struct_merge_(P, P2);
+
+% now only supporting .mda file
 P.vcFile = fullfile(vcDir_in, 'raw.mda');
 P.vcDir_out = vcDir_out;
 S_mda = readmda_header_(P.vcFile);
 P.nChans = S_mda.dimm(1);
 P.vnSamples_file = S_mda.dimm(2); % scalar
+P.probe_file = fullfile(vcDir_in, 'geom.csv');
 
 % probe file
-P.mrSiteXY = csvread(fullfile(vcDir_in, 'geom.csv'));
+P.mrSiteXY = csvread(P.probe_file);
 P.viSite2Chan = 1:size(P.mrSiteXY,1);
 
 % load json file
@@ -1635,6 +1683,9 @@ P = struct_merge_(P, S_arg);
 
 % derived fields
 P = fill_param_(P);
+P.vcFile_prm = fullfile(vcDir_out, 'raw_geom.prm');
+
+edit_prm_file_(P, P.vcFile_prm);
 end %func
 
 
@@ -1885,6 +1936,7 @@ end %func
 function frewind_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
 function disperr_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
 function struct_save_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
+function edit_prm_file_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
 
 function out1 = meta2struct_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = struct_merge_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
