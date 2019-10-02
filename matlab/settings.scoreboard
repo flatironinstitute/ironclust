@@ -33,4 +33,4 @@ delta_cut = {1};
 sort_mode = {1};
 post_merge_mode = {1};
 post_merge_mode2 = {19};
-post_merge_mode0 = {[12,15,17], 12, [12, 15], [12,17]};
+post_merge_mode0 = {[12,15,17]};

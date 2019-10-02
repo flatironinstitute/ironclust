@@ -411,17 +411,17 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function [mr, fGpu] = gpuArray_(mr, fGpu)
+function [gmr, fGpu] = gpuArray_(mr, fGpu)
 if nargin<2, fGpu = 1; end
 % fGpu = 0; %DEBUG disable GPU array
 if ~fGpu, return; end
 try
-    if ~isa(mr, 'gpuArray'), mr = gpuArray(mr); end
+    if ~isa(mr, 'gpuArray'), gmr = gpuArray(mr); end
     fGpu = 1;
 catch        
     try % retry after resetting the GPU memory
         gpuDevice(1); 
-        mr = gpuArray(mr);
+        gmr = gpuArray(mr);
         fGpu = 1;
     catch % no GPU device found            
         fGpu = 0;

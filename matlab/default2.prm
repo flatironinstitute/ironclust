@@ -11,5 +11,6 @@ nSites_global = [];
 
 sort_mode = 2;
 post_merge_mode0 = [12, 17];
-merge_mode = 3; maxWavCor = .97; 
+%merge_mode = 3; maxWavCor = .97; 
 min_snr_clu = 4; % remove clusters below SNR threshold, set to [] to skip
+merge_mode = -1; maxWavCor = .99; 

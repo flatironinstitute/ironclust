@@ -255,6 +255,8 @@ fMode = get_set_(P, 'merge_mode', 3);
 
 if P.maxWavCor<1
     switch fMode 
+        case -1
+            mrDist_clu = wave_similarity_clu1_(S0, P);
         case 0
             mrDist_clu = wave_similarity_clu_(S0, P, 1);
         otherwise
@@ -772,6 +774,137 @@ for iClu1 = 1:nClu
     end
     mrDist_clu(:,iClu1) = vrDist_clu1;
 end
+end %func
+
+
+%--------------------------------------------------------------------------
+function mrDist_clu = wave_similarity_clu1_(S0, P)
+S_clu = S0.S_clu;
+
+[KNN, MAX_SAMPLE, NUM_PC, fUse_raw] = deal(16, 4000, 3, 0);
+nAve_knn = min(KNN, get_set_(P, 'knn', 30));
+MIN_COUNT = get_set_(P, 'min_count');
+trPc_spk = S0.trPc_spk(:,1:P.nSites_fet,:);
+
+fprintf('Automated merging (post-hoc)\n'); t1=tic;
+[viClu_spk, miKnn, vrRho_spk] = struct_get_(S_clu, 'viClu', 'miKnn', 'rho');
+miKnn = miKnn(1:nAve_knn,:);
+[viSite_spk, viTime_spk] = struct_get_(S0, 'viSite_spk', 'viTime_spk');
+frac_thresh = get_set_(P, 'thresh_core_knn', .75);
+if 0
+    nShift_max = ceil(diff(P.spkLim) * P.frac_shift_merge / 2);
+else
+    nShift_max = 2;
+end
+viShift = -nShift_max:nShift_max;
+
+dimm_spk = [size(S0.mrPv_global,1), size(trPc_spk,2), size(S0.trPc_spk,3)];
+
+% create template (nTemplate per cluster)
+[ctrWav_clu, cviSite_clu] = deal(cell(S_clu.nClu, 1));
+nSites = max(viSite_spk);
+switch 1
+    case 1, nDrift = get_set_(P, 'nTime_drift', 64);
+    case 2, nDrift = get_set_(P, 'nTime_clu', 1);
+end
+nSpk_min = get_set_(P, 'knn', 30);
+fprintf('\tComputing template\n\t'); t_template = tic;
+
+mrMean_site = zeros(nDrift, S_clu.nClu);
+for iClu = 1:S_clu.nClu
+    viSpk1 = find(S_clu.viClu == iClu);
+    viSpk1 = viSpk1(:);
+    viiSpk1 = round(linspace(1, numel(viSpk1), nDrift+1));
+    [vlKeep_clu1, viSite_clu1] = deal(true(nDrift, 1), zeros(nDrift,1));
+    trWav_clu1 = zeros(dimm_spk(1), dimm_spk(2), nDrift, 'single');
+    [miKnn1, vrRho1] = deal(miKnn(:,viSpk1), vrRho_spk(viSpk1)');
+    for iDrift = 1:nDrift
+        vii1 = viiSpk1(iDrift):viiSpk1(iDrift+1);
+        [viSpk11, vrRho11, miKnn11] = deal(viSpk1(vii1), vrRho1(vii1), miKnn1(:,vii1));
+        
+        switch 5 %3 % expand selection using miKnn
+            case 5 % only connect to neighbors with higher density
+                viSpk11 = miKnn11(vrRho_spk(miKnn11) >= vrRho11);
+                viSpk11 = unique(viSpk11);
+                iSite11 = mode(viSite_spk(viSpk11));
+                vl_ = viSite_spk(viSpk11) == iSite11;
+                viSpk11 = viSpk11(vl_);   
+                mrMean_site(iDrift, iClu) = mean(vl_);
+            case 4
+                viSpk11 = viSpk11(vrRho11 > median(vrRho11));
+                viSpk11 = miKnn(:, viSpk11);
+                viSpk11 = viSpk11(:); % density based selection                
+                iSite11 = mode(viSite_spk(viSpk11));
+                viSpk11 = viSpk11(viSite_spk(viSpk11) == iSite11);   
+            case 3     
+                viSpk11 = miKnn(:, viSpk11);
+                viSpk11 = viSpk11(:); % density based selection                
+                iSite11 = mode(viSite_spk(viSpk11));
+                viSpk11 = viSpk11(viSite_spk(viSpk11) == iSite11);   
+            case 2                
+                viSpk11 = miKnn(:, viSpk11);
+                viSpk11 = viSpk11(:);
+                viSpk11 = viSpk11(vrRho11 > quantile(vrRho11, frac_thresh));
+                viSpk11 = viSpk11(viClu_spk(viSpk11) == iClu);
+                iSite11 = mode(viSite_spk(viSpk11));
+                viSpk11 = viSpk11(viSite_spk(viSpk11) == iSite11);
+            case 1 % find local peak
+                vrRho1 = S_clu.rho(viSpk1);
+                [~,ii11] = max(vrRho1(vii1)); % local peak
+                iSpk11 = viSpk1(vii1(ii11)); % center spike index
+                iSite11 = viSite_spk(iSpk11);
+                % find neighbors around the local peak
+                viSpk11 = miKnn(:, miKnn(:,iSpk11));
+                viSpk11 = viSpk11(:);
+                viSpk11 = viSpk11(viSite_spk(viSpk11) == iSite11 & viClu_spk(viSpk11) == iClu);     
+        end
+        viSite_clu1(iDrift) = iSite11;
+        if numel(viSpk11) < nSpk_min
+            vlKeep_clu1(iDrift) = false;
+            continue;
+        end
+        
+        viSpk12 = subsample_vr_(viSpk11, MAX_SAMPLE);
+        mr_ = S0.mrPv_global * mean(trPc_spk(:,:,viSpk12),3);
+
+        trWav_clu1(:,:,iDrift) = mr_;
+    end
+    ctrWav_clu{iClu} = trWav_clu1(:,:,vlKeep_clu1);
+    cviSite_clu{iClu} = viSite_clu1(vlKeep_clu1);
+    fprintf('.');
+end
+fprintf('\n\ttook %0.1fs\n', toc(t_template));
+
+
+% merge the templates: todo, faster code
+% nClu = S_clu.nClu;
+% fh_norm = @(x)bsxfun(@rdivide, x, std(x,1)*sqrt(size(x,1)));
+normalize_ = @(x)bsxfun(@rdivide, x, sqrt(sum(x.^2)));
+switch 2
+    case 3, fh_norm_tr = @(x)normalize_(meanSubt_(reshape(x, [], size(x,3))));
+    case 2, fh_norm_tr = @(x)normalize_(reshape(x, [], size(x,3)));
+    case 1, fh_norm_tr = @(x)normalize_(reshape(meanSubt_(x), [], size(x,3)));
+end
+mrDist_clu = nan(S_clu.nClu, 'single');
+for iClu1 = 1:S_clu.nClu
+    viSite_clu1 = cviSite_clu{iClu1};
+    if isempty(viSite_clu1), continue; end
+    mr1_ = fh_norm_tr(shift_trWav_(ctrWav_clu{iClu1}, viShift));
+    viSite_clu1 = repmat(viSite_clu1(:), numel(viShift), 1);
+    vrDist_clu1 = zeros(S_clu.nClu, 1, 'single');
+    for iClu2 = iClu1+1:S_clu.nClu
+        viSite2 = cviSite_clu{iClu2};
+        viSite12 = intersect(viSite_clu1, viSite2);
+        if isempty(viSite12), continue; end
+        mr2_ = fh_norm_tr(ctrWav_clu{iClu2});   
+        for iSite12_ = 1:numel(viSite12)
+            iSite12 = viSite12(iSite12_);
+            mrDist12 = mr2_(:, viSite2==iSite12)' * mr1_(:, viSite_clu1==iSite12);
+            vrDist_clu1(iClu2) = max(vrDist_clu1(iClu2), max(mrDist12(:)));
+        end
+    end
+    mrDist_clu(:, iClu1) = vrDist_clu1;
+end %for
 end %func
 
 
@@ -2108,6 +2241,7 @@ function out1 = matchFileExt_(varargin), fn=dbstack(); out1 = irc('call', fn(1).
 function out1 = load_bin_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = arrayfun_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = delete_clu_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
+function out1 = shift_trWav_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 
 function [out1, out2] = readmda_header_(varargin), fn=dbstack(); [out1, out2] = irc('call', fn(1).name, varargin); end
 function [out1, out2] = mr2thresh_(varargin), fn=dbstack(); [out1, out2] = irc('call', fn(1).name, varargin); end

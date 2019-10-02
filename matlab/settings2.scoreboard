@@ -1,10 +1,10 @@
 % #Pre-processing
 
 qqFactor = {4};
-spkLim_ms = {[-.5, 1]};
+spkLim_ms = {[-.5, 1], [-.25, .75]};
 
 % #Auto-merging
-maxWavCor = {.97};
+maxWavCor = {.99, .98};
 fGpu={1};
 fParfor={0};
 
@@ -18,6 +18,6 @@ delta_cut = {1};
 
 % #Sort mode
 post_merge_mode0 = {[12,17]};
-sort_mode = {1,2};
-merge_mode = {3};
+sort_mode = {2};
+merge_mode = {-1};
 vcCommonRef = {'mean'};
