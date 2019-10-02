@@ -4,7 +4,7 @@ qqFactor = {4};
 spkLim_ms = {[-.5, 1], [-.25, .75]};
 
 % #Auto-merging
-maxWavCor = {.97, .95};
+maxWavCor = {.97};
 fGpu={0};
 fParfor={0};
 
@@ -21,3 +21,4 @@ post_merge_mode0 = {[12,17]};
 sort_mode = {1};
 merge_mode = {3};
 vcCommonRef = 'mean';
+nSites_global = {[], 8};

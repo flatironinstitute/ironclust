@@ -1,0 +1,14 @@
+nFet_max = 10;
+fGpu = 1;
+fParfor = 0;
+qqFactor = 4;
+nPc_spk = 6;
+MAX_BYTES_LOAD = .5e9;
+spkLim_ms = [-.5, 1];
+step_sec_drift = 20;
+batch_sec_drift = 300;
+nSites_global = [];
+
+sort_mode = 1;
+post_merge_mode0 = [12, 17];
+merge_mode = 3; maxWavCor = .97; 
