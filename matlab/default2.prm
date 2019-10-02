@@ -1,6 +1,6 @@
 nFet_max = 10;
 fGpu = 1;
-fParfor = 1;
+fParfor = 0;
 qqFactor = 4;
 nPc_spk = 6;
 MAX_BYTES_LOAD = .5e9;

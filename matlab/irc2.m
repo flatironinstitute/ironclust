@@ -1322,19 +1322,19 @@ memory_init = memory_matlab_();
 % load one
 S_paged = readmda_paged_(P); % initialize
 [nLoads, viOffset_load] = deal(S_paged.nLoads, S_paged.viOffset_load);
-[mrWav1, nlim_wav1, fDone] = readmda_paged_(); % process first part
+[mrWav_T1, nlim_wav1, fDone] = readmda_paged_(); % process first part
 cS_detect = cell(nLoads, 1);
-cS_detect{1} = detect_paged_(mrWav1, P, makeStruct_(nlim_wav1)); % process the first part
+cS_detect{1} = detect_paged_(mrWav_T1, P, makeStruct_(nlim_wav1)); % process the first part
 [vrThresh_site, mrPv_global] = struct_get_(cS_detect{1}, 'vrThresh_site', 'mrPv_global');
 S_cache1 = makeStruct_(vrThresh_site, mrPv_global);
 fprintf('Memory use: %0.3f GiB\n', memory_matlab_()/2^30);
 for iLoad = 2:nLoads          
-    [mrWav1, nlim_wav1, fDone] = readmda_paged_(); % process first part
+    [mrWav_T1, nlim_wav1, fDone] = readmda_paged_(); % process first part
     S_cache1.nlim_wav1 = nlim_wav1; % trim waveform
     if isempty(gcp_)            
-        cS_detect{iLoad} = detect_paged_(mrWav1, P, S_cache1);            
+        cS_detect{iLoad} = detect_paged_(mrWav_T1, P, S_cache1);            
     else
-        vS_out(iLoad-1) = parfeval(gcp_, @(x,y)detect_paged_(x,P,y), 1, mrWav1, S_cache1);
+        vS_out(iLoad-1) = parfeval(gcp_, @(x,y)detect_paged_(x,P,y), 1, mrWav_T1, S_cache1);
     end    
     fprintf('\tMemory use: %0.3f GiB\n', memory_matlab_()/2^30);
 end
@@ -1482,14 +1482,13 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function S_detect = detect_paged_(mrWav, P, S_cache)
+function S_detect = detect_paged_(mrWav_T, P, S_cache)
 if nargin<3, S_cache = []; end
 
 % filter and trim 
 % nlim_wav1 = struct_get_(S_cache, 'nlim_wav1');
-mrWav2 = filter_(mrWav, P);
+mrWav2 = filter_transpose_(mrWav_T, P);
 S_detect = get_spikes_(mrWav2, P, S_cache);
-
 end %func
 
 
@@ -1656,24 +1655,35 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function mnWav2 = filter_(mnWav1, P)
+function [mrWav2, vrWav_mean2] = filter_transpose_(mnWav_T, P)
 %-----
 % Filter
 fprintf('\tFiltering spikes...'); t_filter = tic;
 if get_set_(P, 'fSmooth_spatial', 0)
-    mnWav1 = spatial_smooth_(mnWav1, P);
+    mnWav_T = spatial_smooth_(mnWav_T, P);
 end
 vcDataType_filter = get_set_(P, 'vcDataType_filter', 'single');
-try    
-    mnWav1_ = cast_(mnWav1, vcDataType_filter);
-    [mnWav1_, P.fGpu] = gpuArray_(mnWav1_, P.fGpu);
-    [mnWav2, vnWav11] = filt_car_(mnWav1_, P);    
-catch % GPU failure
-    P.fGpu = 0;
-    mnWav1_ = cast_(mnWav1, vcDataType_filter);
-    [mnWav2, vnWav11] = filt_car_(mnWav1_, P);    
+switch 2
+    case 3
+        mrWav2 = filt_car_(single(mnWav_T'), P);
+        fCar=0;
+    case 2
+        mrWav2 = fft_filter_transpose(single(mnWav_T), P);
+        fCar=1;
+    case 1
+        mrWav2 = fft_filter(single(mnWav_T'), P);
+        fCar=1;
 end
-fprintf(' took %0.1fs\n', toc(t_filter));
+if fCar
+    %global subtraction before 
+    nChans = size(mrWav2, 2);
+    if nChans >= get_set_(P, 'nChans_min_car', 8) %&& ndims(mnWav2) >= 3
+        [mrWav2, vrWav_mean2] = wav_car_(mrWav2, P); 
+    else
+      vrWav_mean2 = [];
+    end
+    fprintf(' took %0.1fs\n', toc(t_filter));
+end
 end %func
 
 
@@ -1712,7 +1722,7 @@ else
         t1=tic;
         out = fread_(fid, dimm1, S_mda.vcDataType);  % transpose MDA
         t_dur1 = toc(t1);
-        out = out'; % transpose
+%         out = out'; % transpose
         mb_loaded1 = prod(dimm1) * bytesPerSample_(S_mda.vcDataType) / 1e6;
         fprintf('Read %s (%d/%d), took %0.1fs (%0.1f MB/s, %0.1f MB)\n', ...
             vcFile, iLoad, nLoads, t_dur1, mb_loaded1/t_dur1, mb_loaded1);
@@ -2106,6 +2116,7 @@ function [out1, out2] = filt_car_(varargin), fn=dbstack(); [out1, out2] = irc('c
 function [out1, out2] = findNearSites_(varargin), fn=dbstack(); [out1, out2] = irc('call', fn(1).name, varargin); end
 function [out1, out2] = spatialMask_(varargin), fn=dbstack(); [out1, out2] = irc('call', fn(1).name, varargin); end
 function [out1, out2] = shift_range_(varargin), fn=dbstack(); [out1, out2] = irc('call', fn(1).name, varargin); end
+function [out1, out2] = wav_car_(varargin), fn=dbstack(); [out1, out2] = irc('call', fn(1).name, varargin); end
 
 function [out1, out2, out3] = plan_load_(varargin), fn=dbstack(); [out1, out2, out3] = irc('call', fn(1).name, varargin); end
 function [out1, out2, out3] = detect_spikes_(varargin), fn=dbstack(); [out1, out2, out3] = irc('call', fn(1).name, varargin); end

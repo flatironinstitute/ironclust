@@ -5,7 +5,7 @@ spkLim_ms = {[-.5, 1]};
 
 % #Auto-merging
 maxWavCor = {.97};
-fGpu={0};
+fGpu={1};
 fParfor={0};
 
 % #Drift
