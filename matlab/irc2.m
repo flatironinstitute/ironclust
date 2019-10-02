@@ -37,27 +37,34 @@ end
 
 P = []; 
 fPlot_gt = 0;
-% special commands
 switch lower(vcCmd)
-%     case 'detect-sort', P = file2struct_(
-    case {'detect-sort', 'sort', 'auto', ''}
+    case {'detect-sort', 'sort', 'auto', '', 'describe', 'verify'}
         if isempty(vcDir_out)
             vcFile_prm = vcFile_prm_;
         else
             vcFile_prm = vcDir_out;
         end
         if isempty(vcFile_prm), fprintf(2, 'provide .prm file.\n'); return; end
-        P = file2struct_(vcFile_prm);
-        if strcmpi(vcCmd, 'detect-sort'); clear_();
-        elseif strcmpi(vcCmd, 'sort'); clear_('sort');
+        if ~exist_file_(vcFile_prm)
+            fprintf(2, 'File does not exist: %s\n', vcFile_prm); return;
         end
+        P = file2struct_(vcFile_prm);
+        S0 = load0_(P.vcFile_prm);
+        fPlot_gt = [];
+        switch lower(vcCmd)
+            case 'detect-sort', clear_();
+            case 'sort', clear_('sort');
+            case 'describe', describe_(S0); return;
+            case 'verify', verify_(P, fPlot_gt); return;
+        end
+        
     case 'plot', irc('plot', vcArg1, vcArg2); return;
     case 'verify', irc('plot', 'verify'); return;
     case 'clear', clear_(); vcFile_prm_=[]; return;
     case 'clear-sort', clear_('sort'); return;
     case {'test-static', 'test-drift', 'test-tetrode', 'test-tetrode2', 'test-tetrode3'}
-        fPlot_gt = read_cfg_('fPlot_gt');        
         vcDir_in = get_test_data_(strsplit_get_(vcCmd,'-',2));
+        fPlot_gt = [];
     case 'export', irc('export', vcArg1); return;
 end
 if isempty(P)
@@ -79,17 +86,74 @@ set(0, 'UserData', S0);
 describe_(S0);
 
 % output
-struct_save_(S0, strrep(P.vcFile_prm, '.prm', '_irc.mat'));
+save0_(S0);
+% struct_save_(S0, strrep(P.vcFile_prm, '.prm', '_irc.mat'));
 vcFile_firings_mda = fullfile(P.vcDir_out, 'firings.mda');
 save_firings_mda_(S0, vcFile_firings_mda);
 
 % Validate
-vcFile_gt_mda = fullfile(vcDir_in, 'firings_true.mda');
-if exist_file_(vcFile_gt_mda)
-    raw_fname = fullfile(vcDir_in, 'raw.mda');
-    S_score = irc('validate-mda', vcFile_gt_mda, vcFile_firings_mda, raw_fname, fPlot_gt); % assume that groundtruth file exists
-    struct_save_(S_score, fullfile(P.vcDir_out, 'raw_geom_score.mat'), 1);
+verify_(P, fPlot_gt);
+end %func
+
+
+%--------------------------------------------------------------------------
+function verify_(P, fPlot_gt)
+if nargin<2, fPlot_gt = []; end
+if isempty(fPlot_gt), fPlot_gt = read_cfg_('fPlot_gt'); end
+
+vcFile_gt_mda = get_(P, 'vcFile_gt');
+if ~exist_file_(vcFile_gt_mda), return; end
+vcFile_firings_mda = fullfile(P.vcDir_out, 'firings.mda');
+S_score = irc('validate-mda', P.vcFile_gt, vcFile_firings_mda, P.vcFile, fPlot_gt); % assume that groundtruth file exists
+struct_save_(S_score, fullfile(P.vcDir_out, 'raw_geom_score.mat'), 1);
+
+end %func
+
+
+%--------------------------------------------------------------------------
+function save0_(S0)
+if nargin<1, S0 = []; end
+if isempty(S0), S0 = get(0, 'UserData'); end
+vcFile_mat = strrep(S0.P.vcFile_prm, '.prm', '_irc.mat');
+vcFile_fet = strrep(S0.P.vcFile_prm, '.prm', '_fet.irc');
+vcFile_fet2 = strrep(S0.P.vcFile_prm, '.prm', '_fet2.irc');
+
+trPc_spk = gather_(get_(S0, 'trPc_spk'));
+if ~isempty(trPc_spk)
+    S0.trPc_spk = [];
+    S0.dimm_fet = size(trPc_spk);
+    S0.type_fet = class(trPc_spk);
+    write_bin_(vcFile_fet, trPc_spk);
 end
+
+trPc2_spk = gather_(get_(S0, 'trPc2_spk'));
+if ~isempty(trPc2_spk)
+    S0.trPc2_spk = [];
+    write_bin_(vcFile_fet2, trPc2_spk);
+end
+
+struct_save_(S0, vcFile_mat);
+end %
+
+
+%--------------------------------------------------------------------------
+function S0 = load0_(vcFile_prm)
+vcFile_mat = strrep(vcFile_prm, '.prm', '_irc.mat');
+vcFile_fet = strrep(vcFile_prm, '.prm', '_fet.irc');
+vcFile_fet2 = strrep(vcFile_prm, '.prm', '_fet2.irc');
+
+S0 = load(vcFile_mat);
+if isempty(get_(S0, 'trPc_spk'))
+    if exist_file_(vcFile_fet)
+        S0.trPc_spk = load_bin_(vcFile_fet, S0.type_fet, S0.dimm_fet);
+    end
+end
+if isempty(get_(S0, 'trPc2_spk'))
+    if exist_file_(vcFile_fet2)
+        S0.trPc2_spk = load_bin_(vcFile_fet2, S0.type_fet, S0.dimm_fet);
+    end
+end
+set(0, 'UserData', S0);
 end %func
 
 
@@ -134,7 +198,7 @@ end
 end
 
 %--------------------------------------------------------------------------
-function csDesc = describe_(S0, vcFile_firings_mda)
+function csDesc = describe_(S0)
 P=S0.P;
 
 runtime_total = S0.runtime_detect + S0.runtime_sort + S0.runtime_automerge;
@@ -200,11 +264,60 @@ if P.maxWavCor<1
     S0.S_clu = templateMatch_post_(S0.S_clu, P, mrDist_clu);
 end
 
+% compute SNR per cluster
+S0.S_clu = calc_clu_wav_(S0, P);
 S0.S_clu = S_clu_refresh_(S0.S_clu);
+
 
 S0.runtime_automerge = toc(runtime_automerge);
 fprintf('\n\tauto-merging took %0.1fs (fGpu=%d, fParfor=%d)\n', ...
     S0.runtime_automerge, P.fGpu, P.fParfor);
+end %func
+
+
+%--------------------------------------------------------------------------
+function [S_clu, viClu_delete] = calc_clu_wav_(S0, P)
+
+S_clu = S0.S_clu;
+S_clu.nClu = max(S_clu.viClu);
+cviSpk_clu = arrayfun_(@(x)find(S_clu.viClu==x), 1:S_clu.nClu);
+viSite_clu = cellfun(@(x)mode(S0.viSite_spk(x)), cviSpk_clu);
+nT = size(S0.mrPv_global,1);
+nSites_spk = size(S0.trPc_spk,2);
+trWav_clu = nan(nT, nSites_spk, S_clu.nClu, 'single');
+for iClu = 1:S_clu.nClu
+    viSpk1 = cviSpk_clu{iClu};
+    if isempty(viSpk1), continue; end
+    viSite1 = S0.viSite_spk(viSpk1);
+    iSite1 = viSite_clu(iClu);
+    trPc1 = S0.trPc_spk(:,:,viSpk1);
+    mrPc1 = mean(trPc1(:,:,viSite1==iSite1),3);
+    trWav_clu(:,:,iClu) = S0.mrPv_global * mrPc1;
+end
+S_clu.trWav_clu = trWav_clu;
+S_clu.viSite_clu = viSite_clu;
+
+% compute SNR
+mrWav1_clu = squeeze_(trWav_clu(:,1,:),2); 
+vrVmax_clu = max(mrWav1_clu)';
+vrVmin_clu = min(mrWav1_clu)';
+vrVpp_clu = vrVmax_clu - vrVmin_clu;
+vrRms_site = S0.vrThresh_site(:) / S0.P.qqFactor;
+S_clu.vrSnr_clu = abs(vrVmin_clu(:)) ./ vrRms_site(viSite_clu);
+S_clu.vrSnr2_clu = abs(vrVpp_clu(:)) ./ vrRms_site(viSite_clu);
+
+if ~isempty(get_(P, 'min_snr_clu'))
+    viClu_delete = find(S_clu.vrSnr_clu < P.min_snr_clu);
+    if ~isempty(viClu_delete)
+        nClu_pre = S_clu.nClu;
+        S_clu = delete_clu_(S_clu, viClu_delete);
+        nClu_post = S_clu.nClu;
+        fprintf('calc_clu_wav_: %d->%d clusters, %d removed below SNR=%0.1f\n', ...
+            nClu_pre, nClu_post, numel(viClu_delete), P.min_snr_clu);
+    end
+else
+    viClu_delete = [];
+end
 end %func
 
 
@@ -1408,12 +1521,12 @@ if isempty(vrThresh_site), [vrThresh_site, fGpu] = mr2thresh_(mrWav2, P); end
 [viTime_spk, vrAmp_spk, viSite_spk] = detect_spikes_(mrWav2, vrThresh_site, vlKeep_ref, P);
 [viTime_spk, vrAmp_spk, viSite_spk] = multifun_(@(x)gather_(x), viTime_spk, vrAmp_spk, viSite_spk);    
 
-if get_set_(P, 'nSites_global', 8) >= 1
-    nSites = size(mrWav2,2);
-    if nSites <= get_set_(P, 'nSites_global', 8)
-        viSite_spk=ones(size(viSite_spk), 'like', viSite_spk); 
-    end
-end
+% if get_set_(P, 'nSites_global', 8) >= 1
+%     nSites = size(mrWav2,2);
+%     if nSites <= get_set_(P, 'nSites_global', 8)
+%         viSite_spk=ones(size(viSite_spk), 'like', viSite_spk); 
+%     end
+% end
 
 % reject spikes within the overlap region
 if ~isempty(nlim_wav1)
@@ -1452,7 +1565,8 @@ end
 
 % return struct
 if nPad_pre > 0, viTime_spk = viTime_spk - nPad_pre; end
-S_detect = makeStruct_(trPc_spk, mrPv_global, viTime_spk, vrAmp_spk, viSite_spk, mrVp_spk, trPc2_spk, viSite2_spk);
+S_detect = makeStruct_(trPc_spk, mrPv_global, viTime_spk, vrAmp_spk, viSite_spk, ...
+    mrVp_spk, trPc2_spk, viSite2_spk, vrThresh_site);
 end %func
 
 
@@ -1684,6 +1798,11 @@ P = struct_merge_(P, S_arg);
 % derived fields
 P = fill_param_(P);
 P.vcFile_prm = fullfile(vcDir_out, 'raw_geom.prm');
+
+vcFile_gt = fullfile(vcDir_in, 'firings_true.mda');
+if exist_file_(vcFile_gt)
+    P.vcFile_gt = vcFile_gt;
+end
 
 edit_prm_file_(P, P.vcFile_prm);
 end %func
@@ -1937,6 +2056,7 @@ function frewind_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); en
 function disperr_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
 function struct_save_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
 function edit_prm_file_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
+function write_bin_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
 
 function out1 = meta2struct_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = struct_merge_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
@@ -1975,6 +2095,9 @@ function out1 = S_clu_refresh_(varargin), fn=dbstack(); out1 = irc('call', fn(1)
 function out1 = find_site_spk23_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = mn2tn_wav_spk2_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = matchFileExt_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
+function out1 = load_bin_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
+function out1 = arrayfun_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
+function out1 = delete_clu_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 
 function [out1, out2] = readmda_header_(varargin), fn=dbstack(); [out1, out2] = irc('call', fn(1).name, varargin); end
 function [out1, out2] = mr2thresh_(varargin), fn=dbstack(); [out1, out2] = irc('call', fn(1).name, varargin); end
@@ -1983,7 +2106,6 @@ function [out1, out2] = filt_car_(varargin), fn=dbstack(); [out1, out2] = irc('c
 function [out1, out2] = findNearSites_(varargin), fn=dbstack(); [out1, out2] = irc('call', fn(1).name, varargin); end
 function [out1, out2] = spatialMask_(varargin), fn=dbstack(); [out1, out2] = irc('call', fn(1).name, varargin); end
 function [out1, out2] = shift_range_(varargin), fn=dbstack(); [out1, out2] = irc('call', fn(1).name, varargin); end
-
 
 function [out1, out2, out3] = plan_load_(varargin), fn=dbstack(); [out1, out2, out3] = irc('call', fn(1).name, varargin); end
 function [out1, out2, out3] = detect_spikes_(varargin), fn=dbstack(); [out1, out2, out3] = irc('call', fn(1).name, varargin); end
