@@ -18,7 +18,7 @@ delta_cut = {1};
 
 % #Sort mode
 nPcPerChan = {2};
-post_merge_mode0 = {[12,17]};
+post_merge_mode0 = {12, [12,17]};
 sort_mode = {1};
 merge_mode = {1};
-vcCommonRef = {'mean','none'};
+vcCommonRef = {'mean','none','median'};

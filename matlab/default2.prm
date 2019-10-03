@@ -13,6 +13,7 @@ nPcPerChan = 2;
 qqFactor = 4;
 nPc_spk = 6;
 spkLim_ms = [-.5, 1];
+nChans_min_car = 16;
 
 % sort
 sort_mode = 1;

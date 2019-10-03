@@ -61,7 +61,8 @@ switch lower(vcCmd)
     case 'verify', irc('plot', 'verify'); return;
     case 'clear', clear_(); vcFile_prm_=[]; return;
     case 'clear-sort', clear_('sort'); return;        
-    case {'test-static', 'test-drift', 'test-tetrode', 'test-tetrode2', 'test-tetrode3'}
+    case {'test-static', 'test-drift', 'test-tetrode', 'test-tetrode2', 'test-tetrode3', ...
+            'test-bionet', 'test-monotrode', 'test-monotrode1', 'test-monotrode2'}
         vcDir_in = get_test_data_(strsplit_get_(vcCmd,'-',2));
         fPlot_gt = [];
     case 'export', irc('export', vcArg1); return;
@@ -343,7 +344,7 @@ function [S_clu, viClu_delete] = calc_clu_wav_(S0, P)
 
 S_clu = S0.S_clu;
 S_clu.nClu = max(S_clu.viClu);
-cviSpk_clu = arrayfun_(@(x)find(S_clu.viClu==x), 1:S_clu.nClu);
+cviSpk_clu = arrayfun_(@(x)find(S_clu.viClu==x), (1:S_clu.nClu)');
 viSite_clu = cellfun(@(x)mode(S0.viSite_spk(x)), cviSpk_clu);
 nT = size(S0.mrPv_global,1);
 nSites_spk = size(S0.trPc_spk,2);
@@ -1159,7 +1160,11 @@ if ~isempty(nFet_max)
     nPcPerChan = min(max(nPcPerChan, 1), size(S0.trPc_spk,1));
 end
 get_pc_ = @(x)reshape(x(1:nPcPerChan,1:nSites_fet,:), nPcPerChan*nSites_fet, 1, size(x,3));
-trPc_spk = cat(2, get_pc_(S0.trPc_spk), get_pc_(S0.trPc2_spk));
+if isempty(get_(S0, 'trPc2_spk'))
+    trPc_spk = get_pc_(S0.trPc_spk);
+else
+    trPc_spk = cat(2, get_pc_(S0.trPc_spk), get_pc_(S0.trPc2_spk));
+end
 
 nSites = size(P.miSites,2);
 cviSpk_site = arrayfun(@(x)find(S0.viSite_spk==x), 1:nSites, 'UniformOutput', 0)';
@@ -1267,7 +1272,11 @@ end
 % [nSites_fet, miSites] = struct_get_(P, 'nSites_fet', 'miSites');
 
 [viSpk1, viSpk2] = deal(cviSpk_site{iSite}, cviSpk2_site{iSite});
-mrFet12 = [squeeze_(trPc_spk(:,1,viSpk1),2), squeeze_(trPc_spk(:,2,viSpk2),2)];
+if isempty(viSpk2)
+    mrFet12 = squeeze_(trPc_spk(:,1,viSpk1),2);
+else
+    mrFet12 = [squeeze_(trPc_spk(:,1,viSpk1),2), squeeze_(trPc_spk(:,2,viSpk2),2)];
+end
 viSpk12 = [viSpk1; viSpk2];
 [n1, n2] = deal(numel(viSpk1), numel(viSpk2));
         
@@ -1754,13 +1763,13 @@ end
 if isempty(mrPv_global)
     [mrPv_global, vrD_global] = get_pv_(trWav_spk, P); 
 end
-trPc_spk = gather_(project_pc_(trWav_spk, mrPv_global));
+trPc_spk = gather_(project_pc_(trWav_spk, mrPv_global, P));
 
 if get_set_(P, 'sort_mode', 1) == 1
     viSite2_spk = find_site_spk23_(trWav_spk, viSite_spk, P);
     trWav_spk = []; %clear memory
     trWav2_spk = mn2tn_wav_spk2_(mrWav2, viSite2_spk, viTime_spk, P);
-    trPc2_spk = gather_(project_pc_(trWav2_spk, mrPv_global));
+    trPc2_spk = gather_(project_pc_(trWav2_spk, mrPv_global, P));
 else
     [viSite2_spk, trPc2_spk] = deal([]);
 end
@@ -1782,11 +1791,60 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function trPc_spk = project_pc_(trWav_spk, mrPv)
+function trPc_spk = project_pc1_(trWav_spk, mrPv)
 [nSamples, nSites, nSpk] = size(trWav_spk);
 nPc = size(mrPv,2);
 mr = reshape(trWav_spk, size(trWav_spk,1), []);
 trPc_spk = reshape((mrPv' * mr), nPc, nSites, nSpk);
+end %func
+
+
+%--------------------------------------------------------------------------
+% 5/28/2019 JJJ: returns a cell of matrix
+function trPc_spk = project_pc_(trWav_spk, mrPv, P)
+% [mrFet1, mrFet2, mrFet3] = deal([]);
+project_ = @(x,y)reshape(x' * reshape(y, size(y,1), []), size(x,2), size(y,2), size(y,3));
+trPc_spk = project_(mrPv, trWav_spk); % project 0-shift
+return;
+
+if get_set_(P, 'fInterp_fet', 0) == 0, return; end
+    
+% interpolate and shift
+nPc = size(mrPv,2);
+switch 1
+    case 3
+        viShift = [0, -1,-.5,.5,1,1.5,-1.5];     
+    case 2
+        viShift = [0, -1,-.5,.5,1,1.5,-1.5,2,-2]; 
+    case 1
+        viShift = [0, -1,-.5,.5,1]; 
+end
+trPv_shift = arrayfun(@(x)vr2mr_shift_(mrPv(:,x), viShift), 1:nPc, 'UniformOutput', 0);
+trPv_shift = permute(cat(3, trPv_shift{:}),[1,3,2]);
+
+% find best alignment using first channel
+mrWav1 = squeeze_(trWav_spk(:,1,:), 2); % first channel
+mrPv1_shift = squeeze_(trPv_shift(:,1,:),2); %first pv shift
+[~, viMax_spk] = max(abs(mrPv1_shift' * mrWav1));  % project chan1 shift   
+
+for iPc = 1:nPc
+    for iShift=2:numel(viShift)
+        viSpk1 = find(viMax_spk == iShift);
+        if isempty(viSpk1), continue; end
+        trPc_spk(:,:,viSpk1) = project_(trPv_shift(:,:,iShift), trWav_spk(:,:,viSpk1));
+    end %for
+end %for
+end %func
+
+
+%--------------------------------------------------------------------------
+function mrPv1 = vr2mr_shift_(vr1, viShift)
+vi0 = (1:numel(vr1))';
+mrPv1 = zeros(numel(vr1), numel(viShift), 'like', vr1);
+mrPv1(:,1) = vr1;
+for iShift = 2:numel(viShift)
+    mrPv1(:,iShift) = interp1(vi0, vr1, vi0+viShift(iShift), 'pchip', 'extrap');
+end
 end %func
 
 
@@ -1949,16 +2007,20 @@ end %func
 function vcDir_in = get_test_data_(vcMode)
 if nargin<1, vcMode = 'static'; end
 switch vcMode
-    case 'drift', vcDir_in = 'groundtruth\hybrid_synth\drift_siprobe\rec_64c_1200s_11'; 
-    case 'static', vcDir_in = 'groundtruth\hybrid_synth\static_siprobe\rec_64c_1200s_11'; 
-    case 'tetrode', vcDir_in = 'groundtruth\hybrid_synth\static_tetrode\rec_4c_1200s_11'; 
-    case 'tetrode2', vcDir_in = 'groundtruth\hybrid_synth\static_tetrode\rec_4c_1200s_21'; 
-    case 'tetrode3', vcDir_in = 'groundtruth\hybrid_synth\static_tetrode\rec_4c_1200s_31'; 
+    case 'drift', vcDir_in = 'groundtruth/hybrid_synth/drift_siprobe/rec_64c_1200s_11'; 
+    case 'static', vcDir_in = 'groundtruth/hybrid_synth/static_siprobe/rec_64c_1200s_11'; 
+    case 'tetrode', vcDir_in = 'groundtruth/hybrid_synth/static_tetrode/rec_4c_1200s_11'; 
+    case 'tetrode2', vcDir_in = 'groundtruth/hybrid_synth/static_tetrode/rec_4c_1200s_21'; 
+    case 'tetrode3', vcDir_in = 'groundtruth/hybrid_synth/static_tetrode/rec_4c_1200s_31'; 
+    case 'bionet', vcDir_in = 'groundtruth/bionet/bionet_drift/drift_8x_A_2A'; 
+    case 'monotrode', vcDir_in = 'groundtruth/waveclus_synth/quiroga_difficult1/C_Difficult1_noise005';
+    case 'monotrode1', vcDir_in = 'groundtruth/waveclus_synth/quiroga_difficult1/C_Difficult1_noise01';
+    case 'monotrode2', vcDir_in = 'groundtruth/waveclus_synth/quiroga_difficult1/C_Difficult1_noise02';
 end
 if ispc()
+    vcDir_in = strrep(vcDir_in, '/', '\');    
     vcDir_in = fullfile('C:\tmp', vcDir_in);
 elseif isunix()
-    vcDir_in = strrep(vcDir_in, '\', '/');
     vcDir_in = fullfile('~/ceph', vcDir_in);
 end
 end %func
@@ -2386,6 +2448,7 @@ function out1 = struct_copyas_(varargin), fn=dbstack(); out1 = irc('call', fn(1)
 function out1 = set_bool_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = ifeq_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = spatial_smooth_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
+% function out1 = vr2mr_shift_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 
 function [out1, out2] = readmda_header_(varargin), fn=dbstack(); [out1, out2] = irc('call', fn(1).name, varargin); end
 function [out1, out2] = mr2thresh_(varargin), fn=dbstack(); [out1, out2] = irc('call', fn(1).name, varargin); end
