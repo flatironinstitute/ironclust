@@ -2032,23 +2032,6 @@ else
     return;
 end
         
-prm_template_name = get_set_(S_txt, 'prm_template_name', []);
-if strcmpi(prm_template_name, 'None'), prm_template_name = []; end
-if isempty(vcFile_template) || strcmpi(vcFile_template, 'None')
-    if ~isempty(prm_template_name)
-        prm_template_name = append_ext_default_(prm_template_name, '_template.prm');
-        vcFile_template = ircpath_(prm_template_name);
-    end
-else
-    vcFile_template = append_ext_default_(vcFile_template, '_template.prm');
-    if ~exist_file_(vcFile_template)        
-        vcFile_template = ircpath_(vcFile_template);
-    end
-end
-if ~exist_file_(vcFile_template) && ~isempty(vcFile_template)    
-    fprintf(2, 'Template file does not exist: %s\n', vcFile_template);
-    vcFile_template = [];
-end
 P.sRateHz = get_set_(S_txt, 'samplerate', 30000);
 if isfield(S_txt, 'detect_sign')
     P.fInverse_file = ifeq_(S_txt.detect_sign>0, 1, 0);
