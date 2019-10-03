@@ -36,6 +36,7 @@ end
 
 P = []; 
 switch lower(vcCmd)
+    case 'scoreboard', irc2_scoreboard(); return;
     case {'detect-sort', 'sort', 'auto', '', 'describe', 'verify'}
         if isempty(vcDir_out)
             vcFile_prm = vcFile_prm_;
