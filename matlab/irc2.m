@@ -2027,12 +2027,7 @@ function P = import_spikeforest_args_(vcArg_txt)
 P = struct();
 
 if exist_file_(vcArg_txt)    
-    switch lower(getFileExt_(vcArg_txt))
-        case '.txt'
-            S_txt = meta2struct_(vcArg_txt);
-        case '.json'
-            S_txt = loadjson_(vcArg_txt);
-    end % switch
+    S_txt = meta2struct_(vcArg_txt);
 else    
     return;
 end
