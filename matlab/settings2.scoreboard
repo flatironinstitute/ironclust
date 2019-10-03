@@ -17,7 +17,8 @@ fft_thresh = {8};
 delta_cut = {1};
 
 % #Sort mode
+nPcPerChan = {1,2};
 post_merge_mode0 = {[12,17]};
-sort_mode = {2};
-merge_mode = {-1};
+sort_mode = {1};
+merge_mode = {1};
 vcCommonRef = {'mean'};

@@ -856,9 +856,14 @@ if 0
 else
     nShift_max = 2;
 end
-viShift = -nShift_max:nShift_max;
-
-dimm_spk = [size(S0.mrPv_global,1), size(trPc_spk,2), size(S0.trPc_spk,3)];
+switch 1
+    case 2
+        viShift = 0;
+        dimm_spk = [size(trPc_spk,1), size(trPc_spk,2), size(S0.trPc_spk,3)];
+    case 1
+        viShift = -nShift_max:nShift_max;
+        dimm_spk = [size(S0.mrPv_global,1), size(trPc_spk,2), size(S0.trPc_spk,3)];
+end
 
 % create template (nTemplate per cluster)
 [ctrWav_clu, cviSite_clu] = deal(cell(S_clu.nClu, 1));
@@ -876,7 +881,7 @@ for iClu = 1:S_clu.nClu
     viSpk1 = viSpk1(:);
     viiSpk1 = round(linspace(1, numel(viSpk1), nDrift+1));
     [vlKeep_clu1, viSite_clu1] = deal(true(nDrift, 1), zeros(nDrift,1));
-    trWav_clu1 = zeros(dimm_spk(1), dimm_spk(2), nDrift, 'single');
+    trWav_drift1 = zeros(dimm_spk(1), dimm_spk(2), nDrift, 'single');
     [miKnn1, vrRho1] = deal(miKnn(:,viSpk1), vrRho_spk(viSpk1)');
     for iDrift = 1:nDrift
         vii1 = viiSpk1(iDrift):viiSpk1(iDrift+1);
@@ -925,11 +930,13 @@ for iClu = 1:S_clu.nClu
         end
         
         viSpk12 = subsample_vr_(viSpk11, MAX_SAMPLE);
-        mr_ = S0.mrPv_global * mean(trPc_spk(:,:,viSpk12),3);
-
-        trWav_clu1(:,:,iDrift) = mr_;
+        if size(trWav_drift1,1) == size(trPc_spk,1)
+            trWav_drift1(:,:,iDrift) = mean(trPc_spk(:,:,viSpk12),3);
+        else
+            trWav_drift1(:,:,iDrift) = S0.mrPv_global * mean(trPc_spk(:,:,viSpk12),3);
+        end
     end
-    ctrWav_clu{iClu} = trWav_clu1(:,:,vlKeep_clu1);
+    ctrWav_clu{iClu} = trWav_drift1(:,:,vlKeep_clu1);
     cviSite_clu{iClu} = viSite_clu1(vlKeep_clu1);
     fprintf('.');
 end
@@ -937,8 +944,6 @@ fprintf('\n\ttook %0.1fs\n', toc(t_template));
 
 
 % merge the templates: todo, faster code
-% nClu = S_clu.nClu;
-% fh_norm = @(x)bsxfun(@rdivide, x, std(x,1)*sqrt(size(x,1)));
 normalize_ = @(x)bsxfun(@rdivide, x, sqrt(sum(x.^2)));
 switch 2
     case 3, fh_norm_tr = @(x)normalize_(meanSubt_(reshape(x, [], size(x,3))));
