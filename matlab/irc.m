@@ -76,6 +76,7 @@ switch lower(vcCmd)
     case 'import-jrc1', import_jrc1_(vcArg1);
     case 'export-jrc1', export_jrc1_(vcArg1);
     case 'summarize-study', convert_mda_ui('summarize-study', vcArg1);
+    case 'read-param', varargout{1} = get_(meta2struct_(vcArg1), vcArg2);
            
     % two arguments
     case 'makeprb', makeprb_(vcArg1, vcArg2); return;

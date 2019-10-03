@@ -42,12 +42,8 @@ if ~exist_file_(firings_out_fname) || fForceRerun
     version = 1;
     if exist_file_(fullfile(vcDir_in, 'argfile.txt'))
         prm_fname = fullfile(vcDir_in, 'argfile.txt');
-        try
-            S_arg = irc('call', 'meta2struct', {prm_fname});
-            if isfield(S_arg, 'version'), version = S_arg.version; end
-        catch
-            ;
-        end
+        version = irc('read-param', prm_fname, 'version');
+        if isempty(version), version = 1; end
     else
         prm_fname = fullfile(vcDir_in, 'params.json');
     end
