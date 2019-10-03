@@ -2004,7 +2004,7 @@ elseif exist_file_(vcFile_arg)
     if matchFileExt_(vcFile_arg, '.prm')
         S_arg = file2struct_(vcFile_arg);
     elseif matchFileExt_(vcFile_arg,' .txt')
-        S_arg = meta2struct_(vcFile_arg);
+        S_arg = import_spikeforest_args_(vcFile_arg);
     end
 end
 P = struct_merge_(P, S_arg);
@@ -2019,6 +2019,97 @@ if exist_file_(vcFile_gt)
 end
 
 edit_prm_file_(P, P.vcFile_prm);
+end %func
+
+
+%--------------------------------------------------------------------------
+function P = import_spikeforest_args_(vcArg_txt)
+P = struct();
+
+if exist_file_(vcArg_txt)    
+    switch lower(getFileExt_(vcArg_txt))
+        case '.txt'
+            S_txt = meta2struct_(vcArg_txt);
+        case '.json'
+            S_txt = loadjson_(vcArg_txt);
+    end % switch
+else    
+    return;
+end
+        
+prm_template_name = get_set_(S_txt, 'prm_template_name', []);
+if strcmpi(prm_template_name, 'None'), prm_template_name = []; end
+if isempty(vcFile_template) || strcmpi(vcFile_template, 'None')
+    if ~isempty(prm_template_name)
+        prm_template_name = append_ext_default_(prm_template_name, '_template.prm');
+        vcFile_template = ircpath_(prm_template_name);
+    end
+else
+    vcFile_template = append_ext_default_(vcFile_template, '_template.prm');
+    if ~exist_file_(vcFile_template)        
+        vcFile_template = ircpath_(vcFile_template);
+    end
+end
+if ~exist_file_(vcFile_template) && ~isempty(vcFile_template)    
+    fprintf(2, 'Template file does not exist: %s\n', vcFile_template);
+    vcFile_template = [];
+end
+P.sRateHz = get_set_(S_txt, 'samplerate', 30000);
+if isfield(S_txt, 'detect_sign')
+    P.fInverse_file = ifeq_(S_txt.detect_sign>0, 1, 0);
+elseif isfield(S_txt, 'spike_sign')
+    P.fInverse_file = ifeq_(S_txt.spike_sign>0, 1, 0);
+end
+
+mask_out_artifacts = get_set_(S_txt, 'mask_out_artifacts', []);
+if strcmpi(mask_out_artifacts, 'true')
+    P.blank_thresh = 10; 
+else
+    P.blank_thresh = []; 
+end    
+
+% set adjacency radius
+P.maxDist_site_um = get_set_(S_txt, 'adjacency_radius', 50);
+P.maxDist_site_spk_um = get_set_(S_txt, 'adjacency_radius_out', 75);
+if P.maxDist_site_spk_um<=0, P.maxDist_site_spk_um = inf; end
+%P.maxDist_site_merge_um = P.maxDist_site_spk_um * 0.4667;   
+
+% set frequency
+freq_min = get_set_(S_txt, 'freq_min', []);
+freq_max = get_set_(S_txt, 'freq_max', []);
+if ~isempty(freq_min) && ~isempty(freq_max)
+    P.freqLim = [freq_min, freq_max]; 
+end
+
+% vcCommonRef and whiten
+fWhiten = strcmpi(get_(S_txt, 'whiten'), 'True');
+vcCommonRef = get_set_(S_txt, 'common_ref_type', 'none');
+if fWhiten
+    if isempty(vcCommonRef) || strcmpi(vcCommonRef, 'none')
+        P.vcCommonRef = 'whiten';
+    else
+        P.vcCommonRef = ['whiten-', vcCommonRef];
+    end
+else
+    P.vcCommonRef = vcCommonRef;
+end
+
+% copy fields (don't copy empty fields)
+P = struct_copyas_(P, S_txt, ...
+    {'detect_threshold', 'pc_per_chan', 'merge_thresh', 'scale_factor'}, ...
+    {'qqFactor', 'nPcPerChan', 'maxWavCor', 'uV_per_bit'}, 1);
+
+% String parameters
+P = struct_copyas_(P, S_txt, {'filter_type', 'feature_type'}, {'vcFilter', 'vcFet'});
+
+% same name
+P = struct_copyas_(P, S_txt, ...
+    {'knn', 'batch_sec_drift', 'step_sec_drift', 'min_count', 'nSites_whiten', ...
+    'fft_thresh', 'delta_cut', 'fft_thresh_low', 'post_merge_mode', 'sort_mode'});
+
+% set boolean
+P = set_bool_(P, 'fGpu', S_txt);
+P = set_bool_(P, 'fSave_spkwav', S_txt);
 end %func
 
 
@@ -2313,6 +2404,9 @@ function out1 = load_bin_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name
 function out1 = arrayfun_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = delete_clu_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = shift_trWav_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
+function out1 = struct_copyas_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
+function out1 = set_bool_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
+
 
 function [out1, out2] = readmda_header_(varargin), fn=dbstack(); [out1, out2] = irc('call', fn(1).name, varargin); end
 function [out1, out2] = mr2thresh_(varargin), fn=dbstack(); [out1, out2] = irc('call', fn(1).name, varargin); end
