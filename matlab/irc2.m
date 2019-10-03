@@ -2003,7 +2003,7 @@ if isstruct(vcFile_arg)
 elseif exist_file_(vcFile_arg)
     if matchFileExt_(vcFile_arg, '.prm')
         S_arg = file2struct_(vcFile_arg);
-    elseif matchFileExt_(vcFile_arg,' .txt')
+    elseif matchFileExt_(vcFile_arg, '.txt')
         S_arg = import_spikeforest_args_(vcFile_arg);
     end
 end
