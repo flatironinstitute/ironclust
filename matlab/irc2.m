@@ -21,7 +21,6 @@ if iscell(vcDir_in) && iscell(vcDir_out)
     parfor iFile = 1:numel(csDir_in)
         try
             fprintf('irc2 batch-processing %s (%d/%d)\n', csDir_in{iFile}, iFile, numel(csDir_in));
-            irc2('clear');
             irc2(csDir_in{iFile}, csDir_out{iFile}, csFile_arg{iFile});
         catch
             disp(lasterr());
@@ -36,7 +35,6 @@ if isempty(vcFile_arg)
 end
 
 P = []; 
-fPlot_gt = 0;
 switch lower(vcCmd)
     case {'detect-sort', 'sort', 'auto', '', 'describe', 'verify'}
         if isempty(vcDir_out)
@@ -66,6 +64,9 @@ switch lower(vcCmd)
         vcDir_in = get_test_data_(strsplit_get_(vcCmd,'-',2));
         fPlot_gt = [];
     case 'export', irc('export', vcArg1); return;
+    otherwise
+        fPlot_gt=0;
+        clear_();
 end
 if isempty(P)
     P = makeParam_(vcDir_in, vcDir_out, vcFile_arg);
@@ -168,9 +169,9 @@ end %func
 
 %--------------------------------------------------------------------------
 function S0 = sort_(S0, P)
-switch get_set_(P, 'sort_mode', 2)
-    case 2, S0 = sort2_(S0, P);
+switch get_set_(P, 'sort_mode', 1)
     case 1, S0 = sort1_(S0, P);
+    case 2, S0 = sort2_(S0, P);    
 end %switch
 end %func
 
@@ -251,25 +252,19 @@ end
 fprintf('\nauto-merging...\n'); runtime_automerge=tic;
 S0.S_clu = postCluster_(S0.S_clu, P); % peak merging
 
-fMode = get_set_(P, 'merge_mode', 3);
-
-if P.maxWavCor<1
-    switch fMode 
-        case -1
-            mrDist_clu = wave_similarity_clu1_(S0, P);
-        case 0
-            mrDist_clu = wave_similarity_clu_(S0, P, 1);
-        otherwise
-            mrDist_clu = calc_dist_clu_(S0, P, fMode);
-
+maxWavCor = get_set_(P, 'maxWavCor', .99);
+if maxWavCor<1
+    post_merge_mode = get_set_(P, 'post_merge_mode', 1);
+    switch post_merge_mode 
+        case 1, mrDist_clu = wave_similarity_clu1_(S0, P);
+        otherwise, mrDist_clu = calc_dist_clu_(S0, P, post_merge_mode);
     end
     S0.S_clu = templateMatch_post_(S0.S_clu, P, mrDist_clu);
 end
 
-% compute SNR per cluster
+% compute SNR per cluster and remove small SNR
 S0.S_clu = calc_clu_wav_(S0, P);
 S0.S_clu = S_clu_refresh_(S0.S_clu);
-
 
 S0.runtime_automerge = toc(runtime_automerge);
 fprintf('\n\tauto-merging took %0.1fs (fGpu=%d, fParfor=%d)\n', ...
@@ -1079,7 +1074,7 @@ end %func
 
 %--------------------------------------------------------------------------
 % todo: delayed execution, use parfeval
-function S0 = sort2_(S0, P)
+function S0 = sort1_(S0, P)
 
 % drift processing
 fprintf('Clustering\n'); 
@@ -1214,7 +1209,7 @@ end %func
 
 %--------------------------------------------------------------------------
 % todo: delayed execution, use parfeval
-function S0 = sort1_(S0, P)
+function S0 = sort2_(S0, P)
 
 % drift processing
 fprintf('Clustering\n'); 
@@ -1686,7 +1681,7 @@ if isempty(mrPv_global)
 end
 trPc_spk = gather_(project_pc_(trWav_spk, mrPv_global));
 
-if get_set_(P, 'sort_mode', 1) == 2    
+if get_set_(P, 'sort_mode', 1) == 1
     viSite2_spk = find_site_spk23_(trWav_spk, viSite_spk, P);
     trWav_spk = []; %clear memory
     trWav2_spk = mn2tn_wav_spk2_(mrWav2, viSite2_spk, viTime_spk, P);
@@ -1925,16 +1920,15 @@ P.sRateHz = get_set_(S_json, 'samplerate', P.sRateHz);
 P.fInverse_file = get_set_(S_json, 'spike_sign', -1) == -1;
 
 % read param
+S_arg = [];
 if isstruct(vcFile_arg)
     S_arg = vcFile_arg;
 elseif exist_file_(vcFile_arg)
     if matchFileExt_(vcFile_arg, '.prm')
         S_arg = file2struct_(vcFile_arg);
-    else
+    elseif matchFileExt_(vcFile_arg,' .txt')
         S_arg = meta2struct_(vcFile_arg);
     end
-else
-    S_arg = [];
 end
 P = struct_merge_(P, S_arg);
 

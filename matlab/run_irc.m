@@ -38,15 +38,29 @@ end
 fForceRerun = irc('call', 'read_cfg', {'fForceRerun'});
 if ~exist_file_(firings_out_fname) || fForceRerun
     geom_fname = fullfile(vcDir_in, 'geom.csv');
+    
+    version = 1;
     if exist_file_(fullfile(vcDir_in, 'argfile.txt'))
         prm_fname = fullfile(vcDir_in, 'argfile.txt');
+        try
+            S_arg = irc('call', 'meta2struct', {prm_fname});
+            if isfield(S_arg, 'version'), version = S_arg.version; end
+        catch
+            ;
+        end
     else
         prm_fname = fullfile(vcDir_in, 'params.json');
     end
-    vcFile_prm = irc('makeprm-mda', raw_fname, geom_fname, prm_fname, vcDir_out, vcFile_template);    
-    irc('clear', vcFile_prm);
-    irc('run', vcFile_prm);
-    irc('export-mda', vcFile_prm, firings_out_fname);
+    
+    switch version
+        case 1
+            vcFile_prm = irc('makeprm-mda', raw_fname, geom_fname, prm_fname, vcDir_out, vcFile_template);    
+            irc('clear', vcFile_prm);
+            irc('run', vcFile_prm);
+            irc('export-mda', vcFile_prm, firings_out_fname);
+        case 2
+            irc2(vcDir_in, vcDir_out, prm_fname);
+    end %switch
     fprintf('Clustering result wrote to %s\n', firings_out_fname);
 end
 

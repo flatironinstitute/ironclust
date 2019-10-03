@@ -1,16 +1,21 @@
-nFet_max = 10;
+% execution
 fGpu = 1;
-fParfor = 0;
+fParfor = 1;
+MAX_BYTES_LOAD = .5e9;
+
+% detect
+nFet_max = 10;
 qqFactor = 4;
 nPc_spk = 6;
-MAX_BYTES_LOAD = .5e9;
 spkLim_ms = [-.5, 1];
+
+% sort
+sort_mode = 1;
 step_sec_drift = 20;
 batch_sec_drift = 300;
-nSites_global = [];
 
-sort_mode = 2;
+% auto-merge
 post_merge_mode0 = [12, 17];
-%merge_mode = 3; maxWavCor = .97; 
+post_merge_mode = 1; 
+maxWavCor = .99; 
 min_snr_clu = 4; % remove clusters below SNR threshold, set to [] to skip
-merge_mode = -1; maxWavCor = .99; 

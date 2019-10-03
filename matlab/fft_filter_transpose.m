@@ -64,21 +64,26 @@ for iStart = 1:nSkip:nT
         vl_ = vi1 > nT;
         vi1(vl_) = 2*nT - vi1(vl_);
     end
-    [mrWav1, fGpu] = gpuArray_(mrWav_T(:,vi1)', fGpu);
+    mrWav1 = mrWav_T(:,vi1)';
     n1 = size(mrWav1,1);
     if n1 ~= n_prev
-        vrFilt1 = fh_make_filter(n1, freqLim, freqLim_width, sRateHz);
-        vrFilt1 = gpuArray_(vrFilt1, fGpu);
+        vrFilt1 = fh_make_filter(n1, freqLim, freqLim_width, sRateHz);        
         if scale_filter ~= 1
             vrFilt1 = vrFilt1 * scale_filter;
         end
+        gvrFilt1 = gpuArray_(vrFilt1, fGpu);
         n_prev = n1;
     end    
     if ~isempty(vrFilt1)        
-        try
+        if fGpu
+            try
+                mrWav1 = fh_filter(gpuArray_(mrWav1), gvrFilt1);  
+            catch
+                fGpu=0;
+            end
+        end
+        if ~fGpu
             mrWav1 = fh_filter(mrWav1, vrFilt1);  
-        catch
-            mrWav1 = fh_filter(gather_(mrWav1), vrFilt1);  
         end
     end
     mrWav_filt(iStart:iEnd,:) = gather_(mrWav1(nPad+1:end-nPad,:));
@@ -414,18 +419,17 @@ end %func
 function [gmr, fGpu] = gpuArray_(mr, fGpu)
 if nargin<2, fGpu = 1; end
 % fGpu = 0; %DEBUG disable GPU array
-if ~fGpu, return; end
+if ~fGpu, gmr = mr; return; end
 try
-    if ~isa(mr, 'gpuArray'), gmr = gpuArray(mr); end
+    if ~isa(mr, 'gpuArray')
+        gmr = gpuArray(mr); 
+    else
+        gmr = mr;
+    end
     fGpu = 1;
 catch        
-    try % retry after resetting the GPU memory
-        gpuDevice(1); 
-        gmr = gpuArray(mr);
-        fGpu = 1;
-    catch % no GPU device found            
-        fGpu = 0;
-    end
+    gmr = mr;
+    fGpu = 0;
 end
 end
 
