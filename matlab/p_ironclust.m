@@ -7,6 +7,11 @@ end
     
 version = irc('read-param', arg_fname, 'version');
 if isempty(version), version=2; end
+
+disp('===================================================');
+fprintf('IronClust Version: %d\n', version);
+disp('===================================================');
+
 switch version
     case 1
         vcFile_prm = irc('makeprm-mda', raw_fname, geom_fname, arg_fname, temp_path, prm_fname);
@@ -16,6 +21,7 @@ switch version
     case 2
         irc2(fileparts(raw_fname), temp_path, arg_fname);
 end %switch
+
 % create a ground truth
 if exist_file_(vcFile_gt_mda)
     irc('import-gt', vcFile_gt_mda, vcFile_prm); % assume that groundtruth file exists
