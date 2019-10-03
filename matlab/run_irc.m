@@ -26,6 +26,8 @@ if strcmpi(vcDir_in, 'version')
     return; 
 end
 
+version = 2; % default version
+
 irc('call', 'mkdir', {vcDir_out}); % create temp output directory
     
 % inferred from the path
@@ -39,7 +41,6 @@ fForceRerun = irc('call', 'read_cfg', {'fForceRerun'});
 if ~exist_file_(firings_out_fname) || fForceRerun
     geom_fname = fullfile(vcDir_in, 'geom.csv');
     
-    version = 1;
     if exist_file_(fullfile(vcDir_in, 'argfile.txt'))
         prm_fname = fullfile(vcDir_in, 'argfile.txt');
         version = irc('read-param', prm_fname, 'version');

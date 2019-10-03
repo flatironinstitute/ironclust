@@ -6,7 +6,8 @@
 %   ToDo: extend time and channels, add noise
 %       plan: use compiled matlab (./run_irc myfileloc)
 
-%% copy the original data to raid
+%% 1. Define functions and data
+
 vcDir_from_original = '~/ceph/groundtruth/hybrid_synth/static_siprobe/rec_64c_1200s_11';
 vcDir_to_original = '~/raid/groundtruth/hybrid_synth/static_siprobe_bench/rec_64c_1200s';
 if ~exist(vcDir_to_original, 'dir')
@@ -15,7 +16,6 @@ if ~exist(vcDir_to_original, 'dir')
     system(vcCmd);
 end
 
-%% 1. Generate a new recording by tiling
 vcDir0 = '~/raid/groundtruth/hybrid_synth/static_siprobe_bench';
 vcFile0 = 'rec_64c_1200s';
 vcDir_in = fullfile(vcDir0, vcFile0);
@@ -105,9 +105,8 @@ end
 
 %% 3. loop over the files, exract values
 
-csParams = {'param_set1.prm', 'param_set2.prm'};
-vnChans_uniq = 64 * 2.^[-3:3];
-vrDuration_uniq = 1200 * 2.^[-2:3];
+vnChans_uniq = 64 * 2.^[-3:2];
+vrDuration_uniq = 1200 * 2.^[-2:2];
 
 % loop over the files
 [xx1,yy1] = meshgrid(1:numel(vnChans_uniq), 1:numel(vrDuration_uniq));
@@ -118,64 +117,54 @@ csFiles_batch = arrayfun(@(x,y)...
         xx1(:), yy1(:), 'UniformOutput', 0);
 
 % recording x parameter loop
-[xx,yy] = meshgrid(1:numel(csFiles_batch), 1:numel(csParams));
-fh_bench = @(x,y)irc('benchmark', csFiles_batch{x}, csParams{y});
-
 % parse output
-cS_bench = arrayfun(@(x,y)fh_bench(x,y), xx, yy, 'UniformOutput', 0); % must be transposed for accurate cache result
+cS_bench = cellfun(@(x)irc('benchmark', x), csFiles_batch, 'UniformOutput', 0); % must be transposed for accurate cache result
 
 vS_bench = cell2mat(cS_bench);
 vrPeakMem_bench = [vS_bench.memory_gb]; vrPeakMem_bench = vrPeakMem_bench(:);
 vrRuntime_bench = [vS_bench.runtime_sec]; vrRuntime_bench = vrRuntime_bench(:);
-viParam_bench = yy(:);
-vnChans_bench = vnChans_batch(xx(:)); vnChans_bench = vnChans_bench(:);
-vrMinutes_bench = vrMinutes_batch(xx(:)); vrMinutes_bench = vrMinutes_bench(:);
+
 
 %% 4. plot result (create two tables), also consider creating a bar plot
 nunique_ = @(x)numel(unique(x));
 title_ = @(x)irc('call','title',{x},1);
 lg = @(x)log(x)/log(2);
 for iMode = 1:2
-    for iParam = 1:numel(csParams)
-        vcParam1 = csParams{iParam};
-
-        fprintf('Paramer set: %s\n', vcParam1);
-        switch iMode
-            case 1, vrPlot = vrPeakMem_bench(viParam_bench==iParam); vcMode = 'Peak memory (GB)'; vrPlot = log(vrPlot)/log(2);
-            case 2, vrPlot = vrRuntime_bench(viParam_bench==iParam); vcMode = 'Runtime (s)'; vrPlot = log(vrPlot)/log(2);
-        end
-        nChans = vnChans_bench(viParam_bench==iParam); 
-        duration_min = vrMinutes_bench(viParam_bench==iParam);
-        MB_per_chan_min = vrPlot ./ nChans ./ duration_min * 1024;
-        MB_per_chan = vrPlot ./ nChans  * 1024;
-        MB_per_min = vrPlot ./ duration_min  * 1024;
-        table(nChans, duration_min, vrPlot, MB_per_chan_min, MB_per_chan, MB_per_min, 'rownames', csFiles_batch) %{'PeakMem_GiB', 'nChans', 'duration_sec'})
-
-        figure; 
-        subplot(2,2,1:2);
-        img = reshape(vrPlot, nunique_(duration_min), nunique_(nChans));
-        imagesc(img);
-        set(gca, 'XTickLabel', unique(nChans), 'YTickLabel', unique(duration_min)); % may need to unravel
-        xlabel('nChans'); ylabel('min');
-    %     set(gca,'XTick', [16 32 64], 'YTick', [10 20]);
-        title_(sprintf('%s for %s', vcMode, vcParam1));
-
-        subplot 223; plot(img); 
-        xlabel('Duration (min)'); 
-        set(gca,'XTickLabel', unique(duration_min), 'XTick', 1:nunique_(duration_min));        
-        lim_x = get(gca,'XLim');
-        hold on; plot(lim_x, lim_x, 'r');
-        set(gca,'YTickLabel', 2.^get(gca,'YTick'), 'YTick', get(gca,'YTick'));
-        ylabel(vcMode); grid on;
-        
-        subplot 224; plot(img'); 
-        xlabel('#Chans'); 
-        set(gca,'XTickLabel', unique(nChans), 'XTick', 1:nunique_(nChans));        
-        lim_x = get(gca,'XLim');
-        hold on; plot(lim_x, lim_x, 'r');
-        set(gca,'YTickLabel', 2.^get(gca,'YTick'), 'YTick', get(gca,'YTick'));
-        ylabel(vcMode); grid on;        
+    switch iMode
+        case 1, vrPlot = vrPeakMem_bench; vcMode = 'Peak memory (GB)'; vrPlot = log(vrPlot)/log(2);
+        case 2, vrPlot = vrRuntime_bench; vcMode = 'Runtime (s)'; vrPlot = log(vrPlot)/log(2);
     end
+    nChans = vnChans_bench; 
+    duration_min = vrMinutes_bench;
+    MB_per_chan_min = vrPlot ./ nChans ./ duration_min * 1024;
+    MB_per_chan = vrPlot ./ nChans  * 1024;
+    MB_per_min = vrPlot ./ duration_min  * 1024;
+    table(nChans, duration_min, vrPlot, MB_per_chan_min, MB_per_chan, MB_per_min, 'rownames', csFiles_batch) %{'PeakMem_GiB', 'nChans', 'duration_sec'})
+
+    figure; 
+    subplot(2,2,1:2);
+    img = reshape(vrPlot, nunique_(duration_min), nunique_(nChans));
+    imagesc(img);
+    set(gca, 'XTickLabel', unique(nChans), 'YTickLabel', unique(duration_min)); % may need to unravel
+    xlabel('nChans'); ylabel('min');
+%     set(gca,'XTick', [16 32 64], 'YTick', [10 20]);
+    title_(sprintf('%s for %s', vcMode, vcParam1));
+
+    subplot 223; plot(img); 
+    xlabel('Duration (min)'); 
+    set(gca,'XTickLabel', unique(duration_min), 'XTick', 1:nunique_(duration_min));        
+    lim_x = get(gca,'XLim');
+    hold on; plot(lim_x, lim_x, 'r');
+    set(gca,'YTickLabel', 2.^get(gca,'YTick'), 'YTick', get(gca,'YTick'));
+    ylabel(vcMode); grid on;
+
+    subplot 224; plot(img'); 
+    xlabel('#Chans'); 
+    set(gca,'XTickLabel', unique(nChans), 'XTick', 1:nunique_(nChans));        
+    lim_x = get(gca,'XLim');
+    hold on; plot(lim_x, lim_x, 'r');
+    set(gca,'YTickLabel', 2.^get(gca,'YTick'), 'YTick', get(gca,'YTick'));
+    ylabel(vcMode); grid on;        
 end
 
 % [param_set1.prm: fSave_spkwav=1]

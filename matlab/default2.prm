@@ -3,8 +3,13 @@ fGpu = 1;
 fParfor = 0;
 MAX_BYTES_LOAD = .5e9;
 
+% filter
+vcFilter = 'bandpass';
+freqLim = [300, 6000];
+
 % detect
-nFet_max = 10;
+%nFet_max = 10;
+nPcPerChan = 2;
 qqFactor = 4;
 nPc_spk = 6;
 spkLim_ms = [-.5, 1];

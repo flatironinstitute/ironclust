@@ -27709,7 +27709,7 @@ if ~assert_(exist_func_('mcc'), 'Matlab Compiler Toolbox is not installed.')
 end
 cd(ircpath_());
 fprintf('Compiling run_irc.m\n'); t1=tic;
-vcEval = 'mcc -m -v -R ''-nodesktop, -nosplash -singleCompThread -nojvm'' -a *.ptx -a *.cu -a ./mdaio/* -a ./jsonlab-1.5/* -a ./npy-matlab/* -a default.* -a ./prb/* -a *_template.prm run_irc.m';
+vcEval = 'mcc -m -v -R ''-nodesktop, -nosplash -singleCompThread -nojvm'' -a *.ptx -a *.cu -a ./mdaio/* -a ./jsonlab-1.5/* -a ./npy-matlab/* -a default*.* -a ./prb/* -a *_template.prm -a irc2.m run_irc.m';
 if ~isempty(vcDir_out)
     mkdir_(vcDir_out);
     vcEval = [vcEval, ' -d ', vcDir_out];
@@ -31012,7 +31012,40 @@ end %func
 
 
 %--------------------------------------------------------------------------
+% IronClust v2
 function S_bench = benchmark_(vcDir_in1, vcParam1)
+if nargin<2, vcParam1 = ''; end
+
+% specify the output folder
+vcDir_out0 = strrep(vcDir_in1, '/groundtruth/', sprintf('/irc_%s/', irc('version')));
+vcDir_out1 = fullfile(vcDir_out0, strrep(vcParam1, '.prm', ''));
+vcFile_mat1 = dir_(fullfile(vcDir_out1, '*_irc.mat'));
+if isempty(vcFile_mat1)
+    % process the data
+    fprintf('Running benchmark: ''%s'' using ''%s'': ', vcDir_in1, vcParam1); t1=tic;
+    [~, vcConsoleOut] = system(sprintf('./run_irc %s '''' %s', vcDir_in1, vcParam1));
+    fprintf('took %0.1fs\n', toc(t1));
+else
+    % load already processed data
+    vcFile_prm1 = strrep(vcFile_mat1{1}, '_irc.mat', '.prm');
+    vcConsoleOut = evalc(sprintf('irc2(''describe'', ''%s'');', vcFile_prm1));
+    fprintf('Loaded benchmark: ''%s'' using ''%s''\n', vcDir_in1, vcParam1);
+end
+% parse the output
+[memory_gb, vcFile_prm, runtime_sec, runtime_detect_sec, runtime_sort_sec, runtime_merge_sec] = ...
+    parse_console_out_(vcConsoleOut, ...
+        'memory usage (GiB):', 'Parameter file:', 'Total runtime (s):', ...
+        'Detect + feature (s):', 'Cluster runtime (s):', 'merge runtime (s):');
+% str2num_strip_ = @(x)str2double(x((x>='0' & x<='9') | x=='.'));
+S_bench = makeStruct_func_(@(x)str2num_(x), memory_gb, runtime_sec, runtime_detect_sec, runtime_sort_sec, runtime_merge_sec);
+S_bench = struct_add_(S_bench, vcFile_prm, vcConsoleOut);
+
+end %func
+
+
+%--------------------------------------------------------------------------
+% IronClust v1
+function S_bench = benchmark1_(vcDir_in1, vcParam1)
 if nargin<2, vcParam1 = ''; end
 
 % specify the output folder

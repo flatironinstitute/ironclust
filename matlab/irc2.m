@@ -5,7 +5,7 @@
 % todo: multiple formats
 
 %--------------------------------------------------------------------------
-function irc2(vcDir_in, vcDir_out, vcFile_arg)
+function varargout = irc2(vcDir_in, vcDir_out, vcFile_arg)
 % irc2(vcDir_in, vcDir_out, vcFile_arg)
 % irc2(vcCmd, vcArg1, vcArg2)
 
@@ -59,7 +59,7 @@ switch lower(vcCmd)
     case 'plot', irc('plot', vcArg1, vcArg2); return;
     case 'verify', irc('plot', 'verify'); return;
     case 'clear', clear_(); vcFile_prm_=[]; return;
-    case 'clear-sort', clear_('sort'); return;
+    case 'clear-sort', clear_('sort'); return;        
     case {'test-static', 'test-drift', 'test-tetrode', 'test-tetrode2', 'test-tetrode3'}
         vcDir_in = get_test_data_(strsplit_get_(vcCmd,'-',2));
         fPlot_gt = [];
@@ -118,6 +118,7 @@ if isempty(S0), S0 = get(0, 'UserData'); end
 vcFile_mat = strrep(S0.P.vcFile_prm, '.prm', '_irc.mat');
 vcFile_fet = strrep(S0.P.vcFile_prm, '.prm', '_fet.irc');
 vcFile_fet2 = strrep(S0.P.vcFile_prm, '.prm', '_fet2.irc');
+vcFile_knn = strrep(S0.P.vcFile_prm, '.prm', '_knn.irc');
 
 trPc_spk = gather_(get_(S0, 'trPc_spk'));
 if ~isempty(trPc_spk)
@@ -133,6 +134,15 @@ if ~isempty(trPc2_spk)
     write_bin_(vcFile_fet2, trPc2_spk);
 end
 
+S_clu = get_(S0, 'S_clu');
+miKnn = gather_(get_(S_clu, 'miKnn'));
+if ~isempty(miKnn)
+    S0.S_clu.miKnn = [];
+    S0.dimm_knn = size(miKnn);
+    S0.type_knn = class(miKnn);
+    write_bin_(vcFile_knn, miKnn);
+end
+
 struct_save_(S0, vcFile_mat);
 end %
 
@@ -142,6 +152,7 @@ function S0 = load0_(vcFile_prm)
 vcFile_mat = strrep(vcFile_prm, '.prm', '_irc.mat');
 vcFile_fet = strrep(vcFile_prm, '.prm', '_fet.irc');
 vcFile_fet2 = strrep(vcFile_prm, '.prm', '_fet2.irc');
+vcFile_knn = strrep(vcFile_prm, '.prm', '_knn.irc');
 
 S0 = load(vcFile_mat);
 if isempty(get_(S0, 'trPc_spk'))
@@ -152,6 +163,13 @@ end
 if isempty(get_(S0, 'trPc2_spk'))
     if exist_file_(vcFile_fet2)
         S0.trPc2_spk = load_bin_(vcFile_fet2, S0.type_fet, S0.dimm_fet);
+    end
+end
+
+S_clu = get_(S0, 'S_clu');
+if isempty(get_(S_clu, 'miKnn'))
+    if exist_file_(vcFile_knn)
+        S0.S_clu.miKnn = load_bin_(vcFile_knn, S0.type_knn, S0.dimm_knn);
     end
 end
 set(0, 'UserData', S0);
@@ -206,25 +224,72 @@ runtime_total = S0.runtime_detect + S0.runtime_sort + S0.runtime_automerge;
 tDur = recording_duration_(S0.P, S0); 
 memory_sort = S0.memory_sort - S0.memory_init;
 memory_detect = S0.memory_detect - S0.memory_init;
+nSites = numel(P.viSite2Chan);
+nShanks = max(P.viShank_site);
+nSitesPerEvent = size(P.miSites,1);
+nSpk = numel(S0.viTime_spk);
+nFeatures = P.nSites_fet * P.nPcPerChan;
 
 csDesc = {};
+try
+    csDesc = {};
+    csDesc{end+1} = sprintf('Recording format');
+    csDesc{end+1} = sprintf('    Recording file:         %s', P.vcFile);
+    csDesc{end+1} = sprintf('    Probe file:             %s', P.probe_file);
+    csDesc{end+1} = sprintf('    Recording Duration:     %0.1fs', tDur);
+    csDesc{end+1} = sprintf('    Data Type:              %s', P.vcDataType);
+    csDesc{end+1} = sprintf('    #Channels in file:      %d', P.nChans);
+    csDesc{end+1} = sprintf('    #Sites:                 %d', nSites);
+    csDesc{end+1} = sprintf('    #Shanks:                %d', nShanks);
+    csDesc{end+1} = sprintf('Pre-processing');
+    csDesc{end+1} = sprintf('    Filter type:            %s', P.vcFilter);
+    csDesc{end+1} = sprintf('    Filter range (Hz):      %0.1f-%0.1f', P.freqLim);
+    csDesc{end+1} = sprintf('    Common ref:             %s', P.vcCommonRef);
+    csDesc{end+1} = sprintf('    FFT threshold:          %d', get_set_(P, 'fft_thresh', 0));
+    csDesc{end+1} = sprintf('Events');
+    csDesc{end+1} = sprintf('    #Spikes:                %d', nSpk);
+    csDesc{end+1} = sprintf('    Feature extracted:      %s', P.vcFet);
+    csDesc{end+1} = sprintf('    #Sites/event:           %d', nSitesPerEvent);
+    csDesc{end+1} = sprintf('    maxDist_site_um:        %0.0f', P.maxDist_site_um);    
+    csDesc{end+1} = sprintf('    maxDist_site_spk_um:    %0.0f', P.maxDist_site_spk_um);    
+    csDesc{end+1} = sprintf('    #Features/event:        %d', nFeatures);    
+catch
+    ;
+end
+if isfield(S0, 'S_clu')
+    S_clu = S0.S_clu;
+    csDesc{end+1} = sprintf('Cluster');    
+    csDesc{end+1} = sprintf('    #Clusters:              %d', S_clu.nClu);
+    csDesc{end+1} = sprintf('    #Unique events:         %d', sum(S_clu.viClu>0));
+    csDesc{end+1} = sprintf('    min. spk/clu:           %d', P.min_count);
+    csDesc{end+1} = sprintf('    Cluster method:         %s', P.vcCluster);
+    csDesc{end+1} = sprintf('    knn:                    %d', P.knn);
+    csDesc{end+1} = sprintf('    nTime_clu:              %d', P.nTime_clu);
+    csDesc{end+1} = sprintf('    nTime_drift:            %d', P.nTime_drift);
+    csDesc{end+1} = sprintf('    fSpatialMask_clu:       %d', P.fSpatialMask_clu);
+    csDesc{end+1} = sprintf('Auto-merge');   
+    csDesc{end+1} = sprintf('    delta_cut:              %0.3f', get_set_(P, 'delta_cut', 1));
+    csDesc{end+1} = sprintf('    maxWavCor:              %0.3f', P.maxWavCor);
+end
+try
+    csDesc{end+1} = sprintf('Runtime (s)');
+    csDesc{end+1} = sprintf('    Detect + feature (s):   %0.1fs', S0.runtime_detect);    
+    csDesc{end+1} = sprintf('    Cluster runtime (s):    %0.1fs', S0.runtime_sort);
+    csDesc{end+1} = sprintf('    merge runtime (s):      %0.1fs', S0.runtime_automerge);
+    csDesc{end+1} = sprintf('    Total runtime (s):      %0.1fs', runtime_total);
+    csDesc{end+1} = sprintf('    Runtime speed:          x%0.1f realtime', tDur / runtime_total);    
 
-csDesc{end+1} = sprintf('Runtime (s):');
-csDesc{end+1} = sprintf('    Detect + feature (s):	%0.1fs', S0.runtime_detect);    
-csDesc{end+1} = sprintf('    Cluster (s):           %0.1fs', S0.runtime_sort);
-csDesc{end+1} = sprintf('    Automerge (s):     	%0.1fs', S0.runtime_automerge);
-csDesc{end+1} = sprintf('    Total runtime (s):  	%0.1fs', runtime_total);
-csDesc{end+1} = sprintf('    Runtime speed      	x%0.1f realtime', tDur / runtime_total);    
+    csDesc{end+1} = sprintf('memory usage (GiB):         %0.3f', max(memory_detect,memory_sort)/2^30);
+    csDesc{end+1} = sprintf('    detect(GiB):            %0.3f', memory_detect/2^30);
+    csDesc{end+1} = sprintf('    sort(GiB):              %0.3f', memory_sort/2^30);
 
-csDesc{end+1} = sprintf('memory usage (GiB):');
-csDesc{end+1} = sprintf('    detect(GiB):           %0.3f', memory_detect/2^30);
-csDesc{end+1} = sprintf('    sort(GiB):             %0.3f', memory_sort/2^30);
-
-csDesc{end+1} = sprintf('Execution:');
-csDesc{end+1} = sprintf('    fGpu (GPU use):      	%d', P.fGpu);
-csDesc{end+1} = sprintf('    fParfor (parfor use): 	%d', P.fParfor);
-csDesc{end+1} = sprintf('    Parameter file:      	%s', P.vcFile_prm);
-        
+    csDesc{end+1} = sprintf('Execution');
+    csDesc{end+1} = sprintf('    fGpu (GPU use):         %d', P.fGpu);
+    csDesc{end+1} = sprintf('    fParfor (parfor use):   %d', P.fParfor);
+    csDesc{end+1} = sprintf('    Parameter file:         %s', P.vcFile_prm);
+catch
+    ;
+end
 if nargout==0
     cellfun(@(x)disp(x), csDesc);
 end
@@ -1080,11 +1145,13 @@ function S0 = sort1_(S0, P)
 fprintf('Clustering\n'); 
 runtime_sort = tic;
 
-[nSites_fet, miSites, knn, nFet_max] = struct_get_(P, 'nSites_fet', 'miSites', 'knn', 'nFet_max');
-% nSites_fet = size(S0.trPc_spk,1);
+[nSites_fet, miSites, knn, nFet_max, nPcPerChan] = struct_get_(P, 'nSites_fet', 'miSites', 'knn', 'nFet_max', 'nPcPerChan');
+
 % determine feature dimension
-nPcPerChan = floor(nFet_max / nSites_fet);
-nPcPerChan = min(max(nPcPerChan, 1), size(S0.trPc_spk,1));
+if ~isempty(nFet_max)
+    nPcPerChan = round(nFet_max / nSites_fet);
+    nPcPerChan = min(max(nPcPerChan, 1), size(S0.trPc_spk,1));
+end
 get_pc_ = @(x)reshape(x(1:nPcPerChan,1:nSites_fet,:), nPcPerChan*nSites_fet, 1, size(x,3));
 trPc_spk = cat(2, get_pc_(S0.trPc_spk), get_pc_(S0.trPc2_spk));
 
@@ -1215,11 +1282,13 @@ function S0 = sort2_(S0, P)
 fprintf('Clustering\n'); 
 runtime_sort = tic;
 
-[nSites_fet, miSites, knn, nFet_max] = struct_get_(P, 'nSites_fet', 'miSites', 'knn', 'nFet_max');
+[nSites_fet, miSites, knn, nFet_max, nPcPerChan] = struct_get_(P, 'nSites_fet', 'miSites', 'knn', 'nFet_max', 'nPcPerChan');
 
 % determine feature dimension
-nPcPerChan = floor(nFet_max / nSites_fet);
-nPcPerChan = min(max(nPcPerChan, 1), size(S0.trPc_spk,1));
+if ~isempty(nFet_max)
+    nPcPerChan = floor(nFet_max / nSites_fet);
+    nPcPerChan = min(max(nPcPerChan, 1), size(S0.trPc_spk,1));
+end
 trPc_spk = S0.trPc_spk(1:nPcPerChan,:,:);
 
 nSites = size(P.miSites,2);
@@ -1907,12 +1976,14 @@ P.vcFile = fullfile(vcDir_in, 'raw.mda');
 P.vcDir_out = vcDir_out;
 S_mda = readmda_header_(P.vcFile);
 P.nChans = S_mda.dimm(1);
+P.vcDataType = S_mda.vcDataType;
 P.vnSamples_file = S_mda.dimm(2); % scalar
 P.probe_file = fullfile(vcDir_in, 'geom.csv');
 
-% probe file
+% probe file (mda format)
 P.mrSiteXY = csvread(P.probe_file);
 P.viSite2Chan = 1:size(P.mrSiteXY,1);
+P.viShank_site = ones(size(P.viSite2Chan));
 
 % load json file
 S_json = loadjson_(fullfile(vcDir_in, 'params.json'));
