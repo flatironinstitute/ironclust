@@ -324,6 +324,7 @@ if maxWavCor<1
     post_merge_mode = get_set_(P, 'post_merge_mode', 1);
     switch post_merge_mode 
         case 1, mrDist_clu = wave_similarity_clu1_(S0, P);
+        case 2, mrDist_clu = calc_dist_ccg(S0, P);
         otherwise, mrDist_clu = calc_dist_clu_(S0, P, post_merge_mode);
     end
     S0.S_clu = templateMatch_post_(S0.S_clu, P, mrDist_clu);
