@@ -1,6 +1,6 @@
 % execution
 fGpu = 1;
-fParfor = 0;
+fParfor = 1;
 MAX_BYTES_LOAD = .5e9;
 
 % detect
