@@ -2820,7 +2820,7 @@ end %func
 function S_score = validate_mda_(firings_true, firings_out, raw_mda, fPlot_gt)
 if nargin<4, fPlot_gt = []; end
 if isempty(fPlot_gt), fPlot_gt = read_cfg_('fPlot_gt'); end
-    
+fUseCache = 0;
 vcDir_in = fileparts(raw_mda);
 vcDir_out = fileparts(firings_out);
 S_json = loadjson_(fullfile(vcDir_in, 'params.json'));
@@ -2835,7 +2835,7 @@ S_clu = makeStruct_(viClu);
 % load groundtruth
 vcFile_gt1 = subsFileExt_(firings_true, '_gt1.mat');
 S_gt1 = [];
-if exist_file_(vcFile_gt1)
+if exist_file_(vcFile_gt1) && fUseCache
     try
         S_gt1 = load(vcFile_gt1);
         fprintf('Loaded from %s\n', vcFile_gt1);
@@ -2847,6 +2847,7 @@ if isempty(S_gt1)
     struct_save_(S_gt1, vcFile_gt1, 1);
 end
 S0 = makeStruct_(viTime_spk, S_clu, S_gt1);
+P.snr_thresh_gt = 0;
 S_score = validate_(P, fPlot_gt, S0);
 end %func
 
@@ -2868,7 +2869,9 @@ if nargin<3, S0 = []; end
 if ischar(P), P = loadParam_(P); end
 
 S_cfg = read_cfg_();
-P.snr_thresh_gt = get_(S_cfg, 'snr_thresh_gt');
+if isempty(get_(P, 'snr_thresh_gt'))
+    P.snr_thresh_gt = get_(S_cfg, 'snr_thresh_gt');
+end
 % snr_thresh_stat = P.snr_thresh_gt / 2; % use lower so that this can be raised if needed
 
 if isempty(S0)
@@ -3186,7 +3189,7 @@ vrVsd_clu = sqrt(squeeze(max(mean(trWav_clu.^2),[],2)))';
 vrSnr_min_clu = (vrVmin_clu ./ vrVrms_site(viSite_clu))';
 vrSnr_sd_clu = (vrVsd_clu ./ vrVsd_site(viSite_clu))'; % F. Franke noise definion
 vrThresh_site = vrVrms_site * qqFactor;
-vnSite_clu = sum(bsxfun(@lt, mrVmin_clu, -vrThresh_site(viSite_clu)));
+vnSite_clu = sum(bsxfun(@lt, mrVmin_clu, -vrThresh_site(viSite_clu)),1);
 if strcmpi(S_cfg.vcSnr_gt, 'min')
     vrSnr_clu = vrSnr_min_clu;
 elseif strcmpi(S_cfg.vcSnr_gt, 'sd')
@@ -3219,7 +3222,7 @@ else
     miSites_clu = [];
 end
 cvnBurst_clu = analyze_burst_(S_gt.viTime, S_gt.viClu, S_cfg);
-S_gt = struct_add_(S_gt, viClu_keep, vrVrms_site, vrVsd_site, miSites_clu, cvnBurst_clu);
+S_gt = struct_add_(S_gt, viClu_keep, vrVrms_site, vrVsd_site, miSites_clu, cvnBurst_clu, cviSpk_clu);
 fprintf('\n\ttook %0.1fs\n', toc(t1));
 end %func
 
@@ -30211,7 +30214,7 @@ else
     end
 end
 
-S_gt = S_gt_snr_thresh_(S_gt, P.snr_thresh_gt); % trim by SNR threshold
+% S_gt = S_gt_snr_thresh_(S_gt, P.snr_thresh_gt); % trim by SNR threshold
 S_score = struct_(...
     'vrVmin_gt', S_gt.vrVmin_clu, 'vnSite_gt', S_gt.vnSite_clu, ... 
     'vrSnr_gt', S_gt.vrSnr_clu, 'vrSnr_min_gt', S_gt.vrSnr_clu, ...

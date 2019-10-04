@@ -104,6 +104,8 @@ end
 
 
 %% 3. loop over the files, exract values
+% setting: Oct 3 2019
+% CentOS Workstation, 12 woorkers + GPU (Quadro P4000, 8GB)
 
 vnChans_uniq = 64 * 2.^[-3:3];
 vrDuration_uniq = 1200 * 2.^[-2:3];
@@ -132,78 +134,50 @@ for iParam = 1:numel(csParam)
 end
 
 
-%% 4. plot result (create two tables), also consider creating a bar plot
-iParam = 1; % select ones to plot
+% 4. plot result (create two tables), also consider creating a bar plot
+for iParam = 1:numel(csParam)
+    cS_bench = cS_bench_param{iParam};
+    % parameter select and plot
+    vS_bench = cell2mat(cS_bench);
+    vrPeakMem_bench = [vS_bench.memory_gb]; vrPeakMem_bench = vrPeakMem_bench(:);
+    vrRuntime_bench = [vS_bench.runtime_sec]; vrRuntime_bench = vrRuntime_bench(:);
 
-% parameter select and plot
-vS_bench = cell2mat(cS_bench);
-vrPeakMem_bench = [vS_bench.memory_gb]; vrPeakMem_bench = vrPeakMem_bench(:);
-vrRuntime_bench = [vS_bench.runtime_sec]; vrRuntime_bench = vrRuntime_bench(:);
+    nunique_ = @(x)numel(unique(x));
+    title_ = @(x)irc('call','title',{x},1);
+    lg = @(x)log(x)/log(2);
+    for iMode = 1:2
+        switch iMode
+            case 1, vrPlot = vrPeakMem_bench(:); vcMode = 'Peak memory (GB)'; vrPlot = log(vrPlot)/log(2);
+            case 2, vrPlot = vrRuntime_bench(:); vcMode = 'Runtime (s)'; vrPlot = log(vrPlot)/log(2);
+        end
+        nChans = vnChans_batch(:); 
+        duration_sec = vrDuration_batch(:);
+        MB_per_chan_min = vrPlot ./ nChans ./ duration_sec * 1024;
+        MB_per_chan = vrPlot ./ nChans  * 1024;
+        MB_per_min = vrPlot ./ duration_sec  * 1024;
+        table(nChans, duration_sec, vrPlot, MB_per_chan_min, MB_per_chan, MB_per_min, 'rownames', csFiles_batch) %{'PeakMem_GiB', 'nChans', 'duration_sec'})
 
+        figure; 
+        subplot(2,2,1:2);
+        img = reshape(vrPlot, nunique_(duration_sec), nunique_(nChans));
+        imagesc(img);
+        set(gca, 'XTickLabel', unique(nChans), 'YTickLabel', unique(duration_sec)); % may need to unravel
+        xlabel('nChans'); ylabel('min');
+    %     set(gca,'XTick', [16 32 64], 'YTick', [10 20]);
+        title_(sprintf('%s: %s', vcMode, csParam{iParam}));
 
-nunique_ = @(x)numel(unique(x));
-title_ = @(x)irc('call','title',{x},1);
-lg = @(x)log(x)/log(2);
-for iMode = 1:2
-    switch iMode
-        case 1, vrPlot = vrPeakMem_bench(:); vcMode = 'Peak memory (GB)'; vrPlot = log(vrPlot)/log(2);
-        case 2, vrPlot = vrRuntime_bench(:); vcMode = 'Runtime (s)'; vrPlot = log(vrPlot)/log(2);
+        subplot 223; plot(img); 
+        xlabel('Duration (s)'); 
+        set(gca,'XTickLabel', unique(duration_sec), 'XTick', 1:nunique_(duration_sec));         
+        hold on; plot([1, size(img,1)], [1, size(img,1)], 'r');
+        set(gca,'YTickLabel', 2.^get(gca,'YTick'), 'YTick', get(gca,'YTick'));
+        ylabel(vcMode); grid on; axis tight;
+
+        subplot 224; plot(img'); 
+        xlabel('#Chans'); 
+        set(gca,'XTickLabel', unique(nChans), 'XTick', 1:nunique_(nChans));    
+        hold on; plot([1, size(img,2)], [1, size(img,2)], 'r'); 
+        set(gca,'YTickLabel', 2.^get(gca,'YTick'), 'YTick', get(gca,'YTick'));
+        ylabel(vcMode); grid on; axis tight;       
     end
-    nChans = vnChans_batch(:); 
-    duration_sec = vrDuration_batch(:);
-    MB_per_chan_min = vrPlot ./ nChans ./ duration_sec * 1024;
-    MB_per_chan = vrPlot ./ nChans  * 1024;
-    MB_per_min = vrPlot ./ duration_sec  * 1024;
-    table(nChans, duration_sec, vrPlot, MB_per_chan_min, MB_per_chan, MB_per_min, 'rownames', csFiles_batch) %{'PeakMem_GiB', 'nChans', 'duration_sec'})
-
-    figure; 
-    subplot(2,2,1:2);
-    img = reshape(vrPlot, nunique_(duration_sec), nunique_(nChans));
-    imagesc(img);
-    set(gca, 'XTickLabel', unique(nChans), 'YTickLabel', unique(duration_sec)); % may need to unravel
-    xlabel('nChans'); ylabel('min');
-%     set(gca,'XTick', [16 32 64], 'YTick', [10 20]);
-    title_(sprintf('%s', vcMode));
-
-    subplot 223; plot(img); 
-    xlabel('Duration (sec)'); 
-    set(gca,'XTickLabel', unique(duration_sec), 'XTick', 1:nunique_(duration_sec)); axis tight;        
-    lim_x = get(gca,'XLim');
-    hold on; plot(lim_x, lim_x, 'r');
-    set(gca,'YTickLabel', 2.^get(gca,'YTick'), 'YTick', get(gca,'YTick'));
-    ylabel(vcMode); grid on;
-
-    subplot 224; plot(img'); 
-    xlabel('#Chans'); 
-    set(gca,'XTickLabel', unique(nChans), 'XTick', 1:nunique_(nChans)); axis tight;      
-    lim_x = get(gca,'XLim');
-    hold on; plot(lim_x, lim_x, 'r'); 
-    set(gca,'YTickLabel', 2.^get(gca,'YTick'), 'YTick', get(gca,'YTick'));
-    ylabel(vcMode); grid on;        
 end
-
-% [param_set1.prm: fSave_spkwav=1]
-%                         peakMemory_GiB    nChans    duration_min    MB_per_chan_min    MB_per_chan    MB_per_min
-%                         ______________    ______    ____________    _______________    ___________    __________
-% 
-%     rec_16c_1200s_11        0.777           16           20             2.4864           49.728         39.782  
-%     rec_16c_600s_11          0.64           16           10              4.096            40.96         65.536  
-%     rec_32c_1200s_11        1.003           32           20             1.6048           32.096         51.354  
-%     rec_32c_600s_11         0.761           32           10             2.4352           24.352         77.926  
-%     rec_64c_1200s_11        1.483           64           20             1.1864           23.728          75.93  
-%     rec_64c_600s_11         1.027           64           10             1.6432           16.432         105.16  
-%
-%
-% [param_set1.prm: fSave_spkwav=0]
-%                         peakMemory_GiB    nChans    duration_min    MB_per_chan_min    MB_per_chan    MB_per_min
-%                         ______________    ______    ____________    _______________    ___________    __________
-% 
-%     rec_16c_1200s_11        0.541           16           20             1.7312           34.624         27.699  
-%     rec_16c_600s_11         0.478           16           10             3.0592           30.592         48.947  
-%     rec_32c_1200s_11        0.615           32           20              0.984            19.68         31.488  
-%     rec_32c_600s_11         0.559           32           10             1.7888           17.888         57.242  
-%     rec_64c_1200s_11        0.693           64           20             0.5544           11.088         35.482  
-%     rec_64c_600s_11         0.627           64           10             1.0032           10.032         64.205  
-
-
-%% parse the output and plot 
