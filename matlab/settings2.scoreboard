@@ -8,7 +8,7 @@ fSpatialMask_clu = {0,1};
 % #Auto-merging
 maxWavCor = {.99};
 fGpu={1};
-fParfor={0};
+fParfor={1};
 
 % #Drift
 batch_sec_drift = {300};
