@@ -1551,6 +1551,7 @@ S_paged = readmda_paged_(P); % initialize
 [mrWav_T1, nlim_wav1, fDone] = readmda_paged_(); % process first part
 cS_detect = cell(nLoads, 1);
 cS_detect{1} = detect_paged_(mrWav_T1, P, makeStruct_(nlim_wav1)); % process the first part
+mrWav_T1 = [];
 [vrThresh_site, mrPv_global] = struct_get_(cS_detect{1}, 'vrThresh_site', 'mrPv_global');
 S_cache1 = makeStruct_(vrThresh_site, mrPv_global);
 fprintf('Memory use: %0.3f GiB\n', memory_matlab_()/2^30);
@@ -1562,6 +1563,7 @@ for iLoad = 2:nLoads
     else
         vS_out(iLoad-1) = parfeval(gcp_, @(x,y)detect_paged_(x,P,y), 1, mrWav_T1, S_cache1);
     end    
+    mrWav_T1 = [];
     fprintf('\tMemory use: %0.3f GiB\n', memory_matlab_()/2^30);
 end
 if ~isempty(gcp_)
@@ -1595,7 +1597,7 @@ switch 1
     case 2, mrW = squeeze_(sum(trPc_spk.^2),1);
     case 1, mrW = squeeze_(trPc_spk(1,:,:),1) .^2;
 end
-vrPow_spk = sum(mrW)';
+vrPow_spk = sum(mrW,1)';
 
 fprintf('Calculating spike positions\n\t');
 t1=tic;
@@ -2030,7 +2032,7 @@ switch vcMode
     case 'monotrode', vcDir_in = 'groundtruth/waveclus_synth/quiroga_difficult1/C_Difficult1_noise005';
     case 'monotrode1', vcDir_in = 'groundtruth/waveclus_synth/quiroga_difficult1/C_Difficult1_noise01';
     case 'monotrode2', vcDir_in = 'groundtruth/waveclus_synth/quiroga_difficult1/C_Difficult1_noise02';
-    case 'monotrode3', vcDir_in = 'groundtruth/waveclus_synth/neurocube_sim2_2K10/simulation_89';
+    case 'monotrode3', vcDir_in = 'groundtruth/waveclus_synth/sim2_2K10/simulation_94';
 end
 if ispc()
     vcDir_in = strrep(vcDir_in, '/', '\');    
