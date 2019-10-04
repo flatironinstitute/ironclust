@@ -134,7 +134,7 @@ for iParam = 1:numel(csParam)
 end
 
 
-% 4. plot result (create two tables), also consider creating a bar plot
+%% 4. plot result (create two tables), also consider creating a bar plot
 for iParam = 1:numel(csParam)
     cS_bench = cS_bench_param{iParam};
     % parameter select and plot

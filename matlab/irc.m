@@ -24441,10 +24441,10 @@ knn = get_set_(P, 'knn', 30);
 [n2, n1, nC, n12] = deal(numel(vi2), numel(vi1), size(mrFet,1), size(mrFet,2));
 fGpu = P.fGpu && nC <= nC_max;
 knn = min(knn, n2);
-if fGpu
-    [gmrFet2, gmrFet1] = gpuArray_deal_(mrFet(:,vi2), mrFet(:,vi1), P.fGpu);
+if fGpu    
     for iRetry = 1:2
         try
+            [gmrFet2, gmrFet1] = gpuArray_deal_(mrFet(:,vi2), mrFet(:,vi1), P.fGpu);
             if isempty(CK)
                 %CK = parallel.gpu.CUDAKernel('cuda_knn_index.ptx','cuda_knn_index.cu'); % auto-compile if ptx doesn't exist
                 CK = parallel.gpu.CUDAKernel('cuda_knn_index.ptx','cuda_knn_index.cu'); % auto-compile if ptx doesn't exist
@@ -24594,10 +24594,10 @@ nThreads = get_set_(P, 'nThreads', 128);
 [n2, n1, nC, n12] = deal(numel(vi2), numel(vi1), size(mrFet,1), size(mrFet,2));
 fGpu = P.fGpu && nC <= nC_max;
 
-if fGpu
-    [gmrFet2, gmrFet1, gvrRho2, gvrRho1] = gpuArray_deal_(mrFet(:,vi2), mrFet(:,vi1), vrRho(vi2), vrRho(vi1));
+if fGpu    
     for iRetry = 1:2
         try
+            [gmrFet2, gmrFet1, gvrRho2, gvrRho1] = gpuArray_deal_(mrFet(:,vi2), mrFet(:,vi1), vrRho(vi2), vrRho(vi1));
             if isempty(CK)
                 CK = parallel.gpu.CUDAKernel('cuda_delta_knn.ptx','cuda_delta_knn.cu'); % auto-compile if ptx doesn't exist
                 CK.ThreadBlockSize = [nThreads, 1];          
