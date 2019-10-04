@@ -36,6 +36,7 @@ end
 
 P = []; 
 switch lower(vcCmd)
+    case 'version', version_(); return;
     case 'scoreboard', irc2_scoreboard(); return;
     case {'detect-sort', 'sort', 'auto', '', 'describe', 'verify'}
         if isempty(vcDir_out)
@@ -58,7 +59,6 @@ switch lower(vcCmd)
         end
         
     case 'plot', irc('plot', vcArg1, vcArg2); return;
-    case 'verify', irc('plot', 'verify'); return;
     case 'clear', clear_(); vcFile_prm_=[]; return;
     case 'clear-sort', clear_('sort'); return;        
     case {'test-static', 'test-drift', 'test-tetrode', 'test-tetrode2', 'test-tetrode3', ...
@@ -71,6 +71,9 @@ switch lower(vcCmd)
         fPlot_gt=0;
         clear_();
 end
+
+fprintf('Running irc2.m (%s)\n', version_());
+
 if isempty(P)
     P = makeParam_(vcDir_in, vcDir_out, vcFile_arg);
 end
@@ -97,6 +100,20 @@ save_firings_mda_(S0, vcFile_firings_mda);
 
 % Validate
 verify_(P, fPlot_gt);
+end %func
+
+
+%--------------------------------------------------------------------------
+% 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
+function [vcVer, vcDate, vcHash] = version_()
+vcVer = 'v5.0.1';
+vcDate = '10/4/2019';
+vcHash = file2hash_();
+
+if nargout==0
+    fprintf('%s (%s) installed, MD5: %s\n', vcVer, vcDate, vcHash);
+    return;
+end
 end %func
 
 
@@ -2465,6 +2482,7 @@ function out1 = struct_copyas_(varargin), fn=dbstack(); out1 = irc('call', fn(1)
 function out1 = set_bool_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = ifeq_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = spatial_smooth_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
+function out1 = file2hash_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 % function out1 = vr2mr_shift_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 
 function [out1, out2] = readmda_header_(varargin), fn=dbstack(); [out1, out2] = irc('call', fn(1).name, varargin); end
