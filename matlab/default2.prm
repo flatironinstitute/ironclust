@@ -1,6 +1,6 @@
 % execution
 fGpu = 1;
-fParfor = 1;
+fParfor = 0;
 MAX_BYTES_LOAD = .5e9;
 
 % detect
@@ -24,8 +24,8 @@ batch_sec_drift = 300;
 
 % auto-merge
 %post_merge_mode0 = [12];
-post_merge_mode0 = [12, 17];
-%post_merge_mode0 = [5];
+%post_merge_mode0 = [12, 17];
+post_merge_mode0 = [5];
 post_merge_mode = 1; 
 maxWavCor = .99; 
 min_snr_clu = 4; % remove clusters below SNR threshold, set to [] to skip

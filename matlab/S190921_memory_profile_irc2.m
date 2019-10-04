@@ -105,54 +105,69 @@ end
 
 %% 3. loop over the files, exract values
 
-vnChans_uniq = 64 * 2.^[-3:2];
-vrDuration_uniq = 1200 * 2.^[-2:2];
+vnChans_uniq = 64 * 2.^[-3:3];
+vrDuration_uniq = 1200 * 2.^[-2:3];
 
-% loop over the files
+csParam = {};
+csParam{1} = 'irc2_set1.prm'; % fGpu=0, fParfor=0
+csParam{2} = 'irc2_set2.prm'; % fGpu=0, fParfor=1
+csParam{3} = 'irc2_set3.prm'; % fGpu=1, fParfor=0
+csParam{4} = 'irc2_set4.prm'; % fGpu=1, fParfor=1
+
 [xx1,yy1] = meshgrid(1:numel(vnChans_uniq), 1:numel(vrDuration_uniq));
 vnChans_batch = vnChans_uniq(xx1(:));
-vrMinutes_batch = vrDuration_uniq(yy1(:))/60;
-csFiles_batch = arrayfun(@(x,y)...
-    fullfile(vcDir0, sprintf('rec_%dc_%ds', vnChans_uniq(x), vrDuration_uniq(y))), ...
-        xx1(:), yy1(:), 'UniformOutput', 0);
+vrDuration_batch = vrDuration_uniq(yy1(:));
+cS_bench_param = cell(size(csParam));
+for iParam = 1:numel(csParam)
+    try
+        % loop over the files
+        csFiles_batch = arrayfun(@(x,y)...
+            fullfile(vcDir0, sprintf('rec_%dc_%ds', vnChans_uniq(x), vrDuration_uniq(y))), ...
+                xx1(:), yy1(:), 'UniformOutput', 0);
+        % recording x parameter loop
+        cS_bench_param{iParam} = cellfun(@(x)irc('benchmark', x, csParam{iParam}), csFiles_batch, 'UniformOutput', 0); % must be transposed for accurate cache result
+    catch
+        disp(lasterr());
+    end
+end
 
-% recording x parameter loop
-% parse output
-cS_bench = cellfun(@(x)irc('benchmark', x), csFiles_batch, 'UniformOutput', 0); % must be transposed for accurate cache result
 
+%% 4. plot result (create two tables), also consider creating a bar plot
+iParam = 1; % select ones to plot
+
+% parameter select and plot
 vS_bench = cell2mat(cS_bench);
 vrPeakMem_bench = [vS_bench.memory_gb]; vrPeakMem_bench = vrPeakMem_bench(:);
 vrRuntime_bench = [vS_bench.runtime_sec]; vrRuntime_bench = vrRuntime_bench(:);
 
 
-%% 4. plot result (create two tables), also consider creating a bar plot
 nunique_ = @(x)numel(unique(x));
 title_ = @(x)irc('call','title',{x},1);
 lg = @(x)log(x)/log(2);
 for iMode = 1:2
     switch iMode
-        case 1, vrPlot = vrPeakMem_bench; vcMode = 'Peak memory (GB)'; vrPlot = log(vrPlot)/log(2);
-        case 2, vrPlot = vrRuntime_bench; vcMode = 'Runtime (s)'; vrPlot = log(vrPlot)/log(2);
+        case 1, vrPlot = vrPeakMem_bench(:); vcMode = 'Peak memory (GB)'; vrPlot = log(vrPlot)/log(2);
+        case 2, vrPlot = vrRuntime_bench(:); vcMode = 'Runtime (s)'; vrPlot = log(vrPlot)/log(2);
     end
-    nChans = vnChans_bench; 
-    duration_min = vrMinutes_bench;
-    MB_per_chan_min = vrPlot ./ nChans ./ duration_min * 1024;
+    nChans = vnChans_batch(:); 
+    duration_sec = vrDuration_batch(:);
+    MB_per_chan_min = vrPlot ./ nChans ./ duration_sec * 1024;
     MB_per_chan = vrPlot ./ nChans  * 1024;
-    MB_per_min = vrPlot ./ duration_min  * 1024;
-    table(nChans, duration_min, vrPlot, MB_per_chan_min, MB_per_chan, MB_per_min, 'rownames', csFiles_batch) %{'PeakMem_GiB', 'nChans', 'duration_sec'})
+    MB_per_min = vrPlot ./ duration_sec  * 1024;
+    table(nChans, duration_sec, vrPlot, MB_per_chan_min, MB_per_chan, MB_per_min, 'rownames', csFiles_batch) %{'PeakMem_GiB', 'nChans', 'duration_sec'})
 
     figure; 
     subplot(2,2,1:2);
-    img = reshape(vrPlot, nunique_(duration_min), nunique_(nChans));
+    img = reshape(vrPlot, nunique_(duration_sec), nunique_(nChans));
     imagesc(img);
-    set(gca, 'XTickLabel', unique(nChans), 'YTickLabel', unique(duration_min)); % may need to unravel
+    set(gca, 'XTickLabel', unique(nChans), 'YTickLabel', unique(duration_sec)); % may need to unravel
     xlabel('nChans'); ylabel('min');
 %     set(gca,'XTick', [16 32 64], 'YTick', [10 20]);
-    title_(sprintf('%s for %s', vcMode, vcParam1));
+    title_(sprintf('%s', vcMode));
 
     subplot 223; plot(img); 
-    xlabel('Duration (min)'); 
-    set(gca,'XTickLabel', unique(duration_min), 'XTick', 1:nunique_(duration_min));        
+    xlabel('Duration (sec)'); 
+    set(gca,'XTickLabel', unique(duration_sec), 'XTick', 1:nunique_(duration_sec)); axis tight;        
     lim_x = get(gca,'XLim');
     hold on; plot(lim_x, lim_x, 'r');
     set(gca,'YTickLabel', 2.^get(gca,'YTick'), 'YTick', get(gca,'YTick'));
@@ -160,9 +175,9 @@ for iMode = 1:2
 
     subplot 224; plot(img'); 
     xlabel('#Chans'); 
-    set(gca,'XTickLabel', unique(nChans), 'XTick', 1:nunique_(nChans));        
+    set(gca,'XTickLabel', unique(nChans), 'XTick', 1:nunique_(nChans)); axis tight;      
     lim_x = get(gca,'XLim');
-    hold on; plot(lim_x, lim_x, 'r');
+    hold on; plot(lim_x, lim_x, 'r'); 
     set(gca,'YTickLabel', 2.^get(gca,'YTick'), 'YTick', get(gca,'YTick'));
     ylabel(vcMode); grid on;        
 end

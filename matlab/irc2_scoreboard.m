@@ -112,7 +112,9 @@ vcDir_out = locate_('output');
 csParam = get_userdata_(hFig, 'csParam');
 csRecording = get_userdata_(hFig, 'csRecording');
 [cmSnr, cmPrecision, cmRecall, cmAccuracy] = deal(cell(numel(csRecording), numel(csParam)));
-for iDir = 1:numel(csDir_out)
+cS_dir = cell(size(csDir_out));
+parfor iDir = 1:numel(csDir_out)
+    fprintf('assemble_results_: Loading %s (%d/%d)\n', csDir_out{iDir}, iDir, numel(csDir_out));
     vcFile_gt1 = fullfile(csDir_out{iDir}, 'raw_geom_score.mat');
     [vcParam1, vcRecording1] = strtok(strrep(csDir_out{iDir}, vcDir_out, ''), '/');
     iParam1 = find(strcmp(vcParam1, csParam));
@@ -127,14 +129,24 @@ for iDir = 1:numel(csDir_out)
                 S_score_clu1.vrAccuracy);
         vn_ = cellfun(@numel, {vrSnr1, vrPrecision1, vrRecall1, vrAccuracy1});        
         assert(std(vn_)==0, 'number of elements all same');    
-%         if iDir == numel(csDir_out)-5, disp(cmAccuracy{iRecording1,iParam1}); end
-        cmSnr{iRecording1,iParam1} = vrSnr1(:);
-        cmPrecision{iRecording1,iParam1} = vrPrecision1(:);
-        cmRecall{iRecording1,iParam1} = vrRecall1(:);
-        cmAccuracy{iRecording1,iParam1} = vrAccuracy1(:);        
+        cS_dir{iDir} = makeStruct_(iRecording1, iParam1, vrSnr1, vrPrecision1, vrRecall1, vrAccuracy1);
+%         cmSnr{iRecording1,iParam1} = vrSnr1(:);
+%         cmPrecision{iRecording1,iParam1} = vrPrecision1(:);
+%         cmRecall{iRecording1,iParam1} = vrRecall1(:);
+%         cmAccuracy{iRecording1,iParam1} = vrAccuracy1(:);        
     catch
-%         disp(lasterr()); %no output generated
+        ;
     end
+end
+for iDir = 1:numel(csDir_out)
+    S_dir1 = cS_dir{iDir};
+    if isempty(S_dir1), continue; end
+    [iRecording1, iParam1, vrSnr1, vrPrecision1, vrRecall1, vrAccuracy1] = ...
+        struct_get_(S_dir1, 'iRecording1', 'iParam1', 'vrSnr1', 'vrPrecision1', 'vrRecall1', 'vrAccuracy1');
+    cmSnr{iRecording1,iParam1} = vrSnr1(:);
+    cmPrecision{iRecording1,iParam1} = vrPrecision1(:);
+    cmRecall{iRecording1,iParam1} = vrRecall1(:);
+    cmAccuracy{iRecording1,iParam1} = vrAccuracy1(:);   
 end
 
 S_fig = set_userdata_(hFig, cmSnr, cmPrecision, cmRecall, cmAccuracy);
@@ -876,6 +888,41 @@ end %func
 %--------------------------------------------------------------------------
 % 1/31/2019 JJJ: get the field(s) of a struct or index of an array or cell
 function varargout = get_(varargin)
+% same as struct_get_ function
+% retrieve a field. if not exist then return empty
+% [val1, val2] = get_(S, field1, field2, ...)
+% [val] = get_(cell, index)
+
+if nargin==0, varargout{1} = []; return; end
+S = varargin{1};
+if isempty(S), varargout{1} = []; return; end
+
+if isstruct(S)
+    for i=2:nargin
+        vcField = varargin{i};
+        try
+            varargout{i-1} = S.(vcField);
+        catch
+            varargout{i-1} = [];
+        end
+    end
+elseif iscell(S)
+    try    
+        varargout{1} = S{varargin{2:end}};
+    catch
+        varargout{1} = [];
+    end
+else
+    try    
+        varargout{1} = S(varargin{2:end});
+    catch
+        varargout{1} = [];
+    end
+end
+end %func
+
+
+function varargout = struct_get_(varargin)
 % same as struct_get_ function
 % retrieve a field. if not exist then return empty
 % [val1, val2] = get_(S, field1, field2, ...)
