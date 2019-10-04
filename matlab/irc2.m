@@ -2184,6 +2184,9 @@ P = struct_copyas_(P, S_txt, ...
 % set boolean
 P = set_bool_(P, 'fGpu', S_txt);
 P = set_bool_(P, 'fSave_spkwav', S_txt);
+
+% override settings
+P.fParfor = 0; %disable parfor when running spikeforest platform
 end %func
 
 
