@@ -62,7 +62,7 @@ switch lower(vcCmd)
     case 'clear', clear_(); vcFile_prm_=[]; return;
     case 'clear-sort', clear_('sort'); return;        
     case {'test-static', 'test-drift', 'test-tetrode', 'test-tetrode2', 'test-tetrode3', ...
-            'test-bionet', 'test-monotrode', 'test-monotrode1', 'test-monotrode2'}
+            'test-bionet', 'test-bionet1', 'test-monotrode', 'test-monotrode1', 'test-monotrode2'}
         vcDir_in = get_test_data_(strsplit_get_(vcCmd,'-',2));
         fPlot_gt = [];
     case 'export', irc('export', vcArg1); return;
@@ -1155,11 +1155,18 @@ runtime_sort = tic;
 [nSites_fet, miSites, knn, nFet_max, nPcPerChan] = struct_get_(P, 'nSites_fet', 'miSites', 'knn', 'nFet_max', 'nPcPerChan');
 
 % determine feature dimension
-if ~isempty(nFet_max)
-    nPcPerChan = round(nFet_max / nSites_fet);
-    nPcPerChan = min(max(nPcPerChan, 1), size(S0.trPc_spk,1));
+% if ~isempty(nFet_max)
+%     nPcPerChan = round(nFet_max / nSites_fet);
+%     nPcPerChan = min(max(nPcPerChan, 1), size(S0.trPc_spk,1));
+% end
+switch 1
+    case 1
+        get_pc_ = @(x)reshape(x(1:nPcPerChan,1:nSites_fet,:), nPcPerChan*nSites_fet, 1, size(x,3));
+    case 2
+        get_pc_ = @(x)reshape(x(1:nPcPerChan,:,:), nPcPerChan*size(x,2), 1, size(x,3));
+    case 3
+        get_pc_ = @(x)reshape(x, size(x,1)*size(x,2), 1, size(x,3));
 end
-get_pc_ = @(x)reshape(x(1:nPcPerChan,1:nSites_fet,:), nPcPerChan*nSites_fet, 1, size(x,3));
 if isempty(get_(S0, 'trPc2_spk'))
     trPc_spk = get_pc_(S0.trPc_spk);
 else
@@ -1192,7 +1199,7 @@ fprintf('Calculating Rho\n\t'); t1=tic;
 [cvrRho, cmiKnn, cvrDelta, cviNneigh] = deal(cell(nSites,1));
 % send jobs
 for iSite = 1:nSites
-    [mrFet12, viSpk12, viDrift12, n1, n2] = pc2fet_site2_(trPc_spk, cviSpk_site, cviSpk2_site, viDrift_spk, iSite);
+    [mrFet12, viSpk12, viDrift12, n1, n2] = pc2fet_site2_(trPc_spk, cviSpk_site, cviSpk2_site, viDrift_spk, iSite, nFet_max);
     if isempty(mrFet12), continue; end
     if ~isempty(gcp_)
         vS_out(iSite) = parfeval(gcp_, ...
@@ -1222,7 +1229,7 @@ fprintf('\n\ttook %0.1fs (fGpu=%d, fParfor=%d)\n', toc(t1), P_sort.fGpu, P_sort.
 fprintf('Calculating Delta\n\t'); t2=tic;
 % send jobs
 for iSite = 1:nSites
-    [mrFet12, viSpk12, viDrift12, n1, n2] = pc2fet_site2_(trPc_spk, cviSpk_site, cviSpk2_site, viDrift_spk, iSite);
+    [mrFet12, viSpk12, viDrift12, n1, n2] = pc2fet_site2_(trPc_spk, cviSpk_site, cviSpk2_site, viDrift_spk, iSite, nFet_max);
     if isempty(mrFet12), continue; end
     vrRho12 = vrRho(viSpk12);
     if ~isempty(gcp_)
@@ -1261,7 +1268,7 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function [mrFet12, viSpk12, viDrift12, n1, n2] = pc2fet_site2_(trPc_spk, cviSpk_site, cviSpk2_site, viDrift_spk, iSite)
+function [mrFet12, viSpk12, viDrift12, n1, n2] = pc2fet_site2_(trPc_spk, cviSpk_site, cviSpk2_site, viDrift_spk, iSite, nFet_max)
 % decide whether to use 1, 2, or 3 features
 
 if isempty(cviSpk_site{iSite})
@@ -1285,6 +1292,13 @@ if isempty(viDrift_spk)
 else
     viDrift12 = viDrift_spk(viSpk12);
 end    
+
+if ~isempty(nFet_max)
+    if size(mrFet12,1) > nFet_max
+        [~, mrFet12] = pca(mrFet12', 'NumComponents', nFet_max);
+        mrFet12 = mrFet12';
+    end
+end
 end %func
 
 
@@ -1498,12 +1512,10 @@ else
 end
 
 % spatial mask
-if 0
-    if get_set_(P, 'fSpatialMask_clu', 1) && nSites_fet >= get_set_(P, 'nChans_min_car', 8)
-        vrSpatialMask = spatialMask_(P, iSite, nSites_fet, P.maxDist_site_um);
-        vrSpatialMask = repmat(vrSpatialMask(:)', [P.nPcPerChan, 1]);
-        mrFet12 = bsxfun(@times, mrFet12, vrSpatialMask(:));
-    end
+if get_set_(P, 'fSpatialMask_clu', 1) && nSites_fet >= get_set_(P, 'nChans_min_car', 8)
+    vrSpatialMask = spatialMask_(P, iSite, nSites_fet, P.maxDist_site_um);
+    vrSpatialMask = repmat(vrSpatialMask(:)', [P.nPcPerChan, 1]);
+    mrFet12 = bsxfun(@times, mrFet12, vrSpatialMask(:));
 end
 end %func
 
@@ -1805,7 +1817,6 @@ function trPc_spk = project_pc_(trWav_spk, mrPv, P)
 % [mrFet1, mrFet2, mrFet3] = deal([]);
 project_ = @(x,y)reshape(x' * reshape(y, size(y,1), []), size(x,2), size(y,2), size(y,3));
 trPc_spk = project_(mrPv, trWav_spk); % project 0-shift
-return;
 
 if get_set_(P, 'fInterp_fet', 0) == 0, return; end
     
@@ -2012,7 +2023,8 @@ switch vcMode
     case 'tetrode', vcDir_in = 'groundtruth/hybrid_synth/static_tetrode/rec_4c_1200s_11'; 
     case 'tetrode2', vcDir_in = 'groundtruth/hybrid_synth/static_tetrode/rec_4c_1200s_21'; 
     case 'tetrode3', vcDir_in = 'groundtruth/hybrid_synth/static_tetrode/rec_4c_1200s_31'; 
-    case 'bionet', vcDir_in = 'groundtruth/bionet/bionet_drift/drift_8x_A_2A'; 
+    case 'bionet', vcDir_in = 'groundtruth/bionet/bionet_static/static_8x_A_2A';
+    case 'bionet1', vcDir_in = 'groundtruth/bionet/bionet_drift/drift_8x_A_2A';     
     case 'monotrode', vcDir_in = 'groundtruth/waveclus_synth/quiroga_difficult1/C_Difficult1_noise005';
     case 'monotrode1', vcDir_in = 'groundtruth/waveclus_synth/quiroga_difficult1/C_Difficult1_noise01';
     case 'monotrode2', vcDir_in = 'groundtruth/waveclus_synth/quiroga_difficult1/C_Difficult1_noise02';

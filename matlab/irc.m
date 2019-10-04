@@ -9727,9 +9727,9 @@ else
             viMap = S_clu_peak_merge_(S_clu, P, 11); % merge peaks based on their waveforms
             S_clu.viClu = map_index_(viMap, S_clu.viClu, 0);
 
-        case 5
-            [S_clu.viClu, S_clu.icl] = assignCluster_(S_clu.viClu, S_clu.ordrho, S_clu.nneigh, S_clu.icl);
-            [S_clu.viClu, S_clu.icl] = dpclus_remove_count_(S_clu.viClu, S_clu.icl, P.min_count);
+%         case 5
+%             [S_clu.viClu, S_clu.icl] = assignCluster_(S_clu.viClu, S_clu.ordrho, S_clu.nneigh, S_clu.icl);
+%             [S_clu.viClu, S_clu.icl] = dpclus_remove_count_(S_clu.viClu, S_clu.icl, P.min_count);
 
         case 4
             [S_clu.viClu, S_clu.icl] = assignCluster_(S_clu.viClu, S_clu.ordrho, S_clu.nneigh, S_clu.icl);
@@ -30286,7 +30286,7 @@ catch
     ;
 end
 S_score = struct_add_(S_score, S_overlap, S_score_clu, S_score_ksort, S_burst);
-if 1 % flip the gt and clu
+if 0 % flip the gt and clu
     vl = S_clu.viClu>0;
     S_score.S_score_gt_clu = ...
         clusterVerify(S_clu.viClu(vl), S0.viTime_spk(vl), S_gt.viClu, S_gt.viTime, nSamples_jitter);

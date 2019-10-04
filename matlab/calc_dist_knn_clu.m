@@ -255,7 +255,7 @@ switch run_mode % 11, 5, run_mode
         [mnKnn_lower_clu, mnKnn_upper_clu] = deal(zeros(nClu));
         for iClu1 = 1:nClu
             vi_ = miKnn_clu(:,iClu1);            
-            vi_ = miKnn(1:nknn,vi_);
+            vi_ = miKnn(1:4,vi_);
             vi_ = sort(vi_(:));
             if iClu1 > 1
                 mnKnn_lower_clu(1:iClu1-1,iClu1) = sum(ismember(miKnn_clu(:,1:iClu1-1), vi_))';
