@@ -62,7 +62,8 @@ switch lower(vcCmd)
     case 'clear', clear_(); vcFile_prm_=[]; return;
     case 'clear-sort', clear_('sort'); return;        
     case {'test-static', 'test-drift', 'test-tetrode', 'test-tetrode2', 'test-tetrode3', ...
-            'test-bionet', 'test-bionet1', 'test-monotrode', 'test-monotrode1', 'test-monotrode2'}
+            'test-bionet', 'test-bionet1', 'test-monotrode', ...
+            'test-monotrode1', 'test-monotrode2', 'test-monotrode3'}
         vcDir_in = get_test_data_(strsplit_get_(vcCmd,'-',2));
         fPlot_gt = [];
     case 'export', irc('export', vcArg1); return;
@@ -2029,6 +2030,7 @@ switch vcMode
     case 'monotrode', vcDir_in = 'groundtruth/waveclus_synth/quiroga_difficult1/C_Difficult1_noise005';
     case 'monotrode1', vcDir_in = 'groundtruth/waveclus_synth/quiroga_difficult1/C_Difficult1_noise01';
     case 'monotrode2', vcDir_in = 'groundtruth/waveclus_synth/quiroga_difficult1/C_Difficult1_noise02';
+    case 'monotrode3', vcDir_in = 'groundtruth/waveclus_synth/neurocube_sim2_2K10/simulation_89';
 end
 if ispc()
     vcDir_in = strrep(vcDir_in, '/', '\');    
