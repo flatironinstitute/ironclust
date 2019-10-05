@@ -129,7 +129,7 @@ for iParam = 1:numel(csParam)
         [~, vcParam_name1] = fileparts(vcParam1);
         vcPath_out1 = fullfile(sprintf('irc2_%s', irc2('version')), vcParam_name1);
         csFiles_batch_out = cellfun(@(x)strrep(x, 'groundtruth', vcPath_out1), csFiles_batch_in, 'UniformOutput', 0);
-        cS_bench_param{iParam} = cellfun(@(x)irc2('benchmark', x, vcParam1), csFiles_batch_in, 'UniformOutput', 0); % must be transposed for accurate cache result
+        cS_bench_param{iParam} = cellfun(@(x,y)irc2('benchmark',x,y,vcParam1), csFiles_batch_in, csFiles_batch_out, 'UniformOutput', 0); % must be transposed for accurate cache result
     catch
         disp(lasterr());
     end
