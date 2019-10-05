@@ -1,6 +1,7 @@
 % execution
-fGpu = 1;
+fGpu = 1; 
 fParfor = 1;
+% HYBRID DRIFt 64CH detection time: (1,1):51s(17.4x), (1,0):105s(8.7x), (0:1): 55.2s(15.1x), (0:0):233s(4.1x) 
 MAX_BYTES_LOAD = .5e9;
 
 % detect

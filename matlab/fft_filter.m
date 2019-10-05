@@ -30,7 +30,7 @@ else
     fGpu_out = 0;
 end
 
-NSKIP_MAX = 2^19; % fft work length
+NSKIP_MAX = 2^17; % fft work length
 vcDataType_filter = get_set_(P, 'vcDataType_filter', 'int16');
 if strcmpi(vcDataType_filter, 'int16')
     scale_filter = get_set_(P, 'scale_filter', 1);

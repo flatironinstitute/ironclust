@@ -1405,6 +1405,9 @@ if ~isempty(nFet_max)
         mrFet12 = mrFet12';
     end
 end
+if 0
+	mrFet12 = whiten_(mrFet12);
+end
 end %func
 
 
@@ -1623,13 +1626,107 @@ if get_set_(P, 'fSpatialMask_clu', 1) && nSites_fet >= get_set_(P, 'nChans_min_c
     vrSpatialMask = repmat(vrSpatialMask(:)', [P.nPcPerChan, 1]);
     mrFet12 = bsxfun(@times, mrFet12, vrSpatialMask(:));
 end
+if 0
+	mrFet12 = whiten_(mrFet12);
+end
 end %func
+
+
+%--------------------------------------------------------------------------
+% from file exchange
+function [mr_out, whMat, invMat] = whiten_(mr_in, epsilon)
+if nargin<2, epsilon=[]; end
+if isempty(epsilon), epsilon = 0.0001; end
+X = mr_in - mean(mr_in,2);
+A = X*X';
+[V,D,~] = svd(A);
+whMat = sqrt(size(mr_in,2)-1)*V*sqrtm(inv(D + eye(size(D))*epsilon))*V';
+mr_out = whMat' * mr_in;
+if nargout>=3
+    invMat = pinv(whMat);
+end
+end
 
 
 %--------------------------------------------------------------------------
 % uses parfor and temp file (memory efficient)
 % write a temp file and delete
 function S0 = detect_(P)
+% keep all features in the memory, no disk storage
+
+% parfor loop
+if get_set_(P, 'fParfor', 1)
+    gcp_ = gcp();
+else
+    gcp_ = [];
+end
+
+runtime_detect = tic; 
+memory_init = memory_matlab_();
+
+% load one
+S_paged = readmda_paged_(P); % initialize
+[nLoads, viOffset_load] = deal(S_paged.nLoads, S_paged.viOffset_load);
+[mrWav_T1, nlim_wav1, fDone] = readmda_paged_(); % process first part
+cS_detect = cell(nLoads, 1);
+cS_detect{1} = detect_paged_(mrWav_T1, P, makeStruct_(nlim_wav1)); % process the first part
+mrWav_T1 = [];
+[vrThresh_site, mrPv_global] = struct_get_(cS_detect{1}, 'vrThresh_site', 'mrPv_global');
+S_cache = makeStruct_(vrThresh_site, mrPv_global);
+fprintf('Memory use: %0.3f GiB\n', memory_matlab_()/2^30);
+if ~isempty(gcp_)
+    % write to temp files for each worker
+    csFile_wav = arrayfun_(@(x)strrep(P.vcFile_prm, '.prm', sprintf('_wav%d.irc', x)), 1:nLoads-1);
+    [cell_vnlim_wav, cell_dimm_wav] = deal(cell(size(csFile_wav)));   
+    fprintf('detect_: writing %d files to disk\n', nLoads-1); t_write=tic;
+    for iLoad = 1:nLoads-1
+        [mrWav_T1, nlim_wav1, fDone] = readmda_paged_(); % process first part
+        write_bin_(csFile_wav{iLoad}, mrWav_T1);
+        cell_dimm_wav{iLoad} = size(mrWav_T1);
+        cell_vnlim_wav{iLoad} = nlim_wav1;
+        mrWav_T1 = [];
+        S_cache1 = S_cache;
+        S_cache1.nlim_wav1 = cell_vnlim_wav{iLoad};
+        S_cache1.dimm_wav1 = cell_dimm_wav{iLoad};
+        S_cache1.vcFile_wav1 = csFile_wav{iLoad};
+        vS_out(iLoad) = parfeval(gcp_, @(x)detect_paged_([],P,x), 1, S_cache1);
+        fprintf('\tMemory use: %0.3f GiB\n', memory_matlab_()/2^30);
+    end
+    fprintf('\n\tWriting to disk took %0.1fs\n', toc(t_write));   
+    fprintf('\tMemory use: %0.3f GiB\n', memory_matlab_()/2^30);
+    for iLoad = 1:nLoads-1
+        [completedIdx, S_] = fetchNext(vS_out);
+        cS_detect{completedIdx+1} = S_;
+    end
+else
+    for iLoad = 2:nLoads
+        [mrWav_T1, nlim_wav1, fDone] = readmda_paged_(); % process first part    
+        S_cache.nlim_wav1 = nlim_wav1; % trim waveform
+        cS_detect{iLoad} = detect_paged_(mrWav_T1, P, S_cache);        
+        fprintf('\tMemory use: %0.3f GiB\n', memory_matlab_()/2^30);
+        mrWav_T1 = [];
+    end
+end
+S0 = detect_merge_(cS_detect, viOffset_load);
+switch 1
+    case 2
+        trPc_spk1 = reshape(S0.mrVp_spk, 1, size(S0.mrVp_spk,1), size(S0.mrVp_spk,2));
+        [mrPos_spk, vrPow_spk] = calc_pos_spk_(S0.trPc_spk1, S0.viSite_spk, P);
+    case 1
+        [mrPos_spk, vrPow_spk] = calc_pos_spk_(S0.trPc_spk, S0.viSite_spk, P);
+end %switch
+% Save output
+runtime_detect = toc(runtime_detect);
+memory_detect = memory_matlab_();
+S0 = struct_add_(S0, vrPow_spk, vrThresh_site, mrPv_global, runtime_detect, P, memory_detect, memory_init, mrPos_spk);
+fprintf('detect_: took %0.1fs (fParfor=%d, fGpu=%d)\n', runtime_detect, P.fParfor, P.fGpu);
+end %func
+
+
+%--------------------------------------------------------------------------
+% uses parfor and temp file (memory efficient)
+% write a temp file and delete
+function S0 = detect2_(P)
 % keep all features in the memory, no disk storage
 
 % parfor loop
@@ -1671,8 +1768,9 @@ if ~isempty(gcp_)
         S_cache1 = S_cache;
         S_cache1.nlim_wav1 = cell_vnlim_wav{iLoad};
         S_cache1.dimm_wav1 = cell_dimm_wav{iLoad};
-        cS_detect{iLoad+1} = detect_paged_(csFile_wav{iLoad}, P, S_cache1); 
-        delete_(csFile_wav{iLoad}); % delete tmp file after done
+        S_cache1.vcFile_wav1 = csFile_wav{iLoad};
+        cS_detect{iLoad+1} = detect_paged_([], P, S_cache1); 
+       % delete_(csFile_wav{iLoad}); % delete tmp file after done
     end    
 else
     for iLoad = 2:nLoads
@@ -1701,7 +1799,7 @@ end %func
 
 %--------------------------------------------------------------------------
 % uses parfeval
-function S0 = detect__(P)
+function S0 = detect1_(P)
 % keep all features in the memory, no disk storage
 
 % parfor loop
@@ -1893,9 +1991,13 @@ function S_detect = detect_paged_(mrWav_T, P, S_cache)
 % S_detect = detect_paged_(file_name, P, S_cache)
  
 if nargin<3, S_cache = []; end
-if ischar(mrWav_T)
-    mrWav_T = load_bin_(mrWav_T, P.vcDataType, S_cache.dimm_wav1);
+if isempty(mrWav_T)
+    mrWav_T = load_bin_(S_cache.vcFile_wav1, P.vcDataType, S_cache.dimm_wav1);
+    delete_(S_cache.vcFile_wav1); % delete file 
 end
+% if ~P.fParfor && P.fGpu
+%     mrWav_T = gpuArray_(mrWav_T);
+% end
 % filter and trim 
 % nlim_wav1 = struct_get_(S_cache, 'nlim_wav1');
 mrWav2 = filter_transpose_(mrWav_T, P);
