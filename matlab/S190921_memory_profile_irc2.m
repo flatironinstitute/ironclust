@@ -111,10 +111,10 @@ vnChans_uniq = 64 * 2.^[-3:3];
 vrDuration_uniq = 1200 * 2.^[-2:3];
 
 csParam = {};
-csParam{1} = 'irc2_set1.prm'; % fGpu=0, fParfor=0
-csParam{2} = 'irc2_set2.prm'; % fGpu=0, fParfor=1
-csParam{3} = 'irc2_set3.prm'; % fGpu=1, fParfor=0
-csParam{4} = 'irc2_set4.prm'; % fGpu=1, fParfor=1
+csParam{1} = 'param1.prm'; % fGpu=0, fParfor=0
+csParam{2} = 'param2.prm'; % fGpu=0, fParfor=1
+csParam{3} = 'param3.prm'; % fGpu=1, fParfor=0
+csParam{4} = 'param4.prm'; % fGpu=1, fParfor=1
 
 [xx1,yy1] = meshgrid(1:numel(vnChans_uniq), 1:numel(vrDuration_uniq));
 vnChans_batch = vnChans_uniq(xx1(:));
@@ -122,19 +122,21 @@ vrDuration_batch = vrDuration_uniq(yy1(:));
 cS_bench_param = cell(size(csParam));
 for iParam = 1:numel(csParam)
     try
-        % loop over the files
-        csFiles_batch = arrayfun(@(x,y)...
+        vcParam1 = csParam{iParam};
+        csFiles_batch_in = arrayfun(@(x,y)...
             fullfile(vcDir0, sprintf('rec_%dc_%ds', vnChans_uniq(x), vrDuration_uniq(y))), ...
                 xx1(:), yy1(:), 'UniformOutput', 0);
-        % recording x parameter loop
-        cS_bench_param{iParam} = cellfun(@(x)irc('benchmark', x, csParam{iParam}), csFiles_batch, 'UniformOutput', 0); % must be transposed for accurate cache result
+        [~, vcParam_name1] = fileparts(vcParam1);
+        vcPath_out1 = fullfile(sprintf('irc2_%s', irc2('version')), vcParam_name1);
+        csFiles_batch_out = cellfun(@(x)strrep(x, 'groundtruth', vcPath_out1), csFiles_batch_in, 'UniformOutput', 0);
+        cS_bench_param{iParam} = cellfun(@(x)irc2('benchmark', x, vcParam1), csFiles_batch_in, 'UniformOutput', 0); % must be transposed for accurate cache result
     catch
         disp(lasterr());
     end
 end
 
 
-%% 4. plot result (create two tables), also consider creating a bar plot
+% 4. plot result (create two tables), also consider creating a bar plot
 for iParam = 1:numel(csParam)
     cS_bench = cS_bench_param{iParam};
     % parameter select and plot
@@ -155,7 +157,7 @@ for iParam = 1:numel(csParam)
         MB_per_chan_min = vrPlot ./ nChans ./ duration_sec * 1024;
         MB_per_chan = vrPlot ./ nChans  * 1024;
         MB_per_min = vrPlot ./ duration_sec  * 1024;
-        table(nChans, duration_sec, vrPlot, MB_per_chan_min, MB_per_chan, MB_per_min, 'rownames', csFiles_batch) %{'PeakMem_GiB', 'nChans', 'duration_sec'})
+        table(nChans, duration_sec, vrPlot, MB_per_chan_min, MB_per_chan, MB_per_min, 'rownames', csFiles_batch_in) %{'PeakMem_GiB', 'nChans', 'duration_sec'})
 
         figure; 
         subplot(2,2,1:2);

@@ -1,0 +1,34 @@
+% execution
+fGpu = 0;
+fParfor = 0;
+MAX_BYTES_LOAD = .5e9;
+
+% detect
+vcFilter = 'bandpass';
+freqLim = [300, 6000];
+
+% filter
+qqFactor = 4;
+nPc_spk = 6;
+spkLim_ms = [-.5, 1];
+nChans_min_car = 16;
+fInterp_fet = 1;
+fSpatialMask_clu = 0;
+
+% sort
+nPcPerChan = 2;
+nFet_max = [];
+sort_mode = 1;
+step_sec_drift = 20;
+batch_sec_drift = 300;
+
+% auto-merge
+%post_merge_mode0 = [12];
+post_merge_mode0 = [12, 17];
+%post_merge_mode0 = [5];
+post_merge_mode = 1; 
+maxWavCor = .99; 
+min_snr_clu = 4; % remove clusters below SNR threshold, set to [] to skip
+
+% validation
+fValidate = 0;

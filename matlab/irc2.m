@@ -5,13 +5,14 @@
 % todo: multiple formats
 
 %--------------------------------------------------------------------------
-function varargout = irc2(vcDir_in, vcDir_out, vcFile_arg)
+function varargout = irc2(vcDir_in, vcDir_out, vcFile_arg, vcArg3)
 % irc2(vcDir_in, vcDir_out, vcFile_arg)
 % irc2(vcCmd, vcArg1, vcArg2)
 
 if nargin<1, vcDir_in = ''; end
 if nargin<2, vcDir_out = ''; end
 if nargin<3, vcFile_arg = ''; end
+if nargin<4, vcArg3 = ''; end
 
 persistent vcFile_prm_
 
@@ -36,7 +37,11 @@ end
 
 P = []; 
 switch lower(vcCmd)
-    case 'version', version_(); return;
+    case 'version'
+        if nargout==0, version_(); 
+        else, varargout{1} = version_(); 
+        end
+        return;
     case 'scoreboard', irc2_scoreboard(); return;
     case {'detect-sort', 'sort', 'auto', '', 'describe', 'verify'}
         if isempty(vcDir_out)
@@ -57,7 +62,11 @@ switch lower(vcCmd)
             case 'describe', describe_(S0); return;
             case {'verify', 'validate'}, validate_(P, fPlot_gt); return;
         end
-        
+    case 'benchmark'
+        if nargout==0, benchmark_(vcArg1, vcArg2, vcArg3); 
+        else, varargout{1} = benchmark_(vcArg1, vcArg2, vcArg3); 
+        end
+        return;
     case 'plot', irc('plot', vcArg1, vcArg2); return;
     case 'clear', clear_(); vcFile_prm_=[]; return;
     case 'clear-sort', clear_('sort'); return;        
@@ -106,9 +115,85 @@ end %func
 
 
 %--------------------------------------------------------------------------
+function S_bench = benchmark_(vcDir_in1, vcDir_out1, vcParam1)
+if nargin<3, vcParam1 = ''; end
+
+% specify the output folder
+vcFile_mat1 = dir_(fullfile(vcDir_out1, '*_irc.mat'));
+if isempty(vcFile_mat1)
+    % process the data
+    fprintf('Running benchmark: ''%s'' using ''%s'': ', vcDir_in1, vcParam1); t1=tic;
+    [~, vcConsoleOut] = system(sprintf('./run_irc %s %s %s', vcDir_in1, vcDir_out1, vcParam1));
+    fprintf('took %0.1fs\n', toc(t1));
+else
+    % load already processed data
+    vcFile_prm1 = strrep(vcFile_mat1{1}, '_irc.mat', '.prm');
+    vcConsoleOut = evalc(sprintf('irc2(''describe'', ''%s'');', vcFile_prm1));
+    fprintf('Loaded benchmark from %s\n', vcFile_mat1{1});
+end
+% parse the output
+[memory_gb, vcFile_prm, runtime_sec, runtime_detect_sec, runtime_sort_sec, runtime_merge_sec] = ...
+    parse_console_out_(vcConsoleOut, ...
+        'memory usage (GiB):', 'Parameter file:', 'Total runtime (s):', ...
+        'Detect + feature (s):', 'Cluster runtime (s):', 'merge runtime (s):');
+% str2num_strip_ = @(x)str2double(x((x>='0' & x<='9') | x=='.'));
+S_bench = makeStruct_func_(@(x)str2num_(x), memory_gb, runtime_sec, runtime_detect_sec, runtime_sort_sec, runtime_merge_sec);
+S_bench = struct_add_(S_bench, vcFile_prm, vcConsoleOut);
+
+end %func
+
+
+%--------------------------------------------------------------------------
+function S = makeStruct_func_(varargin)
+% pass the function handle and add the field to the struct after applying a
+% function
+
+S = struct();
+fh = varargin{1};
+for i = 2:nargin
+    S.(inputname(i)) =  fh(varargin{i}); 
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+% 11/28/2018 JJJ: string to number
+function varargout = str2num_(varargin)
+for iArg = 1:nargin
+    val1 = varargin{iArg};
+    if ischar(val1)
+        % strip non numeric characters
+        val1 = val1((val1>='0' & val1<='9') | val1=='.');
+        varargout{iArg} = str2num(val1);
+    else
+        varargout{iArg} = nan;
+    end
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+% returns string for a given argument
+function varargout = parse_console_out_(varargin)
+% [val1, val2, ...] = parse_system_out_(system_out, name1, name2, ...)
+
+cs1 = strsplit(varargin{1}, '\n');
+for iArg_out = 1:nargout
+    iLine1 = find(contains(cs1, varargin{iArg_out+1}), 1, 'first');
+    if ~isempty(iLine1)
+        cs2 = strsplit(cs1{iLine1}, ' ');
+        varargout{iArg_out} = cs2{end};
+    else
+        varargout{iArg_out} = [];
+    end
+end %for
+end %func
+
+
+%--------------------------------------------------------------------------
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_()
-vcVer = 'v5.0.1';
+vcVer = 'v5.0.2';
 vcDate = '10/4/2019';
 vcHash = file2hash_();
 
@@ -2569,7 +2654,7 @@ function out1 = set_bool_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name
 function out1 = ifeq_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = spatial_smooth_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = file2hash_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
-% function out1 = vr2mr_shift_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
+function out1 = dir_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 
 function [out1, out2] = readmda_header_(varargin), fn=dbstack(); [out1, out2] = irc('call', fn(1).name, varargin); end
 function [out1, out2] = mr2thresh_(varargin), fn=dbstack(); [out1, out2] = irc('call', fn(1).name, varargin); end

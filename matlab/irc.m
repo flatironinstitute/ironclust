@@ -31048,7 +31048,7 @@ end %func
 
 %--------------------------------------------------------------------------
 % IronClust v1
-function S_bench = benchmark1_(vcDir_in1, vcParam1)
+function S_bench = benchmark__(vcDir_in1, vcParam1)
 if nargin<2, vcParam1 = ''; end
 
 % specify the output folder
