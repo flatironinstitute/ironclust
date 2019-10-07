@@ -1634,14 +1634,15 @@ end %func
 
 %--------------------------------------------------------------------------
 % from file exchange
-function [mr_out, whMat, invMat] = whiten_(mr_in, epsilon)
+function [mr_out, whMat, invMat, vr_mean] = whiten_(mr_in, epsilon)
 if nargin<2, epsilon=[]; end
 if isempty(epsilon), epsilon = 0.0001; end
-X = mr_in - mean(mr_in,2);
+vr_mean = mean(mr_in,2);
+X = mr_in - vr_mean;
 A = X*X';
 [V,D,~] = svd(A);
 whMat = sqrt(size(mr_in,2)-1)*V*sqrtm(inv(D + eye(size(D))*epsilon))*V';
-mr_out = whMat' * mr_in;
+mr_out = whMat' * X;
 if nargout>=3
     invMat = pinv(whMat);
 end
