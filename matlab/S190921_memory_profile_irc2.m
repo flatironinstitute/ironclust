@@ -166,7 +166,7 @@ for iParam = 1:numel(csParam)
         set(gca, 'XTickLabel', unique(nChans), 'YTickLabel', unique(duration_sec)); % may need to unravel
         xlabel('nChans'); ylabel('min');
     %     set(gca,'XTick', [16 32 64], 'YTick', [10 20]);
-        title_(sprintf('%s: %s', vcMode, csParam{iParam}));
+        title_(sprintf('%s: %s (irc2 %s)', vcMode, csParam{iParam}, irc2('version')));
 
         subplot 223; plot(img); 
         xlabel('Duration (s)'); 
