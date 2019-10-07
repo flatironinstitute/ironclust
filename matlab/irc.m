@@ -2820,7 +2820,7 @@ end %func
 function S_score = validate_mda_(firings_true, firings_out, raw_mda, fPlot_gt)
 if nargin<4, fPlot_gt = []; end
 if isempty(fPlot_gt), fPlot_gt = read_cfg_('fPlot_gt'); end
-fUseCache = 0;
+fUseCache = read_cfg_('fUseCache_gt');
 vcDir_in = fileparts(raw_mda);
 vcDir_out = fileparts(firings_out);
 S_json = loadjson_(fullfile(vcDir_in, 'params.json'));
