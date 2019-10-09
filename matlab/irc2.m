@@ -37,6 +37,8 @@ end
 
 P = []; 
 switch lower(vcCmd)
+    case 'juxta'
+        convert_mda_ui('english'); return;
     case 'version'
         if nargout==0, version_(); 
         else, varargout{1} = version_(); 

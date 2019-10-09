@@ -1,4 +1,6 @@
 function convert_mda_ui(vcMode, vcDir_in, vcDir_out)
+if nargin<2, vcDir_in = ''; end
+if nargin<3, vcDir_out = ''; end
 
 switch vcMode
     case 'english', convert_mda_english_(vcDir_in, vcDir_out);     
@@ -20,10 +22,16 @@ function convert_mda_english_(vcDir_in, vcDir_out)
 if isempty(vcDir_in)
     S_cfg = file2struct_('dan_english.cfg');
     vcDir_in = S_cfg.vcDir_in;
+    if ~exist_dir_(vcDir_in)
+        vcDir_in = strrep(strrep(vcDir_in, '/mnt/ceph/users/jjun/', 'D:/Globus/'), '/', '\');
+    end
 end
 if isempty(vcDir_out)
     S_cfg = file2struct_('dan_english.cfg');
     vcDir_out = S_cfg.vcDir_out;
+    if ~exist_dir_(vcDir_out)
+        vcDir_out = strrep(strrep(vcDir_out, '/mnt/ceph/users/jjun/', 'D:/Globus/'), '/', '\');
+    end
 end
 dir_ext_ = @(ext)arrayfun_(@(x)fullfile(x.folder, x.name), dir(fullfile(vcDir_in, ext)));
 csFiles_xml = dir_ext_(fullfile('*','*.xml'));
