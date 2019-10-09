@@ -5446,6 +5446,7 @@ function manual_(P, vcMode)
 % vcMode: %{'normal', 'debug', 'groundtruth'}
 
 global fDebug_ui trFet_spk
+if isempty(fDebug_ui), fDebug_ui = false; end
 
 if nargin<2, vcMode = 'normal'; end 
 
@@ -5651,6 +5652,7 @@ function nFailed = unit_test_(vcArg1, vcArg2, vcArg3)
 %   run specific test again and show profile
 % @TODO: test using multiple datasets and parameters.
 global fDebug_ui;
+if isempty(fDebug_ui), fDebug_ui = false; end
 
 if nargin<1, vcArg1 = ''; end
 if nargin<2, vcArg2 = ''; end
@@ -6016,12 +6018,36 @@ end %func
 
 
 %--------------------------------------------------------------------------
+function out = pc2wav_(mrPv, mrPc, viSpk1)
+if nargin<1, mrPv = []; end
+if nargin<2, mrPc = []; end
+if nargin<3, viSpk1 = []; end
+if isempty(mrPv), mrPv = get0_('mrPv_global'); end
+if isempty(mrPc), mrPc = get0_('trPc_spk'); end
+
+switch ndims(mrPc)
+    case 2, out = mrPv * mrPc;
+    case 3        
+        if ~isempty(viSpk1)
+            mrPc = mrPc(:,:,viSpk1);
+        end
+        [nPc, nSites, nWav] = size(mrPc);
+        out = reshape(mrPv * reshape(mrPc, nPc,[]), [], nSites, nWav);
+end
+end %func
+
+
+%--------------------------------------------------------------------------
 function S_fig = plot_spkwav_(S_fig, S0)
 % fPlot_raw = 0;
 if nargin<2, S0 = []; end
 if isempty(S0), S0 = get(0, 'UserData'); end
 [P, viSite_spk, S_clu] = deal(S0.P, S0.viSite_spk, S0.S_clu);
-tnWav = get_spkwav_(P);
+try
+    tnWav = get_spkwav_(P);
+catch
+    tnWav = [];    
+end
 
 [cvrX, cvrY, cviSite] = deal(cell(S_clu.nClu, 1));
 vnSpk = zeros(S_clu.nClu, 1);
@@ -6031,15 +6057,20 @@ if isfield(S_fig, 'maxAmp')
 else
     maxAmp = P.maxAmp;
 end
+
 for iClu = 1:S_clu.nClu        
-    try
+    try   
         viSpk_show = randomSelect_(S_clu_viSpk_(S_clu, iClu, viSite_spk), P.nSpk_show);
-        if P.fWav_raw_show
-            trWav1 = raw2uV_(tnWav(:,:,viSpk_show), P);
-            trWav1 = fft_lowpass_(trWav1, get_set_(P, 'fc_spkwav_show', []), P.sRateHz);
+        if ~isempty(tnWav)
+            if P.fWav_raw_show
+                trWav1 = raw2uV_(tnWav(:,:,viSpk_show), P);
+                trWav1 = fft_lowpass_(trWav1, get_set_(P, 'fc_spkwav_show', []), P.sRateHz);
+            else
+                trWav1 = tnWav2uV_(tnWav(:,:,viSpk_show), P);
+            end        
         else
-            trWav1 = tnWav2uV_(tnWav(:,:,viSpk_show), P);
-        end        
+            trWav1 = pc2wav_(S0.mrPv_global, S0.trPc_spk(:,:,viSpk_show));
+        end
         viSite_show = miSites_clu(:, iClu);
         [cvrY{iClu}, cvrX{iClu}] = tr2plot_(trWav1, iClu, viSite_show, maxAmp, P);
         cviSite{iClu} = viSite_show;
@@ -6139,7 +6170,7 @@ function S_fig = plot_tnWav_clu_(S_fig, P)
 S0 = get(0, 'UserData'); 
 S_clu = S0.S_clu;
 if ~isfield(P, 'LineWidth'), P.LineWidth=1; end
-trWav_clu = ifeq_(P.fWav_raw_show, S_clu.tmrWav_raw_clu, S_clu.tmrWav_clu);
+trWav_clu = ifeq_(P.fWav_raw_show, S_clu.trWav_raw_clu, S_clu.trWav_clu);
 [nSamples, nSites, nClu] = size(trWav_clu);
 nChans_show = size(P.miSites, 1);
 miSites_clu = P.miSites(:, S_clu.viSite_clu);
@@ -6160,7 +6191,7 @@ mrX = reshape(permute(mrX, [1 3 2]), [nSamples*nChans_show, nClu]);
 mrY = zeros(nSamples * nChans_show, nClu, 'single');
 for iClu=1:nClu
     viSites1 = miSites_clu(:,iClu);
-    mrY1 = trWav_clu(:,viSites1,iClu);
+    mrY1 = trWav_clu(:,:,iClu);
     mrY1 = bsxfun(@plus, mrY1, single(viSites1'));
     mrY(:,iClu) = mrY1(:);
 end
@@ -6357,6 +6388,7 @@ end %func
 %--------------------------------------------------------------------------
 function S0 = keyPressFcn_FigWav_(hObject, event, S0) %amp dist
 global fDebug_ui
+if isempty(fDebug_ui), fDebug_ui = false; end
 
 if nargin<3, S0 = get(0, 'UserData'); end
 P = S0.P; S_clu = S0.S_clu;
@@ -7247,11 +7279,16 @@ end %func
 function [mrVpp1, mrVpp2] = calc_cov_spk_(viSpk1, viSites1)
 
 [viSite_spk, P] = get0_('viSite_spk', 'P');
-tnWav_spk = get_spkwav_(P, 0); % get filtered waveform
+try
+    tnWav_spk = get_spkwav_(P, 0); % get filtered waveform
+    tnWav_spk1 = tnWav_spk(:,:,viSpk1);
+catch
+    tnWav_spk1 = pc2wav_([], [], viSpk1);
+end
 
 nSpk1 = numel(viSpk1);
 viSites_spk1 = viSite_spk(viSpk1);
-tnWav_spk1 = gpuArray_(tnWav_spk(:,:,viSpk1), P.fGpu); 
+tnWav_spk1 = gpuArray_(tnWav_spk1, P.fGpu); 
 [mrVpp1_, mrVpp2_] = trWav2fet_(tnWav_spk1, P);
 [mrVpp1_, mrVpp2_] = multifun_(@(x)gather_(abs(x)), mrVpp1_, mrVpp2_);
 
@@ -7305,18 +7342,24 @@ if numel(viSites1_uniq) ~= numel(viSites1)
 end
 
 [viSite_spk, P] = deal(S0.viSite_spk, S0.P);
-tnWav = get_spkwav_(P, fWav_raw_show);
-nT_spk = size(tnWav, 1);
+try
+    tnWav = get_spkwav_(P, fWav_raw_show);
+    tnWav1 = tnWav(:,:,viSpk1);
+    nT_spk = size(tnWav, 1);
+catch % decompress from pc
+    tnWav1 = pc2wav_(S0.mrPv_global, S0.trPc_spk(:,:,viSpk1));
+    nT_spk = size(S0.mrPv_global,1);
+end
 nSpk1 = numel(viSpk1);
 viSites_spk1 = viSite_spk(viSpk1);
 viSites_spk_unique = unique(viSites_spk1);
-tnWav_spk1 = zeros([nT_spk, numel(viSites1), nSpk1], 'like', tnWav);
+tnWav_spk1 = zeros([nT_spk, numel(viSites1), nSpk1], 'like', tnWav1);
 for iSite1 = 1:numel(viSites_spk_unique) %only care about the first site
     iSite11 = viSites_spk_unique(iSite1); %center sites group
     viSpk11 = find(viSites_spk1 == iSite11); %dangerous error
     viSites11 = P.miSites(:, iSite11);        
     [vlA11, viiB11] = ismember(viSites11, viSites1);
-    tnWav_spk1(:,viiB11(vlA11),viSpk11) = tnWav(:,vlA11,viSpk1(viSpk11));
+    tnWav_spk1(:,viiB11(vlA11),viSpk11) = tnWav1(:,vlA11,viSpk11);
 end    
 end %func
 
@@ -7543,8 +7586,9 @@ end %func
 
 %--------------------------------------------------------------------------
 function [mrPatchX, mrPatchY] = probe_map_(P)
-vrX = [0 0 1 1] * P.vrSiteHW(2); 
-vrY = [0 1 1 0] * P.vrSiteHW(1);
+vrSiteHW = get_set_(P, 'vrSiteHW', [12, 12]);
+vrX = [0 0 1 1] * vrSiteHW(2); 
+vrY = [0 1 1 0] * vrSiteHW(1);
 mrPatchX = bsxfun(@plus, P.mrSiteXY(:,1)', vrX(:));
 mrPatchY = bsxfun(@plus, P.mrSiteXY(:,2)', vrY(:));
 end %func
@@ -7552,14 +7596,14 @@ end %func
 
 %--------------------------------------------------------------------------
 function cell_alim = get_lim_shank_(P)
-
+vrSiteHW = get_set_(P, 'vrSiteHW', [12,12]);
 nSites = size(P.mrSiteXY,1);
 viShank_site = get_set_(P, 'viShank_site', ones(nSites,1));
 if isempty(viShank_site), viShank_site = ones(nSites,1); end
 
 viShank_unique = 1:max(viShank_site);
 cell_alim = cell(size(viShank_unique));
-[dx, dy] = deal(abs(P.vrSiteHW(2)), abs(P.vrSiteHW(1)));
+[dx, dy] = deal(abs(vrSiteHW(2)), abs(vrSiteHW(1)));
 for iShank = 1:numel(viShank_unique)
     viSite1 = find(viShank_site == iShank);
     vrX1 = P.mrSiteXY(viSite1,1);
@@ -7716,13 +7760,17 @@ function trWav1 = trWav_clu_(iClu1, nSpk_show)
 if nargin<2, nSpk_show=inf; end
 S0 = get(0, 'UserData');
 P = S0.P;
-tnWav_ = get_spkwav_(P);
 [viSpk_clu1, viiSpk_clu1] = S_clu_viSpk_(S0.S_clu, iClu1, S0.viSite_spk);
 viSpk_clu1 = randomSelect_(viSpk_clu1, nSpk_show);
-if P.fWav_raw_show
-    trWav1 = raw2uV_(tnWav_(:,:,viSpk_clu1), P);
-else
-    trWav1 = tnWav2uV_(tnWav_(:,:,viSpk_clu1), P);
+try
+    tnWav_ = get_spkwav_(P);
+    if P.fWav_raw_show
+        trWav1 = raw2uV_(tnWav_(:,:,viSpk_clu1), P);
+    else
+        trWav1 = tnWav2uV_(tnWav_(:,:,viSpk_clu1), P);
+    end
+catch
+    trWav1 = pc2wav_([],[],viSpk_clu1);
 end
 end %func
 
@@ -8701,6 +8749,7 @@ hMsgbox = [];
 if nargin<2, fBlock = 0; end
 if nargin<3, fModal = 0; end
 global fDebug_ui
+if isempty(fDebug_ui), fDebug_ui = false; end
 if fDebug_ui==1, return; end
 if fBlock    
     uiwait(msgbox(csMsg, 'modal'));
@@ -8998,6 +9047,7 @@ end %func
 function save_figures_(vcExt)
 % bottom to top left to right
 global fDebug_ui
+if isempty(fDebug_ui), fDebug_ui = false; end
 try
     vcPrefix = sprintf('irc_%s_', datestr(now, 'yymmdd-HHMM'));
     csAns = inputdlg_('Figure name prefix', 'Save figure set', 1, {vcPrefix});
@@ -9941,9 +9991,12 @@ if isfield(S_clu, 'nClu')
 else
     nClu = max(S_clu.viClu);
 end
-nSamples = S0.dimm_spk(1);
+try
+    [nSamples, nSites_spk] = deal(S0.dimm_spk(1), S0.dimm_spk(2));
+catch
+    [nSamples, nSites_spk] = deal(size(S0.mrPv_global,1), size(S0.trPc_spk,2));
+end
 nSites = numel(P.viSite2Chan);
-nSites_spk = S0.dimm_spk(2); % n sites per event group (maxSite*2+1);
 fDrift_merge = get_set_(P, 'fDrift_merge', 1);
 
 % Prepare cluster loop
@@ -9968,7 +10021,7 @@ if isempty(viClu_update)
 else
     vlClu_update = false(nClu, 1);
     vlClu_update(viClu_update) = 1;
-    nClu_pre = size(S_clu.trWav_spk_clu, 3);
+    nClu_pre = S_clu.nClu;
     vlClu_update((1:nClu) > nClu_pre) = 1;
     [tmrWav_spk_clu, trWav_spk_clu, mrPos_clu] = struct_get_(S_clu, 'tmrWav_spk_clu', 'trWav_spk_clu', 'mrPos_clu');
     [tmrWav_raw_clu, trWav_raw_clu] = struct_get_(S_clu, 'tmrWav_raw_clu', 'trWav_raw_clu');
@@ -9978,7 +10031,7 @@ end
 
 % Compute spkwav
 tnWav_ = get_spkwav_(P, 0);
-if isempty(tnWav_), return; end
+% if isempty(tnWav_), return; end
 for iClu=1:nClu       
     if vlClu_update(iClu)
         if ~isempty(tmrWav_spk_lo_clu)
@@ -10056,10 +10109,15 @@ if fUseCenterSpk
     viSpk_clu1 = viSpk_clu1(vlCentered_spk1);
     viSite_spk1 = viSite_spk1(vlCentered_spk1);
 end
+if isempty(tnWav_)
+    get_wav_ = @(x)pc2wav_([],[],x);
+else
+    get_wav_ = @(x)single(tnWav_(:,:,x));
+end
 if isempty(viSpk_clu1), return; end  
 if ~fDrift_merge
     viSpk_clu2 = spk_select_mid_(viSpk_clu1, S0.viTime_spk, S0.P); 
-    mrWav_clu1 = fh1(single(tnWav_(:,:,viSpk_clu2)), 3);
+    mrWav_clu1 = fh1(get_wav_(viSpk_clu2), 3);
     mrWav_clu1 = meanSubt_(mrWav_clu1); %122717 JJJ
     return;
 end
@@ -10074,16 +10132,16 @@ end
 try
     vrYLim = quantile(vrPosY_spk1, [0, 1/3, 2/3, 1]); %[0,1,2,3]/3);
     [viSpk_clu_, viSite_clu_] = spk_select_pos_(viSpk_clu1, vrPosY_spk1, vrYLim(2:3), nSamples_max, viSite_spk1);
-    mrWav_clu1 = nanmean_int16_(tnWav_(:,:,viSpk_clu_), 3, fUseCenterSpk, iSite_clu1, viSite_clu_, S0.P); % * S0.P.uV_per_bit;
+    mrWav_clu1 = nanmean_int16_(get_wav_(viSpk_clu_), 3, fUseCenterSpk, iSite_clu1, viSite_clu_, S0.P); % * S0.P.uV_per_bit;
 catch
     disp('error');
 end
 if nargout > 2
     [viSpk_clu_, viSite_clu_] = spk_select_pos_(viSpk_clu1, vrPosY_spk1, vrYLim(1:2), nSamples_max, viSite_spk1); 
-    mrWav_lo_clu1 = nanmean_int16_(tnWav_(:,:,viSpk_clu_), 3, fUseCenterSpk, iSite_clu1, viSite_clu_, S0.P);
+    mrWav_lo_clu1 = nanmean_int16_(get_wav_(viSpk_clu_), 3, fUseCenterSpk, iSite_clu1, viSite_clu_, S0.P);
 
     [viSpk_clu_, viSite_clu_] = spk_select_pos_(viSpk_clu1, vrPosY_spk1, vrYLim(3:4), nSamples_max, viSite_spk1);
-    mrWav_hi_clu1 = nanmean_int16_(tnWav_(:,:,viSpk_clu_), 3, fUseCenterSpk, iSite_clu1, viSite_clu_, S0.P);
+    mrWav_hi_clu1 = nanmean_int16_(get_wav_(viSpk_clu_), 3, fUseCenterSpk, iSite_clu1, viSite_clu_, S0.P);
 end
 end %func
 
@@ -10117,7 +10175,7 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function mrWav_clu1 = nanmean_int16_(tnWav0, dimm_mean, fUseCenterSpk, iSite1, viSite0, P); % * S0.P.uV_per_bit;
+function mrWav_clu1 = nanmean_int16_(tnWav0, dimm_mean, fUseCenterSpk, iSite1, viSite0, P) % * S0.P.uV_per_bit;
 fMedian = strcmpi(get_set_(P, 'vcCluWavMode'), 'median');
 nSites_spk = size(tnWav0,2);
 if fUseCenterSpk
@@ -10499,6 +10557,7 @@ end %func
 %--------------------------------------------------------------------------
 function hPoly = impoly_(varargin)
 global fDebug_ui
+if isempty(fDebug_ui), fDebug_ui = false; end
 % if get_set_([], 'fDebug_ui', 0)
 if fDebug_ui==1
     hPoly = []; %skip the test if debugging
@@ -10732,7 +10791,7 @@ end %func
 %--------------------------------------------------------------------------
 function hRect = imrect_(varargin)
 global fDebug_ui
-    
+if isempty(fDebug_ui), fDebug_ui = false; end
 hRect = []; %skip the test if debugging
 % if get_set_([], 'fDebug_ui', 0) && nargin < 2
 if fDebug_ui==1 && nargin < 2
@@ -10751,7 +10810,7 @@ end
 function csAns = inputdlg_(varargin)
 % return default answer
 global fDebug_ui
-% if get_set_([], 'fDebug_ui', 0)
+if isempty(fDebug_ui), fDebug_ui = false; end
 if fDebug_ui==1
     if numel(varargin)==4
         csAns = varargin{4};
@@ -12145,7 +12204,7 @@ end %func
 %--------------------------------------------------------------------------
 function hMsg = msgbox_open_(vcMessage)
 global fDebug_ui
-
+if isempty(fDebug_ui), fDebug_ui = false; end
 % if get_set_([], 'fDebug_ui', 0), hMsg = []; return; end
 if fDebug_ui==1, hMsg = []; return; end
 hFig = gcf;
@@ -13357,7 +13416,7 @@ end
 function plot_activity_(P) % single column only
 % plot activity as a function of depth and time
 global fDebug_ui
-
+if isempty(fDebug_ui), fDebug_ui = false; end
 tbin = 10; %activity every 10 sec
 % plot activity as a function of time
 % vcFile_evt = subsFileExt(P.vcFile_prm, '_evt.mat');
@@ -13604,7 +13663,7 @@ function export_cluwav_(P, vcArg2, fDiff)
 % export_spkwav_(P)
 % export_spkwav_(P, viClu)
 global fDebug_ui
-
+if isempty(fDebug_ui), fDebug_ui = false; end
 if nargin<2, vcArg2 = ''; end
 if nargin<3, fDiff = 0; end
 if isempty(vcArg2)
@@ -13772,7 +13831,7 @@ end %func
 %--------------------------------------------------------------------------
 function commit_irc_(S_cfg, vcDir_out, fZipFile)
 global fDebug_ui
-
+if isempty(fDebug_ui), fDebug_ui = false; end
 if nargin<1, S_cfg = []; end 
 if nargin<2, vcDir_out = []; end
 if nargin<3, fZipFile = 0; end
@@ -15293,6 +15352,7 @@ function traces_(P, fDebug_ui_, vcFileId, fPlot_lfp)
 % If file format is nSamples x nChans, load all and save to global (fTranspose=0)
 % 2017/6/22 James Jun: Added multiview (nTime_traces )
 global fDebug_ui mnWav mnWav1 % only use if P.fTranspose=0
+if isempty(fDebug_ui), fDebug_ui = false; end
 if nargin<4, fPlot_lfp = 0; end
 if nargin==0
     P = get0_('P'); 
@@ -16081,12 +16141,13 @@ end %func
 
 
 %--------------------------------------------------------------------------
+% position method changed 2019 oct 7
 function S_clu = S_clu_position_(S_clu, viClu_update)
 % determine cluster position from spike position
 % 6/27/17 JJJ: multiple features supported (single dimension such as energy and Vpp)
 global trFet_spk
 if nargin<2, viClu_update = []; end
-P = get0_('P'); %P = S_clu.P;
+[P, mrPos_spk] = get0_('P', 'mrPos_spk'); %P = S_clu.P;
 if ~isfield(S_clu, 'vrPosX_clu'), S_clu.vrPosX_clu = []; end
 if ~isfield(S_clu, 'vrPosY_clu'), S_clu.vrPosY_clu = []; end
 
@@ -16106,13 +16167,17 @@ for iClu = viClu1
 %     viSpk_clu1 = S_clu.cviSpk_clu{iClu};
     [viSpk_clu1, viSites_clu1] = S_clu_subsample_spk_(S_clu, iClu);
     if isempty(viSpk_clu1), continue; end
-    
-    viSites_clu1 = viSites_clu1(1:P.nSites_fet);
-    mrVp1 = squeeze_(trFet_spk(viSites_fet,1,viSpk_clu1));
-    mrSiteXY1 = single(P.mrSiteXY(viSites_clu1,:)); %electrode
-    
-    vrPosX_clu(iClu) = median(centroid_mr_(mrVp1, mrSiteXY1(:,1), 2));
-    vrPosY_clu(iClu) = median(centroid_mr_(mrVp1, mrSiteXY1(:,2), 2));
+    if ~isempty(mrPos_spk)
+        mrPos1 = mrPos_spk(viSpk_clu1,:);
+        vrPosX_clu(iClu) = median(mrPos1(:,1),1);
+        vrPosY_clu(iClu) = median(mrPos1(:,2),1);
+    else
+        viSites_clu1 = viSites_clu1(1:P.nSites_fet);    
+        mrVp1 = squeeze_(trFet_spk(viSites_fet,1,viSpk_clu1));
+        mrSiteXY1 = single(P.mrSiteXY(viSites_clu1,:)); %electrode    
+        vrPosX_clu(iClu) = median(centroid_mr_(mrVp1, mrSiteXY1(:,1), 2));
+        vrPosY_clu(iClu) = median(centroid_mr_(mrVp1, mrSiteXY1(:,2), 2));
+    end
 end
 S_clu.vrPosX_clu = vrPosX_clu;
 S_clu.vrPosY_clu = vrPosY_clu;
@@ -18953,6 +19018,7 @@ function clear_(vcFile_prm, vcMode)
 if nargin<1, vcFile_prm = ''; end
 if nargin<2, vcMode = ''; end
 global fDebug_ui;
+if isempty(fDebug_ui), fDebug_ui = false; end
 
 % clear irc
 clear(mfilename()); % clear persistent variables in the current file. Same as clear irc
@@ -19057,6 +19123,8 @@ function [vcFile_prm, vcPrompt] = makeprm_(vcFile_bin, vcFile_prb, fAsk, vcFile_
 % placed there.
 
 global fDebug_ui
+if isempty(fDebug_ui), fDebug_ui = false; end
+
 if isempty(vcFile_prb), vcFile_prb = ''; end
 if nargin<3, fAsk = 1; end
 if nargin<4, vcFile_template = ''; end
@@ -19500,6 +19568,7 @@ end %func
 function vcAns = questdlg_(varargin)
 % Display a question dialog box
 global fDebug_ui
+if isempty(fDebug_ui), fDebug_ui = false; end
 % if get_set_([], 'fDebug_ui', 0)
 if fDebug_ui == 1
     vcAns = 'Yes';
@@ -20197,6 +20266,8 @@ function S_fig = preview_(P, fDebug_ui_)
 % Data summary figure, interactive
 
 global fDebug_ui
+if isempty(fDebug_ui), fDebug_ui = false; end
+
 if nargin<2, fDebug_ui_ = 0; end
 fDebug_ui = fDebug_ui_;
 set0_(fDebug_ui);
@@ -22103,19 +22174,23 @@ if nargin<1, P = []; end
 if isempty(P), P = get0_('P'); end
 if nargin<2, fRaw = P.fWav_raw_show; end
 
-fRamCache = get_set_(P, 'fRamCache', 1);
-if ~get_set_(P, 'fSave_spkwav', 1)
-    [tnWav_spk, tnWav_raw, tnWav_] = deal([]);
-    return;
-end
-if fRaw
-    if ~fRamCache, tnWav_spk = []; end % clear spk
-    if isempty(tnWav_raw), tnWav_raw = load_spkraw_(); end
-    tnWav_ = tnWav_raw;
-else
-    if ~fRamCache, tnWav_raw = []; end % clear raw
-    if isempty(tnWav_spk), tnWav_spk = load_spkwav_(); end
-    tnWav_ = tnWav_spk;
+try
+    fRamCache = get_set_(P, 'fRamCache', 1);
+    if ~get_set_(P, 'fSave_spkwav', 1)
+        [tnWav_spk, tnWav_raw, tnWav_] = deal([]);
+        return;
+    end
+    if fRaw
+        if ~fRamCache, tnWav_spk = []; end % clear spk
+        if isempty(tnWav_raw), tnWav_raw = load_spkraw_(); end
+        tnWav_ = tnWav_raw;
+    else
+        if ~fRamCache, tnWav_raw = []; end % clear raw
+        if isempty(tnWav_spk), tnWav_spk = load_spkwav_(); end
+        tnWav_ = tnWav_spk;
+    end
+catch
+    tnWav_ = [];
 end
 end %func
 
@@ -28379,6 +28454,8 @@ end %func
 % 1/7/2019 JJJ: get file
 function vcFile = uigetfile_(varargin)
 global fDebug_ui
+if isempty(fDebug_ui), fDebug_ui = false; end
+
 vcFile = [];
 if fDebug_ui==1, return; end
 [FileName, PathName, FilterIndex] = uigetfile(varargin{:});

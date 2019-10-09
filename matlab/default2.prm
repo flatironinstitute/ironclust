@@ -1,6 +1,6 @@
 % execution
 fGpu = 1; 
-fParfor = 1;
+fParfor = 0;
 % HYBRID DRIFt 64CH detection time: (1,1):51s(17.4x), (1,0):105s(8.7x), (0:1): 55.2s(15.1x), (0:0):233s(4.1x) 
 MAX_BYTES_LOAD = .5e9;
 
@@ -22,11 +22,10 @@ nFet_max = [];
 sort_mode = 1;
 step_sec_drift = 20;
 batch_sec_drift = 300;
-fWhiten_fet = 1;
+fWhiten_fet = 0;
 
 % auto-merge
 post_merge_mode0 = [5]; % [12,17]
 post_merge_mode = 1; 
-maxWavCor = 1; 
-%maxWavCor = .99; 
+maxWavCor = .99; 
 min_snr_clu = 4; % remove clusters below SNR threshold, set to [] to skip

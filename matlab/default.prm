@@ -129,7 +129,6 @@ maxCluPerSite = 20;         % Maximum clusters per site allowed if local detrend
 spkLim_factor_merge = 1;    % Waveform range for computing the correlation. spkLim_factor_merge <= spkLim_raw_factor_merge. circa v3.1.8
 frac_shift_merge = .1;      % Fraction of the waveform to shift to check for merging
 fRemove_duplicate = 1;      % Remove clusters whose detection site occurs far from the min waveform site (d>=maxDist_site_um)
-fDrift_merge = 1;           % Compute multiple waveforms at three drift locations based on the spike position (CoM).
 nInterp_merge = 1;          % Interpolation factor for the mean unit waveforms, set to 1 to disable
 fWavRaw_merge = 0;          % Use raw average unit waveforms for merge when set to 1, if not use filtered waveforms.
 
