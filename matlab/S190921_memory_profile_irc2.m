@@ -36,8 +36,8 @@ exist_dir_ = @(x)irc('call', 'exist_dir', {x});
 %% 2. Generate data. Expand or shrink channels 
 % Channels: [8, 16, 32, *64*, 128, 256, 512] and times: [300, 600, *1200*, 2400, 4800, 9600]
 
-viChan_pow = -3:3;
-viTime_pow = -2:3;
+viChan_pow = -3:2;
+viTime_pow = -2:2;
 mnWav0 = readmda_(fullfile(vcDir_in, 'raw.mda'));
 mrSiteXY0 = csvread(fullfile(vcDir_in, 'geom.csv'));
 mrFirings0 = readmda_(fullfile(vcDir_in, 'firings_true.mda'));
@@ -107,8 +107,8 @@ end
 % setting: Oct 3 2019
 % CentOS Workstation, 12 woorkers + GPU (Quadro P4000, 8GB)
 
-vnChans_uniq = 64 * 2.^[-3:3];
-vrDuration_uniq = 1200 * 2.^[-2:3];
+vnChans_uniq = 64 * 2.^[-3:2];
+vrDuration_uniq = 1200 * 2.^[-2:2];
 
 csParam = {};
 csParam{1} = 'param1.prm'; % fGpu=0, fParfor=0
@@ -168,14 +168,14 @@ for iParam = 1:numel(csParam)
     %     set(gca,'XTick', [16 32 64], 'YTick', [10 20]);
         title_(sprintf('%s: %s (irc2 %s)', vcMode, csParam{iParam}, irc2('version')));
 
-        subplot 223; plot(img); 
+        subplot 223; plot(img,'b'); 
         xlabel('Duration (s)'); 
         set(gca,'XTickLabel', unique(duration_sec), 'XTick', 1:nunique_(duration_sec));         
         hold on; plot([1, size(img,1)], [1, size(img,1)], 'r');
         set(gca,'YTickLabel', 2.^get(gca,'YTick'), 'YTick', get(gca,'YTick'));
         ylabel(vcMode); grid on; axis tight;
 
-        subplot 224; plot(img'); 
+        subplot 224; plot(img','k'); 
         xlabel('#Chans'); 
         set(gca,'XTickLabel', unique(nChans), 'XTick', 1:nunique_(nChans));    
         hold on; plot([1, size(img,2)], [1, size(img,2)], 'r'); 

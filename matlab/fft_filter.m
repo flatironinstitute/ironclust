@@ -3,7 +3,7 @@
 % 3/11/2019 JJJ: GPU performance improved
 % 10/15/2018 JJJ: Modified from ms_bandpass_filter (MountainLab) for
 % memory-access efficiency
-function mrWav_filt = fft_filter(mrWav, P, vcMode)
+function [mrWav_filt] = fft_filter(mrWav, P, vcMode)
 % [Usages]
 % fft_filter()
 %   clear cache
@@ -42,7 +42,9 @@ nPad = 300;
 nSkip = min(nT, NSKIP_MAX);
 [sRateHz, freqLim, freqLim_width, fGpu] = ...
     struct_get_(P, 'sRateHz', 'freqLim', 'freqLim_width', 'fGpu');
-if isempty(freqLim), mrWav_filt = mrWav; return; end
+if isempty(freqLim) && ~strcmpi(vcMode, 'clean')
+    mrWav_filt = mrWav; return; 
+end
 
 try
     mrWav_filt = zeros(size(mrWav), 'like', mrWav); 
@@ -51,6 +53,7 @@ catch
     fGpu = 0;
 end
 switch lower(vcMode)
+    case 'clean', fh_make_filter = [];
     case 'bandpass', fh_make_filter = @fft_bandpass_;
     case 'highpass', fh_make_filter = @fft_highpass_;
     case 'lowpass', fh_make_filter = @fft_lowpass_;
@@ -90,20 +93,24 @@ for iStart = 1:nSkip:nT
     end
     [mrWav1, fGpu] = gpuArray_(mrWav(vi1,:), fGpu);
     n1 = size(mrWav1,1);
-    if n1 ~= n_prev
+    if isempty(fh_make_filter)
+        vrFilt1 = [];
+    elseif n1 ~= n_prev
         vrFilt1 = fh_make_filter(n1, freqLim, freqLim_width, sRateHz);
         vrFilt1 = gpuArray_(vrFilt1, fGpu);
         if scale_filter ~= 1
             vrFilt1 = vrFilt1 * scale_filter;
         end
         n_prev = n1;
-    end    
+    end
     if ~isempty(vrFilt1)        
         try
             mrWav1 = fh_filter(mrWav1, vrFilt1);  
         catch
             mrWav1 = fh_filter(gather_(mrWav1), vrFilt1);  
         end
+    else % fft-clean only
+        mrWav1 = real(ifft(fft_clean_(fft(single(mrWav1)), fft_thresh, fft_thresh_low), 'symmetric'));
     end
     if ~isGpu_(mrWav_filt)
         mrWav_filt(iStart:iEnd,:) = gather_(mrWav1(nPad+1:end-nPad,:));

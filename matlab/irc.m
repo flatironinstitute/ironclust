@@ -3120,12 +3120,19 @@ viClu = int32(S_gt.viClu);
 viTime_spk = int32(S_gt.viTime);
 nSites = numel(get_(P, 'viSite2Chan'));
 
-[vcFilter, freqLim, nDiff_filt, spkLim_ms, freqLim_width, qqFactor] = ...
-    struct_get_(S_cfg, 'vcFilter_gt', 'freqLim_gt', 'nDiff_filt_gt', 'spkLim_ms_gt', 'freqLim_width_gt', 'qqFactor_gt');
+[vcFilter, freqLim, nDiff_filt, spkLim_ms, freqLim_width, qqFactor, fft_thresh] = ...
+    struct_get_(S_cfg, 'vcFilter_gt', 'freqLim_gt', 'nDiff_filt_gt', 'spkLim_ms_gt', 'freqLim_width_gt', 'qqFactor_gt', 'fft_thresh_gt');
+spkLim_ms = get_set_(P, 'spkLim_ms_gt', spkLim_ms);
+vcFilter = get_set_(P, 'vcFilter_gt', vcFilter);
+freqLim = get_set_(P, 'freqLim_gt', freqLim);
+fProcessRaw = get_set_(P, 'fProcessRaw_gt', fProcessRaw);
+fft_thresh = get_set_(P, 'fft_thresh_gt', fft_thresh);
+
 [vcCommonRef, vcSpkRef] = deal('none');
-P1 = makeStruct_(vcCommonRef, vcSpkRef, vcFilter, freqLim, nDiff_filt, spkLim_ms, freqLim_width, qqFactor);
+P1 = makeStruct_(vcCommonRef, vcSpkRef, vcFilter, freqLim, nDiff_filt, spkLim_ms, freqLim_width, qqFactor, fft_thresh);
 P1 = struct_merge_(P, P1);
 P1.spkLim = round(P1.spkLim_ms * P1.sRateHz / 1000);
+P1.spkLim_raw = P1.spkLim;
 
 [mnWav, ~, P_] = load_file_(P.vcFile, [], P1);
 
@@ -3137,7 +3144,12 @@ else
 end
 if nSites==0, nSites = size(mnWav,2); end
 if fProcessRaw
-    tnWav_raw = permute(mn2tn_gpu_(mnWav, P.spkLim_raw, viTime_spk, [], vcDataType), [1,3,2]);
+    if fft_thresh > 0
+        mnWav_raw = fft_filter(mnWav, P1, 'clean');
+    else
+        mnWav_raw = mnWav;
+    end
+    tnWav_raw = permute(mn2tn_gpu_(mnWav_raw, P1.spkLim_raw, viTime_spk, [], vcDataType), [1,3,2]);
 end
 try
     [mnWav, ~] = filt_car_(mnWav, P1);
@@ -3145,6 +3157,7 @@ catch
     P1.fGpu=0;
     [mnWav, ~] = filt_car_(mnWav, P1);
 end
+
 tnWav_spk = permute(mn2tn_gpu_(mnWav, P1.spkLim, viTime_spk, [], vcDataType), [1,3,2]);
 [vrVrms_site, vrVsd_site] = mr2rms_(mnWav, 1e6);
 [vrVrms_site, vrVsd_site] = gather_(vrVrms_site * uV_per_bit, vrVsd_site * uV_per_bit);
@@ -3218,7 +3231,7 @@ end
 S_gt = struct_merge_(S_gt, S_);
 if isfield(P, 'miSites')
     miSites_clu = P.miSites(:, S_gt.viSite_clu);
-else
+else 
     miSites_clu = [];
 end
 cvnBurst_clu = analyze_burst_(S_gt.viTime, S_gt.viClu, S_cfg);
@@ -7675,6 +7688,7 @@ end %func
 function plot_FigPos_(S_clu1, S_clu2)
 [hFig, S_fig] = get_fig_cache_('FigPos');
 [S0, P, S_clu] = get0_();
+if nargin<2, S_clu2 = []; end
 
 % plot waveform in space
 if isempty(S_fig)
@@ -28660,11 +28674,12 @@ end %func
 %--------------------------------------------------------------------------
 % 11/28/2018 JJJ: string to number
 function varargout = str2num_(varargin)
+vcValid = ['0123456789.,+-e '];
 for iArg = 1:nargin
     val1 = varargin{iArg};
     if ischar(val1)
         % strip non numeric characters
-        val1 = val1((val1>='0' & val1<='9') | val1=='.');
+        val1 = val1(ismember(val1, vcValid));
         varargout{iArg} = str2num(val1);
     else
         varargout{iArg} = nan;
@@ -28903,14 +28918,18 @@ end %func
 
 %--------------------------------------------------------------------------
 % 2019/1/30 JJJ: 
-function S_gt1 = mda2gt1_(vcFile_gt_mda)
-
+function S_gt1 = mda2gt1_(vcFile_gt_mda, P)
+if nargin<2, P=[]; end
 % Create P (parameter struct)
 [vcDir,~,~] = fileparts(vcFile_gt_mda);
 vcFile = fullfile(vcDir, 'raw.mda');
 S_json = loadjson_(fullfile(vcDir, 'params.json'));
 [uV_per_bit, sRateHz] = struct_get_(S_json, 'scale_factor', 'samplerate');
-P = makeStruct_(vcFile, sRateHz, uV_per_bit);
+if isempty(P)
+    P = makeStruct_(vcFile, sRateHz, uV_per_bit);
+else
+    P = struct_add_(P, vcFile, sRateHz, uV_per_bit);
+end
 
 % compute S_gt1
 mnGt = int32(readmda_(vcFile_gt_mda)');
@@ -28922,6 +28941,12 @@ end %func
 
 %--------------------------------------------------------------------------
 function S_xml = load_xml_neuroscope_(vcFile_xml)
+[vcDir,vcFile,vcExt] = fileparts(vcFile_xml);
+vcFile_dat = fullfile(vcDir, [vcFile, '.dat']);
+vcFile_xml = fullfile(vcDir, [vcFile, '.xml']);
+if ~exist_file_(vcFile_xml), S_xml=[]; return; end
+
+
 S_xml1 = xml2struct(vcFile_xml); % depends on an external file
 sRateHz = str2num_(S_xml1.parameters.acquisitionSystem.samplingRate.Text);
 nChans = str2num_(S_xml1.parameters.acquisitionSystem.nChannels.Text);
@@ -28930,6 +28955,7 @@ nBits = str2num_(S_xml1.parameters.acquisitionSystem.nBits.Text);
 voltageRange = str2num_(S_xml1.parameters.acquisitionSystem.voltageRange.Text);
 amplification = str2num_(S_xml1.parameters.acquisitionSystem.amplification.Text);
 uV_per_bit = (voltageRange / amplification * 1e6) / 2 ^ nBits;
+vcDataType = sprintf('int%d', nBits);
 
 % parse out channel maps, bottom to top order
 [viSite2chan1, viSite2chan2, viSite2chan3] = deal([]);
@@ -28952,8 +28978,9 @@ try
 catch
     [viSite2Chan, viShank_site] = deal([]);
 end
-S_xml = makeStruct_(sRateHz, nChans, uV_per_bit, nBits, ...
-    viSite2chan1, viSite2chan2, viSite2chan3, viSite2Chan, viShank_site);
+S_xml = makeStruct_(sRateHz, nChans, uV_per_bit, nBits, vcDataType, ...
+    viSite2chan1, viSite2chan2, viSite2chan3, viSite2Chan, viShank_site, ...
+    vcFile_dat, vcFile_xml);
 end %func
         
         
