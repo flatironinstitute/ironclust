@@ -343,12 +343,12 @@ switch lower(h.Label)
         figure_wait_(0, hFig);
         if strcmpi(h.Label, 'convert') || strcmpi(h.Label, 'convert and summarize recording')            
             summarize_recording_(S_cfg.vcDir_out, vcFile_dat1);
-            msgbox_(sprintf('Exported to %s', vcFile_dat1), 1);
-            return; 
-        else
-            msgbox_(sprintf('Exported to %s\n Advancing to next', vcFile_dat1), 1);
+%             msgbox_(sprintf('Exported to %s', vcFile_dat1), 1);
+%         else
+%             msgbox_(sprintf('Exported to %s\n Advancing to next', vcFile_dat1), 1);
         end
-        
+        return; 
+
     case 'skip and next'
         set_table_(hTbl, iFile, 2, false);
         cbf_table_save_(hTbl);
@@ -967,7 +967,7 @@ if read_cfg_('fRaw_intra_mda', 1)
 else
     vrWav_intra = S_intra.vrWav_filt;
 end
-vrWav_intra = single(vrWav_intra(:)') * single(-1 * S_json.scale_factor);
+vrWav_intra = single(vrWav_intra(:)') * single(S_json.scale_factor);
 
 % write firings_true.mda
 writemda_(vrWav_intra, vcFile_true);
@@ -1111,11 +1111,13 @@ xylabel_(hAx3, 'time (ms)','V_ext (uV)', 'Extracellular mean filtered waveforms'
 % plot hAx4,5
 try
     S_prb = load_prb_(read_cfg_('vcFile_probe'));
-    plot_unit_(hAx4, S_gt1.trWav_raw_clu, S_prb.mrSiteXY); 
-    title(hAx4, 'Extracellular mean raw waveforms');
+    [hLine4, xlim4, ylim4] = plot_unit_(hAx4, S_gt1.trWav_raw_clu, S_prb.mrSiteXY);    
+    hImg4 = overlay_image_(hAx4, S_gt1.trWav_raw_clu, S_prb.mrSiteXY, xlim4, ylim4);
+    title(hAx4, 'Extracellular mean raw waveforms (color: Vpp)');    
     
-    plot_unit_(hAx5, S_gt1.trWav_clu, S_prb.mrSiteXY);
-    title(hAx5, 'Extracellular mean filtered waveforms');
+    [hLine5, xlim5, ylim5] = plot_unit_(hAx5, S_gt1.trWav_clu, S_prb.mrSiteXY);            
+    hImg5 = overlay_image_(hAx5, S_gt1.trWav_clu, S_prb.mrSiteXY, xlim5, ylim5);        
+    title(hAx5, 'Extracellular mean filtered waveforms (color: Vpp)');
 catch
     disp(lasterr());
 end
@@ -1125,6 +1127,46 @@ drawnow();
 figure_wait_(0, hFig_wait);
 
 savefig_(hFig, fullfile(vcDir1, sprintf('%s_summary.fig', vcRec)));
+end %func
+
+
+%--------------------------------------------------------------------------
+function hImg1 = overlay_image_(hAx1, mrZ1, mrXY1, xlim1, ylim1)
+[vrX1, vrY1, mrZ1] = deal(mrXY1(:,1), mrXY1(:,2), double(mrZ1));
+vrZ1 = range(mrZ1)';
+% [~,iC_max] = max(vrZ1);
+% [~,iT_max] = max(range(mrZ1');
+[vrX2, vrY2] = deal(linspace(min(vrX1),max(vrX1), 40), linspace(min(vrY1),max(vrY1), 320));
+[xx2,yy2] = meshgrid(vrX2,vrY2);
+F = scatteredInterpolant(vrX1, vrY1, vrZ1, 'natural');
+mrY_interp = F(xx2,yy2);
+
+hold(hAx1, 'on'); 
+vrX3 = linspace(xlim1(1), xlim1(2), size(mrY_interp,2));
+vrY3 = linspace(ylim1(1), ylim1(2), size(mrY_interp,1));
+hImg1 = imagesc(hAx1, mrY_interp, 'xdata', vrX3, 'ydata', vrY3);
+uistack(hImg1, 'bottom');
+colormap jet;
+
+if 1 % animate
+    cell_F = arrayfun(@(i)scatteredInterpolant(vrX1, vrY1, mrZ1(i,:)', 'natural'), 1:size(mrZ1,1), 'UniformOutput',0);    
+    nF = numel(cell_F);
+    fh_update = @(iF)set(hImg1, 'CData', cell_F{iF}(xx2,yy2));
+    set(hImg1, 'UserData', makeStruct_(fh_update, nF, mrY_interp));
+    cbf_animate_(hImg1);
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+function cbf_animate_(h,e)
+S = get(h, 'UserData');
+[fh_update, nF, mrY_interp] = struct_get_(S, 'fh_update', 'nF', 'mrY_interp');
+for iF=1:nF
+    fh_update(iF);
+    drawnow('limitrate');
+end
+set(h, 'CData', mrY_interp);
 end %func
 
 
@@ -1143,7 +1185,7 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function hLine = plot_unit_(hAx, mrWav_clu, mrXY_site)
+function [hLine, xlim1, ylim1] = plot_unit_(hAx, mrWav_clu, mrXY_site)
 
 S_cfg = read_cfg_();
 maxAmp = get_set_(S_cfg, 'maxAmp', 300);
@@ -1169,8 +1211,9 @@ hLine = line(mrX1(:), mrY1(:), 'Color', 'k', 'Parent', hAx, 'LineWidth', 1.5);
 xlabel(hAx, 'Time (ms)');
 ylabel(hAx, 'Voltage (uV)');
 grid(hAx, 'on');
-xlim_(hAx, [min(mrX1(:)), max(mrX1(:))]);
-ylim_(hAx, [floor(min(mrY1(:))-1), ceil(max(mrY1(:))+1)]);
+[xlim1, ylim1] = deal([min(mrX1(:)), max(mrX1(:))], [min(mrY1(:)), max(mrY1(:))]);
+xlim_(hAx, xlim1);
+ylim_(hAx, ylim1);
 end %func
 
 
