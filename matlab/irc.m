@@ -3166,24 +3166,28 @@ clear mnWav;
 
 % determine mean spikes
 nClu = max(viClu);
-trWav_clu = zeros(size(tnWav_spk,1), nSites, nClu, 'single');
+[trWav_clu, trWav_sem_clu] = deal(zeros(size(tnWav_spk,1), nSites, nClu, 'single'));
 if fProcessRaw
-    trWav_raw_clu = zeros(size(tnWav_raw,1), nSites, nClu, 'single');
+    [trWav_raw_clu, trWav_raw_sem_clu] = deal(zeros(size(tnWav_raw,1), nSites, nClu, 'single'));
 else
-    trWav_raw_clu = [];
+    [trWav_raw_clu, trWav_raw_sem_clu] = deal([]);
 end
 cviSpk_clu = arrayfun(@(iClu)int32(find(viClu == iClu)), 1:nClu, 'UniformOutput', 0);
+mean_ = @(tr, vi)mean(single(tr(:,:,vi)), 3) * uV_per_bit; 
+sem_ = @(tr, vi)std(single(tr(:,:,vi)), [], 3) * uV_per_bit / sqrt(numel(vi)); 
 for iClu=1:nClu
     viSpk_clu1 = cviSpk_clu{iClu};
     viSpk1 = subsample_vr_(viSpk_clu1, MAX_SAMPLE);
     if isempty(viSpk1), continue; end
     try
-        trWav_clu(:,:,iClu) = mean(tnWav_spk(:,:,viSpk1), 3) * uV_per_bit; %multiply by scaling factor?
+        [trWav_clu(:,:,iClu), trWav_sem_clu(:,:,iClu)] = ...
+            deal(mean_(tnWav_spk, viSpk1), sem_(tnWav_spk, viSpk1));
     catch
         ;
     end
     if fProcessRaw
-        trWav_raw_clu(:,:,iClu) = mean_tnWav_raw_(tnWav_raw(:,:,viSpk1), P);
+        [trWav_raw_clu(:,:,iClu), trWav_raw_sem_clu(:,:,iClu)] = ...
+            deal(mean_(tnWav_raw, viSpk1), sem_(tnWav_raw, viSpk1));
     end
     fprintf('.');
 end
@@ -3211,7 +3215,7 @@ end
 vnSpk_clu = cellfun(@numel, cviSpk_clu);
 S_ = makeStruct_(viSite_clu, vrVmin_clu, vrSnr_clu, vnSite_clu, ...
     vrSnr_sd_clu, vrSnr_min_clu, trWav_clu, trWav_raw_clu, ...
-    vrVpp_clu, viSite_Vpp_clu, vnSpk_clu);
+    vrVpp_clu, viSite_Vpp_clu, vnSpk_clu, trWav_sem_clu, trWav_raw_sem_clu);
 
 if ~isempty(snr_thresh)
     viClu_keep = find(abs(vrSnr_clu) > snr_thresh);    

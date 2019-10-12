@@ -207,6 +207,7 @@ end %func
 %--------------------------------------------------------------------------
 function S_mda = export_spikeforest_crcns_(vcFile_dat1, vcDir_out1, mrLim_incl1, viChan_ext1, vcFile_prb)
 % S_mda = export_spikeforest_crcns_(vcFile_dat1, vcDir_out1, mrLim_incl1, viChan_ext1)
+persistent vcFile_dat_ S_mda_
 
 if nargin<2, vcDir_out1 = []; end
 if nargin<3, mrLim_incl1 = []; end
@@ -215,7 +216,14 @@ if nargin<5, vcFile_prb = []; end
 
 if matchFileExt_(vcFile_dat1, {'.rhd', '.xml'})
     % dan english format
-    S_mda = export_spikeforest_english_(vcFile_dat1, vcDir_out1, mrLim_incl1, viChan_ext1, vcFile_prb);
+    if strcmpi(vcFile_dat_, vcFile_dat1) && read_cfg_('fUse_cache')
+        S_mda = S_mda_;
+        fprintf('Loaded from cache: %s\n', vcFile_dat1);
+    else
+        S_mda = export_spikeforest_english_(vcFile_dat1, vcDir_out1, mrLim_incl1, viChan_ext1, vcFile_prb);
+        S_mda_ = S_mda;
+        vcFile_dat_ = vcFile_dat1;
+    end
     return;    
 end
 
@@ -297,8 +305,8 @@ vcLabel_stim = 'Current stim';
 S_mda = makeStruct_(mnWav_ext, vnWav_int, vnWav_stim, mrSiteXY, S_json, viSpk_gt, csMsg, S_intra, vcLabel_stim);
 if ~isempty(vcDir_out1) % write to file
     mkdir_(vcDir_out1);
-    export_spikeforest_intra_(vcDir_out1, vnWav_int, S_intra);
-    export_spikeforest_(vcDir_out1, mnWav_ext, mrSiteXY, S_json, viSpk_gt);     
+    export_spikeforest_intra_(vcDir_out1, S_mda.vnWav_int, S_mda.S_intra);
+    export_spikeforest_(vcDir_out1, S_mda.mnWav_ext, mrSiteXY, S_mda.S_json, S_mda.viSpk_gt);     
 end
 end %func
 
@@ -456,7 +464,8 @@ if exist_file_(vcFile_mat)
     S_mat = load(vcFile_mat);
     table_data_old = struct_get_(S_mat, 'table_data');
     [~,viA] = ismember(dir2id_(table_data_old(:,1)), dir2id_(csFiles_xml));
-    table_data(viA,1:size(table_data_old,2)) = table_data_old;    
+    vlA = viA>0;
+    table_data(viA(vlA),1:size(table_data_old,2)) = table_data_old(vlA,:);    
 %     vnSpikes_crcns = get_(S_mat, 'vnSpikes_crcns');
     if isempty(min_spikes), return; end
 else
@@ -710,7 +719,7 @@ catch
     return;
 end
 
-figure_wait_(1, hFig);
+figure_wait_(1, hFig); drawnow;
 S_fig1 = hFig.UserData;
 [hAx1, hAx2, hAx3, hAx4, hText] = ...
     struct_get_(S_fig1, 'hAx1', 'hAx2', 'hAx3', 'hAx4', 'hText');
@@ -783,9 +792,13 @@ if isempty(viChan_ext)
     set_table_(hTbl, iFile, 4, num2str_(1:size(mnWav_ext,1)));
     fSave = 1;
 end
-
-fMeanSubt_ext = size(mnWav_ext,1) >= 16;
-mnWav_ext = filt_car_gpu_(mnWav_ext', fMeanSubt_ext, 1);
+% fMeanSubt_ext = size(mnWav_ext,1) >= 16;
+% if 0
+%     fMeanSubt_ext = read_cfg_('fMeanSubt_plot', 0);
+%     mnWav_ext = filt_car_gpu_(mnWav_ext', fMeanSubt_ext, 1);
+% else        
+mnWav_ext = fft_filter_transpose_(mnWav_ext, S_mda.S_json.samplerate);
+% end
 
 viX_ext = 1:nSkip_plot:size(mnWav_ext,1);
 if nSkip_plot>1
@@ -827,6 +840,19 @@ if fSave, cbf_table_save_(hTbl); end
 linkaxes([hAx1, hAx2, hAx3, hAx4], 'x');
 drawnow_();
 figure_wait_(0, hFig);
+end %func
+
+
+%--------------------------------------------------------------------------
+function mrWav_filt = fft_filter_transpose_(mnWav_T, sRateHz)
+S_cfg = read_cfg_();
+fGpu = 1;
+[freqLim, freqLim_width, fft_thresh, fMeanSubt_plot] = struct_get_(S_cfg, 'freqLim_plot','freqLim_width','fft_thresh', 'fMeanSubt_plot');
+P1 = makeStruct_(sRateHz, freqLim, freqLim_width, fGpu, fft_thresh);
+mrWav_filt = fft_filter_transpose(single(mnWav_T), P1);
+if fMeanSubt_plot
+    mrWav_filt = mrWav_filt - mean(mrWav_filt,2);
+end
 end %func
 
 
@@ -1111,13 +1137,15 @@ xylabel_(hAx3, 'time (ms)','V_ext (uV)', 'Extracellular mean filtered waveforms'
 % plot hAx4,5
 try
     S_prb = load_prb_(read_cfg_('vcFile_probe'));
-    [hLine4, xlim4, ylim4] = plot_unit_(hAx4, S_gt1.trWav_raw_clu, S_prb.mrSiteXY);    
+    [hLine4, xlim4, ylim4] = ...
+        plot_unit_(hAx4, S_gt1.trWav_raw_clu, S_prb.mrSiteXY, get_(S_gt1, 'trWav_raw_sem_clu'));    
     hImg4 = overlay_image_(hAx4, S_gt1.trWav_raw_clu, S_prb.mrSiteXY, xlim4, ylim4);
-    title(hAx4, 'Extracellular mean raw waveforms (color: Vpp)');    
+    title(hAx4, 'Extracellular mean raw waveforms (color: |V|)');    
     
-    [hLine5, xlim5, ylim5] = plot_unit_(hAx5, S_gt1.trWav_clu, S_prb.mrSiteXY);            
+    [hLine5, xlim5, ylim5] = ...
+        plot_unit_(hAx5, S_gt1.trWav_clu, S_prb.mrSiteXY, get_(S_gt1, 'trWav_sem_clu'));          
     hImg5 = overlay_image_(hAx5, S_gt1.trWav_clu, S_prb.mrSiteXY, xlim5, ylim5);        
-    title(hAx5, 'Extracellular mean filtered waveforms (color: Vpp)');
+    title(hAx5, 'Extracellular mean filtered waveforms (color: |V|)');
 catch
     disp(lasterr());
 end
@@ -1133,28 +1161,28 @@ end %func
 %--------------------------------------------------------------------------
 function hImg1 = overlay_image_(hAx1, mrZ1, mrXY1, xlim1, ylim1)
 [vrX1, vrY1, mrZ1] = deal(mrXY1(:,1), mrXY1(:,2), double(mrZ1));
-vrZ1 = range(mrZ1)';
+vrZ1 = max(abs(mrZ1))';
 % [~,iC_max] = max(vrZ1);
 % [~,iT_max] = max(range(mrZ1');
 [vrX2, vrY2] = deal(linspace(min(vrX1),max(vrX1), 40), linspace(min(vrY1),max(vrY1), 320));
 [xx2,yy2] = meshgrid(vrX2,vrY2);
 F = scatteredInterpolant(vrX1, vrY1, vrZ1, 'natural');
-mrY_interp = F(xx2,yy2);
+mrY_interp = abs(F(xx2,yy2));
 
 hold(hAx1, 'on'); 
 vrX3 = linspace(xlim1(1), xlim1(2), size(mrY_interp,2));
 vrY3 = linspace(ylim1(1), ylim1(2), size(mrY_interp,1));
-hImg1 = imagesc(hAx1, mrY_interp, 'xdata', vrX3, 'ydata', vrY3);
+hImg1 = imagesc(hAx1, 'XData', vrX3, 'YData', vrY3, 'CData', mrY_interp, [0, max(vrZ1)]);
 uistack(hImg1, 'bottom');
+grid(hAx1,'on');
 colormap jet;
 
-if 1 % animate
-    cell_F = arrayfun(@(i)scatteredInterpolant(vrX1, vrY1, mrZ1(i,:)', 'natural'), 1:size(mrZ1,1), 'UniformOutput',0);    
-    nF = numel(cell_F);
-    fh_update = @(iF)set(hImg1, 'CData', cell_F{iF}(xx2,yy2));
-    set(hImg1, 'UserData', makeStruct_(fh_update, nF, mrY_interp));
-    cbf_animate_(hImg1);
-end
+% animate
+cell_F = arrayfun(@(i)scatteredInterpolant(vrX1, vrY1, mrZ1(i,:)', 'natural'), 1:size(mrZ1,1), 'UniformOutput',0);    
+nF = numel(cell_F);
+fh_update = @(iF)set(hImg1, 'CData', abs(cell_F{iF}(xx2,yy2)));
+set(hImg1, 'UserData', makeStruct_(fh_update, nF, mrY_interp));
+hImg1.ButtonDownFcn = @(h,e)cbf_animate_(h,e);
 end %func
 
 
@@ -1163,8 +1191,12 @@ function cbf_animate_(h,e)
 S = get(h, 'UserData');
 [fh_update, nF, mrY_interp] = struct_get_(S, 'fh_update', 'nF', 'mrY_interp');
 for iF=1:nF
-    fh_update(iF);
-    drawnow('limitrate');
+    try
+        fh_update(iF);
+        drawnow('limitrate');
+    catch
+        return;
+    end
 end
 set(h, 'CData', mrY_interp);
 end %func
@@ -1185,7 +1217,8 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function [hLine, xlim1, ylim1] = plot_unit_(hAx, mrWav_clu, mrXY_site)
+function [hLine, xlim1, ylim1] = plot_unit_(hAx, mrWav_clu, mrXY_site, mrWav_sem_clu)
+if nargin<4, mrWav_sem_clu=[]; end
 
 S_cfg = read_cfg_();
 maxAmp = get_set_(S_cfg, 'maxAmp', 300);
@@ -1199,15 +1232,23 @@ dt = diff(spkLim_ms);
 
 vrX = (1:nSamples)'/nSamples*dt;
 vrX([1,end])=nan; % line break
-
-mrY1 = mrWav_clu / maxAmp;
 vrX1_site = mrXY_site(:,1) / dx * diff(spkLim_ms);
 vrY1_site = mrXY_site(:,2) / dy;
 
-mrY1 = bsxfun(@plus, mrY1, vrY1_site') * maxAmp;
-mrX1 = bsxfun(@plus, repmat(vrX, [1, size(mrY1, 2)]), vrX1_site');
-hLine = line(mrX1(:), mrY1(:), 'Color', 'k', 'Parent', hAx, 'LineWidth', 1.5);
-
+if isempty(mrWav_sem_clu)
+    cmrY = {mrWav_clu};
+    mrColor = zeros(1,3);
+else
+    cmrY = {mrWav_clu-mrWav_sem_clu, mrWav_clu+mrWav_sem_clu, mrWav_clu};
+    mrColor = [.5 .5 .5; .5 .5 .5; 0 0 0];
+end
+hold(hAx,'on');
+for iY = 1:numel(cmrY)
+    mrY1 = cmrY{iY};
+    mrY1 = bsxfun(@plus, mrY1 / maxAmp, vrY1_site') * maxAmp;
+    mrX1 = bsxfun(@plus, repmat(vrX, [1, size(mrY1, 2)]), vrX1_site');
+    hLine(iY) = line(mrX1(:), mrY1(:), 'Color', mrColor(iY,:), 'Parent', hAx, 'LineWidth', 1);
+end
 xlabel(hAx, 'Time (ms)');
 ylabel(hAx, 'Voltage (uV)');
 grid(hAx, 'on');
@@ -1506,7 +1547,7 @@ function out1 = rankorder_mr_(varargin), fn=dbstack(); out1 = irc('call', fn(1).
 function out1 = create_figure_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = struct_append_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = uimenu_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
-function out1 = filt_car_gpu_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
+% function out1 = filt_car_gpu_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = pad_cs_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = fft_clean_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = num2str_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
