@@ -3239,7 +3239,16 @@ else
     miSites_clu = [];
 end
 cvnBurst_clu = analyze_burst_(S_gt.viTime, S_gt.viClu, S_cfg);
-S_gt = struct_add_(S_gt, viClu_keep, vrVrms_site, vrVsd_site, miSites_clu, cvnBurst_clu, cviSpk_clu);
+if read_cfg_('fSave_spk_gt')
+    dimm_spk = size(tnWav_spk);
+    type_spk = class(tnWav_spk);
+    vcFile_spk = fullfile(fileparts(P.vcFile), 'gt_spkwav.irc');
+    write_bin_(vcFile_spk, tnWav_spk);
+else
+    [dimm_spk, type_spk, vcFile_spk] = deal([]);
+end
+S_gt = struct_add_(S_gt, viClu_keep, vrVrms_site, vrVsd_site, miSites_clu, cvnBurst_clu, cviSpk_clu, ...
+    dimm_spk, type_spk, vcFile_spk);
 fprintf('\n\ttook %0.1fs\n', toc(t1));
 end %func
 
@@ -30321,7 +30330,9 @@ else
         fprintf('Wrote to cache: %s\n', vcFile_gt1);
     end
 end
-
+if ~isfield(S_gt, 'cviSpk_clu')
+    S_gt.cviSpk_clu = arrayfun(@(iClu)int32(find(S_gt.viClu == iClu)), 1:max(S_gt.viClu), 'UniformOutput', 0);
+end
 % S_gt = S_gt_snr_thresh_(S_gt, P.snr_thresh_gt); % trim by SNR threshold
 S_score = struct_(...
     'vrVmin_gt', S_gt.vrVmin_clu, 'vnSite_gt', S_gt.vnSite_clu, ... 

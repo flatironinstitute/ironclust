@@ -20,8 +20,8 @@ fSpatialMask_clu = 0;
 nPcPerChan = 2;
 nFet_max = [];
 sort_mode = 1;
-step_sec_drift = 8; %20
-batch_sec_drift = 240; %300
+step_sec_drift = 10; %20
+batch_sec_drift = 300; %300
 fWhiten_fet = 0;
 
 % auto-merge

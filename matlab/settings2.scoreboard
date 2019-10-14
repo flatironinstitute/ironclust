@@ -11,8 +11,8 @@ fGpu={1};
 fParfor={0};
 
 % #Drift
-batch_sec_drift = {180, 240, 300};
-step_sec_drift = {2, 4, 8, 10, 16, 20};
+batch_sec_drift = {300};
+step_sec_drift = {10, 20};
 
 % #Noise
 fft_thresh = {8};

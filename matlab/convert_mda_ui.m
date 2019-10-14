@@ -100,7 +100,15 @@ if nargin<3, mrLim_incl1 = []; end
 if nargin<4, viSite_ext1 = []; end
 if nargin<5, vcFile_prb = []; end
 
-S_cfg = file2struct_(ircpath_('dan_english.cfg'));
+persistent vcFile_in_ S_mda_
+
+if strcmpi(vcFile_in_, vcFile_in1) && read_cfg_('fUse_cache', 1)
+    S_mda = S_mda_;
+    fprintf('Loaded from cache: %s\n', vcFile_in1);
+    return;
+end        
+    
+S_cfg = read_cfg_();
 if isempty(vcFile_prb)    
     vcFile_prb = S_cfg.vcFile_probe;
 end
@@ -196,18 +204,25 @@ fJuxta = get_set_(S_cfg, 'fJuxta', 1);
 
 % output
 S_mda = makeStruct_(mnWav_ext, vnWav_int, vnWav_stim, mrSiteXY, S_json, viSpk_gt, csMsg, S_intra, vcLabel_stim);
+if isempty(vcDir_out1)
+    vcDir_out = read_cfg_('vcDir_out');
+    [~, vcDir11] = fileparts(fileparts(vcFile_in1));
+    vcDir_out1 = fullfile(vcDir_out, sprintf('%s', vcDir11)); 
+end
 if ~isempty(vcDir_out1) % write to file
     mkdir_(vcDir_out1);
     export_spikeforest_intra_(vcDir_out1, S_intra, S_json);    
     export_spikeforest_(vcDir_out1, mnWav_ext, mrSiteXY, S_json, viSpk_gt);     
 end
+S_mda_ = S_mda;
+vcFile_in_ = vcFile_in1;
 end %func
+
 
 
 %--------------------------------------------------------------------------
 function S_mda = export_spikeforest_crcns_(vcFile_dat1, vcDir_out1, mrLim_incl1, viChan_ext1, vcFile_prb)
 % S_mda = export_spikeforest_crcns_(vcFile_dat1, vcDir_out1, mrLim_incl1, viChan_ext1)
-persistent vcFile_dat_ S_mda_
 
 if nargin<2, vcDir_out1 = []; end
 if nargin<3, mrLim_incl1 = []; end
@@ -216,14 +231,7 @@ if nargin<5, vcFile_prb = []; end
 
 if matchFileExt_(vcFile_dat1, {'.rhd', '.xml'})
     % dan english format
-    if strcmpi(vcFile_dat_, vcFile_dat1) && read_cfg_('fUse_cache')
-        S_mda = S_mda_;
-        fprintf('Loaded from cache: %s\n', vcFile_dat1);
-    else
-        S_mda = export_spikeforest_english_(vcFile_dat1, vcDir_out1, mrLim_incl1, viChan_ext1, vcFile_prb);
-        S_mda_ = S_mda;
-        vcFile_dat_ = vcFile_dat1;
-    end
+    S_mda = export_spikeforest_english_(vcFile_dat1, vcDir_out1, mrLim_incl1, viChan_ext1, vcFile_prb);
     return;    
 end
 
@@ -731,7 +739,7 @@ catch
     vcFile_prb = []; 
 end
 if isempty(vcFile_prb)
-    S_cfg = file2struct_(ircpath_('dan_english.cfg'));
+    S_cfg = read_cfg_();
     vcFile_prb = S_cfg.vcFile_probe;
     hTbl.Data{iFile,5} = vcFile_prb;
 end
@@ -1054,9 +1062,10 @@ vcFile_gt1 = fullfile(vcDir1, 'raw_geom_gt1.mat');
 vcFile_gt_mda1 = fullfile(vcDir1, 'firings_true.mda');
 if exist_file_(vcFile_gt1) && fUse_cache_gt
     S_gt1 = load(vcFile_gt1);
+    fprintf('Loaded from %s\n', vcFile_gt1);
 elseif exist_file_(vcFile_gt_mda1)
     S_gt1 = mda2gt_(vcFile_gt_mda1);
-    struct_save_(S_gt1, vcFile_gt1);
+    struct_save_(S_gt1, vcFile_gt1, 1);    
 else
     disperr_('groundtruth file not found');
     return;
@@ -1136,15 +1145,21 @@ xylabel_(hAx3, 'time (ms)','V_ext (uV)', 'Extracellular mean filtered waveforms'
 
 % plot hAx4,5
 try
-    S_prb = load_prb_(read_cfg_('vcFile_probe'));
+    switch nSites1
+        case 32
+            S_prb = load_prb_(read_cfg_('vcFile_probe'));
+            mrSiteXY = S_prb.mrSiteXY;
+        case 4
+            mrSiteXY = [0 0; -1/sqrt(2), 1/sqrt(2); 1/sqrt(2), 1/sqrt(2); 0, 2/sqrt(2)]*25;
+    end
     [hLine4, xlim4, ylim4] = ...
-        plot_unit_(hAx4, S_gt1.trWav_raw_clu, S_prb.mrSiteXY, get_(S_gt1, 'trWav_raw_sem_clu'));    
-    hImg4 = overlay_image_(hAx4, S_gt1.trWav_raw_clu, S_prb.mrSiteXY, xlim4, ylim4);
+        plot_unit_(hAx4, S_gt1.trWav_raw_clu, mrSiteXY, get_(S_gt1, 'trWav_raw_sem_clu'));    
+    hImg4 = overlay_image_(hAx4, S_gt1.trWav_raw_clu, mrSiteXY, xlim4, ylim4);
     title(hAx4, 'Extracellular mean raw waveforms (color: |V|)');    
     
     [hLine5, xlim5, ylim5] = ...
-        plot_unit_(hAx5, S_gt1.trWav_clu, S_prb.mrSiteXY, get_(S_gt1, 'trWav_sem_clu'));          
-    hImg5 = overlay_image_(hAx5, S_gt1.trWav_clu, S_prb.mrSiteXY, xlim5, ylim5);        
+        plot_unit_(hAx5, S_gt1.trWav_clu, mrSiteXY, get_(S_gt1, 'trWav_sem_clu'));          
+    hImg5 = overlay_image_(hAx5, S_gt1.trWav_clu, mrSiteXY, xlim5, ylim5);        
     title(hAx5, 'Extracellular mean filtered waveforms (color: |V|)');
 catch
     disp(lasterr());
@@ -1313,7 +1328,7 @@ end
 function val = read_cfg_(name, default)
 if nargin<1, name=[]; end
 if nargin<2, default = []; end
-S_cfg = file2struct_('dan_english.cfg');
+S_cfg = file2struct_(ircpath_('dan_english.cfg'));
 if isempty(name)
     val = S_cfg;
 else
