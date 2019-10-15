@@ -1,0 +1,102 @@
+DATA
+18 loadings
+===================================
+
+Runtime (s)
+    Detect + feature (s):   45.0s
+    Cluster runtime (s):    4.6s
+    merge runtime (s):      7.5s
+    Total runtime (s):      57.1s
+    Runtime speed:          x21.0 realtime
+memory usage (GiB):         0.469
+    detect(GiB):            0.396
+    sort(GiB):              0.469
+Execution
+    fGpu (GPU use):         1
+    fParfor (parfor use):   1
+
+===================================
+
+Runtime (s)
+    Detect + feature (s):   79.5s
+    Cluster runtime (s):    22.6s
+    merge runtime (s):      13.3s
+    Total runtime (s):      115.3s
+    Runtime speed:          x10.4 realtime
+memory usage (GiB):         0.469
+    detect(GiB):            0.469
+    sort(GiB):              0.456
+Execution
+    fGpu (GPU use):         1
+    fParfor (parfor use):   0
+
+===================================
+
+Runtime (s)
+    Detect + feature (s):   271.1s
+    Cluster runtime (s):    35.4s
+    merge runtime (s):      11.7s
+    Total runtime (s):      318.2s
+    Runtime speed:          x3.8 realtime
+memory usage (GiB):         0.517
+    detect(GiB):            0.517
+    sort(GiB):              0.503
+Execution
+    fGpu (GPU use):         0
+    fParfor (parfor use):   0
+
+===================================
+
+Runtime (s)
+    Detect + feature (s):   82.2s
+    Cluster runtime (s):    17.0s
+    merge runtime (s):      6.6s
+    Total runtime (s):      105.8s
+    Runtime speed:          x11.3 realtime
+memory usage (GiB):         0.714
+    detect(GiB):            0.627
+    sort(GiB):              0.714
+Execution
+    fGpu (GPU use):         0
+    fParfor (parfor use):   1
+
+
+======================================
+remote CPU (200)
+
+Runtime (s)
+    Detect + feature (s):   44.4s
+    Cluster runtime (s):    8.7s
+    merge runtime (s):      49.2s
+    Total runtime (s):      102.3s
+    Runtime speed:          x11.7 realtime
+memory usage (GiB):         0.522
+    detect(GiB):            0.522
+    sort(GiB):              0.472
+Execution
+    fGpu (GPU use):         0
+    fParfor (parfor use):   1
+
+
+
+======================================
+remote CPU (100)
+
+Runtime (s)
+    Detect + feature (s):   59.2s
+    Cluster runtime (s):    11.4s
+    merge runtime (s):      29.8s
+    Total runtime (s):      100.5s
+    Runtime speed:          x11.9 realtime
+memory usage (GiB):         0.637
+    detect(GiB):            0.614
+    sort(GiB):              0.637
+Execution
+    fGpu (GPU use):         0
+    fParfor (parfor use):   1
+
+
+======================================
+remote GPU (100)
+
+

@@ -1,7 +1,6 @@
 % execution
 fGpu = 1; 
 fParfor = 1;
-% HYBRID DRIFt 64CH detection time: (1,1):51s(17.4x), (1,0):105s(8.7x), (0:1): 55.2s(15.1x), (0:0):233s(4.1x) 
 MAX_BYTES_LOAD = .5e9;
 
 % detect
@@ -20,7 +19,7 @@ fSpatialMask_clu = 0;
 nPcPerChan = 2;
 nFet_max = [];
 sort_mode = 1;
-step_sec_drift = 10; %20
+step_sec_drift = 20; %20
 batch_sec_drift = 300; %300
 fWhiten_fet = 0;
 
@@ -29,3 +28,7 @@ post_merge_mode0 = [5]; % [12,17]
 post_merge_mode = 1; 
 maxWavCor = .99; 
 min_snr_clu = 4; % remove clusters below SNR threshold, set to [] to skip
+
+% speed test (12 core Quadro P4000, 8GiB)
+% HYBRID Janelia DRIFT 64ch 1200s
+% (fGpu,fParfor): (1,1):57s(21.0x), (1,0):115s(10.4x), (0,1):105.8s(11.3x), (0:0):318s(3.8x) 

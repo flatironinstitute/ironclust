@@ -262,8 +262,8 @@ end %func
 %--------------------------------------------------------------------------
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_()
-vcVer = 'v5.0.4';
-vcDate = '10/9/2019';
+vcVer = 'v5.0.5';
+vcDate = '10/14/2019';
 vcHash = file2hash_();
 
 if nargout==0
@@ -502,7 +502,7 @@ maxWavCor = get_set_(P, 'maxWavCor', .99);
 if maxWavCor<1
     post_merge_mode = get_set_(P, 'post_merge_mode', 1);
     switch post_merge_mode 
-        case 1, mrDist_clu = wave_similarity_clu1_(S0, P);
+        case 1, mrDist_clu = wave_similarity_clu_(S0, P);
         case 2, mrDist_clu = calc_dist_ccg(S0, P);
         otherwise, mrDist_clu = calc_dist_clu_(S0, P, post_merge_mode);
     end
@@ -572,7 +572,7 @@ end
 
 % update similarity
 S0.S_clu = S_clu;
-mrWavCor = wave_similarity_clu1_(S0, P);
+mrWavCor = wave_similarity_clu_(S0, P);
 S_clu.mrWavCor = mrWavCor + mrWavCor'; % make it symmetric
 
 S_clu = S_clu_position_(S_clu);
@@ -940,7 +940,7 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function mrDist_clu = wave_similarity_clu_(S0, P, mode_sim)
+function mrDist_clu = wave_similarity_clu__(S0, P, mode_sim)
 S_clu = S0.S_clu;
 MIN_COUNT = P.min_count;
 if nargin<3, mode_sim = []; end
@@ -1036,7 +1036,7 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function mrDist_clu = wave_similarity_clu1_(S0, P)
+function mrDist_clu = wave_similarity_clu_(S0, P)
 S_clu = S0.S_clu;
 
 [KNN, MAX_SAMPLE, NUM_PC, fUse_raw] = deal(16, 4000, 3, 0);
@@ -1058,100 +1058,109 @@ dimm_spk = [size(trPc_spk,1), size(trPc_spk,2), size(S0.trPc_spk,3)];
 nSites = max(viSite_spk);
 nDrift = get_set_(P, 'nTime_drift', 64);
 nSpk_min = get_set_(P, 'knn', 30);
-fprintf('\tComputing template\n\t'); t_template = tic;
+nClu = S_clu.nClu;
 
-% mrMean_site = zeros(nDrift, S_clu.nClu);
-for iClu = 1:S_clu.nClu
-    viSpk1 = find(S_clu.viClu == iClu);
-    viSpk1 = viSpk1(:);
-    viiSpk1 = round(linspace(1, numel(viSpk1), nDrift+1));
-    [vlKeep_clu1, viSite_clu1] = deal(true(nDrift, 1), zeros(nDrift,1));
-    trPc_drift1 = zeros(dimm_spk(1), dimm_spk(2), nDrift, 'single');
-    [miKnn1, vrRho1] = deal(miKnn(:,viSpk1), vrRho_spk(viSpk1)');
-    for iDrift = 1:nDrift
-        vii1 = viiSpk1(iDrift):viiSpk1(iDrift+1);
-        [viSpk11, vrRho11, miKnn11] = deal(viSpk1(vii1), vrRho1(vii1), miKnn1(:,vii1));
-        
-        switch 1 %3 % expand selection using miKnn
-            case 1 % only connect to neighbors with higher density
-                viSpk11 = miKnn11(vrRho_spk(miKnn11) >= vrRho11);
-                viSpk11 = unique(viSpk11);
-                iSite11 = mode(viSite_spk(viSpk11));
-                vl_ = viSite_spk(viSpk11) == iSite11;
-                viSpk11 = viSpk11(vl_);   
-            case 2 % only connect to neighbors with higher density
-                viSpk11 = unique(miKnn11(:));
-                iSite11 = mode(viSite_spk(viSpk11));
-                vl_ = viSite_spk(viSpk11) == iSite11;
-                viSpk11 = viSpk11(vl_);                  
-%                 mrMean_site(iDrift, iClu) = mean(vl_);
-            case 4
-                viSpk11 = viSpk11(vrRho11 > median(vrRho11));
-                viSpk11 = miKnn(:, viSpk11);
-                viSpk11 = viSpk11(:); % density based selection                
-                iSite11 = mode(viSite_spk(viSpk11));
-                viSpk11 = viSpk11(viSite_spk(viSpk11) == iSite11);   
-            case 3     
-                viSpk11 = miKnn(:, viSpk11);
-                viSpk11 = viSpk11(:); % density based selection                
-                iSite11 = mode(viSite_spk(viSpk11));
-                viSpk11 = viSpk11(viSite_spk(viSpk11) == iSite11);   
-            case 6               
-                viSpk11 = miKnn(:, viSpk11);
-                viSpk11 = viSpk11(:);
-                viSpk11 = viSpk11(vrRho11 > quantile(vrRho11, frac_thresh));
-                viSpk11 = viSpk11(viClu_spk(viSpk11) == iClu);
-                iSite11 = mode(viSite_spk(viSpk11));
-                viSpk11 = viSpk11(viSite_spk(viSpk11) == iSite11);
-            case 5 % find local peak
-                vrRho1 = S_clu.rho(viSpk1);
-                [~,ii11] = max(vrRho1(vii1)); % local peak
-                iSpk11 = viSpk1(vii1(ii11)); % center spike index
-                iSite11 = viSite_spk(iSpk11);
-                % find neighbors around the local peak
-                viSpk11 = miKnn(:, miKnn(:,iSpk11));
-                viSpk11 = viSpk11(:);
-                viSpk11 = viSpk11(viSite_spk(viSpk11) == iSite11 & viClu_spk(viSpk11) == iClu);     
+fprintf('\tComputing template\n\t'); t_template = tic;
+cviSpk_clu = arrayfun_(@(x)find(S_clu.viClu==x), (1:S_clu.nClu)');
+S1 = makeStruct_(vrRho_spk, viSite_spk, miKnn, nDrift, dimm_spk, nSpk_min);
+fParfor = P.fParfor;
+if fParfor
+    try
+        parfor iClu = 1:S_clu.nClu
+            [ctrPc_clu{iClu}, cviSite_clu{iClu}] = wave_similarity_clu1_(cviSpk_clu{iClu}, trPc_spk, S1);
         end
-        viSite_clu1(iDrift) = iSite11;
-        if numel(viSpk11) < nSpk_min
-            vlKeep_clu1(iDrift) = false;
-            continue;
-        end
-        trPc_drift1(:,:,iDrift) = mean(trPc_spk(:,:,viSpk11),3);
+    catch
+        fParfor = 0;
     end
-    ctrPc_clu{iClu} = trPc_drift1(:,:,vlKeep_clu1);
-    cviSite_clu{iClu} = viSite_clu1(vlKeep_clu1);
-    fprintf('.');
+end
+if ~fParfor
+    for iClu = 1:S_clu.nClu
+        [ctrPc_clu{iClu}, cviSite_clu{iClu}] = wave_similarity_clu1_(cviSpk_clu{iClu}, trPc_spk, S1);
+    end
 end
 fprintf('\n\ttook %0.1fs\n', toc(t_template));
 
 
 % merge the templates: todo, faster code
-normalize_ = @(x)bsxfun(@rdivide, x, sqrt(sum(x.^2)));
-fh_norm_tr = @(x)normalize_(reshape(pc2wav_(mrPv,x), [], size(x,3)));
-
+% normalize_ = @(x)bsxfun(@rdivide, x, sqrt(sum(x.^2)));
+% fh_norm_tr = @(x)normalize_(reshape(pc2wav_(mrPv,x), [], size(x,3)));
 mrDist_clu = nan(S_clu.nClu, 'single');
-for iClu1 = 1:(S_clu.nClu-1)
-    viSite_clu1 = cviSite_clu{iClu1};
-    if isempty(viSite_clu1), continue; end
-    mr1_ = fh_norm_tr(shift_trWav_(ctrPc_clu{iClu1}, viShift));
-    viSite_clu1 = repmat(viSite_clu1(:), numel(viShift), 1);
-    vrDist_clu1 = zeros(S_clu.nClu, 1, 'single');
-    for iClu2 = (iClu1+1):S_clu.nClu
-        viSite2 = cviSite_clu{iClu2};
-        if ~any(ismember(viSite_clu1, viSite2)), continue; end
-        viSite12 = intersect(viSite_clu1, viSite2);
-%         if isempty(viSite12), continue; end
-        mr2_ = fh_norm_tr(ctrPc_clu{iClu2});   
-        for iSite12_ = 1:numel(viSite12)
-            iSite12 = viSite12(iSite12_);
-            mrDist12 = mr2_(:, viSite2==iSite12)' * mr1_(:, viSite_clu1==iSite12);
-            vrDist_clu1(iClu2) = max(vrDist_clu1(iClu2), max(mrDist12(:)));
-        end
+S1 = makeStruct_(cviSite_clu, ctrPc_clu, nClu, viShift, mrPv);
+if fParfor
+    try
+        parfor iClu1 = 1:(nClu-1)
+            mrDist_clu(:, iClu1) = wav_similarity_clu2_(iClu1, S1);
+        end %for
+    catch
+        fParfor = 0;
+    end 
+end
+if ~fParfor
+    for iClu1 = 1:(nClu-1)
+        mrDist_clu(:, iClu1) = wav_similarity_clu2_(iClu1, S1);
+    end %for
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+function vrDist_clu1 = wav_similarity_clu2_(iClu1, S3)
+[cviSite_clu, ctrPc_clu, nClu, viShift, mrPv] = ...
+    struct_get_(S3, 'cviSite_clu', 'ctrPc_clu', 'nClu', 'viShift', 'mrPv');
+viSite_clu1 = cviSite_clu{iClu1};
+mr1 = normalize_tr_(shift_trWav_(ctrPc_clu{iClu1}, viShift), mrPv);
+viSite_clu1 = repmat(viSite_clu1(:), numel(viShift), 1);
+vrDist_clu1 = zeros(nClu, 1, 'single');
+for iClu2 = (iClu1+1):nClu
+    viSite2 = cviSite_clu{iClu2};
+    if ~any(ismember(viSite_clu1, viSite2)), continue; end
+    viSite12 = intersect(viSite_clu1, viSite2);
+    mr2 = normalize_tr_(ctrPc_clu{iClu2}, mrPv);   
+    for iSite12_ = 1:numel(viSite12)
+        iSite12 = viSite12(iSite12_);
+        mrDist12 = mr2(:, viSite2==iSite12)' * mr1(:, viSite_clu1==iSite12);
+        vrDist_clu1(iClu2) = max(vrDist_clu1(iClu2), max(mrDist12(:)));
     end
-    mrDist_clu(:, iClu1) = vrDist_clu1;
-end %for
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+function mrWav1 = normalize_tr_(mrPc, mrPv)
+mrWav = reshape(pc2wav_(mrPv,mrPc), [], size(mrPc,3));
+mrWav1 = bsxfun(@rdivide, mrWav, sqrt(sum(mrWav.^2)));
+end %func
+
+
+%--------------------------------------------------------------------------
+function [trPc1, viSite1] = wave_similarity_clu1_(viSpk1, trPc_spk, S)
+
+[vrRho_spk, viSite_spk, miKnn, nDrift, dimm_spk, nSpk_min] = ...
+    struct_get_(S, 'vrRho_spk', 'viSite_spk', 'miKnn', 'nDrift', 'dimm_spk', 'nSpk_min');
+viSpk1 = viSpk1(:);
+viiSpk1 = round(linspace(1, numel(viSpk1), nDrift+1));
+[vlKeep_clu1, viSite_clu1] = deal(true(nDrift, 1), zeros(nDrift,1));
+trPc_drift1 = zeros(dimm_spk(1), dimm_spk(2), nDrift, 'single');
+[miKnn1, vrRho1] = deal(miKnn(:,viSpk1), vrRho_spk(viSpk1)');
+for iDrift = 1:nDrift
+    vii1 = viiSpk1(iDrift):viiSpk1(iDrift+1);
+    [viSpk11, vrRho11, miKnn11] = deal(viSpk1(vii1), vrRho1(vii1), miKnn1(:,vii1));
+    viSpk11 = miKnn11(vrRho_spk(miKnn11) >= vrRho11);
+    viSpk11 = unique(viSpk11);
+    iSite11 = mode(viSite_spk(viSpk11));
+    vl_ = viSite_spk(viSpk11) == iSite11;
+    viSpk11 = viSpk11(vl_);   
+
+    viSite_clu1(iDrift) = iSite11;
+    if numel(viSpk11) < nSpk_min
+        vlKeep_clu1(iDrift) = false;
+        continue;
+    end
+    trPc_drift1(:,:,iDrift) = mean(trPc_spk(:,:,viSpk11),3);
+end
+trPc1 = trPc_drift1(:,:,vlKeep_clu1);
+viSite1 = viSite_clu1(vlKeep_clu1);
+% fprintf('.');
 end %func
 
 

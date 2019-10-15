@@ -21748,8 +21748,8 @@ end %func
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_(vcFile_prm)
 if nargin<1, vcFile_prm = ''; end
-vcVer = 'v5.0.0';
-vcDate = '9/30/2019';
+vcVer = 'v5.0.5';
+vcDate = '10/14/2019';
 vcHash = file2hash_();
 
 if nargout==0
