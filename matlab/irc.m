@@ -28971,7 +28971,7 @@ uV_per_bit = (voltageRange / amplification * 1e6) / 2 ^ nBits;
 vcDataType = sprintf('int%d', nBits);
 
 % parse out channel maps, bottom to top order
-[viSite2chan1, viSite2chan2, viSite2chan3] = deal([]);
+[viSite2chan1, viSite2chan2, viSite2chan3, viSite2chan4] = deal([]);
 % fh_site2chan = @(x)fliplr(cellfun(@(y)str2num_(y.Text), x)) + 1;
 cS_channels = S_xml1.parameters.anatomicalDescription.channelGroups.group;
 if ~iscell(cS_channels), cS_channels = {cS_channels}; end
@@ -28992,7 +28992,7 @@ catch
     [viSite2Chan, viShank_site] = deal([]);
 end
 S_xml = makeStruct_(sRateHz, nChans, uV_per_bit, nBits, vcDataType, ...
-    viSite2chan1, viSite2chan2, viSite2chan3, viSite2Chan, viShank_site, ...
+    viSite2chan1, viSite2chan2, viSite2chan3, viSite2chan4, viSite2Chan, viShank_site, ...
     vcFile_dat, vcFile_xml);
 end %func
         
