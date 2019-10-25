@@ -1733,9 +1733,89 @@ end
 
 
 %--------------------------------------------------------------------------
+function S0 = detect_(P)
+switch 4
+    case 4, S0 = detect4_(P);
+    case 3, S0 = detect3_(P);
+end
+end %func
+
+
+%--------------------------------------------------------------------------
 % uses parfor and temp file (memory efficient)
 % write a temp file and delete
-function S0 = detect_(P)
+function S0 = detect4_(P)
+% keep all features in the memory, no disk storage
+
+% parfor loop
+if get_set_(P, 'fParfor', 1)
+    gcp_ = gcp();
+else
+    gcp_ = [];
+end
+
+runtime_detect = tic; 
+memory_init = memory_matlab_();
+
+% load one
+S_paged = readmda_paged_(P); % initialize
+[nLoads, viOffset_load] = deal(S_paged.nLoads, S_paged.viOffset_load);
+[mrWav_T1, nlim_wav1, fDone] = readmda_paged_(); % process first part
+cS_detect = cell(nLoads, 1);
+cS_detect{1} = detect_paged_(mrWav_T1, P, makeStruct_(nlim_wav1)); % process the first part
+mrWav_T1 = [];
+[vrThresh_site, mrPv_global] = struct_get_(cS_detect{1}, 'vrThresh_site', 'mrPv_global');
+S_cache = makeStruct_(vrThresh_site, mrPv_global);
+fprintf('Memory use: %0.3f GiB\n', memory_matlab_()/2^30);
+if ~isempty(gcp_)  % must debug
+    [vcFile, vS_load] = readmda_paged_('close'); % close the file
+    parfor iLoad = 2:nLoads  % change to for loop for debugging
+        S_load1 = vS_load(iLoad);
+        mrWav_T1 = load_file_part_(vcFile, S_load1);
+        S_cache1 = setfield(S_cache, 'nlim_wav1', S_load1.nlim);
+        cS_detect{iLoad} = detect_paged_(mrWav_T1, P, S_cache1);
+        mrWav_T1 = [];
+%         fprintf('\tMemory use: %0.3f GiB\n', memory_matlab_()/2^30);
+    end
+    fprintf('\tMemory use: %0.3f GiB\n', memory_matlab_()/2^30);
+else
+    for iLoad = 2:nLoads
+        [mrWav_T1, nlim_wav1] = readmda_paged_(); % process first part    
+        S_cache.nlim_wav1 = nlim_wav1; % trim waveform
+        cS_detect{iLoad} = detect_paged_(mrWav_T1, P, S_cache);        
+        fprintf('\tMemory use: %0.3f GiB\n', memory_matlab_()/2^30);
+        mrWav_T1 = [];
+    end
+end
+S0 = detect_merge_(cS_detect, viOffset_load);
+switch 1
+    case 2
+        trPc_spk1 = reshape(S0.mrVp_spk, 1, size(S0.mrVp_spk,1), size(S0.mrVp_spk,2));
+        [mrPos_spk, vrPow_spk] = calc_pos_spk_(S0.trPc_spk1, S0.viSite_spk, P);
+    case 1
+        [mrPos_spk, vrPow_spk] = calc_pos_spk_(S0.trPc_spk, S0.viSite_spk, P);
+end %switch
+% Save output
+runtime_detect = toc(runtime_detect);
+memory_detect = memory_matlab_();
+S0 = struct_add_(S0, vrPow_spk, vrThresh_site, mrPv_global, runtime_detect, P, memory_detect, memory_init, mrPos_spk);
+fprintf('detect_: took %0.1fs (fParfor=%d, fGpu=%d)\n', runtime_detect, P.fParfor, P.fGpu);
+end %func
+
+
+%--------------------------------------------------------------------------
+function mrWav_T1 = load_file_part_(vcFile, S_load1)
+fid1 = fopen(vcFile, 'r');
+fseek(fid1, S_load1.offset, 'bof');
+mrWav_T1 = fread_(fid1, S_load1.dimm, S_load1.vcDataType);      
+fclose_(fid1);
+end %func
+
+
+%--------------------------------------------------------------------------
+% uses parfor and temp file (memory efficient)
+% write a temp file and delete
+function S0 = detect3_(P)
 % keep all features in the memory, no disk storage
 
 % parfor loop
@@ -2333,11 +2413,53 @@ end %func
 
 
 %--------------------------------------------------------------------------
+% 2019/8/15 JJJ: can handle arrays or cells file handle
+function fid = fclose_(fid, fVerbose)
+% Sets fid = [] if closed properly
+if nargin<2, fVerbose = 0; end
+if isempty(fid), return; end
+if ischar(fid), return; end
+if numel(fid)>1
+    for iFile=1:numel(fid)
+        if iscell(fid)
+            fclose_(fid{iFile}, fVerbose);
+        else
+            fclose_(fid(iFile), fVerbose);
+        end
+    end
+    return;
+end
+
+try 
+    if ~isempty(fid)
+        fclose(fid); 
+    end
+    fid = [];
+    if fVerbose, disp('File closed.'); end
+catch
+    disperr_(); 
+end
+end %func
+
+
+%--------------------------------------------------------------------------
 function [out, nlim, fDone] = readmda_paged_(P)
 % manage overlap
-persistent S_mda fid iLoad nLoads nSamples_load nSamples_last nSamples_pad vcFile
+% [out, nlim, fDone] = readmda_paged_(P) % read header
+% [out, nlim, fDone] = readmda_paged_() % read next page
+% [vcFile, vS_load] = readmda_paged_('close'): close a file
+
+persistent S_mda fid iLoad nLoads nSamples_load nSamples_last nSamples_pad vcFile P_
 
 if nargin==1
+    if ischar(P)
+        if strcmpi(P, 'close')
+            fclose_(fid);
+            vS_load = plan_load_pad_(S_mda, P_);
+            [fid, out, nlim] = deal([], vcFile, vS_load);
+            return;
+        end
+    end
     vcFile = P.vcFile;
     [S_mda, fid] = readmda_header_(vcFile);
     S_mda.dimm = S_mda.dimm(:)'; % formatting
@@ -2347,7 +2469,7 @@ if nargin==1
     nSamples_pad = get_set_(P, 'nPad_filt', 100);
     viOffset_load = (0:nLoads-1) * nSamples_load; % return offset
     S_page = makeStruct_(nLoads, nSamples_load, nSamples_last, nSamples_pad, viOffset_load);
-    [out, nlim, fDone] = deal(S_page, [], 0);    
+    [out, nlim, fDone, P_] = deal(S_page, [], 0, P);    
 else
     if iLoad <= nLoads
         iLoad = iLoad + 1;
@@ -2383,7 +2505,38 @@ else
         fDone = 1;
     end
 end
+end %func
 
+
+%--------------------------------------------------------------------------
+% determine fseek, fread bytes, and trim amount
+% vector of struct {nBytes_offset, dimm1}
+function vS_load = plan_load_pad_(S_mda, P)
+
+[nLoads, nSamples_load, nSamples_last] = plan_load_(S_mda.nBytes_data, P);
+nSamples_pad = get_set_(P, 'nPad_filt', 100);
+bytes_per_sample = bytesPerSample_(S_mda.vcDataType);
+nChans = S_mda.dimm(1);
+% nSamples_file = S_mda.nBytes_data / bytes_per_sample / nChans;
+vS_load = cell(nLoads, 1);
+for iLoad = 1:nLoads
+    offset1 = max((nSamples_load * (iLoad - 1) - nSamples_pad) * (bytes_per_sample * nChans), 0) + S_mda.nBytes_header;
+    if nLoads == 1 % no padding if single load
+        dimm1 = S_mda.dimm;
+        nlim1 = [1, dimm1(end)]; 
+    elseif iLoad == 1 % first
+        dimm1 = [S_mda.dimm(1:end-1), nSamples_load + nSamples_pad];
+        nlim1 = [1, nSamples_load];
+    elseif iLoad == nLoads % last
+        dimm1 = [S_mda.dimm(1:end-1), nSamples_last + nSamples_pad];
+        nlim1 = [1, nSamples_last] + nSamples_pad;
+    else % middle (double padded)
+        dimm1 = [S_mda.dimm(1:end-1), nSamples_load + nSamples_pad*2];
+        nlim1 = [1, nSamples_load] + nSamples_pad;
+    end
+    vS_load{iLoad} = struct('dimm', dimm1, 'nlim', nlim1, 'vcDataType', S_mda.vcDataType, 'offset', offset1);
+end %for
+vS_load = cell2mat(vS_load);
 end %func
 
 

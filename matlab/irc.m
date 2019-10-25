@@ -31279,7 +31279,10 @@ switch lower(vcMode)
         hFig = create_figure_([], [0 0 .5 1], P.vcFile, 1, 1);
         [vrX1, vrY1] = deal(double(S0.viTime_spk)/P.sRateHz, S0.mrPos_spk(:,2));
         if isempty(viClu_plot)
-            scatter(vrX1, vrY1, 1, S_clu.viClu);
+            vl1 = S_clu.viClu>0;            
+            rand_map = randperm(max(S_clu.viClu));
+            viClu1 = rand_map(S_clu.viClu(vl1));
+            scatter(vrX1(vl1), vrY1(vl1), 1, viClu1);
             text_(mrXY_clu(:,1), mrXY_clu(:,2), arrayfun_(@num2str, 1:nClu), ...
                 'VerticalAlignment', 'bottom', 'HorizontalAlignment', 'left');
         else
@@ -31289,6 +31292,21 @@ switch lower(vcMode)
                 'VerticalAlignment', 'bottom', 'HorizontalAlignment', 'left');            
         end
         xylabel_([], 'Time (s)', 'y pos (um)', P.vcFile); grid on;
+        colormap jet;
+        
+    case 'drift-clip'
+        ylim1 = str2num(vcArg1);
+        hFig = create_figure_([], [0 0 .5 1], P.vcFile, 1, 1);
+        [vrX1, vrY1] = deal(double(S0.viTime_spk)/P.sRateHz, S0.mrPos_spk(:,2));
+        vl1 = S_clu.viClu>0 & vrY1>=ylim1(1) & vrY1<=ylim1(2); 
+        viClu1 = S_clu.viClu(vl1);
+        viClu_uniq = unique(viClu1);
+        linMap = 1:max(viClu1); linMap(viClu_uniq) = 1:numel(viClu_uniq);
+        rand_map = randperm(max(linMap));
+        viClu1 = rand_map(linMap(viClu1));
+        scatter(vrX1(vl1), vrY1(vl1), 1, viClu1);
+        set(gca, 'XTickLabel',{},'YTickLabel',{},'XTick',[],'YTick',[]);
+        colormap jet;
         
     case 'drift-clu'
         hFig = create_figure_([], [0 0 .5 1], P.vcFile, 1, 1);

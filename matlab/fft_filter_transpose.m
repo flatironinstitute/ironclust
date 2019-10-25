@@ -143,7 +143,7 @@ try
             mrFft(end-vi_noise+1,:) = 0;
     end %switch
 catch
-    disp(lasterr());
+%     disp(lasterr());
     return;
 end
 end %func
