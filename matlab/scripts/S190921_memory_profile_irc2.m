@@ -107,27 +107,32 @@ end
 % setting: Oct 3 2019
 % CentOS Workstation, 12 woorkers + GPU (Quadro P4000, 8GB)
 
-vnChans_uniq = 64 * 2.^[-3:2];
-vrDuration_uniq = 1200 * 2.^[-2:2];
+vnChans_uniq = 64 * 2.^[-3:3];
+vrDuration_uniq = 1200 * 2.^[-2:3];
 
 csParam = {};
 csParam{1} = 'param1.prm'; % fGpu=0, fParfor=0
 csParam{2} = 'param2.prm'; % fGpu=0, fParfor=1
 csParam{3} = 'param3.prm'; % fGpu=1, fParfor=0
 csParam{4} = 'param4.prm'; % fGpu=1, fParfor=1
+switch 2
+    case 1, vcVersion = irc2('version');
+    case 2, vcVersion = 'v5.0.3';
+end
 
 [xx1,yy1] = meshgrid(1:numel(vnChans_uniq), 1:numel(vrDuration_uniq));
 vnChans_batch = vnChans_uniq(xx1(:));
 vrDuration_batch = vrDuration_uniq(yy1(:));
 cS_bench_param = cell(size(csParam));
-for iParam = 1:numel(csParam)
+%for iParam = 1:numel(csParam)
+for iParam = 1:4
     try
         vcParam1 = csParam{iParam};
         csFiles_batch_in = arrayfun(@(x,y)...
             fullfile(vcDir0, sprintf('rec_%dc_%ds', vnChans_uniq(x), vrDuration_uniq(y))), ...
                 xx1(:), yy1(:), 'UniformOutput', 0);
         [~, vcParam_name1] = fileparts(vcParam1);
-        vcPath_out1 = fullfile(sprintf('irc2_%s', irc2('version')), vcParam_name1);
+        vcPath_out1 = fullfile(sprintf('irc2_%s', vcVersion), vcParam_name1);
         csFiles_batch_out = cellfun(@(x)strrep(x, 'groundtruth', vcPath_out1), csFiles_batch_in, 'UniformOutput', 0);
         cS_bench_param{iParam} = cellfun(@(x,y)irc2('benchmark',x,y,vcParam1), csFiles_batch_in, csFiles_batch_out, 'UniformOutput', 0); % must be transposed for accurate cache result
     catch
@@ -136,8 +141,9 @@ for iParam = 1:numel(csParam)
 end
 
 
-% 4. plot result (create two tables), also consider creating a bar plot
-for iParam = 1:numel(csParam)
+%% 4. plot result (create two tables), also consider creating a bar plot
+% for iParam = 1:numel(csParam)
+for iParam = 1:4
     cS_bench = cS_bench_param{iParam};
     % parameter select and plot
     vS_bench = cell2mat(cS_bench);
@@ -166,7 +172,7 @@ for iParam = 1:numel(csParam)
         set(gca, 'XTickLabel', unique(nChans), 'YTickLabel', unique(duration_sec)); % may need to unravel
         xlabel('nChans'); ylabel('min');
     %     set(gca,'XTick', [16 32 64], 'YTick', [10 20]);
-        title_(sprintf('%s: %s (irc2 %s)', vcMode, csParam{iParam}, irc2('version')));
+        title_(sprintf('%s: %s (irc2 %s)', vcMode, csParam{iParam}, vcVersion));
 
         subplot 223; plot(img,'b'); 
         xlabel('Duration (s)'); 
@@ -183,3 +189,44 @@ for iParam = 1:numel(csParam)
         ylabel(vcMode); grid on; axis tight;       
     end
 end
+
+%%
+figure('Color','w'); 
+vrPlot1 = vrPeakMem_bench(:); vcMode1 = 'Peak memory (GB)'; vrPlot1 = log(vrPlot1)/log(2);
+img1 = reshape(vrPlot1, nunique_(duration_sec), nunique_(nChans));
+
+img11 = img1(:,4:end);
+ax1=subplot(221); plot(img11,'b'); axis([1,6,-2,8]); grid on; hold on;  
+set(gca,'XTickLabel', {}, 'XTick', 1:nunique_(duration_sec));         
+plot([1, size(img11,1)], [1, size(img11,1)]+2, 'r');
+set(gca,'YTickLabel', 2.^get(gca,'YTick'), 'YTick', get(gca,'YTick'));
+ylabel(vcMode1);
+ax1.Position = [0.1300    0.5838    0.3262    0.3412] + [0 0 .1 .1];
+
+img12 = img1(3:end,:);
+ax2=subplot(222); plot(img12','b'); axis([2,7,-2,8]); grid on; hold on; 
+set(gca,'XTickLabel', {}, 'XTick', 1:nunique_(nChans));  
+plot([1, size(img12,2)], [1, size(img12,2)]+1, 'r'); 
+set(gca,'YTickLabel', {}, 'YTick', get(gca,'YTick'));
+ax2.Position = [0.5703    0.5838    0.3262    0.3412] + [0 0 .05 .05];
+
+
+vrPlot2 = vrRuntime_bench(:); vcMode2 = 'Runtime (s)'; vrPlot2 = log(vrPlot2)/log(2);
+img2 = reshape(vrPlot2, nunique_(duration_sec), nunique_(nChans));
+
+img21 = img2(:,4:end);
+ax3=subplot(223); plot(img21,'k'); axis([1,6,5,14]); grid on; hold on;  
+xlabel('Duration (s)'); 
+set(gca,'XTickLabel', unique(duration_sec), 'XTick', 1:nunique_(duration_sec));         
+plot([1, size(img21,1)], [1, size(img21,1)]+8, 'r');
+set(gca,'YTickLabel', 2.^get(gca,'YTick'), 'YTick', get(gca,'YTick'));
+ylabel(vcMode2); 
+ax3.Position = [0.1300    0.1100    0.3262    0.3412] + [0 0 .05 .05];
+
+img22 = img2(3:end,:);
+ax4=subplot(224); plot(img22','k'); axis([2,7,5,14]); grid on; hold on; 
+xlabel('#Chans'); 
+set(gca,'XTickLabel', unique(nChans), 'XTick', 1:nunique_(nChans));    
+plot([1, size(img22,2)], [1, size(img22,2)]+7, 'r'); 
+set(gca,'YTickLabel', {}, 'YTick', get(gca,'YTick'));
+ax4.Position = [0.5703    0.1100    0.3262    0.3412] + [0 0 .05 .05];

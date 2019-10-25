@@ -262,8 +262,8 @@ end %func
 %--------------------------------------------------------------------------
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_()
-vcVer = 'v5.0.5';
-vcDate = '10/14/2019';
+vcVer = 'v5.0.6';
+vcDate = '10/25/2019';
 vcHash = file2hash_();
 
 if nargout==0
@@ -1735,8 +1735,10 @@ end
 %--------------------------------------------------------------------------
 function S0 = detect_(P)
 switch 4
-    case 4, S0 = detect4_(P);
-    case 3, S0 = detect3_(P);
+    case 4, S0 = detect4_(P); % multiple file pointers with offset
+    case 3, S0 = detect3_(P); % single file pointer, copy files
+    case 2, S0 = detect2_(P);
+    case 1, S0 = detect1_(P);
 end
 end %func
 
@@ -1775,7 +1777,6 @@ if ~isempty(gcp_)  % must debug
         S_cache1 = setfield(S_cache, 'nlim_wav1', S_load1.nlim);
         cS_detect{iLoad} = detect_paged_(mrWav_T1, P, S_cache1);
         mrWav_T1 = [];
-%         fprintf('\tMemory use: %0.3f GiB\n', memory_matlab_()/2^30);
     end
     fprintf('\tMemory use: %0.3f GiB\n', memory_matlab_()/2^30);
 else
