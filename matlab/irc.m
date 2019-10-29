@@ -17167,7 +17167,11 @@ catch
     [vrVrms_site, vrSnr_clu, vnSite_clu] = deal([]);
     disp('no Sevt in memory.');
 end
-[vrIsoDist_clu, vrLRatio_clu, vrIsiRatio_clu] = S_clu_quality2_(S_clu, P, viClu_update);
+try
+    [vrIsoDist_clu, vrLRatio_clu, vrIsiRatio_clu] = S_clu_quality2_(S_clu, P, viClu_update);
+catch
+    [vrIsoDist_clu, vrLRatio_clu, vrIsiRatio_clu] = deal(nan(size(vrVpp_clu)));
+end
 
 S_clu = struct_add_(S_clu, vrVpp_clu, vrSnr_clu, vrVrms_site, vnSite_clu, ...
     vrIsoDist_clu, vrLRatio_clu, vrIsiRatio_clu, vrVpp_uv_clu, vrVmin_uv_clu);

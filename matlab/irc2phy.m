@@ -6,6 +6,8 @@ function irc2phy(vcFile_prm, vcDir_out)
 % phy data format:
 %   https://github.com/kwikteam/phy-contrib/blob/master/docs/template-gui.md
 %   https://phy.readthedocs.io/en/latest/visualization/
+% [10/28/2019]
+% - Supports irc2 format
 
 % Input
 % ----
@@ -17,7 +19,13 @@ if isempty(vcDir_out)
 end
 mkdir_(vcDir_out);
 
-[S0, P] = load_cached_(vcFile_prm);
+vcFile_mat = strrep(vcFile_prm, '.prm', '_irc.mat');
+if exist_file_(vcFile_mat)
+    S0 = load(vcFile_mat);
+    P = S0.P;
+else
+    [S0, P] = load_cached_(vcFile_prm);
+end
 
 [vrAmp_spk, viTime_spk, viSite_spk, S_clu] = deal(S0.vrAmp_spk, S0.viTime_spk, S0.viSite_spk, get_(S0, 'S_clu'));
 nSpikes = numel(viTime_spk);
@@ -38,10 +46,18 @@ if ~isempty(S_clu)
 end
 
 % read feature file and write to it
-trFet_spk = load_spkfet_(S0, P);
-trFet_spk = reshape(trFet_spk(:,1,:), [], P.nPcPerChan, nSpikes);
-nSites_fet = size(trFet_spk, 1);
-writeNPY_(permute(trFet_spk, [3,2,1]), fullfile(vcDir_out, 'pc_features.npy'));
+vcFile_fet = strrep(vcFile_prm, '.prm', '_fet.irc');
+if exist_file_(vcFile_fet) % irc vers2 format    
+    trFet_spk = load_bin_(vcFile_fet, S0.type_fet, S0.dimm_fet);
+    nSites_fet = size(trFet_spk, 2);
+    writeNPY_(permute(trFet_spk, [3,1,2]), fullfile(vcDir_out, 'pc_features.npy'));    
+else
+    % irc ver1 format
+    trFet_spk = load_spkfet_(S0, P);
+    trFet_spk = reshape(trFet_spk(:,1,:), [], P.nPcPerChan, nSpikes);
+    nSites_fet = size(trFet_spk, 1);
+    writeNPY_(permute(trFet_spk, [3,2,1]), fullfile(vcDir_out, 'pc_features.npy'));
+end
 
 % write locations of features
 writeNPY_(uint32(P.miSites(1:nSites_fet, S_clu.viSite_clu)') - 1, fullfile(vcDir_out, 'pc_feature_ind.npy')); % -1 for zero indexing
@@ -53,7 +69,14 @@ switch 1
         writeNPY_(permute(S_clu.tmrWav_spk_clu, [3,1,2]), fullfile(vcDir_out, 'templates.npy'));
         writeNPY_(repmat(0:nSites, nClu, 1), fullfile(vcDir_out, 'templates_ind.npy'));        
     case 1
-        writeNPY_(permute(S_clu.trWav_spk_clu(:,1:nSites_fet,:), [3,1,2]), fullfile(vcDir_out, 'templates.npy'));
+        if isfield(S_clu, 'trWav_spk_clu')
+            trWav_clu = S_clu.trWav_spk_clu(:,1:nSites_fet,:);
+        elseif isfield(S_clu, 'trWav_clu')
+            trWav_clu = S_clu.trWav_clu(:,1:nSites_fet,:);
+        else
+            error('irc2phy: `trWav_spk_clu` or `trWav_clu` not found');
+        end
+        writeNPY_(permute(trWav_clu, [3,1,2]), fullfile(vcDir_out, 'templates.npy'));
         writeNPY_(uint32(P.miSites(1:nSites_fet, S_clu.viSite_clu)') - 1, fullfile(vcDir_out, 'template_ind.npy'));
 end %switch
 writeNPY_(eye(nSites), fullfile(vcDir_out, 'whitening_mat.npy'));
@@ -96,6 +119,9 @@ end % func
 %--------------------------------------------------------------------------
 function y = writeNPY_(x, vcFile)
 try
+    if ~exist('writeNPY', 'file')
+        addpath('npy-matlab');
+    end
     writeNPY(x, vcFile);
     fprintf('Wrote to %s\n', vcFile);
 catch
@@ -121,5 +147,8 @@ function out1 = get_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, var
 function out1 = mkdir_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = get_raw_files_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = load_spkfet_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
+function out1 = load_bin_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
+
 function [out1, out2] = load_cached_(varargin), fn=dbstack(); [out1, out2] = irc('call', fn(1).name, varargin); end
+
 
