@@ -16,7 +16,7 @@ fInterp_fet = 1;
 fSpatialMask_clu = 0;
 
 % sort
-nPcPerChan = 2;
+nPcPerChan = 3;
 nFet_max = [];
 sort_mode = 1;
 step_sec_drift = 20; %20
@@ -28,7 +28,3 @@ post_merge_mode0 = [5]; % [12,17]
 post_merge_mode = 1; 
 maxWavCor = .99; 
 min_snr_clu = 4; % remove clusters below SNR threshold, set to [] to skip
-
-% speed test (12 core Quadro P4000, 8GiB)
-% HYBRID Janelia DRIFT 64ch 1200s
-% (fGpu,fParfor): (1,1):57s(21.0x), (1,0):115s(10.4x), (0,1):105.8s(11.3x), (0:0):318s(3.8x) 

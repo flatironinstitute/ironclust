@@ -265,8 +265,8 @@ end %func
 %--------------------------------------------------------------------------
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_()
-vcVer = 'v5.0.7';
-vcDate = '10/28/2019';
+vcVer = 'v5.0.8';
+vcDate = '10/29/2019';
 vcHash = file2hash_();
 
 if nargout==0
@@ -792,8 +792,7 @@ end %func
 %--------------------------------------------------------------------------
 function mrDist_clu = wav_dist_clu_(viClu, viSite_spk, trPc_spk, mrPv_global, nClu, P)
 switch 1
-    case 2
-        % this uses new method of site referencing
+    case 2 % this uses new method of site referencing
         mrDist_clu = wav_dist_clu2_(viClu, viSite_spk, trPc_spk, mrPv_global, nClu, P);
     case 1
         mrDist_clu = wav_dist_clu1_(viClu, viSite_spk, trPc_spk, mrPv_global, nClu, P);
@@ -1119,8 +1118,32 @@ function [ctrPc_clu, cviSite_clu] = merge_clu_pre3_(cS_pre3, trPc_spk, trPc2_spk
 tr_ = gpuArray_(trPc_spk(:,1:P.nSites_fet,:), P.fGpu);
 for iClu = 1:numel(cS_pre3)
     S_pre3 = cS_pre3{iClu};
-    cviSite_clu{iClu} = S_pre3.viSite1(:);
+    cviSite_clu{iClu} = [S_pre3.viSite1(:); S_pre3.viSite2(:)];
     trPc_clu1 = cellfun(@(x)mean(tr_(:,:,x),3), S_pre3.cviSpk1, 'UniformOutput', false);
+    ctrPc_clu{iClu} = gather_(cat(3,trPc_clu1{:})); % faster than pre-allocating
+end
+tr_ = []; %clear memory
+
+% Load second peak sites to the GPU memory
+tr_ = gpuArray_(trPc2_spk(:,1:P.nSites_fet,:), P.fGpu);
+for iClu = 1:numel(cS_pre3)
+    S_pre3 = cS_pre3{iClu};
+    cviSpk2 = S_pre3.cviSpk2;
+    trPc_clu2 = cellfun(@(x)mean(tr_(:,:,x),3), S_pre3.cviSpk2, 'UniformOutput', false);
+    ctrPc_clu{iClu} = cat(3, ctrPc_clu{iClu}, gather_(cat(3,trPc_clu2{:})));
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+function [ctrPc_clu, cviSite_clu] = merge_clu_pre3__(cS_pre3, trPc_spk, trPc2_spk, P)
+[ctrPc_clu, cviSite_clu] = deal(cell(size(cS_pre3)));
+
+tr_ = gpuArray_(trPc_spk(:,1:P.nSites_fet,:), P.fGpu);
+for iClu = 1:numel(cS_pre3)
+    S_pre3 = cS_pre3{iClu};
+    [cviSite_clu{iClu}, cviSpk1] = deal(S_pre3.viSite1(:), S_pre3.cviSpk1);
+    trPc_clu1 = cellfun(@(x)mean(tr_(:,:,x),3), cviSpk1, 'UniformOutput', false);
     ctrPc_clu{iClu} = cat(3, trPc_clu1{:});
 end
 tr_ = []; %clear memory
@@ -3141,6 +3164,21 @@ end %func
 
 
 %--------------------------------------------------------------------------
+function varargout = gather_(varargin)
+for i=1:nargin
+    varargout{i} = varargin{i};
+    if isa(varargin{i}, 'gpuArray')
+        try
+            varargout{i} = gather(varargin{i});
+        catch
+            ;
+        end
+    end
+end
+end %func
+
+
+%--------------------------------------------------------------------------
 function frewind_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
 function disperr_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
 function struct_save_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
@@ -3164,7 +3202,6 @@ function out1 = get_set_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name,
 function out1 = filesize_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = bytesPerSample_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = fread_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
-function out1 = gather_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = mr2ref_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = car_reject_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = struct_copy_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end

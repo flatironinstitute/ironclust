@@ -2524,7 +2524,7 @@ if nargin==0, nC_ = 0; return; end
 if isempty(nC_), nC_ = 0; end
 [nC, n12] = size(mrFet12); %nc is constant with the loop
 dn_max = int32(round((n1+n2) / P.nTime_clu));
-nC_max = get_set_(P, 'nC_max', 45);
+nC_max = get_set_(P, 'nC_max', 48);
 dc2 = single(dc2);
 knn = get_set_(P, 'knn', 0); % set to 0 to disable
 if P.fGpu && knn==0
@@ -2644,7 +2644,7 @@ if isempty(dc2) || isnan(dc2), dc2 = 1; end
     
 [nC, n12] = size(mrFet12); %nc is constant with the loop
 dn_max = int32(round((n1+n2) / P.nTime_clu));
-nC_max = get_set_(P, 'nC_max', 45);
+nC_max = get_set_(P, 'nC_max', 48);
 SINGLE_INF = 3.402E+38;
 if P.fGpu
     try
@@ -17776,7 +17776,7 @@ end %func
 function flag = validate_param_(P)
 % validate P
 
-NDIM_SORT_MAX = get_set_(P, 'nC_max', 45);
+NDIM_SORT_MAX = get_set_(P, 'nC_max', 48);
 
 csError = {};
 
@@ -18514,7 +18514,7 @@ fprintf('Installing ironclust (irc.m)\n');
 %     edit_('user.cfg');
 %     msgbox_('Set path to ''path_dropbox'' and ''path_backup'' in user.cfg.');
 % end
-compile_cuda_([], vcArg1); % don't deploy, compile for the GPU installed
+compile_cuda_([], '0'); % don't deploy, compile for the GPU installed
 % compile_ksort_();
 end %func
 
@@ -22286,7 +22286,7 @@ fprintf('Denoising features using nneigh\n\t'); t1=tic;
 nSites = numel(P.viSite2Chan);
 nC = size(trFet_spk,1);
 try        
-    nC_max = get_set_(P, 'nC_max', 45);
+    nC_max = get_set_(P, 'nC_max', 48);
     CK = parallel.gpu.CUDAKernel('irc_cuda_nneigh.ptx','irc_cuda_nneigh.cu');
     CK.ThreadBlockSize = [P.nThreads, 1];          
     CK.SharedMemorySize = 4 * P.CHUNK * (1 + nC_max + 2 * P.nThreads); % @TODO: update the size    
@@ -24695,7 +24695,7 @@ function [vrDelta1, viNneigh1, fGpu] = cuda_delta_knn_(mrFet, vrRho, vi2, vi1, P
 
 persistent CK
 CHUNK = get_set_(P, 'CHUNK', 16);
-nC_max = get_set_(P, 'nC_max', 45);
+nC_max = get_set_(P, 'nC_max', 60);
 nThreads = get_set_(P, 'nThreads', 128);
 [n2, n1, nC, n12] = deal(numel(vi2), numel(vi1), size(mrFet,1), size(mrFet,2));
 fGpu = P.fGpu && nC <= nC_max;
