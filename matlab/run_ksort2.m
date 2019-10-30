@@ -14,7 +14,7 @@ if nargin<3, arg_fname = []; end
 if isempty(arg_fname), arg_fname = 'ksort2.txt'; end
 if nargin<2, vcDir_out = ''; end
 if isempty(vcDir_out)
-    vcDir_out = strrep(vcDir_in, '/groundtruth/', '/ksort2/');
+    vcDir_out = strrep(vcDir_in, 'groundtruth', 'ksort2');
 end
 
 source_path = fileparts(mfilename('fullpath'));

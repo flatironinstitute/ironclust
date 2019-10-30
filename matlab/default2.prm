@@ -16,7 +16,7 @@ fInterp_fet = 1;
 fSpatialMask_clu = 0;
 
 % sort
-nPcPerChan = 3;
+nPcPerChan = 2;
 nFet_max = [];
 sort_mode = 1;
 step_sec_drift = 20; %20
