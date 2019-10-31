@@ -106,6 +106,7 @@ end
 %% 3. loop over the files, exract values
 % setting: Oct 3 2019
 % CentOS Workstation, 12 woorkers + GPU (Quadro P4000, 8GB)
+% pause(3600*4); % start delay of 4 hours
 
 vnChans_uniq = 64 * 2.^[-3:3];
 vrDuration_uniq = 1200 * 2.^[-2:3];
@@ -115,7 +116,7 @@ csParam{1} = 'param1.prm'; % fGpu=0, fParfor=0
 csParam{2} = 'param2.prm'; % fGpu=0, fParfor=1
 csParam{3} = 'param3.prm'; % fGpu=1, fParfor=0
 csParam{4} = 'param4.prm'; % fGpu=1, fParfor=1
-switch 2
+switch 1
     case 1, vcVersion = irc2('version');
     case 2, vcVersion = 'v5.0.3';
 end
@@ -141,56 +142,7 @@ for iParam = 1:4
 end
 
 
-%% 4. plot result (create two tables), also consider creating a bar plot
-% for iParam = 1:numel(csParam)
-for iParam = 1:4
-    cS_bench = cS_bench_param{iParam};
-    % parameter select and plot
-    vS_bench = cell2mat(cS_bench);
-    vrPeakMem_bench = [vS_bench.memory_gb]; vrPeakMem_bench = vrPeakMem_bench(:);
-    vrRuntime_bench = [vS_bench.runtime_sec]; vrRuntime_bench = vrRuntime_bench(:);
 
-    nunique_ = @(x)numel(unique(x));
-    title_ = @(x)irc('call','title',{x},1);
-    lg = @(x)log(x)/log(2);
-    for iMode = 1:2
-        switch iMode
-            case 1, vrPlot = vrPeakMem_bench(:); vcMode = 'Peak memory (GB)'; vrPlot = log(vrPlot)/log(2);
-            case 2, vrPlot = vrRuntime_bench(:); vcMode = 'Runtime (s)'; vrPlot = log(vrPlot)/log(2);
-        end
-        nChans = vnChans_batch(:); 
-        duration_sec = vrDuration_batch(:);
-        MB_per_chan_min = vrPlot ./ nChans ./ duration_sec * 1024;
-        MB_per_chan = vrPlot ./ nChans  * 1024;
-        MB_per_min = vrPlot ./ duration_sec  * 1024;
-        table(nChans, duration_sec, vrPlot, MB_per_chan_min, MB_per_chan, MB_per_min, 'rownames', csFiles_batch_in) %{'PeakMem_GiB', 'nChans', 'duration_sec'})
-
-        figure; 
-        subplot(2,2,1:2);
-        img = reshape(vrPlot, nunique_(duration_sec), nunique_(nChans));
-        imagesc(img);
-        set(gca, 'XTickLabel', unique(nChans), 'YTickLabel', unique(duration_sec)); % may need to unravel
-        xlabel('nChans'); ylabel('min');
-    %     set(gca,'XTick', [16 32 64], 'YTick', [10 20]);
-        title_(sprintf('%s: %s (irc2 %s)', vcMode, csParam{iParam}, vcVersion));
-
-        subplot 223; plot(img,'b'); 
-        xlabel('Duration (s)'); 
-        set(gca,'XTickLabel', unique(duration_sec), 'XTick', 1:nunique_(duration_sec));         
-        hold on; plot([1, size(img,1)], [1, size(img,1)], 'r');
-        set(gca,'YTickLabel', 2.^get(gca,'YTick'), 'YTick', get(gca,'YTick'));
-        ylabel(vcMode); grid on; axis tight;
-
-        subplot 224; plot(img','k'); 
-        xlabel('#Chans'); 
-        set(gca,'XTickLabel', unique(nChans), 'XTick', 1:nunique_(nChans));    
-        hold on; plot([1, size(img,2)], [1, size(img,2)], 'r'); 
-        set(gca,'YTickLabel', 2.^get(gca,'YTick'), 'YTick', get(gca,'YTick'));
-        ylabel(vcMode); grid on; axis tight;       
-    end
-end
-
-%%
 figure('Color','w'); 
 vrPlot1 = vrPeakMem_bench(:); vcMode1 = 'Peak memory (GB)'; vrPlot1 = log(vrPlot1)/log(2);
 img1 = reshape(vrPlot1, nunique_(duration_sec), nunique_(nChans));
@@ -230,3 +182,54 @@ set(gca,'XTickLabel', unique(nChans), 'XTick', 1:nunique_(nChans));
 plot([1, size(img22,2)], [1, size(img22,2)]+7, 'r'); 
 set(gca,'YTickLabel', {}, 'YTick', get(gca,'YTick'));
 ax4.Position = [0.5703    0.1100    0.3262    0.3412] + [0 0 .05 .05];
+
+
+% %% 4. plot result (create two tables), also consider creating a bar plot
+% % for iParam = 1:numel(csParam)
+% for iParam = 1:4
+%     cS_bench = cS_bench_param{iParam};
+%     % parameter select and plot
+%     vS_bench = cell2mat(cS_bench);
+%     vrPeakMem_bench = [vS_bench.memory_gb]; vrPeakMem_bench = vrPeakMem_bench(:);
+%     vrRuntime_bench = [vS_bench.runtime_sec]; vrRuntime_bench = vrRuntime_bench(:);
+% 
+%     nunique_ = @(x)numel(unique(x));
+%     title_ = @(x)irc('call','title',{x},1);
+%     lg = @(x)log(x)/log(2);
+%     for iMode = 1:2
+%         switch iMode
+%             case 1, vrPlot = vrPeakMem_bench(:); vcMode = 'Peak memory (GB)'; vrPlot = log(vrPlot)/log(2);
+%             case 2, vrPlot = vrRuntime_bench(:); vcMode = 'Runtime (s)'; vrPlot = log(vrPlot)/log(2);
+%         end
+%         nChans = vnChans_batch(:); 
+%         duration_sec = vrDuration_batch(:);
+%         MB_per_chan_min = vrPlot ./ nChans ./ duration_sec * 1024;
+%         MB_per_chan = vrPlot ./ nChans  * 1024;
+%         MB_per_min = vrPlot ./ duration_sec  * 1024;
+%         table(nChans, duration_sec, vrPlot, MB_per_chan_min, MB_per_chan, MB_per_min, 'rownames', csFiles_batch_in) %{'PeakMem_GiB', 'nChans', 'duration_sec'})
+% 
+%         figure; 
+%         subplot(2,2,1:2);
+%         img = reshape(vrPlot, nunique_(duration_sec), nunique_(nChans));
+%         imagesc(img);
+%         set(gca, 'XTickLabel', unique(nChans), 'YTickLabel', unique(duration_sec)); % may need to unravel
+%         xlabel('nChans'); ylabel('min');
+%     %     set(gca,'XTick', [16 32 64], 'YTick', [10 20]);
+%         title_(sprintf('%s: %s (irc2 %s)', vcMode, csParam{iParam}, vcVersion));
+% 
+%         subplot 223; plot(img,'b'); 
+%         xlabel('Duration (s)'); 
+%         set(gca,'XTickLabel', unique(duration_sec), 'XTick', 1:nunique_(duration_sec));         
+%         hold on; plot([1, size(img,1)], [1, size(img,1)], 'r');
+%         set(gca,'YTickLabel', 2.^get(gca,'YTick'), 'YTick', get(gca,'YTick'));
+%         ylabel(vcMode); grid on; axis tight;
+% 
+%         subplot 224; plot(img','k'); 
+%         xlabel('#Chans'); 
+%         set(gca,'XTickLabel', unique(nChans), 'XTick', 1:nunique_(nChans));    
+%         hold on; plot([1, size(img,2)], [1, size(img,2)], 'r'); 
+%         set(gca,'YTickLabel', 2.^get(gca,'YTick'), 'YTick', get(gca,'YTick'));
+%         ylabel(vcMode); grid on; axis tight;       
+%     end
+% end
+% 

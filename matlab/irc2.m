@@ -405,7 +405,7 @@ memory_sort = S0.memory_sort - S0.memory_init;
 memory_detect = S0.memory_detect - S0.memory_init;
 nSites = numel(P.viSite2Chan);
 nShanks = max(P.viShank_site);
-nSitesPerEvent = size(P.miSites,1);
+nSites_spk = size(P.miSites,1);
 nSpk = numel(S0.viTime_spk);
 nFeatures = P.nSites_fet * P.nPcPerChan;
 
@@ -427,11 +427,12 @@ try
     csDesc{end+1} = sprintf('    FFT threshold:          %d', get_set_(P, 'fft_thresh', 0));
     csDesc{end+1} = sprintf('Events');
     csDesc{end+1} = sprintf('    #Spikes:                %d', nSpk);
-    csDesc{end+1} = sprintf('    Feature extracted:      %s', P.vcFet);
-    csDesc{end+1} = sprintf('    #Sites/event:           %d', nSitesPerEvent);
+    csDesc{end+1} = sprintf('    Feature extracted:      %s', P.vcFet);    
+    csDesc{end+1} = sprintf('    #Sites/event:           %d', nSites_spk);
     csDesc{end+1} = sprintf('    maxDist_site_um:        %0.0f', P.maxDist_site_um);    
     csDesc{end+1} = sprintf('    maxDist_site_spk_um:    %0.0f', P.maxDist_site_spk_um);    
     csDesc{end+1} = sprintf('    #Features/event:        %d', nFeatures);    
+    csDesc{end+1} = sprintf('    #PC/chan:               %d', P.nPcPerChan);
 catch
     ;
 end
@@ -1125,6 +1126,7 @@ end
 tr_ = []; %clear memory
 
 % Load second peak sites to the GPU memory
+if isempty(trPc2_spk), return; end
 tr_ = gpuArray_(trPc2_spk(:,1:P.nSites_fet,:), P.fGpu);
 for iClu = 1:numel(cS_pre3)
     S_pre3 = cS_pre3{iClu};
@@ -1291,13 +1293,15 @@ for iDrift = 1:nDrift
         viSite1{end+1} = iSite111;
     end
     
-    viSite_spk112 = viSite2_spk(viSpk11);
-    iSite112 = mode(viSite_spk112);
-    viSpk112 = viSpk11(viSite_spk112 == iSite112);   
-    if numel(viSpk112) >= nSpk_min
-        cviSpk2{end+1} = viSpk112;
-        viSite2{end+1} = iSite112;
-    end    
+    if ~isempty(viSite2_spk)
+        viSite_spk112 = viSite2_spk(viSpk11);
+        iSite112 = mode(viSite_spk112);
+        viSpk112 = viSpk11(viSite_spk112 == iSite112);   
+        if numel(viSpk112) >= nSpk_min
+            cviSpk2{end+1} = viSpk112;
+            viSite2{end+1} = iSite112;
+        end    
+    end
 end
 [viSite1, viSite2] = deal(cell2mat(viSite1), cell2mat(viSite2)); 
 S_pre3 = makeStruct_(viSite1, viSite2, cviSpk1, cviSpk2);
@@ -1983,7 +1987,7 @@ mrWav_T1 = [];
 [vrThresh_site, mrPv_global] = struct_get_(cS_detect{1}, 'vrThresh_site', 'mrPv_global');
 S_cache = makeStruct_(vrThresh_site, mrPv_global);
 fprintf('Memory use: %0.3f GiB\n', memory_matlab_()/2^30);
-if ~isempty(gcp_)  % must debug
+if ~isempty(gcp_) && ~fDone  % must debug
     [vcFile, vS_load] = readmda_paged_('close'); % close the file
     parfor iLoad = 2:nLoads  % change to for loop for debugging
         S_load1 = vS_load(iLoad);
@@ -2374,11 +2378,6 @@ if isempty(mrWav_T)
     mrWav_T = load_bin_(S_cache.vcFile_wav1, P.vcDataType, S_cache.dimm_wav1);
     delete_(S_cache.vcFile_wav1); % delete file 
 end
-% if ~P.fParfor && P.fGpu
-%     mrWav_T = gpuArray_(mrWav_T);
-% end
-% filter and trim 
-% nlim_wav1 = struct_get_(S_cache, 'nlim_wav1');
 mrWav2 = filter_transpose_(mrWav_T, P);
 S_detect = get_spikes_(mrWav2, P, S_cache);
 end %func
@@ -2412,13 +2411,6 @@ if isempty(vrThresh_site), [vrThresh_site, fGpu] = mr2thresh_(mrWav2, P); end
 [viTime_spk, vrAmp_spk, viSite_spk] = detect_spikes_(mrWav2, vrThresh_site, vlKeep_ref, P);
 [viTime_spk, vrAmp_spk, viSite_spk] = multifun_(@(x)gather_(x), viTime_spk, vrAmp_spk, viSite_spk);    
 
-% if get_set_(P, 'nSites_global', 8) >= 1
-%     nSites = size(mrWav2,2);
-%     if nSites <= get_set_(P, 'nSites_global', 8)
-%         viSite_spk=ones(size(viSite_spk), 'like', viSite_spk); 
-%     end
-% end
-
 % reject spikes within the overlap region
 if ~isempty(nlim_wav1)
     viKeep_spk = find(viTime_spk >= nlim_wav1(1) & viTime_spk <= nlim_wav1(2));
@@ -2445,7 +2437,7 @@ if isempty(mrPv_global)
 end
 trPc_spk = gather_(project_pc_(trWav_spk, mrPv_global, P));
 
-if get_set_(P, 'sort_mode', 1) == 1
+if get_set_(P, 'sort_mode', 1) == 1 && size(trWav_spk,2) > 1
     viSite2_spk = find_site_spk23_(trWav_spk, viSite_spk, P);
     trWav_spk = []; %clear memory
     trWav2_spk = mn2tn_wav_spk2_(mrWav2, viSite2_spk, viTime_spk, P);
@@ -2645,15 +2637,15 @@ if numel(fid)>1
     return;
 end
 
-try 
-    if ~isempty(fid)
+if ~isempty(fid)
+    try
         fclose(fid); 
+    catch
+        ;
     end
-    fid = [];
-    if fVerbose, disp('File closed.'); end
-catch
-    disperr_(); 
 end
+fid = [];
+if fVerbose, disp('File closed.'); end
 end %func
 
 
