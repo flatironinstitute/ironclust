@@ -154,7 +154,7 @@ function mr_out = export_ksort_(rez, firings_out_fname)
 mr_out = zeros(size(rez.st3,1), 3, 'double'); 
 mr_out(:,2) = rez.st3(:,1); %time
 mr_out(:,3) = rez.st3(:,2); %cluster
-writemda(mr_out', firings_out_fname, 'float32');
+writemda(mr_out', firings_out_fname, 'float64');
 end %func
 
 

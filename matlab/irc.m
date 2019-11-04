@@ -2829,7 +2829,8 @@ mrOut = int32(readmda(firings_out))';
 [viClu, viTime_spk] = deal(mrOut(:,3), mrOut(:,2));
 vcFile_prm = subs_file_(firings_out, 'raw_geom.prm');
 vcFile = raw_mda;
-P = makeStruct_(sRateHz, vcFile_prm, vcFile);
+mrSiteXY = csvread(fullfile(fileparts(raw_mda), 'geom.csv'));
+P = makeStruct_(sRateHz, vcFile_prm, vcFile, mrSiteXY);
 S_clu = makeStruct_(viClu);
 
 % load groundtruth
@@ -2846,6 +2847,7 @@ if isempty(S_gt1)
     S_gt1 = mda2gt1_(firings_true);
     struct_save_(S_gt1, vcFile_gt1, 1);
 end
+set(0, 'UserData', []);
 S0 = makeStruct_(viTime_spk, S_clu, S_gt1);
 P.snr_thresh_gt = 0;
 S_score = validate_(P, fPlot_gt, S0);
@@ -13209,7 +13211,7 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function S_score_ksort = compareClustering2_(cluGT, resGT, cluTest, resTest)
+function S_score_ksort = compareClustering2_(cluGT, resGT, cluTest, resTest, jitter)
 % function compareClustering(cluGT, resGT, cluTest, resTest[, datFilename])
 % - clu and res variables are length nSpikes, for ground truth (GT) and for
 % the clustering to be evaluated (Test). 
@@ -13220,7 +13222,7 @@ t1 = tic; fprintf('kilosort-style ground truth validation\n\t');
 resGT = int64(resGT);
 GTcluIDs = unique(cluGT);
 testCluIDs = unique(cluTest);
-jitter = 12;
+% jitter = 12;
 
 nSp = zeros(max(testCluIDs), 1);
 for j = 1:max(testCluIDs)
@@ -30359,7 +30361,7 @@ if fMergeCheck_gt
     try
         t_mergeCheck = tic;
         vl_ = S_clu.viClu>0;
-        S_score_ksort = compareClustering2_(S_gt.viClu, S_gt.viTime, S_clu.viClu(vl_), S0.viTime_spk(vl_)); 
+        S_score_ksort = compareClustering2_(S_gt.viClu, S_gt.viTime, S_clu.viClu(vl_), S0.viTime_spk(vl_), nSamples_jitter); 
         fprintf('\tmerge check took %0.1fs\n', toc(t_mergeCheck));
     catch
         disperr_('validate: fMergeCheck failed');

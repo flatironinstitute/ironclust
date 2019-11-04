@@ -422,7 +422,7 @@ try
     csDesc{end+1} = sprintf('    #Shanks:                %d', nShanks);
     csDesc{end+1} = sprintf('Pre-processing');
     csDesc{end+1} = sprintf('    Filter type:            %s', P.vcFilter);
-    csDesc{end+1} = sprintf('    Filter range (Hz):      %0.1f-%0.1f', P.freqLim);
+    csDesc{end+1} = sprintf('    Filter range (Hz):      [%0.1f, %0.1f]', P.freqLim);
     csDesc{end+1} = sprintf('    Common ref:             %s', P.vcCommonRef);
     csDesc{end+1} = sprintf('    FFT threshold:          %d', get_set_(P, 'fft_thresh', 0));
     csDesc{end+1} = sprintf('Events');
@@ -430,7 +430,8 @@ try
     csDesc{end+1} = sprintf('    Feature extracted:      %s', P.vcFet);    
     csDesc{end+1} = sprintf('    #Sites/event:           %d', nSites_spk);
     csDesc{end+1} = sprintf('    maxDist_site_um:        %0.0f', P.maxDist_site_um);    
-    csDesc{end+1} = sprintf('    maxDist_site_spk_um:    %0.0f', P.maxDist_site_spk_um);    
+    csDesc{end+1} = sprintf('    maxDist_site_spk_um:    %0.0f', P.maxDist_site_spk_um);
+    csDesc{end+1} = sprintf('    spkLim_ms:              [%0.3f, %0.3f]', P.spkLim_ms);
     csDesc{end+1} = sprintf('    #Features/event:        %d', nFeatures);    
     csDesc{end+1} = sprintf('    #PC/chan:               %d', P.nPcPerChan);
 catch
@@ -516,9 +517,12 @@ end
 % compute SNR per cluster and remove small SNR
 S0.S_clu = S_clu_sort_(S0.S_clu, 'viSite_clu');
 S0.S_clu = S_clu_refrac_(S0.S_clu, P); % refractory violation removal
-S0.S_clu.mrCC = correlogram_(S0.S_clu, get0('viTime_spk'), P);
-S0.S_clu = calc_clu_wav_(S0, P);
-S0.S_clu = S_clu_quality_(S0.S_clu, P);
+
+if read_cfg_('fExport_ui', 0)
+    S0.S_clu.mrCC = correlogram_(S0.S_clu, get0('viTime_spk'), P);
+    S0.S_clu = calc_clu_wav_(S0, P);
+    S0.S_clu = S_clu_quality_(S0.S_clu, P);
+end
 
 S0.runtime_automerge = toc(runtime_automerge);
 fprintf('\n\tauto-merging took %0.1fs (fGpu=%d, fParfor=%d)\n', ...
