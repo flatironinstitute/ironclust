@@ -35,8 +35,10 @@ if isempty(vcFile_arg)
     vcFile_arg = file2struct_(read_cfg_('default2_prm'));
 end
 
-P = []; 
+[P, S0, fPlot_gt] = deal([]); 
 switch lower(vcCmd)
+    case 'import-clip'
+        [S0, P] = import_clip_(vcArg1); 
     case 'edit', edit_(vcArg1); return;
     case 'juxta'
         convert_mda_ui('english'); return;
@@ -60,7 +62,6 @@ switch lower(vcCmd)
         end
         P = file2struct_(vcFile_prm);
         S0 = load0_(P.vcFile_prm);
-        fPlot_gt = [];
         switch lower(vcCmd)
             case {'detect-sort', 'spikesort'}, clear_();
             case 'sort', clear_('sort');
@@ -80,12 +81,10 @@ switch lower(vcCmd)
             'test-bionet', 'test-bionet1', 'test-monotrode', ...
             'test-monotrode1', 'test-monotrode2', 'test-monotrode3'}
         vcDir_in = get_test_data_(strsplit_get_(vcCmd,'-',2));
-        fPlot_gt = [];
     case 'export', irc('export', vcArg1); return;
     case {'export-phy', 'phy'}, irc2phy(vcArg1, vcArg2); return;
     case {'export-klusters', 'klusters', 'neurosuite'}, irc2klusters_v2(vcArg1, vcArg2); return;
     otherwise
-        fPlot_gt=0;
         clear_();
 end
 
@@ -95,8 +94,9 @@ if isempty(P)
     P = makeParam_(vcDir_in, vcDir_out, vcFile_arg);
 end
 vcFile_prm_ = P.vcFile_prm;
-S0 = get(0, 'UserData');
-
+if isempty(S0)
+    S0 = get(0, 'UserData');
+end
 if isempty(struct_get_(S0, 'trPc_spk'))
     S0 = detect_(P); 
     set(0, 'UserData', S0);
@@ -119,6 +119,47 @@ save_firings_mda_(S0, vcFile_firings_mda);
 if get_set_(P, 'fValidate', 1) && ~strcmpi(vcCmd, 'auto')
     validate_(P, fPlot_gt);
 end
+end %func
+
+
+%--------------------------------------------------------------------------
+function [S0, P] = import_clip_(vcFile_mat)
+% import monotrode clips
+
+S_mat = load(vcFile_mat);
+P = file2struct_(ircpath_(read_cfg_('default_prm', 0)));
+P2 = file2struct_(ircpath_(read_cfg_('default2_prm', 0)));
+P = struct_merge_(P, P2);
+P_ = S_mat.par;
+P.sRateHz = double(P_.sr);
+P.qqFactor = double(P_.stdmin);
+P.spkLim = [-double(P_.w_pre), double(P_.w_post)];
+P.miSites = 1;
+P.viSite2Chan = 1;
+P.nSites_fet = 1;
+P.fParfor = 0;
+P.mrSiteXY = [0,0];
+P.nTime_clu = 1;
+P.nTime_drift = 1;
+P.nC_max = read_cfg_('nC_max'); % override nC_max (gpu parameter)
+P.viShank_site = 1;
+P.vcDir_out = fileparts(vcFile_mat);
+P.fPlot_gt = 0;
+P.vcFile_prm = fullfile(P.vcDir_out, 'raw_geom.prm');
+edit_prm_file_(P, P.vcFile_prm);
+
+nSpikes = numel(S_mat.index);
+S0 = struct('viTime_spk', int64(S_mat.index), ...
+    'viSite_spk', ones(nSpikes,1,'int32'), 'P', P);
+S0.mrPos_spk = zeros(nSpikes, 2, 'single');
+S0.vrAmp_spk = max(abs(S_mat.spikes),[],2);
+[mrPv, mrPc_spk] = pca(S_mat.spikes, ...
+    'NumComponents', P.nPc_spk, 'Centered', 'off');
+S0.trPc_spk = reshape(single(mrPc_spk)', [P.nPc_spk, 1, nSpikes]);
+S0.mrPv_global = single(mrPv);
+S0.runtime_detect = nan;
+S0.memory_init = memory_matlab_();
+S0.memory_detect = nan;
 end %func
 
 
@@ -400,7 +441,11 @@ function csDesc = describe_(S0)
 P=S0.P;
 
 runtime_total = S0.runtime_detect + S0.runtime_sort + S0.runtime_automerge;
-tDur = recording_duration_(S0.P, S0); 
+try
+    tDur = recording_duration_(S0.P, S0); 
+catch
+    tDur = nan;
+end
 memory_sort = S0.memory_sort - S0.memory_init;
 memory_detect = S0.memory_detect - S0.memory_init;
 nSites = numel(P.viSite2Chan);
@@ -1093,7 +1138,8 @@ if ~fParfor
         cS_pre3{iClu} = wave_similarity_clu_pre3_(cviSpk_clu{iClu}, S_pre);
     end
 end
-[ctrPc_clu, cviSite_clu] = merge_clu_pre3_(cS_pre3, S0.trPc_spk, S0.trPc2_spk, P);
+trPc2_spk = get_(S0, 'trPc2_spk');
+[ctrPc_clu, cviSite_clu] = merge_clu_pre3_(cS_pre3, S0.trPc_spk, trPc2_spk, P);
 fprintf('\n\ttook %0.1fs\n', toc(t_template));
 
 % merge the templates: todo, faster code
@@ -1586,8 +1632,12 @@ end
 
 nSites = size(P.miSites,2);
 cviSpk_site = arrayfun(@(x)find(S0.viSite_spk==x), 1:nSites, 'UniformOutput', 0)';
-cviSpk2_site = arrayfun(@(x)find(S0.viSite2_spk==x), 1:nSites, 'UniformOutput', 0)';
-% vnSpk_site = cellfun(@numel, cviSpk_site);
+viSite2_spk = get_(S0, 'viSite2_spk');
+if ~isempty(viSite2_spk)
+    cviSpk2_site = arrayfun(@(x)find(S0.viSite2_spk==x), 1:nSites, 'UniformOutput', 0)';
+else
+    cviSpk2_site = cell(size(cviSpk_site));
+end
 nSpk = numel(S0.viSite_spk);
 
 % parfor loop

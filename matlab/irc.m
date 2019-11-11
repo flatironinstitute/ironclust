@@ -11328,6 +11328,10 @@ end %func
 %--------------------------------------------------------------------------
 % Return [] if multiple files are found
 function nBytes = filesize_(vcFile)
+if ~exist_file_(vcFile)
+    nBytes = nan;
+    return;
+end
 S_dir = dir(vcFile);
 if numel(S_dir) ~= 1
     nBytes = []; 
