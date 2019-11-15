@@ -13,14 +13,18 @@ if nargin<1, vcDir_in = ''; end
 if nargin<2, vcDir_out = ''; end
 if nargin<3, vcFile_arg = ''; end
 if nargin<4, vcArg3 = ''; end
-
+ 
 persistent vcFile_prm_
 
 % batch processing. it uses default param for now
 if iscell(vcDir_in) && iscell(vcDir_out)
+    fForceRerun = read_cfg_('fForceRerun');
     [csDir_in, csDir_out, csFile_arg] = deal(vcDir_in, vcDir_out, vcFile_arg);
     parfor iFile = 1:numel(csDir_in)
         try
+            if exist_file_(fullfile(csDir_out{iFile}, 'firings.mda')) && ~fForceRerun
+                continue;
+            end
             fprintf('irc2 batch-processing %s (%d/%d)\n', csDir_in{iFile}, iFile, numel(csDir_in));
             irc2(csDir_in{iFile}, csDir_out{iFile}, csFile_arg{iFile});
         catch
@@ -306,8 +310,8 @@ end %func
 %--------------------------------------------------------------------------
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_()
-vcVer = 'v5.0.8';
-vcDate = '10/29/2019';
+vcVer = 'v5.0.9';
+vcDate = '11/13/2019';
 vcHash = file2hash_();
 
 if nargout==0
@@ -452,7 +456,13 @@ nSites = numel(P.viSite2Chan);
 nShanks = max(P.viShank_site);
 nSites_spk = size(P.miSites,1);
 nSpk = numel(S0.viTime_spk);
-nFeatures = P.nSites_fet * P.nPcPerChan;
+try
+    nFeatures = S0.S_clu.nFeatures;
+    nPcPerChan = nFeatures / nSites_spk;
+catch
+    nFeatures = P.nSites_fet * P.nPcPerChan;
+    nPcPerChan = P.nPcPerChan;
+end
 
 csDesc = {};
 try
@@ -478,7 +488,7 @@ try
     csDesc{end+1} = sprintf('    maxDist_site_spk_um:    %0.0f', P.maxDist_site_spk_um);
     csDesc{end+1} = sprintf('    spkLim_ms:              [%0.3f, %0.3f]', P.spkLim_ms);
     csDesc{end+1} = sprintf('    #Features/event:        %d', nFeatures);    
-    csDesc{end+1} = sprintf('    #PC/chan:               %d', P.nPcPerChan);
+    csDesc{end+1} = sprintf('    #PC/chan:               %d', nPcPerChan);
 catch
     ;
 end
@@ -545,7 +555,7 @@ fprintf('\nauto-merging...\n'); runtime_automerge=tic;
 
 % refresh clu, start with fundamentals
 S0.S_clu = struct_copy_(S0.S_clu, ...
-    'rho', 'delta', 'ordrho', 'nneigh', 'P', 'miKnn', 'S_drift');
+    'rho', 'delta', 'ordrho', 'nneigh', 'P', 'miKnn', 'S_drift', 'nFeatures');
 S0.S_clu = postCluster_(S0.S_clu, P); % peak merging
 
 maxWavCor = get_set_(P, 'maxWavCor', .99);
@@ -1609,26 +1619,38 @@ function S0 = sort1_(S0, P)
 fprintf('Clustering\n'); 
 runtime_sort = tic;
 
-[nSites_fet, miSites, knn, nPcPerChan] = struct_get_(P, 'nSites_fet', 'miSites', 'knn', 'nPcPerChan');
-
-% determine feature dimension
-% if ~isempty(nFet_max)
-%     nPcPerChan = round(nFet_max / nSites_fet);
-%     nPcPerChan = min(max(nPcPerChan, 1), size(S0.trPc_spk,1));
+[nSites_fet, miSites, knn, nPcPerChan, nPc_spk] = ...
+    struct_get_(P, 'nSites_fet', 'miSites', 'knn', 'nPcPerChan', 'nPc_spk');
+% if nPcPerChan < 1 || isempty(nPcPerChan)
+%     nPcPerChan = nPc_spk;
+% elseif nPcPerChan > nPc_spk
+%     nPcPerChan = nPc_spk;
 % end
-switch 1
-    case 1
-        get_pc_ = @(x)reshape(x(1:nPcPerChan,1:nSites_fet,:), nPcPerChan*nSites_fet, 1, size(x,3));
-    case 2
-        get_pc_ = @(x)reshape(x(1:nPcPerChan,:,:), nPcPerChan*size(x,2), 1, size(x,3));
-    case 3
-        get_pc_ = @(x)reshape(x, size(x,1)*size(x,2), 1, size(x,3));
+if isempty(nPcPerChan)
+    get_pc_ = @(x)get_pc_sort_(x, nPcPerChan);
+elseif numel(nPcPerChan) > 1
+    get_pc_ = @(x)get_pc_sort_(x, nPcPerChan);
+elseif nPcPerChan == 0
+    get_pc_ = @(x)get_pc_sort_(x, []);
+else
+    get_pc_ = @(x)reshape(x(1:nPcPerChan,1:nSites_fet,:), nPcPerChan*nSites_fet, 1, size(x,3));
 end
+% switch 4
+%     case 1
+%         get_pc_ = @(x)reshape(x(1:nPcPerChan,1:nSites_fet,:), nPcPerChan*nSites_fet, 1, size(x,3));
+%     case 2
+%         get_pc_ = @(x)reshape(x(1:nPcPerChan,:,:), nPcPerChan*size(x,2), 1, size(x,3));
+%     case 3
+%         get_pc_ = @(x)reshape(x, size(x,1)*size(x,2), 1, size(x,3));
+%     case 4
+%         get_pc_ = @(x)get_pc_sort_(x);
+% end
 if isempty(get_(S0, 'trPc2_spk'))
     trPc_spk = get_pc_(S0.trPc_spk);
 else
     trPc_spk = cat(2, get_pc_(S0.trPc_spk), get_pc_(S0.trPc2_spk));
 end
+nFeatures = size(trPc_spk,1);
 
 nSites = size(P.miSites,2);
 cviSpk_site = arrayfun(@(x)find(S0.viSite_spk==x), 1:nSites, 'UniformOutput', 0)';
@@ -1641,7 +1663,8 @@ end
 nSpk = numel(S0.viSite_spk);
 
 % parfor loop
-if get_set_(P, 'fParfor', 1)
+fParfor = get_set_(P, 'fParfor', true) && nSites>1;
+if fParfor
     gcp_ = gcp();
 else
     gcp_ = [];
@@ -1722,9 +1745,31 @@ runtime_sort = toc(runtime_sort);
 [~, ordrho] = sort(vrRho, 'descend');
 memory_sort = memory_matlab_();
 S0.S_clu = struct('rho', vrRho, 'delta', vrDelta, 'ordrho', ordrho, 'nneigh', viNneigh, ...
-    'P', P, 'miKnn', miKnn, 'S_drift', S_drift);
+    'P', P, 'miKnn', miKnn, 'S_drift', S_drift, 'nFeatures', nFeatures);
 S0.runtime_sort = runtime_sort;
 S0.memory_sort = memory_sort;
+end %func
+
+
+%--------------------------------------------------------------------------
+function trPc1 = get_pc_sort_(trPc, vnPc_site)
+if nargin<2, vnPc_site = []; end
+[nPc_spk, nSites_spk, nSpk] = size(trPc);
+if isempty(vnPc_site)
+    vnPc_site = nPc_spk:-1:1;
+end
+
+miPc = false(nPc_spk, nSites_spk);
+nSites1 = min(nSites_spk, numel(vnPc_site));
+for iSite = 1:nSites1
+    nPc1 = vnPc_site(iSite);
+    miPc(1:nPc1, iSite) = true;
+end
+miPc(1,:) = true;
+
+nPc = sum(miPc(:));
+mrPc = reshape(trPc, [], nSpk);
+trPc1 = reshape(mrPc(miPc(:),:), [nPc, 1, nSpk]);
 end %func
 
 
@@ -1790,7 +1835,8 @@ vnSpk_site = cellfun(@numel, cviSpk_site);
 nSpk = numel(S0.viSite_spk);
 
 % parfor loop
-if get_set_(P, 'fParfor', 1)
+fParfor = get_set_(P, 'fParfor', true) && nSites>1;
+if fParfor
     gcp_ = gcp();
 else
     gcp_ = [];

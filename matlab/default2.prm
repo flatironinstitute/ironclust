@@ -9,14 +9,14 @@ freqLim = [300, 6000];
 
 % filter
 qqFactor = 4;
-nPc_spk = 6;
+nPc_spk = 9;
 spkLim_ms = [-.25, .75];
 nChans_min_car = 16;
 fInterp_fet = 1;
 fSpatialMask_clu = 0;
 
 % sort
-nPcPerChan = 3;
+nPcPerChan = 0;
 nFet_max = [];
 sort_mode = 1;
 step_sec_drift = 20; %20

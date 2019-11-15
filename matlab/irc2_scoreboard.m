@@ -135,7 +135,7 @@ parfor iDir = 1:numel(csDir_out)
 %         cmRecall{iRecording1,iParam1} = vrRecall1(:);
 %         cmAccuracy{iRecording1,iParam1} = vrAccuracy1(:);        
     catch
-        ;
+        disp(lasterr());
     end
 end
 for iDir = 1:numel(csDir_out)
@@ -440,7 +440,7 @@ if nargin<2, vcKey = []; end
 persistent vcDir_in vcDir_out
 if isempty(vcDir_in) || isempty(vcDir_out)
     vcDir_in = read_cfg_('path_groundtruth');
-    vcDir_out = fullfile(read_cfg_('path_validation2'), irc('version'));
+    vcDir_out = fullfile(read_cfg_('path_validation2'), irc2('version'));
 end
 
 switch lower(vcType)    

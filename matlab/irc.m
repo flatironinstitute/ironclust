@@ -3119,6 +3119,7 @@ S_cfg = read_cfg_();
 t1 = tic;
 fprintf('Computing ground truth units...\n');
 viClu = int32(S_gt.viClu); 
+
 viTime_spk = int32(S_gt.viTime);
 nSites = numel(get_(P, 'viSite2Chan'));
 
@@ -28957,6 +28958,7 @@ end
 % compute S_gt1
 mnGt = int32(readmda_(vcFile_gt_mda)');
 [viSite, viTime, viClu] = deal(mnGt(:,1), mnGt(:,2), mnGt(:,3));
+if min(viClu(:))==0, viClu = viClu + 1; end
 S_gt = makeStruct_(viClu, viTime, viSite);
 S_gt1 = gt2spk_(S_gt, P);
 end %func
