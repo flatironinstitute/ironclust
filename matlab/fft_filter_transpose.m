@@ -15,7 +15,7 @@ if isempty(vcMode), vcMode = 'bandpass'; end
 fDebug = 0;
 fVerbose = 0;
 
-NSKIP_MAX = 2^19; % fft work length
+NSKIP_MAX = 2^16; % fft work length
 vcDataType_filter = get_set_(P, 'vcDataType_filter', 'int16');
 if strcmpi(vcDataType_filter, 'int16')
     scale_filter = get_set_(P, 'scale_filter', 1);
@@ -79,7 +79,7 @@ for iStart = 1:nSkip:nT
             try
                 mrWav1 = fh_filter(gpuArray(mrWav1), gvrFilt1);  
             catch
-                fGpu=0;
+                fGpu = 0;
             end
         end
         if ~fGpu
