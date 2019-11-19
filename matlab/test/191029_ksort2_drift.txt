@@ -1,0 +1,72 @@
+run_ksort2 C:\tmp\groundtruth\hybrid_synth\static_siprobe\rec_64c_1200s_11
+Running kilosort on C:\tmp\groundtruth\hybrid_synth\drift_siprobe\rec_64c_1200s_11\raw.mda
+Time   0s. Determining good channels.. 
+found 202987 threshold crossings in 201.17 seconds of data 
+found 0 bad channels 
+Time  12s. Computing whitening matrix.. 
+Getting channel whitening matrix... 
+Channel-whitening filters computed. 
+Time  14s. Loading raw data and applying filters... 
+Time  61s. Finished preprocessing 550 batches. 
+Obtained 7 PC waveforms in 0.56 seconds 
+time 0.14, pre clustered 1 / 550 batches 
+time 45.77, pre clustered 501 / 550 batches 
+time 0.03, compared 1 / 550 batches 
+time 12.85, compared 501 / 550 batches 
+time 18.78, Re-ordered 550 batches. 
+Time  21s. Optimizing templates ...
+20.72 sec, 1 / 1102 batches, 14 units, nspks: 5.1970, mu: 25.2092, nst0: 92, merges: 0.0000, 0.0000 
+31.70 sec, 101 / 1102 batches, 81 units, nspks: 743.3092, mu: 20.9026, nst0: 735, merges: 18.1368, 0.0314 
+42.15 sec, 201 / 1102 batches, 76 units, nspks: 745.1170, mu: 23.0511, nst0: 737, merges: 13.9600, 0.0038 
+52.39 sec, 301 / 1102 batches, 71 units, nspks: 748.2673, mu: 23.8153, nst0: 730, merges: 10.7925, 0.0005 
+62.68 sec, 401 / 1102 batches, 69 units, nspks: 758.1277, mu: 23.7274, nst0: 762, merges: 8.3763, 0.0001 
+73.01 sec, 501 / 1102 batches, 71 units, nspks: 739.9801, mu: 23.1890, nst0: 729, merges: 13.2640, 0.0000 
+memorized middle timepoint 
+82.19 sec, 601 / 1102 batches, 76 units, nspks: 717.4714, mu: 21.1550, nst0: 767, merges: 13.8499, 0.0000 
+90.03 sec, 701 / 1102 batches, 76 units, nspks: 691.9173, mu: 20.8356, nst0: 811, merges: 13.8499, 0.0000 
+97.86 sec, 801 / 1102 batches, 76 units, nspks: 688.3148, mu: 22.3219, nst0: 802, merges: 13.8499, 0.0000 
+reverted back to middle timepoint 
+105.74 sec, 901 / 1102 batches, 76 units, nspks: 740.9840, mu: 21.3264, nst0: 793, merges: 13.8499, 0.0000 
+113.52 sec, 1001 / 1102 batches, 76 units, nspks: 758.0025, mu: 22.5804, nst0: 788, merges: 13.8499, 0.0000 
+121.22 sec, 1101 / 1102 batches, 76 units, nspks: 748.5598, mu: 22.7487, nst0: 770, merges: 13.8499, 0.0000 
+Elapsed time is 121.415153 seconds.
+
+ntot =
+
+      423196
+
+Finished compressing time-varying templates 
+initialized spike counts
+Found 0 splits, checked 1/76 clusters, nccg 0 
+Finished splitting. Found 3 splits, checked 79/79 clusters, nccg 45 
+Found 0 splits, checked 1/79 clusters, nccg 1 
+Finished splitting. Found 2 splits, checked 81/81 clusters, nccg 52 
+
+	found 70 good units 
+
+	took 262.2s
+Clustering result wrote to C:\tmp\ksort2\hybrid_synth\drift_siprobe\rec_64c_1200s_11\firings_out.mda
+Clustering result wrote to C:\tmp\ksort2\hybrid_synth\drift_siprobe\rec_64c_1200s_11\firings_out.mda
+Loaded from C:\tmp\groundtruth\hybrid_synth\drift_siprobe\rec_64c_1200s_11\firings_true_gt1.mat
+verifying cluster...
+Validating cluster
+	
+	took 6.0s.
+Validation summary
+	Events detected (<94.8%> 96.8 99.9 99.9): 99.9 100.0 66.9 81.0 99.8 81.8 100.0 99.9 97.7 85.6 96.8 89.8 64.4 77.3 63.7 89.8 99.8 99.9 99.9 99.9 99.9 99.9 99.9 99.8 99.9 99.9 99.9 99.8 99.9 99.9 99.7 99.9 99.9 99.9 100.0 100.0 99.9 99.6 99.9 99.3 88.3 99.9 84.5 99.9 99.9 85.9 79.2 85.0 99.8 65.9 92.9 64.5 83.4 99.9 99.9 99.9 99.9 100.0 99.9 99.9 99.9 99.9 100.0 99.8 99.9 99.9 99.9 99.9 99.9 99.9 100.0 99.8 99.9 99.8 
+	False-positives (<11.2%> 0.0 0.1 2.0): 0.2 2.8 90.2 32.4 0.0 0.0 0.4 1.0 0.6 1.0 9.3 0.1 99.1 58.8 96.9 5.9 0.3 0.1 0.0 0.0 0.0 0.0 0.0 0.0 26.6 0.1 0.0 0.0 0.0 0.0 0.2 0.0 0.0 28.9 0.0 0.0 0.0 7.9 0.0 0.3 38.6 2.4 66.1 0.0 0.0 0.0 0.0 33.9 0.1 88.6 0.0 97.5 0.0 0.1 0.1 0.0 0.1 2.0 0.0 33.9 0.1 0.5 0.0 0.0 0.0 0.0 0.3 0.0 0.0 0.0 0.0 0.0 0.0 0.0 
+	False-negatives (<15.0%> 0.1 0.3 26.1): 0.1 0.1 90.8 52.7 0.3 51.4 0.1 32.6 34.0 40.6 9.1 27.0 96.7 61.7 97.0 26.1 0.6 0.3 0.1 0.2 0.2 0.1 0.4 0.2 0.2 0.2 0.3 0.4 0.2 0.3 0.3 0.2 0.1 0.2 0.1 0.1 0.1 1.1 0.1 2.0 31.5 0.1 39.9 0.2 0.1 40.3 68.4 41.2 0.5 94.7 18.2 97.0 43.3 0.2 0.6 0.1 0.3 1.5 0.1 0.2 0.1 0.4 0.0 0.2 0.3 0.2 0.1 0.1 0.2 0.1 0.1 0.2 0.2 0.3 
+	Accuracy (<82.0%> 70.6 99.6 99.8): 99.7 97.1 5.0 38.6 99.7 48.6 99.5 67.0 65.8 59.1 83.1 72.9 0.7 24.8 1.5 70.6 99.1 99.6 99.8 99.8 99.8 99.9 99.6 99.8 73.3 99.7 99.7 99.6 99.8 99.7 99.4 99.8 99.9 71.0 99.9 99.8 99.9 91.2 99.9 97.8 47.9 97.5 27.7 99.8 99.9 59.7 31.6 45.2 99.4 3.7 81.8 1.4 56.7 99.7 99.3 99.9 99.6 96.6 99.9 66.0 99.8 99.0 99.9 99.8 99.6 99.8 99.6 99.9 99.8 99.9 99.9 99.8 99.8 99.7 
+	Score (<82.0%> 70.6 99.6 99.8): 99.7 97.1 5.0 38.6 99.7 48.6 99.5 67.0 65.8 59.1 83.1 72.9 0.7 24.8 1.5 70.6 99.1 99.6 99.8 99.8 99.8 99.9 99.6 99.8 73.3 99.7 99.7 99.6 99.8 99.7 99.4 99.8 99.9 71.0 99.9 99.8 99.9 91.2 99.9 97.8 47.9 97.5 27.7 99.8 99.9 59.7 31.6 45.2 99.4 3.7 81.8 1.4 56.7 99.7 99.3 99.9 99.6 96.6 99.9 66.0 99.8 99.0 99.9 99.8 99.6 99.8 99.6 99.9 99.8 99.9 99.9 99.8 99.8 99.7 
+	Cluster-size: 10273, 1326, 9680, 11349, 2382, 5903, 5903, 7778, 5158, 5333, 4485, 7369, 3118, 11316, 10518, 2472, 8438, 10751, 7608, 6384, 9530, 3112, 4914, 3969, 3721, 9283, 11017, 6351, 1476, 7499, 4816, 6497, 1431, 4520, 10270, 5509, 7376, 8446, 10250, 10020, 9447, 4261, 4479, 10071, 7345, 3820, 1276, 4659, 5320, 9706, 10555, 9272, 8334, 9787, 1849, 9561, 1996, 2693, 9026, 3864, 6969, 1350, 2002, 2602, 4856, 7420, 3355, 11054, 4079, 8821, 9114, 11855, 9518, 5001, 
+	Matching clu: 23, 68, 51, 19, 25, 65, 16, 12, 2, 13, 14, 39, 47, 35, 23, 5, 3, 54, 41, 24, 26, 75, 56, 1, 15, 58, 55, 52, 74, 33, 53, 36, 76, 73, 50, 59, 63, 51, 31, 69, 35, 37, 19, 30, 29, 48, 79, 4, 57, 14, 27, 22, 44, 32, 71, 28, 45, 78, 6, 40, 61, 17, 18, 60, 34, 38, 67, 22, 43, 42, 49, 47, 46, 72, 
+SNR_gt (Vp/Vrms): 5.2 7.4 1.4 7.3 6.8 6.9 5.0 4.0 4.3 4.9 6.8 8.6 5.0 6.2 2.7 5.2 8.7 13.7 11.3 12.5 9.8 13.0 11.3 10.0 12.6 10.2 14.0 12.3 10.1 12.9 12.2 10.8 9.5 11.7 11.7 9.9 12.6 6.7 9.1 3.8 8.7 5.7 7.4 9.0 8.6 5.6 5.5 6.9 9.1 3.4 9.7 3.3 5.2 4.9 14.1 6.8 12.8 9.6 12.1 11.6 12.6 12.5 10.2 12.9 11.6 10.4 12.6 12.8 11.2 10.5 11.4 10.4 10.5 10.5 
+nSites>thresh (GT): 1 1 0 1 1 1 1 0 0 0 1 1 1 1 0 1 1 12 3 6 3 4 6 2 5 5 3 6 9 8 7 7 4 6 6 6 4 1 1 0 1 1 1 1 1 1 1 1 1 0 1 0 1 0 11 3 6 3 5 8 5 4 5 3 8 9 7 7 8 5 6 7 5 4 
+assigned 'S_score' to workspace
+SNR(min)>1.0 Groundtruth Units
+	SNR (Vp/Vrms): n, mu/sd, (10,25,*50,75,90%), min-max:	 74, 9.0/3.2, (4.8, 6.7, *9.8, 11.7, 12.8), 1.4-14.1
+	False Positive (%): n, mu/sd, (10,25,*50,75,90%), min-max:	 74, 11.2/26.1, (0.0, 0.0, *0.1, 2.0, 40.6), 0.0-99.1
+	False Negative (%): n, mu/sd, (10,25,*50,75,90%), min-max:	 74, 15.0/27.7, (0.1, 0.1, *0.3, 26.1, 53.6), 0.0-97.0
+	Accuracy (%): n, mu/sd, (10,25,*50,75,90%), min-max:	 74, 82.0/29.6, (31.2, 70.6, *99.6, 99.8, 99.9), 0.7-99.9
+	score (1-FP-FN) (%): n, mu/sd, (10,25,*50,75,90%), min-max:	 74, 73.8/51.4, (12.8, 68.0, *99.6, 99.8, 99.9), -95.8-99.9
+	score2 1-(FP+FN)/2 (%): n, mu/sd, (10,25,*50,75,90%), min-max:	 74, 86.9/25.7, (56.4, 84.0, *99.8, 99.9, 99.9), 2.1-100.0

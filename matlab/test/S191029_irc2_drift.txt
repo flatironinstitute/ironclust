@@ -1,0 +1,213 @@
+irc2 clear; irc2 test-drift;
+irc2: cleared all
+Running irc2.m (v5.0.8)
+	nTime_clu = 4 (batch_sec_drift = 300.0 s)
+	nTime_drift = 60 (step_sec_drift = 20.0 s)
+Created C:\tmp\irc2\hybrid_synth\drift_siprobe\rec_64c_1200s_11\raw_geom.prm
+Read C:\tmp\groundtruth\hybrid_synth\drift_siprobe\rec_64c_1200s_11\raw.mda (1/18), took 0.1s (1951.6 MB/s, 250.0 MB)
+	Filtering spikes... took 2.8s
+	Detecting spikes from each channel.
+		................................................................
+		Detected 113388 spikes from 64 sites; took 0.5s.
+	Merging spikes...	27234 spiking events found; took 0.4s
+Memory use: 23.214 GiB
+	Filtering spikes... took 24.8s
+	Filtering spikes... took 26.0s
+	Detecting spikes from each channel.
+	Detecting spikes from each channel.
+	Filtering spikes... took 29.5s
+	Filtering spikes... took 29.6s
+		................................................................
+		Detected 112769 spikes from 64 sites; took 1.0s.
+	Merging spikes...	26964 spiking events found; took 0.9s
+	Filtering spikes... took 29.7s
+	Filtering spikes... took 30.6s
+		................................................................
+		Detected 111772 spikes from 64 sites; took 1.2s.
+	Merging spikes...	26540 spiking events found; took 0.7s
+	Filtering spikes... took 29.9s
+	Detecting spikes from each channel.
+		................................................................
+		Detected 112178 spikes from 64 sites; took 1.0s.
+	Detecting spikes from each channel.
+		................................................................
+		Detected 112794 spikes from 64 sites; took 0.9s.
+	Merging spikes...	26743 spiking events found; took 0.7s
+	Detecting spikes from each channel.
+		................................................................
+		Detected 113974 spikes from 64 sites; took 1.0s.
+	Merging spikes...	27555 spiking events found; took 0.8s
+	Filtering spikes... took 31.5s
+	Filtering spikes... took 31.8s
+	Detecting spikes from each channel.
+		................................................................
+		Detected 112929 spikes from 64 sites; took 0.9s.
+	Merging spikes...	26709 spiking events found; took 0.8s
+	Filtering spikes... took 31.4s
+	Detecting spikes from each channel.
+	Filtering spikes... took 30.9s
+	Detecting spikes from each channel.
+	Detecting spikes from each channel.
+	Detecting spikes from each channel.
+	Filtering spikes... took 32.4s
+		................................................................
+		Detected 113455 spikes from 64 sites; took 1.2s.
+	Merging spikes...	27039 spiking events found; took 1.0s
+	Detecting spikes from each channel.
+		................................................................
+		Detected 113488 spikes from 64 sites; took 1.1s.
+	Merging spikes...	26881 spiking events found; took 0.9s
+	Filtering spikes... took 33.4s
+		................................................................
+		Detected 113086 spikes from 64 sites; took 1.2s.
+	Merging spikes...	26757 spiking events found; took 0.9s
+	Detecting spikes from each channel.
+	Filtering spikes... took 33.2s
+		................................................................
+		Detected 111927 spikes from 64 sites; took 1.2s.
+	Merging spikes...	27186 spiking events found; took 1.0s
+	Detecting spikes from each channel.
+		................................................................
+		Detected 163874 spikes from 64 sites; took 1.7s.
+	Merging spikes...	39295 spiking events found; took 1.3s
+	Merging spikes...	26500 spiking events found; took 0.8s
+	Detecting spikes from each channel.
+		................................................................
+		Detected 112891 spikes from 64 sites; took 1.0s.
+	Merging spikes...	26995 spiking events found; took 0.7s
+	Filtering spikes... took 35.6s
+	Filtering spikes... took 36.8s
+		................................................................
+		Detected 113864 spikes from 64 sites; took 1.1s.
+	Merging spikes...	27173 spiking events found; took 0.7s
+	Filtering spikes... took 36.5s
+	Detecting spikes from each channel.
+		................................................................
+		Detected 113239 spikes from 64 sites; took 0.9s.
+	Merging spikes...	27111 spiking events found; took 0.7s
+	Detecting spikes from each channel.
+		................................................................
+		Detected 113067 spikes from 64 sites; took 0.8s.
+	Merging spikes...	26968 spiking events found; took 0.7s
+		................................................................
+		Detected 113174 spikes from 64 sites; took 1.0s.
+	Merging spikes...	26680 spiking events found; took 0.7s
+	Detecting spikes from each channel.
+		................................................................
+		Detected 113102 spikes from 64 sites; took 0.8s.
+	Merging spikes...	27187 spiking events found; took 0.7s
+	Memory use: 23.509 GiB
+Calculating spike positions
+	
+	took 0.2s
+detect_: took 47.7s (fParfor=1, fGpu=1)
+Clustering
+Calculating drift similarity...
+	took 0.1s
+Calculating Rho
+	
+	took 3.5s (fGpu=1, fParfor=1)
+Calculating Delta
+	
+	took 1.9s (fGpu=1, fParfor=1)
+
+auto-merging...
+assigning clusters, nClu:1090
+calc_dist_knn_clu (run_mode=5)... 	took 0.4s
+S_clu_peak_merge_: 1039->230 cluster centers (knn_merge_thresh=1)
+
+	took 1.0s. Pre-merged 0 clusters: 230->230
+Automated merging (post-hoc)
+	Computing template
+	
+	took 7.4s
+Merging templates
+	
+Merged 111 waveforms (230->119), took 0.2s
+Removed 4243/496533 (0.9%) duplicate spikes
+Computing correlogram...
+	took 1.3s
+calc_clu_wav_: 119->105 clusters, 14 removed below SNR=4.0
+Automated merging (post-hoc)
+	Computing template
+	
+	took 3.9s
+Calculating cluster quality...
+	took 0.0s
+
+	auto-merging took 15.7s (fGpu=1, fParfor=1)
+Recording format
+    Recording file:         C:\tmp\groundtruth\hybrid_synth\drift_siprobe\rec_64c_1200s_11\raw.mda
+    Probe file:             C:\tmp\groundtruth\hybrid_synth\drift_siprobe\rec_64c_1200s_11\geom.csv
+    Recording Duration:     1200.0s
+    Data Type:              int16
+    #Channels in file:      64
+    #Sites:                 64
+    #Shanks:                1
+Pre-processing
+    Filter type:            bandpass
+    Filter range (Hz):      300.0-6000.0
+    Common ref:             mean
+    FFT threshold:          8
+Events
+    #Spikes:                497473
+    Feature extracted:      gpca
+    #Sites/event:           14
+    maxDist_site_um:        50
+    maxDist_site_spk_um:    75
+    #Features/event:        30
+Cluster
+    #Clusters:              105
+    #Unique events:         470470
+    min. spk/clu:           30
+    Cluster method:         drift-knn
+    knn:                    30
+    nTime_clu:              4
+    nTime_drift:            60
+    fSpatialMask_clu:       0
+Auto-merge
+    delta_cut:              1.000
+    maxWavCor:              0.990
+Runtime (s)
+    Detect + feature (s):   47.7s
+    Cluster runtime (s):    6.1s
+    merge runtime (s):      15.7s
+    Total runtime (s):      69.5s
+    Runtime speed:          x17.3 realtime
+memory usage (GiB):         0.835
+    detect(GiB):            0.650
+    sort(GiB):              0.835
+Execution
+    fGpu (GPU use):         1
+    fParfor (parfor use):   1
+    Parameter file:         C:\tmp\irc2\hybrid_synth\drift_siprobe\rec_64c_1200s_11\raw_geom.prm
+Writing to C:\tmp\irc2\hybrid_synth\drift_siprobe\rec_64c_1200s_11\raw_geom_fet.irc took 0.1s
+Writing to C:\tmp\irc2\hybrid_synth\drift_siprobe\rec_64c_1200s_11\raw_geom_fet2.irc took 0.1s
+Writing to C:\tmp\irc2\hybrid_synth\drift_siprobe\rec_64c_1200s_11\raw_geom_knn.irc took 0.0s
+Writing to C:\tmp\irc2\hybrid_synth\drift_siprobe\rec_64c_1200s_11\firings.mda took 0.8s
+Output to C:\tmp\irc2\hybrid_synth\drift_siprobe\rec_64c_1200s_11\firings.mda
+Loaded from C:\tmp\groundtruth\hybrid_synth\drift_siprobe\rec_64c_1200s_11\firings_true_gt1.mat
+verifying cluster...
+Validating cluster
+	
+	took 5.6s.
+Validation summary
+	Events detected (<98.2%> 98.3 100.0 100.0): 96.9 100.0 75.1 92.0 99.6 92.3 97.6 99.0 98.3 98.4 96.3 98.9 97.0 92.6 87.7 99.0 98.9 100.0 100.0 100.0 100.0 100.0 100.0 100.0 100.0 100.0 100.0 100.0 100.0 100.0 100.0 100.0 99.9 100.0 100.0 100.0 100.0 99.9 100.0 89.5 97.7 100.0 95.0 98.3 100.0 99.8 95.0 97.9 99.5 96.0 96.7 87.6 98.4 98.8 100.0 100.0 100.0 100.0 100.0 100.0 100.0 100.0 100.0 100.0 100.0 100.0 100.0 100.0 100.0 100.0 100.0 100.0 100.0 99.9 
+	False-positives (<3.5%> 0.1 0.3 1.4): 0.1 0.5 1.3 19.4 0.1 1.4 0.4 0.0 11.6 0.5 0.2 8.4 1.4 12.0 22.0 5.0 0.8 0.4 0.0 0.1 0.1 0.0 0.5 0.0 26.1 0.3 0.0 0.3 0.6 0.2 1.4 0.0 0.1 0.1 0.0 0.1 0.1 0.1 0.1 5.0 14.2 0.4 0.3 0.2 0.0 4.6 0.7 7.5 1.6 5.8 7.3 12.4 1.1 0.3 0.9 0.4 0.8 0.1 0.0 0.6 0.1 73.7 0.1 0.4 0.3 0.1 0.3 0.0 0.3 0.0 0.2 0.4 0.4 0.0 
+	False-negatives (<10.8%> 1.6 3.1 9.9): 13.3 2.5 93.2 29.2 4.5 28.6 9.9 5.4 8.5 6.6 13.2 6.8 39.7 27.9 60.9 41.1 4.6 1.5 19.0 0.6 1.8 1.2 3.1 0.7 0.3 3.2 1.5 2.1 1.6 0.8 2.3 2.5 0.8 1.4 2.7 2.6 1.3 5.8 3.1 39.3 11.4 3.8 21.9 8.5 2.9 6.7 66.1 7.2 5.7 15.2 12.4 48.3 40.1 9.2 1.2 8.1 3.2 2.2 0.2 2.5 1.3 2.3 2.6 1.9 1.7 2.5 1.1 1.5 3.7 1.5 2.1 1.6 2.4 1.1 
+	Accuracy (<86.6%> 81.9 96.2 97.9): 86.7 97.1 6.8 60.5 95.5 70.6 89.8 94.6 81.6 93.0 86.7 85.9 59.8 65.6 35.2 57.2 94.6 98.1 81.0 99.3 98.1 98.8 96.4 99.3 73.7 96.6 98.4 97.6 97.8 99.0 96.4 97.5 99.2 98.4 97.2 97.3 98.5 94.1 96.9 58.8 77.3 95.8 78.0 91.3 97.1 89.3 33.8 86.3 92.9 80.6 81.9 48.1 59.5 90.6 97.9 91.6 96.1 97.7 99.8 96.9 98.6 26.1 97.3 97.7 98.0 97.4 98.7 98.5 96.1 98.5 97.7 98.0 97.2 98.9 
+	Score (<86.6%> 81.9 96.2 97.9): 86.7 97.1 6.8 60.5 95.5 70.6 89.8 94.6 81.6 93.0 86.7 85.9 59.8 65.6 35.2 57.2 94.6 98.1 81.0 99.3 98.1 98.8 96.4 99.3 73.7 96.6 98.4 97.6 97.8 99.0 96.4 97.5 99.2 98.4 97.2 97.3 98.5 94.1 96.9 58.8 77.3 95.8 78.0 91.3 97.1 89.3 33.8 86.3 92.9 80.6 81.9 48.1 59.5 90.6 97.9 91.6 96.1 97.7 99.8 96.9 98.6 26.1 97.3 97.7 98.0 97.4 98.7 98.5 96.1 98.5 97.7 98.0 97.2 98.9 
+	Cluster-size: 10273, 1326, 9680, 11349, 2382, 5903, 5903, 7778, 5158, 5333, 4485, 7369, 3118, 11316, 10518, 2472, 8438, 10751, 7608, 6384, 9530, 3112, 4914, 3969, 3721, 9283, 11017, 6351, 1476, 7499, 4816, 6497, 1431, 4520, 10270, 5509, 7376, 8446, 10250, 10020, 9447, 4261, 4479, 10071, 7345, 3820, 1276, 4659, 5320, 9706, 10555, 9272, 8334, 9787, 1849, 9561, 1996, 2693, 9026, 3864, 6969, 1350, 2002, 2602, 4856, 7420, 3355, 11054, 4079, 8821, 9114, 11855, 9518, 5001, 
+	Matching clu: 28, 98, 72, 20, 33, 92, 17, 10, 1, 12, 14, 55, 24, 46, 16, 5, 3, 81, 65, 29, 32, 104, 84, 4, 15, 83, 82, 79, 97, 43, 78, 53, 105, 102, 71, 87, 91, 70, 42, 93, 47, 48, 18, 41, 37, 68, 96, 6, 85, 9, 35, 22, 63, 44, 100, 36, 64, 90, 8, 56, 89, 15, 19, 88, 45, 52, 94, 25, 61, 58, 73, 69, 66, 99, 
+SNR_gt (Vp/Vrms): 5.2 7.4 1.4 7.3 6.8 6.9 5.0 4.0 4.3 4.9 6.8 8.6 5.0 6.2 2.7 5.2 8.7 13.7 11.3 12.5 9.8 13.0 11.3 10.0 12.6 10.2 14.0 12.3 10.1 12.9 12.2 10.8 9.5 11.7 11.7 9.9 12.6 6.7 9.1 3.8 8.7 5.7 7.4 9.0 8.6 5.6 5.5 6.9 9.1 3.4 9.7 3.3 5.2 4.9 14.1 6.8 12.8 9.6 12.1 11.6 12.6 12.5 10.2 12.9 11.6 10.4 12.6 12.8 11.2 10.5 11.4 10.4 10.5 10.5 
+nSites>thresh (GT): 1 1 0 1 1 1 1 0 0 0 1 1 1 1 0 1 1 12 3 6 3 4 6 2 5 5 3 6 9 8 7 7 4 6 6 6 4 1 1 0 1 1 1 1 1 1 1 1 1 0 1 0 1 0 11 3 6 3 5 8 5 4 5 3 8 9 7 7 8 5 6 7 5 4 
+assigned 'S_score' to workspace
+SNR(min)>1.0 Groundtruth Units
+	SNR (Vp/Vrms): n, mu/sd, (10,25,*50,75,90%), min-max:	 74, 9.0/3.2, (4.8, 6.7, *9.8, 11.7, 12.8), 1.4-14.1
+	False Positive (%): n, mu/sd, (10,25,*50,75,90%), min-max:	 74, 3.5/9.8, (0.0, 0.1, *0.3, 1.4, 11.7), 0.0-73.7
+	False Negative (%): n, mu/sd, (10,25,*50,75,90%), min-max:	 74, 10.8/17.3, (1.1, 1.6, *3.1, 9.9, 39.4), 0.2-93.2
+	Accuracy (%): n, mu/sd, (10,25,*50,75,90%), min-max:	 74, 86.6/19.3, (59.5, 81.9, *96.2, 97.9, 98.7), 6.8-99.8
+	score (1-FP-FN) (%): n, mu/sd, (10,25,*50,75,90%), min-max:	 74, 85.7/21.0, (55.5, 81.0, *96.2, 97.9, 98.7), 5.5-99.8
+	score2 1-(FP+FN)/2 (%): n, mu/sd, (10,25,*50,75,90%), min-max:	 74, 92.9/10.5, (77.7, 90.5, *98.1, 98.9, 99.3), 52.7-99.9
+Saving a struct to C:\tmp\irc2\hybrid_synth\drift_siprobe\rec_64c_1200s_11\raw_geom_score.mat...
+	took 0.2s.

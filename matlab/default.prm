@@ -85,7 +85,7 @@ spkLim_ms = [-.25, .75];    % Time range to capture the filtered spike waveforms
 spkLim_raw_ms = [];         % Raw spike waveform range, setting to [] will use spkLim_raw_factor to determine spkLim_raw (# samples)
 spkLim_raw_factor = 2;      % if spkLim_raw_ms==[] then spkLim_raw = spkLim * spkLim_raw_factor
 spkRefrac_ms = .25;         % Detection refractory period in milliseconds
-spkRefrac_merge_ms = 2;     % refractory period of merging
+spkRefrac_merge_ms = .5;    % refractory period of merging
 vcSpatialFilter = 'none';   % Spatial filter for detection {'mean', 'imec2', 'subtract', 'csd'}
 fSaveEvt = 1;               % Flag to save event file
 fDetectBipolar = 0;         % bipolar amplitude detection (0 means negative)
