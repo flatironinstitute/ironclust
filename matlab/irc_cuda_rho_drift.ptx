@@ -7,7 +7,7 @@
 //
 
 .version 6.3
-.target sm_52
+.target sm_35
 .address_size 64
 
 	// .globl	_Z19jrc3_cuda_rho_driftPfPKiPKfS3_S1_f

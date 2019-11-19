@@ -1176,6 +1176,30 @@ end %func
 function [ctrPc_clu, cviSite_clu] = merge_clu_pre3_(cS_pre3, trPc_spk, trPc2_spk, P)
 [ctrPc_clu, cviSite_clu] = deal(cell(size(cS_pre3)));
 
+% tr_ = gpuArray_(trPc_spk(:,1:P.nSites_fet,:), P.fGpu);
+% mean_ = @(x,d)gather_(mean(gpuArray_(x),d));
+for iClu = 1:numel(cS_pre3)
+    S_pre3 = cS_pre3{iClu};
+    cviSite_clu{iClu} = [S_pre3.viSite1(:); S_pre3.viSite2(:)];
+    trPc_clu1 = cellfun(@(x)mean(trPc_spk(:,:,x),3), S_pre3.cviSpk1, 'UniformOutput', false);
+    ctrPc_clu{iClu} = cat(3,trPc_clu1{:}); % faster than pre-allocating
+end
+
+% Load second peak sites to the GPU memory
+if isempty(trPc2_spk), return; end
+% tr_ = gpuArray_(trPc2_spk(:,1:P.nSites_fet,:), P.fGpu);
+for iClu = 1:numel(cS_pre3)
+    S_pre3 = cS_pre3{iClu};
+    trPc_clu2 = cellfun(@(x)mean(trPc2_spk(:,:,x),3), S_pre3.cviSpk2, 'UniformOutput', false);
+    ctrPc_clu{iClu} = cat(3, ctrPc_clu{iClu}, cat(3,trPc_clu2{:}));
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+function [ctrPc_clu, cviSite_clu] = merge_clu_pre3_2_(cS_pre3, trPc_spk, trPc2_spk, P)
+[ctrPc_clu, cviSite_clu] = deal(cell(size(cS_pre3)));
+
 tr_ = gpuArray_(trPc_spk(:,1:P.nSites_fet,:), P.fGpu);
 for iClu = 1:numel(cS_pre3)
     S_pre3 = cS_pre3{iClu};
@@ -1198,7 +1222,7 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function [ctrPc_clu, cviSite_clu] = merge_clu_pre3__(cS_pre3, trPc_spk, trPc2_spk, P)
+function [ctrPc_clu, cviSite_clu] = merge_clu_pre3_1_(cS_pre3, trPc_spk, trPc2_spk, P)
 [ctrPc_clu, cviSite_clu] = deal(cell(size(cS_pre3)));
 
 tr_ = gpuArray_(trPc_spk(:,1:P.nSites_fet,:), P.fGpu);
