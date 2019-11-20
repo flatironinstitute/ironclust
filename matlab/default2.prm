@@ -5,7 +5,7 @@ MAX_BYTES_LOAD = .5e9;
 
 % detect
 vcFilter = 'bandpass';
-freqLim = [300, 6000];
+freqLim = [300, 8000];
 
 % filter
 qqFactor = 4;

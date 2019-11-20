@@ -1659,16 +1659,7 @@ elseif nPcPerChan == 0
 else
     get_pc_ = @(x)reshape(x(1:nPcPerChan,1:nSites_fet,:), nPcPerChan*nSites_fet, 1, size(x,3));
 end
-% switch 4
-%     case 1
-%         get_pc_ = @(x)reshape(x(1:nPcPerChan,1:nSites_fet,:), nPcPerChan*nSites_fet, 1, size(x,3));
-%     case 2
-%         get_pc_ = @(x)reshape(x(1:nPcPerChan,:,:), nPcPerChan*size(x,2), 1, size(x,3));
-%     case 3
-%         get_pc_ = @(x)reshape(x, size(x,1)*size(x,2), 1, size(x,3));
-%     case 4
-%         get_pc_ = @(x)get_pc_sort_(x);
-% end
+
 if isempty(get_(S0, 'trPc2_spk'))
     trPc_spk = get_pc_(S0.trPc_spk);
 else
