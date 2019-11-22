@@ -1823,7 +1823,8 @@ else
     viDrift12 = viDrift_spk(viSpk12);
 end    
 
-if get_set_(P, 'nFet_max', 0)
+nFet_max = get_set_(P, 'nFet_max', 0);
+if nFet_max > 0
     if size(mrFet12,1) > nFet_max
         [~, mrFet12] = pca(mrFet12', 'NumComponents', nFet_max);
         mrFet12 = mrFet12';
@@ -3017,6 +3018,67 @@ end %func
 
 
 %--------------------------------------------------------------------------
+function [S_mda, fid_r] = readmda_header_(fname)
+fid_r = fopen(fname,'rb');
+
+try
+    code=fread(fid_r,1,'int32');
+catch
+    error('Problem reading file: %s',fname);
+end
+if (code>0) 
+    num_dims=code;
+    code=-1;
+    nBytes_sample = 4;
+else
+    nBytes_sample = fread(fid_r,1,'int32');
+    num_dims=fread(fid_r,1,'int32');    
+end
+dim_type_str='int32';
+if (num_dims<0)
+    num_dims=-num_dims;
+    dim_type_str='int64';
+end
+
+dimm=zeros(1,num_dims);
+for j=1:num_dims
+    dimm(j)=fread(fid_r,1,dim_type_str);
+end
+nBytes_header = ftell(fid_r);
+
+if (code==-1)
+    vcDataType = 'single';
+elseif (code==-2)
+    vcDataType = 'uchar';
+elseif (code==-3)
+    vcDataType = 'single';
+elseif (code==-4)
+    vcDataType = 'int16';
+elseif (code==-5)
+    vcDataType = 'int32';
+elseif (code==-6)
+    vcDataType = 'uint16';
+elseif (code==-7)
+    vcDataType = 'double';
+elseif (code==-8)
+    vcDataType = 'uint32';
+else
+    vcDataType = ''; % unknown
+end %if
+
+% integrity check
+nBytes_data = prod(dimm) * bytesPerSample_(vcDataType);
+nBytes_missing = nBytes_data - filesize_(fname) + nBytes_header;
+
+S_mda = struct('dimm', dimm, 'vcDataType', vcDataType, ...
+    'nBytes_header', nBytes_header, 'nBytes_sample', nBytes_sample, ...
+    'nBytes_missing', nBytes_missing, 'nBytes_data', nBytes_data);
+
+if nargout<2, fclose(fid_r); end
+end %func
+
+
+%--------------------------------------------------------------------------
 function P = import_spikeforest_args_(vcArg_txt)
 P = struct();
 
@@ -3419,7 +3481,7 @@ function out1 = get_fig_cache_(varargin), fn=dbstack(); out1 = irc('call', fn(1)
 function out1 = S_clu_position_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = S_clu_quality_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 
-function [out1, out2] = readmda_header_(varargin), fn=dbstack(); [out1, out2] = irc('call', fn(1).name, varargin); end
+% function [out1, out2] = readmda_header_(varargin), fn=dbstack(); [out1, out2] = irc('call', fn(1).name, varargin); end
 function [out1, out2] = mr2thresh_(varargin), fn=dbstack(); [out1, out2] = irc('call', fn(1).name, varargin); end
 function [out1, out2] = gpuArray_(varargin), fn=dbstack(); [out1, out2] = irc('call', fn(1).name, varargin); end
 function [out1, out2] = filt_car_(varargin), fn=dbstack(); [out1, out2] = irc('call', fn(1).name, varargin); end

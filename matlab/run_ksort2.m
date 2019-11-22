@@ -1,8 +1,10 @@
 function run_ksort2(vcDir_in, vcDir_out, arg_fname)
 % usage
 % -----
-% run_irc(command)
-% run_irc(vcDir_in, vcDir_out, vcFile_template)
+% run_ksort2(command)
+% run_ksort2(vcDir_in, vcDir_out, vcFile_template)
+% run_ksort2('mcc', vcDir_ksort2, vcDir_out)
+%    compile run_ksort2
 %
 % arguments
 % -----
@@ -10,27 +12,35 @@ function run_ksort2(vcDir_in, vcDir_out, arg_fname)
 % vcDir_out: output directory
 % vcFile_template: template file (optional)
 
-if nargin<3, arg_fname = []; end
-if isempty(arg_fname), arg_fname = 'ksort2.txt'; end
+if nargin<1, error('provide vcDir_in'); end
 if nargin<2, vcDir_out = ''; end
+if nargin<3, arg_fname = []; end
+
+if strcmpi(vcDir_in, 'mcc')
+    [vcDir_ksort2, vcDir_mcc_out] = deal(vcDir_out, arg_fname);
+    mcc_ksort2_(vcDir_ksort2, vcDir_mcc_out);
+    return;
+end
+
+if isempty(arg_fname), arg_fname = 'ksort2.txt'; end
 if isempty(vcDir_out)
     vcDir_out = strrep(vcDir_in, 'groundtruth', 'ksort2');
 end
 
 source_path = fileparts(mfilename('fullpath'));
-S_cfg = file2struct(fullfile(source_path, 'default.cfg'));
-kilosort_src = S_cfg.path_ksort2;
 ironclust_src = fileparts(source_path);
 if ~exist_file_(arg_fname)
     arg_fname = fullfile(source_path, arg_fname);
 end
 
-if ~isdeployed(), addpath(genpath(fullfile(source_path))); end
-% if nargin==1
-%     vcCmd = vcDir_in;
-%     fprintf('%s\n', irc(vcCmd)); 
-%     return; 
-% end
+if ~isdeployed()
+    addpath(genpath(fullfile(source_path))); 
+    S_cfg = file2struct(fullfile(source_path, 'default.cfg'));
+    kilosort_src = S_cfg.path_ksort2;
+else
+    kilosort_src = '';
+    fprintf('Running run_ksort2 in deployed mode.\n');
+end
 
     
 % inferred from the path
@@ -59,6 +69,61 @@ end
 
 % Exit
 exit_deployed_();
+end %func
+
+
+%--------------------------------------------------------------------------
+% 11/2/2018 JJJ: matlab compiler, generates run_irc
+% @TODO: get the dependency list from sync_list
+function mcc_ksort2_(vcDir_ksort2, vcDir_out)
+if nargin<1, vcDir_ksort2 = ''; end
+if nargin<2, vcDir_out = ''; end
+assert(~isempty(vcDir_ksort2), 'vcDir_ksort2 must be specified');
+if ~exist_func_('mcc')
+   fprintf(2, 'Matlab Compiler Toolbox is not installed.\n');
+   return; 
+end
+
+compile_ksort2_(vcDir_ksort2);
+
+fprintf('Compiling run_ksort2.m\n'); t1=tic;
+vcEval1 = ['mcc -m -v -R ''-nodesktop, -nosplash -nojvm'' -a ' vcDir_ksort2];
+vcEval2 = ' -a ./mdaio/* -a ./jsonlab-1.5/* -a ./npy-matlab/* -a default.cfg -a irc.m run_ksort2.m';
+if ~isempty(vcDir_out)
+    mkdir_(vcDir_out);
+    vcEval = [vcEval1, vcEval2, ' -d ', vcDir_out];
+else
+    vcEval = [vcEval1, vcEval2];
+end
+disp(vcEval);
+eval(vcEval);
+fprintf('\n\trun_ksort2.m is compiled by mcc, took %0.1fs\n', toc(t1));
+end %func
+
+
+%--------------------------------------------------------------------------
+% assume mexGPUall.m is already in the path
+function compile_ksort2_(vcDir_ksort2)
+vcPath_pwd = pwd();
+try
+    cd(fullfile(vcDir_ksort2, 'CUDA'));
+    [~,path_nvcc_] = system('which nvcc');
+    path_nvcc_ = strrep(path_nvcc_, 'nvcc', '');
+    disp(['path_nvcc_: ', path_nvcc_]);
+    setenv('MW_NVCC_PATH', path_nvcc_);
+    run('mexGPUall.m');
+catch
+    disp(lasterr());
+    fprintf(2, 'Problem running mexGPUall.\n');
+end
+cd(vcPath_pwd);
+end %func
+
+
+%--------------------------------------------------------------------------
+% 12/13/2018 JJJ: checks if function exists
+function flag = exist_func_(vcFunc)
+flag = ~isempty(which(vcFunc));
 end %func
 
 
@@ -103,8 +168,10 @@ if exist(temp_path, 'dir') ~= 7
 end
 
 % prepare for kilosort execution
-addpath(genpath(kilosort_src));
-addpath(fullfile(ironclust_src, 'matlab'), fullfile(ironclust_src, 'matlab/mdaio'), fullfile(ironclust_src, 'matlab/npy-matlab'));    
+if ~isdeployed()
+    addpath(genpath(kilosort_src));
+    addpath(fullfile(ironclust_src, 'matlab'), fullfile(ironclust_src, 'matlab/mdaio'), fullfile(ironclust_src, 'matlab/npy-matlab'));    
+end
 ops = import_ksort_(raw_fname, geom_fname, arg_fname, temp_path);
 
 % Run kilosort
@@ -161,6 +228,7 @@ end %func
 %--------------------------------------------------------------------------
 function ops = import_ksort_(raw_fname, geom_fname, arg_fname, fpath)
 % fpath: output path
+fprintf('import_ksort_...\n'); t1=tic;
 S_txt = irc('call', 'meta2struct', {arg_fname});
 useGPU = 1;
 [freq_min, pc_per_chan, sRateHz, spkTh] = struct_get_(S_txt, 'freq_min', 'pc_per_chan', 'samplerate', 'detect_threshold');
@@ -178,7 +246,7 @@ nChans = size(mrXY_site,1);
 
 S_ops = makeStruct_(fpath, fbinary, nChans, vcFile_chanMap, spkTh, useGPU, sRateHz, pc_per_chan, freq_min);
 ops = config_kilosort2_(S_ops); %obtain ops
-
+fprintf('import_ksort_ took %0.1fs\n', toc(t1));
 end %func
 
 

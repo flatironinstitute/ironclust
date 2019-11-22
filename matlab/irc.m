@@ -27825,7 +27825,8 @@ if ~assert_(exist_func_('mcc'), 'Matlab Compiler Toolbox is not installed.')
 end
 cd(ircpath_());
 fprintf('Compiling run_irc.m\n'); t1=tic;
-vcEval = 'mcc -m -v -R ''-nodesktop, -nosplash -singleCompThread -nojvm'' -a *.ptx -a *.cu -a ./mdaio/* -a ./jsonlab-1.5/* -a ./npy-matlab/* -a default*.* -a ./prb/* -a *_template.prm -a irc2.m run_irc.m';
+%vcEval = 'mcc -m -v -R ''-nodesktop, -nosplash -singleCompThread -nojvm'' -a *.ptx -a *.cu -a ./mdaio/* -a ./jsonlab-1.5/* -a ./npy-matlab/* -a default*.* -a ./prb/* -a *_template.prm -a irc2.m run_irc.m';
+vcEval = 'mcc -m -v -R ''-nodesktop, -nosplash -nojvm'' -a *.ptx -a *.cu -a ./mdaio/* -a ./jsonlab-1.5/* -a ./npy-matlab/* -a default*.* -a ./prb/* -a *_template.prm -a irc2.m run_irc.m';
 if ~isempty(vcDir_out)
     mkdir_(vcDir_out);
     vcEval = [vcEval, ' -d ', vcDir_out];
@@ -27834,7 +27835,30 @@ disp(vcEval);
 eval(vcEval);
 system('./run_irc  version');
 fprintf('\n\trun_irc.m is compiled by mcc, took %0.1fs\n', toc(t1));
-end %fucn
+end %func
+
+
+%--------------------------------------------------------------------------
+% 11/2/2018 JJJ: matlab compiler, generates run_irc
+% @TODO: get the dependency list from sync_list
+function mcc_ksort2_(vcDir_out)
+if nargin<1, vcDir_out = ''; end
+
+if ~assert_(exist_func_('mcc'), 'Matlab Compiler Toolbox is not installed.')
+   return; 
+end
+cd(ircpath_());
+fprintf('Compiling run_irc.m\n'); t1=tic;
+vcEval = 'mcc -m -v -R ''-nodesktop, -nosplash -singleCompThread -nojvm'' -a *.ptx -a *.cu -a ./mdaio/* -a run_ksort2.m';
+if ~isempty(vcDir_out)
+    mkdir_(vcDir_out);
+    vcEval = [vcEval, ' -d ', vcDir_out];
+end
+disp(vcEval);
+eval(vcEval);
+system('./run_irc  version');
+fprintf('\n\trun_irc.m is compiled by mcc, took %0.1fs\n', toc(t1));
+end %func
 
 
 %--------------------------------------------------------------------------
