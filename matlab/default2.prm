@@ -5,7 +5,7 @@ MAX_BYTES_LOAD = .5e9;
 
 % [Detect stage: filter and detect spikes]
 vcFilter = 'bandpass';
-freqLim = [300, 6000];
+freqLim = [300, 8000];
 vcCommonRef = 'mean';       % common reference mode {'none', 'mean', 'median', 'whiten', 'whiten-mean', 'whiten-median'}
 nChans_min_car = 16;        % disable common ref subtraction if the number of channels is less than this number
 qqFactor = 4;               % Detection threshold (estimated SD from the median to exclude spiking activity)
