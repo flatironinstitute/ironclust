@@ -108,8 +108,8 @@ end
 % CentOS Workstation, 12 woorkers + GPU (Quadro P4000, 8GB)
 % pause(3600*4); % start delay of 4 hours
 
-vnChans_uniq = 64 * 2.^[-3:3];
-vrDuration_uniq = 1200 * 2.^[-2:3];
+vnChans_uniq = 64 * 2.^[-3:4];
+vrDuration_uniq = 1200 * 2.^[-2:4];
 
 csParam = {};
 csParam{1} = 'param1.prm'; % fGpu=0, fParfor=0
@@ -126,7 +126,7 @@ vnChans_batch = vnChans_uniq(xx1(:));
 vrDuration_batch = vrDuration_uniq(yy1(:));
 cS_bench_param = cell(size(csParam));
 %for iParam = 1:numel(csParam)
-for iParam = 1:4
+for iParam = 3:3
     try
         vcParam1 = csParam{iParam};
         csFiles_batch_in = arrayfun(@(x,y)...
@@ -143,9 +143,9 @@ end
 
 
 
-%% 4. plot result (create two tables), also consider creating a bar plot
+% 4. plot result (create two tables), also consider creating a bar plot
 % for iParam = 1:numel(csParam)
-for iParam = 1:4
+for iParam = 3:3
     cS_bench = cS_bench_param{iParam};
     % parameter select and plot
     vS_bench = cell2mat(cS_bench);

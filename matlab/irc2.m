@@ -237,16 +237,16 @@ if nargin<3, vcParam1 = ''; end
 
 % specify the output folder
 vcFile_mat1 = dir_(fullfile(vcDir_out1, '*_irc.mat'));
-if isempty(vcFile_mat1)
-    % process the data
-    fprintf('Running benchmark: ''%s'' using ''%s'': ', vcDir_in1, vcParam1); t1=tic;
-    [~, vcConsoleOut] = system(sprintf('./run_irc %s %s %s', vcDir_in1, vcDir_out1, vcParam1));
-    fprintf('took %0.1fs\n', toc(t1));
-else
+if ~isempty(vcFile_mat1) && ~read_cfg_('fForceRerun')
     % load already processed data
     vcFile_prm1 = strrep(vcFile_mat1{1}, '_irc.mat', '.prm');
     vcConsoleOut = evalc(sprintf('irc2(''describe'', ''%s'');', vcFile_prm1));
     fprintf('Loaded benchmark from %s\n', vcFile_mat1{1});
+else
+    % process the data
+    fprintf('Running benchmark: ''%s'' using ''%s'': ', vcDir_in1, vcParam1); t1=tic;
+    [~, vcConsoleOut] = system(sprintf('./run_irc %s %s %s', vcDir_in1, vcDir_out1, vcParam1));
+    fprintf('took %0.1fs\n', toc(t1));    
 end
 % parse the output
 [memory_gb, vcFile_prm, runtime_sec, runtime_detect_sec, runtime_sort_sec, runtime_merge_sec] = ...
