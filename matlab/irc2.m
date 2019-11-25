@@ -310,8 +310,8 @@ end %func
 %--------------------------------------------------------------------------
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_()
-vcVer = 'v5.1.0';
-vcDate = '11/19/2019';
+vcVer = 'v5.1.1';
+vcDate = '11/25/2019';
 vcHash = file2hash_();
 
 if nargout==0
@@ -406,15 +406,6 @@ function vc1 = strsplit_get_(vc,delim,idx)
 cs = strsplit(vc, delim);
 idx = mod(idx-1,numel(cs))+1;
 vc1 = cs{idx};
-end %func
-
-
-%--------------------------------------------------------------------------
-function S0 = sort_(S0, P)
-switch get_set_(P, 'sort_mode', 1)
-    case 1, S0 = sort1_(S0, P);
-    case 2, S0 = sort2_(S0, P);    
-end %switch
 end %func
 
 
@@ -1122,7 +1113,7 @@ miKnn = miKnn(1:nAve_knn,:);
     struct_get_(S0, 'viSite_spk', 'viSite2_spk', 'mrPv_global');
 nShift_max = ceil(diff(P.spkLim) * P.frac_shift_merge / 2);
 viShift = -nShift_max:nShift_max;
-dimm_spk = [size(S0.trPc_spk,1), P.nSites_fet, size(S0.trPc_spk,3)];
+dimm_spk = [S0.dimm_fet(1), P.nSites_fet, S0.dimm_fet(3)];
 
 % create template (nTemplate per cluster)
 cS_pre3 = cell(S_clu.nClu, 1);
@@ -1148,8 +1139,7 @@ if ~fParfor
         cS_pre3{iClu} = wave_similarity_clu_pre3_(cviSpk_clu{iClu}, S_pre);
     end
 end
-trPc2_spk = get_(S0, 'trPc2_spk');
-[ctrPc_clu, cviSite_clu] = merge_clu_pre3_(cS_pre3, S0.trPc_spk, trPc2_spk, P);
+[ctrPc_clu, cviSite_clu] = merge_clu_pre3_(cS_pre3, S0, P);
 fprintf('\n\ttook %0.1fs\n', toc(t_template));
 
 % merge the templates: todo, faster code
@@ -1173,21 +1163,28 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function [ctrPc_clu, cviSite_clu] = merge_clu_pre3_(cS_pre3, trPc_spk, trPc2_spk, P)
+function [ctrPc_clu, cviSite_clu] = merge_clu_pre3_(cS_pre3, S0, P)
 [ctrPc_clu, cviSite_clu] = deal(cell(size(cS_pre3)));
 
-% tr_ = gpuArray_(trPc_spk(:,1:P.nSites_fet,:), P.fGpu);
-% mean_ = @(x,d)gather_(mean(gpuArray_(x),d));
+trPc_spk = get_(S0, 'trPc_spk');
+if isempty(trPc_spk)
+    vcFile_fet = strrep(P.vcFile_prm, '.prm', '_fet.irc');
+    trPc_spk = load_bin_(vcFile_fet, S0.type_fet, S0.dimm_fet);
+end
 for iClu = 1:numel(cS_pre3)
     S_pre3 = cS_pre3{iClu};
     cviSite_clu{iClu} = [S_pre3.viSite1(:); S_pre3.viSite2(:)];
     trPc_clu1 = cellfun(@(x)mean(trPc_spk(:,:,x),3), S_pre3.cviSpk1, 'UniformOutput', false);
     ctrPc_clu{iClu} = cat(3,trPc_clu1{:}); % faster than pre-allocating
 end
+trPc_spk = []; % clear from memory
 
-% Load second peak sites to the GPU memory
+% Second peak average
+trPc2_spk = get_(S0, 'trPc2_spk');
+if isempty(trPc2_spk)
+    trPc2_spk = load_bin_(strrep(P.vcFile_prm, '.prm', '_fet2.irc'), S0.type_fet, S0.dimm_fet);
+end
 if isempty(trPc2_spk), return; end
-% tr_ = gpuArray_(trPc2_spk(:,1:P.nSites_fet,:), P.fGpu);
 for iClu = 1:numel(cS_pre3)
     S_pre3 = cS_pre3{iClu};
     trPc_clu2 = cellfun(@(x)mean(trPc2_spk(:,:,x),3), S_pre3.cviSpk2, 'UniformOutput', false);
@@ -1637,34 +1634,15 @@ end %func
 
 %--------------------------------------------------------------------------
 % todo: delayed execution, use parfeval
-function S0 = sort1_(S0, P)
+function S0 = sort_(S0, P)
 
 % drift processing
 fprintf('Clustering\n'); 
 runtime_sort = tic;
 
-[nSites_fet, miSites, knn, nPcPerChan, nPc_spk] = ...
-    struct_get_(P, 'nSites_fet', 'miSites', 'knn', 'nPcPerChan', 'nPc_spk');
-% if nPcPerChan < 1 || isempty(nPcPerChan)
-%     nPcPerChan = nPc_spk;
-% elseif nPcPerChan > nPc_spk
-%     nPcPerChan = nPc_spk;
-% end
-if isempty(nPcPerChan)
-    get_pc_ = @(x)get_pc_sort_(x, nPcPerChan);
-elseif numel(nPcPerChan) > 1
-    get_pc_ = @(x)get_pc_sort_(x, nPcPerChan);
-elseif nPcPerChan == 0
-    get_pc_ = @(x)get_pc_sort_(x, []);
-else
-    get_pc_ = @(x)reshape(x(1:nPcPerChan,1:nSites_fet,:), nPcPerChan*nSites_fet, 1, size(x,3));
-end
-
-if isempty(get_(S0, 'trPc2_spk'))
-    trPc_spk = get_pc_(S0.trPc_spk);
-else
-    trPc_spk = cat(2, get_pc_(S0.trPc_spk), get_pc_(S0.trPc2_spk));
-end
+[nSites_fet, miSites, knn, nPc_spk] = ...
+    struct_get_(P, 'nSites_fet', 'miSites', 'knn', 'nPc_spk');
+trPc_spk = get_pc_sort_(S0, P);
 nFeatures = size(trPc_spk,1);
 
 nSites = size(P.miSites,2);
@@ -1683,9 +1661,6 @@ if fParfor
     gcp_ = gcp();
 else
     gcp_ = [];
-end
-if 0
-    [S0.mrPos_spk, S0.vrPow_spk] = calc_pos_spk_(S0.trPc_spk, S0.viSite_spk, P);
 end
 S_drift = calc_drift_(S0, P);
 [viDrift_spk, mlDrift] = struct_get_(S_drift, 'viDrift_spk', 'mlDrift');
@@ -1767,13 +1742,29 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function trPc1 = get_pc_sort_(trPc, vnPc_site)
-if nargin<2, vnPc_site = []; end
+function trPc = get_pc_sort_(S0, P)
+
+% Load trPc
+trPc = get_(S0, 'trPc_spk');
+if isempty(trPc)
+    trPc = load_bin_(strrep(P.vcFile_prm, '.prm', '_fet.irc'), S0.type_fet, S0.dimm_fet);
+end
 [nPc_spk, nSites_spk, nSpk] = size(trPc);
-if isempty(vnPc_site)
-    vnPc_site = nPc_spk:-1:1;
+
+% determine vnPc_site
+nPcPerChan = get_set_(P, 'nPcPerChan', 0);
+if isempty(nPcPerChan), nPcPerChan = 0; end
+if numel(nPcPerChan) == 1
+    if nPcPerChan == 0
+        vnPc_site = nPc_spk:-1:1;
+    else
+        vnPc_site = repmat(nPcPerChan, [1, nSites_fet]);
+    end
+else
+    vnPc_site = nPcPerChan;
 end
 
+% determine miPc
 miPc = false(nPc_spk, nSites_spk);
 nSites1 = min(nSites_spk, numel(vnPc_site));
 for iSite = 1:nSites1
@@ -1782,9 +1773,29 @@ for iSite = 1:nSites1
 end
 miPc(1,:) = true;
 
-nPc = sum(miPc(:));
-mrPc = reshape(trPc, [], nSpk);
-trPc1 = reshape(mrPc(miPc(:),:), [nPc, 1, nSpk]);
+trPc = reshape(trPc, [], nSpk);
+trPc = reshape(trPc(miPc(:),:), [sum(miPc(:)), 1, nSpk]);
+
+% append secondary peak feature
+trPc2 = get_(S0, 'trPc2_spk');
+if isempty(trPc2)
+    trPc2 = load_bin_(strrep(P.vcFile_prm, '.prm', '_fet2.irc'), S0.type_fet, S0.dimm_fet);
+end
+if ~isempty(trPc2)
+    trPc2 = reshape(trPc2, [], nSpk);
+    trPc2 = reshape(trPc2(miPc(:),:), [sum(miPc(:)), 1, nSpk]);    
+    trPc = cat(2, trPc, trPc2);
+end
+
+% trim features if exceeds max # feature
+try
+    nC_max = read_cfg_('nC_max', 0);
+    if size(trPc,1) > nC_max
+        trPc = trPc(1:nC_max,:,:);
+    end
+catch
+    disperr_();
+end
 end %func
 
 
@@ -1824,118 +1835,6 @@ end
 if get_set_(P, 'fWhiten_fet', 0)
 	mrFet12 = whiten_(mrFet12);
 end
-end %func
-
-
-
-%--------------------------------------------------------------------------
-% todo: delayed execution, use parfeval
-function S0 = sort2_(S0, P)
-
-% drift processing
-fprintf('Clustering\n'); 
-runtime_sort = tic;
-
-[nSites_fet, miSites, knn, nFet_max, nPcPerChan] = struct_get_(P, 'nSites_fet', 'miSites', 'knn', 'nFet_max', 'nPcPerChan');
-
-% determine feature dimension
-if ~isempty(nFet_max)
-    nPcPerChan = floor(nFet_max / nSites_fet);
-    nPcPerChan = min(max(nPcPerChan, 1), size(S0.trPc_spk,1));
-end
-trPc_spk = S0.trPc_spk(1:nPcPerChan,:,:);
-
-nSites = size(P.miSites,2);
-cviSpk_site = arrayfun(@(x)find(S0.viSite_spk==x), 1:nSites, 'UniformOutput', 0)';
-vnSpk_site = cellfun(@numel, cviSpk_site);
-nSpk = numel(S0.viSite_spk);
-
-% parfor loop
-fParfor = get_set_(P, 'fParfor', true) && nSites>1;
-if fParfor
-    gcp_ = gcp();
-else
-    gcp_ = [];
-end
-if 0
-    [S0.mrPos_spk, S0.vrPow_spk] = calc_pos_spk_(S0.trPc_spk, S0.viSite_spk, P);
-end
-S_drift = calc_drift_(S0, P);
-[viDrift_spk, mlDrift] = struct_get_(S_drift, 'viDrift_spk', 'mlDrift');
-
-% Calculate Rho
-P_sort = struct_set_(P, 'mlDrift', mlDrift, 'fSort_drift', 1);
-[vrRho, vrDelta] = deal(zeros(nSpk, 1, 'single'));
-miKnn = zeros(knn, nSpk, 'int32');
-fprintf('Calculating Rho\n\t'); t1=tic;
-[cvrRho, cmiKnn, cvrDelta, cviNneigh] = deal(cell(nSites,1));
-% send jobs
-for iSite = 1:nSites
-    [mrFet12, viSpk12, viDrift12, n1, n2] = pc2fet_site_(trPc_spk, cviSpk_site, viDrift_spk, P_sort, iSite);
-    if isempty(mrFet12), continue; end
-    if ~isempty(gcp_)
-        vS_out(iSite) = parfeval(gcp_, ...
-            @(x,y,z,a)rho_knn_(x,y,z,a, P_sort), 2, mrFet12, viSpk12, viDrift12, n1);
-    else
-        [cvrRho{iSite}, cmiKnn{iSite}, P_sort.fGpu] = ...
-            rho_knn_(mrFet12, viSpk12, viDrift12, n1, P_sort);      
-    end
-end %for
-% collect jobs
-if ~isempty(gcp_)
-    for iSite1 = 1:nSites
-        [iSite, vrRho1, miKnn1] = fetchNext(vS_out);
-        [cvrRho{iSite}, cmiKnn{iSite}] = deal(vrRho1, miKnn1);
-    end
-end
-% assemble jobs
-for iSite = 1:nSites     
-    viSpk1 = cviSpk_site{iSite};
-    if isempty(viSpk1), continue; end
-    [vrRho(viSpk1), miKnn(:,viSpk1)] = deal(cvrRho{iSite}, cmiKnn{iSite});
-end %for
-fprintf('\n\ttook %0.1fs (fGpu=%d, fParfor=%d)\n', toc(t1), P_sort.fGpu, P_sort.fParfor);
-
-
-% Calculate Delta
-fprintf('Calculating Delta\n\t'); t2=tic;
-% send jobs
-for iSite = 1:nSites
-    [mrFet12, viSpk12, viDrift12, n1, n2] = pc2fet_site_(trPc_spk, cviSpk_site, viDrift_spk, P_sort, iSite);
-    if isempty(mrFet12), continue; end
-    vrRho12 = vrRho(viSpk12);
-    if ~isempty(gcp_)
-        vS_out(iSite) = parfeval(gcp_, ...
-            @(x,y,z,a,b)delta_knn_(x,y,z,a,b, P_sort), 2, mrFet12, viSpk12, vrRho12, viDrift12, n1);
-    else
-        [cvrDelta{iSite}, cviNneigh{iSite}, P_sort.fGpu] = ...
-            delta_knn_(mrFet12, viSpk12, vrRho12, viDrift12, n1, P_sort);
-    end
-end %for
-% collect jobs
-if ~isempty(gcp_)
-    for iSite1 = 1:nSites
-        [iSite, vrDelta1, viNneigh1] = fetchNext(vS_out);
-        [cvrDelta{iSite}, cviNneigh{iSite}] = deal(vrDelta1, viNneigh1);
-    end
-end
-% assemble jobs
-for iSite = 1:nSites     
-    viSpk1 = cviSpk_site{iSite};
-    if isempty(viSpk1), continue; end
-    [vrDelta(viSpk1), viNneigh(viSpk1)] = deal(cvrDelta{iSite}, cviNneigh{iSite});
-end %for
-vrRho = vrRho / max(vrRho) / 10;     % divide by 10 to be compatible with previous version displays
-fprintf('\n\ttook %0.1fs (fGpu=%d, fParfor=%d)\n', toc(t2), P_sort.fGpu, P_sort.fParfor);
-
-% output
-runtime_sort = toc(runtime_sort);
-[~, ordrho] = sort(vrRho, 'descend');
-memory_sort = memory_matlab_();
-S0.S_clu = struct('rho', vrRho, 'delta', vrDelta, 'ordrho', ordrho, 'nneigh', viNneigh, ...
-    'P', P, 'miKnn', miKnn, 'S_drift', S_drift);
-S0.runtime_sort = runtime_sort;
-S0.memory_sort = memory_sort;
 end %func
 
 
@@ -2067,20 +1966,9 @@ end
 
 
 %--------------------------------------------------------------------------
-function S0 = detect_(P)
-switch 4
-    case 4, S0 = detect4_(P); % multiple file pointers with offset
-    case 3, S0 = detect3_(P); % single file pointer, copy files
-    case 2, S0 = detect2_(P);
-    case 1, S0 = detect1_(P);
-end
-end %func
-
-
-%--------------------------------------------------------------------------
 % uses parfor and temp file (memory efficient)
 % write a temp file and delete
-function S0 = detect4_(P)
+function S0 = detect_(P)
 % keep all features in the memory, no disk storage
 
 % parfor loop
@@ -2122,18 +2010,17 @@ else
         mrWav_T1 = [];
     end
 end
-S0 = detect_merge_(cS_detect, viOffset_load);
-switch 1
-    case 2
-        trPc_spk1 = reshape(S0.mrVp_spk, 1, size(S0.mrVp_spk,1), size(S0.mrVp_spk,2));
-        [mrPos_spk, vrPow_spk] = calc_pos_spk_(S0.trPc_spk1, S0.viSite_spk, P);
+switch 2 % Option 2 saves RAM by half by not keeping trPc_spk and trPc2_spk in RAM
     case 1
-        [mrPos_spk, vrPow_spk] = calc_pos_spk_(S0.trPc_spk, S0.viSite_spk, P);
+        S0 = detect_merge_1_(cS_detect, viOffset_load);
+        [S0.mrPos_spk, S0.vrPow_spk] = calc_pos_spk_(S0.trPc_spk, S0.viSite_spk, P);
+    case 2
+        S0 = detect_merge_2_(cS_detect, viOffset_load, P);
 end %switch
 % Save output
 runtime_detect = toc(runtime_detect);
 memory_detect = memory_matlab_();
-S0 = struct_add_(S0, vrPow_spk, vrThresh_site, mrPv_global, runtime_detect, P, memory_detect, memory_init, mrPos_spk);
+S0 = struct_add_(S0, vrThresh_site, mrPv_global, runtime_detect, P, memory_detect, memory_init);
 fprintf('detect_: took %0.1fs (fParfor=%d, fGpu=%d)\n', runtime_detect, P.fParfor, P.fGpu);
 end %func
 
@@ -2148,222 +2035,6 @@ end %func
 
 
 %--------------------------------------------------------------------------
-% uses parfor and temp file (memory efficient)
-% write a temp file and delete
-function S0 = detect3_(P)
-% keep all features in the memory, no disk storage
-
-% parfor loop
-if get_set_(P, 'fParfor', 1)
-    gcp_ = gcp();
-else
-    gcp_ = [];
-end
-
-runtime_detect = tic; 
-memory_init = memory_matlab_();
-
-% load one
-S_paged = readmda_paged_(P); % initialize
-[nLoads, viOffset_load] = deal(S_paged.nLoads, S_paged.viOffset_load);
-[mrWav_T1, nlim_wav1, fDone] = readmda_paged_(); % process first part
-cS_detect = cell(nLoads, 1);
-cS_detect{1} = detect_paged_(mrWav_T1, P, makeStruct_(nlim_wav1)); % process the first part
-mrWav_T1 = [];
-[vrThresh_site, mrPv_global] = struct_get_(cS_detect{1}, 'vrThresh_site', 'mrPv_global');
-S_cache = makeStruct_(vrThresh_site, mrPv_global);
-fprintf('Memory use: %0.3f GiB\n', memory_matlab_()/2^30);
-if ~isempty(gcp_)
-    % write to temp files for each worker
-    csFile_wav = arrayfun_(@(x)strrep(P.vcFile_prm, '.prm', sprintf('_wav%d.irc', x)), 1:nLoads-1);
-    [cell_vnlim_wav, cell_dimm_wav] = deal(cell(size(csFile_wav)));   
-    fprintf('detect_: writing %d files to disk\n', nLoads-1); t_write=tic;
-    for iLoad = 1:nLoads-1
-        [mrWav_T1, nlim_wav1, fDone] = readmda_paged_(); % process first part
-        write_bin_(csFile_wav{iLoad}, mrWav_T1);
-        cell_dimm_wav{iLoad} = size(mrWav_T1);
-        cell_vnlim_wav{iLoad} = nlim_wav1;
-        mrWav_T1 = [];
-        S_cache1 = S_cache;
-        S_cache1.nlim_wav1 = cell_vnlim_wav{iLoad};
-        S_cache1.dimm_wav1 = cell_dimm_wav{iLoad};
-        S_cache1.vcFile_wav1 = csFile_wav{iLoad};
-        vS_out(iLoad) = parfeval(gcp_, @(x)detect_paged_([],P,x), 1, S_cache1);
-        fprintf('\tMemory use: %0.3f GiB\n', memory_matlab_()/2^30);
-    end
-    fprintf('\n\tWriting to disk took %0.1fs\n', toc(t_write));   
-    fprintf('\tMemory use: %0.3f GiB\n', memory_matlab_()/2^30);
-    for iLoad = 1:nLoads-1
-        [completedIdx, S_] = fetchNext(vS_out);
-        cS_detect{completedIdx+1} = S_;
-    end
-else
-    for iLoad = 2:nLoads
-        [mrWav_T1, nlim_wav1, fDone] = readmda_paged_(); % process first part    
-        S_cache.nlim_wav1 = nlim_wav1; % trim waveform
-        cS_detect{iLoad} = detect_paged_(mrWav_T1, P, S_cache);        
-        fprintf('\tMemory use: %0.3f GiB\n', memory_matlab_()/2^30);
-        mrWav_T1 = [];
-    end
-end
-S0 = detect_merge_(cS_detect, viOffset_load);
-switch 1
-    case 2
-        trPc_spk1 = reshape(S0.mrVp_spk, 1, size(S0.mrVp_spk,1), size(S0.mrVp_spk,2));
-        [mrPos_spk, vrPow_spk] = calc_pos_spk_(S0.trPc_spk1, S0.viSite_spk, P);
-    case 1
-        [mrPos_spk, vrPow_spk] = calc_pos_spk_(S0.trPc_spk, S0.viSite_spk, P);
-end %switch
-% Save output
-runtime_detect = toc(runtime_detect);
-memory_detect = memory_matlab_();
-S0 = struct_add_(S0, vrPow_spk, vrThresh_site, mrPv_global, runtime_detect, P, memory_detect, memory_init, mrPos_spk);
-fprintf('detect_: took %0.1fs (fParfor=%d, fGpu=%d)\n', runtime_detect, P.fParfor, P.fGpu);
-end %func
-
-
-%--------------------------------------------------------------------------
-% uses parfor and temp file (memory efficient)
-% write a temp file and delete
-function S0 = detect2_(P)
-% keep all features in the memory, no disk storage
-
-% parfor loop
-if get_set_(P, 'fParfor', 1)
-    gcp_ = gcp();
-else
-    gcp_ = [];
-end
-
-runtime_detect = tic; 
-memory_init = memory_matlab_();
-
-% load one
-S_paged = readmda_paged_(P); % initialize
-[nLoads, viOffset_load] = deal(S_paged.nLoads, S_paged.viOffset_load);
-[mrWav_T1, nlim_wav1, fDone] = readmda_paged_(); % process first part
-cS_detect = cell(nLoads, 1);
-cS_detect{1} = detect_paged_(mrWav_T1, P, makeStruct_(nlim_wav1)); % process the first part
-mrWav_T1 = [];
-[vrThresh_site, mrPv_global] = struct_get_(cS_detect{1}, 'vrThresh_site', 'mrPv_global');
-S_cache = makeStruct_(vrThresh_site, mrPv_global);
-fprintf('Memory use: %0.3f GiB\n', memory_matlab_()/2^30);
-if ~isempty(gcp_)
-    % write to temp files for each worker
-    csFile_wav = arrayfun_(@(x)strrep(P.vcFile_prm, '.prm', sprintf('_wav%d.irc', x)), 1:nLoads-1);
-    [cell_vnlim_wav, cell_dimm_wav] = deal(cell(size(csFile_wav)));   
-    fprintf('detect_: writing %d files to disk\n', nLoads-1); t_write=tic;
-    for iLoad = 1:nLoads-1
-        [mrWav_T1, nlim_wav1, fDone] = readmda_paged_(); % process first part
-        write_bin_(csFile_wav{iLoad}, mrWav_T1);
-        cell_dimm_wav{iLoad} = size(mrWav_T1);
-        cell_vnlim_wav{iLoad} = nlim_wav1;
-        fprintf('\tMemory use: %0.3f GiB\n', memory_matlab_()/2^30);
-        mrWav_T1 = [];
-    end
-    fprintf('\n\tWriting to disk took %0.1fs\n', toc(t_write));
-    % process and collect work
-    parfor iLoad = 1:nLoads-1
-        S_cache1 = S_cache;
-        S_cache1.nlim_wav1 = cell_vnlim_wav{iLoad};
-        S_cache1.dimm_wav1 = cell_dimm_wav{iLoad};
-        S_cache1.vcFile_wav1 = csFile_wav{iLoad};
-        cS_detect{iLoad+1} = detect_paged_([], P, S_cache1); 
-       % delete_(csFile_wav{iLoad}); % delete tmp file after done
-    end    
-else
-    for iLoad = 2:nLoads
-        [mrWav_T1, nlim_wav1, fDone] = readmda_paged_(); % process first part    
-        S_cache.nlim_wav1 = nlim_wav1; % trim waveform
-        cS_detect{iLoad} = detect_paged_(mrWav_T1, P, S_cache);        
-        fprintf('\tMemory use: %0.3f GiB\n', memory_matlab_()/2^30);
-        mrWav_T1 = [];
-    end
-end
-S0 = detect_merge_(cS_detect, viOffset_load);
-switch 1
-    case 2
-        trPc_spk1 = reshape(S0.mrVp_spk, 1, size(S0.mrVp_spk,1), size(S0.mrVp_spk,2));
-        [mrPos_spk, vrPow_spk] = calc_pos_spk_(S0.trPc_spk1, S0.viSite_spk, P);
-    case 1
-        [mrPos_spk, vrPow_spk] = calc_pos_spk_(S0.trPc_spk, S0.viSite_spk, P);
-end %switch
-% Save output
-runtime_detect = toc(runtime_detect);
-memory_detect = memory_matlab_();
-S0 = struct_add_(S0, vrPow_spk, vrThresh_site, mrPv_global, runtime_detect, P, memory_detect, memory_init, mrPos_spk);
-fprintf('detect_: took %0.1fs (fParfor=%d, fGpu=%d)\n', runtime_detect, P.fParfor, P.fGpu);
-end %func
-
-
-%--------------------------------------------------------------------------
-% uses parfeval
-function S0 = detect1_(P)
-% keep all features in the memory, no disk storage
-
-% parfor loop
-if get_set_(P, 'fParfor', 1)
-    gcp_ = gcp();
-else
-    gcp_ = [];
-end
-
-% P.fGpu = 1;
-% else
-%     gcp_ = [];
-% end
-
-% fParfor=0, fGpu=0: 90s
-% fParfor=0, fGpu=1: 26s **GPU is fastest**
-% fParfor=1, fGpu=0: 30s (local, 9 workers)
-% fParfor=1, fGpu=1: 35s (local, 9 workers)
-runtime_detect = tic; 
-memory_init = memory_matlab_();
-
-% load one
-S_paged = readmda_paged_(P); % initialize
-[nLoads, viOffset_load] = deal(S_paged.nLoads, S_paged.viOffset_load);
-[mrWav_T1, nlim_wav1, fDone] = readmda_paged_(); % process first part
-cS_detect = cell(nLoads, 1);
-cS_detect{1} = detect_paged_(mrWav_T1, P, makeStruct_(nlim_wav1)); % process the first part
-mrWav_T1 = [];
-[vrThresh_site, mrPv_global] = struct_get_(cS_detect{1}, 'vrThresh_site', 'mrPv_global');
-S_cache1 = makeStruct_(vrThresh_site, mrPv_global);
-fprintf('Memory use: %0.3f GiB\n', memory_matlab_()/2^30);
-for iLoad = 2:nLoads          
-    [mrWav_T1, nlim_wav1, fDone] = readmda_paged_(); % process first part
-    S_cache1.nlim_wav1 = nlim_wav1; % trim waveform
-    if isempty(gcp_)            
-        cS_detect{iLoad} = detect_paged_(mrWav_T1, P, S_cache1);            
-    else
-        vS_out(iLoad-1) = parfeval(gcp_, @(x,y)detect_paged_(x,P,y), 1, mrWav_T1, S_cache1);
-    end    
-    mrWav_T1 = [];
-    fprintf('\tMemory use: %0.3f GiB\n', memory_matlab_()/2^30);
-end
-if ~isempty(gcp_)
-    for iLoad = 2:nLoads
-        [completedIdx, S_] = fetchNext(vS_out);
-        cS_detect{completedIdx+1} = S_;
-    end
-end
-S0 = detect_merge_(cS_detect, viOffset_load);
-switch 1
-    case 2
-        trPc_spk1 = reshape(S0.mrVp_spk, 1, size(S0.mrVp_spk,1), size(S0.mrVp_spk,2));
-        [mrPos_spk, vrPow_spk] = calc_pos_spk_(S0.trPc_spk1, S0.viSite_spk, P);
-    case 1
-        [mrPos_spk, vrPow_spk] = calc_pos_spk_(S0.trPc_spk, S0.viSite_spk, P);
-end %switch
-% Save output
-runtime_detect = toc(runtime_detect);
-memory_detect = memory_matlab_();
-S0 = struct_add_(S0, vrPow_spk, vrThresh_site, mrPv_global, runtime_detect, P, memory_detect, memory_init, mrPos_spk);
-fprintf('detect_: took %0.1fs (fParfor=%d, fGpu=%d)\n', runtime_detect, P.fParfor, P.fGpu);
-end %func
-
-
-%--------------------------------------------------------------------------
 function [mrPos_spk, vrPow_spk] = calc_pos_spk_(trPc_spk, viSite_spk, P)
 [~, nSites_spk, nSpk] = size(trPc_spk);
 switch 1
@@ -2374,8 +2045,7 @@ switch 1
 end
 vrPow_spk = sum(mrW,1)';
 
-fprintf('Calculating spike positions\n\t');
-t1=tic;
+% fprintf('Calculating spike positions\n\t'); t1=tic;
 toVec_ = @(x)x(:);
 switch 1        
     case 1 % centroid       
@@ -2406,7 +2076,7 @@ switch 1
         end %for
         trPos_pc_spk = permute(trPos_pc_spk, [1,3,2]);        
 end %switch
-fprintf('\n\ttook %0.1fs\n', toc(t1));
+% fprintf('\n\ttook %0.1fs\n', toc(t1));
 end %func
 
 
@@ -2442,7 +2112,54 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function S0 = detect_merge_(cS_detect, viOffset_load)
+% ALSO COMPUTE POSITION AND POWER
+% save _fet.irc and _fet2.irc
+function S0 = detect_merge_2_(cS_detect, viOffset_load, P)
+%    [mrPos_spk, vrPow_spk] = calc_pos_spk_(S0.trPc_spk, S0.viSite_spk, P);
+
+vnSpk_load = cellfun(@(x)numel(x.viSite_spk), cS_detect);
+miSpk_load = [0; cumsum(vnSpk_load)];
+miSpk_load = [miSpk_load(1:end-1)+1, miSpk_load(2:end)];
+
+nSpk = sum(vnSpk_load);
+[viSite_spk, viTime_spk, mrPos_spk] = ...
+    deal(zeros(nSpk, 1, 'int32'), zeros(nSpk, 1, 'int64'), zeros(nSpk, 2, 'single'));
+[vrPow_spk, vrAmp_spk] = deal(zeros(nSpk, 1, 'single'));
+viOffset_load = int64(viOffset_load);
+[mrVp_spk, fid_fet, fid_fet2, type_fet, dimm_fet, viSite2_spk] = deal([]);
+for iLoad = 1:numel(cS_detect)
+    S1 = cS_detect{iLoad};
+    if isempty(fid_fet)
+        fid_fet = fopen(strrep(P.vcFile_prm, '.prm', '_fet.irc'), 'w');
+        type_fet = class(S1.trPc_spk);
+        dimm_fet = [size(S1.trPc_spk,1), size(S1.trPc_spk,2), nSpk];
+    end
+    if isempty(fid_fet2) && ~isempty(S1.trPc2_spk)
+        fid_fet2 = fopen(strrep(P.vcFile_prm, '.prm', '_fet2.irc'), 'w');
+        viSite2_spk = zeros(nSpk, 1, 'int32');
+    end
+    viSpk1 = miSpk_load(iLoad,1):miSpk_load(iLoad,2);
+    viSite_spk(viSpk1) = S1.viSite_spk;
+    viTime_spk(viSpk1) = int64(S1.viTime_spk) + viOffset_load(iLoad);
+    vrAmp_spk(viSpk1) = S1.vrAmp_spk;
+    [mrPos_spk(viSpk1,:), vrPow_spk(viSpk1)] = calc_pos_spk_(S1.trPc_spk, S1.viSite_spk, P);    
+    write_bin_(fid_fet, S1.trPc_spk);    
+    if ~isempty(fid_fet2)
+        viSite2_spk(viSpk1) = S1.viSite2_spk;
+        write_bin_(fid_fet2, S1.trPc2_spk);
+    end
+end
+fclose_(fid_fet);
+fclose_(fid_fet2);
+[trPc_spk, trPc2_spk] = deal([]);
+S0 = makeStruct_(viSite_spk, viTime_spk, vrAmp_spk, mrVp_spk, ...
+         viSite2_spk, trPc_spk, trPc2_spk, type_fet, dimm_fet, ...
+         mrPos_spk, vrPow_spk); 
+end %func
+
+
+%--------------------------------------------------------------------------
+function S0 = detect_merge_1_(cS_detect, viOffset_load)
 
 vnSpk_load = cellfun(@(x)numel(x.viSite_spk), cS_detect);
 miSpk_load = [0; cumsum(vnSpk_load)];
@@ -2479,8 +2196,9 @@ for iLoad = 1:numel(cS_detect)
         mrVp_spk(:,viSpk1) = S1.mrVp_spk;
     end
 end
-
-S0 = makeStruct_(viSite_spk, viTime_spk, vrAmp_spk, trPc_spk, mrVp_spk, viSite2_spk, trPc2_spk); 
+[type_fet, dimm_fet] = deal(class(trPc_spk), size(trPc_spk));
+S0 = makeStruct_(viSite_spk, viTime_spk, vrAmp_spk, trPc_spk, mrVp_spk, ...
+    viSite2_spk, trPc2_spk, type_fet, dimm_fet); 
 end %func
 
 

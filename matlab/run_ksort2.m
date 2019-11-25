@@ -321,7 +321,7 @@ ops.fs = S_opt.sRateHz;
 % frequency for high pass filtering (150)
 ops.fshigh = S_opt.freq_min;   
 
-% minimum firing rate on a "good" channel (0 to skip)
+% minimum firing rate on a "good" channel (0 to skip)d
 ops.minfr_goodchannels = 0.1; 
 
 % threshold on projections (like in Kilosort1, can be different for last pass like [10 4])
