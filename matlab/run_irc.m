@@ -120,3 +120,20 @@ if isempty(vcDir_out)
 end
 if ~exist_dir_(vcDir_out), mkdir(vcDir_out); end
 end %func
+
+
+%--------------------------------------------------------------------------
+% 8/7/2018 JJJ
+function flag = exist_dir_(vcDir)
+if isempty(vcDir)
+    flag = 0;
+else
+    S_dir = dir(vcDir);
+    if isempty(S_dir)
+        flag = 0;
+    else
+        flag = sum([S_dir.isdir]) > 0;
+    end
+%     flag = exist(vcDir, 'dir') == 7;
+end
+end %func

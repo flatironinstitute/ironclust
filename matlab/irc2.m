@@ -86,7 +86,8 @@ switch lower(vcCmd)
         return;
     case 'plot', irc('plot', vcArg1, vcArg2); return;
     case 'clear', clear_(); vcFile_prm_=[]; return;
-    case 'clear-sort', clear_('sort'); return;        
+    case 'clear-sort', clear_('sort'); return;     
+    case {'test-mcc', 'test_mcc', 'testmcc'}, test_mcc_(vcArg1); return;
     case {'test-static', 'test-drift', 'test-tetrode', 'test-tetrode2', 'test-tetrode3', ...
             'test-bionet', 'test-bionet1', 'test-monotrode', ...
             'test-monotrode1', 'test-monotrode2', 'test-monotrode3'}
@@ -317,7 +318,7 @@ end %func
 %--------------------------------------------------------------------------
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_()
-vcVer = 'v5.1.2';
+vcVer = 'v5.1.3';
 vcDate = '11/26/2019';
 vcHash = file2hash_();
 
@@ -2694,6 +2695,7 @@ switch vcMode
     case 'monotrode1', vcDir_in = 'groundtruth/waveclus_synth/quiroga_difficult1/C_Difficult1_noise01';
     case 'monotrode2', vcDir_in = 'groundtruth/waveclus_synth/quiroga_difficult1/C_Difficult1_noise02';
     case 'monotrode3', vcDir_in = 'groundtruth/waveclus_synth/sim2_2K10/simulation_94';
+    error('unsupported test mode');
 end
 if ispc()
     vcDir_in = strrep(vcDir_in, '/', '\');    
@@ -2713,8 +2715,18 @@ if nargin<3, vcFile_arg = ''; end
 if strcmpi(vcExt_, '.mda')
     vcFile_raw = vcDir_in;
     vcDir_in = vcDir_;
+elseif strcmpi(vcExt_, '.bin')
+    vcFile_raw = vcDir_in;
+    vcDir_in = vcDir_;
+elseif strcmpi(vcExt_, '.dat')
+    vcFile_raw = vcDir_in;
+    vcDir_in = vcDir_;
 else
     vcFile_raw = fullfile(vcDir_in, 'raw.mda');
+    vcExt_ = '.mda';
+end
+if ~exist_file_(vcFile_raw)
+    error('%s does not exist\n', vcFile_raw);
 end
 vcDir_out = fill_dir_out_(vcDir_in, vcDir_out);
 
@@ -2726,22 +2738,29 @@ P = struct_merge_(P, P2);
 % now only supporting .mda file
 P.vcFile = vcFile_raw;
 P.vcDir_out = vcDir_out;
-S_mda = readmda_header_(P.vcFile);
-P.nChans = S_mda.dimm(1);
-P.vcDataType = S_mda.vcDataType;
-P.vnSamples_file = S_mda.dimm(2); % scalar
-P.probe_file = fullfile(vcDir_in, 'geom.csv');
+switch recording_type_(vcFile_raw)
+    case 'mda'
+        S_mda = readmda_header_(P.vcFile);
+        P.nChans = S_mda.dimm(1);
+        P.vcDataType = S_mda.vcDataType;
+        P.vnSamples_file = S_mda.dimm(2); % scalar
+        P.probe_file = fullfile(vcDir_in, 'geom.csv');
+        % probe file (mda format)
+        P.mrSiteXY = csvread(P.probe_file);
+        P.viSite2Chan = 1:size(P.mrSiteXY,1);
+        P.viShank_site = ones(size(P.viSite2Chan));
+        P.vrSiteHW = [12,12];
 
-% probe file (mda format)
-P.mrSiteXY = csvread(P.probe_file);
-P.viSite2Chan = 1:size(P.mrSiteXY,1);
-P.viShank_site = ones(size(P.viSite2Chan));
-P.vrSiteHW = [12,12];
-
-% load json file
-S_json = loadjson_(fullfile(vcDir_in, 'params.json'));
-P.sRateHz = get_set_(S_json, 'samplerate', P.sRateHz);
-P.fInverse_file = get_set_(S_json, 'spike_sign', -1) == -1;
+        % load json file
+        S_json = loadjson_(fullfile(vcDir_in, 'params.json'));
+        P.sRateHz = get_set_(S_json, 'samplerate', P.sRateHz);
+        P.fInverse_file = get_set_(S_json, 'spike_sign', -1) == -1;
+%     case 'spikeglx'
+%         S_meta = read_meta_file_(strrep(vcFile_raw, '.bin', '.meta'));
+%         P.probe_file = fullfile('prb', [S_meta.Smeta.vcProbe, '.prb']);
+    otherwise
+        error('Unsupported recording format');
+end
 
 % read param
 S_arg = [];
@@ -2769,6 +2788,20 @@ edit_prm_file_(P, P.vcFile_prm);
 fprintf('Created %s\n', P.vcFile_prm);
 end %func
 
+
+%--------------------------------------------------------------------------
+function vcType = recording_type_(vcFile_raw)
+vcType = '';
+[vcDir_, vcFile_, vcExt_] = fileparts(vcFile_raw);
+if strcmpi(vcExt_, '.mda')
+    vcType = 'mda';
+elseif strcmpi(vcExt_, '.bin')
+    vcFile_meta = fullfile(vcDir_, [vcFile_, '.meta']);
+    if exist_file_(vcFile_meta)
+        vcType = 'spikeglx';
+    end
+end
+end %func
 
 %--------------------------------------------------------------------------
 function vcDir_out = fill_dir_out_(vcDir_in, vcDir_out)
@@ -3207,6 +3240,17 @@ end %func
 
 
 %--------------------------------------------------------------------------
+function test_mcc_(vcDir_in)
+if nargin<1, vcDir_in = ''; end
+if isempty(vcDir_in), vcDir_in = 'static'; end
+if ~exist_dir_(vcDir_in)
+    vcDir_in = get_test_data_(vcDir_in);
+end
+system(['run_irc ', vcDir_in]);
+end %func
+
+
+%--------------------------------------------------------------------------
 function frewind_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
 function disperr_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
 function struct_save_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
@@ -3219,10 +3263,10 @@ function auto_scale_proj_time_(varargin), fn=dbstack(); irc('call', fn(1).name, 
 function save_log_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
 function edit_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
 
+function out1 = read_meta_file_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = isTextFile_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = load_batch_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = list_files_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
-
 function out1 = meta2struct_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = struct_merge_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = ircpath_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
