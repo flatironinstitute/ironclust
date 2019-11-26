@@ -1997,7 +1997,7 @@ cS_detect{1} = detect_paged_(mrWav_T1, P, makeStruct_(nlim_wav1)); % process the
 mrWav_T1 = [];
 [vrThresh_site, mrPv_global] = struct_get_(cS_detect{1}, 'vrThresh_site', 'mrPv_global');
 S_cache = makeStruct_(vrThresh_site, mrPv_global);
-fprintf('Memory use: %0.3f GiB\n', memory_matlab_()/2^30);
+fprintf('Memory use: %0.3f GiB\n', (memory_matlab_()-memory_init)/2^30);
 if ~isempty(gcp_) && ~fDone  % must debug
     [vcFile, vS_load] = readmda_paged_('close'); % close the file
     parfor iLoad = 2:nLoads  % change to for loop for debugging
@@ -2029,7 +2029,7 @@ runtime_detect = toc(runtime_detect);
 memory_detect = memory_matlab_();
 S0 = struct_add_(S0, vrThresh_site, mrPv_global, runtime_detect, P, memory_detect, memory_init);
 fprintf('Detection took %0.1fs and used %0.3f GiB (fParfor=%d, fGpu=%d)\n', ...
-    runtime_detect, memory_detect/2^30, P.fParfor, P.fGpu);
+    runtime_detect, (memory_detect-memory_init)/2^30, P.fParfor, P.fGpu);
 end %func
 
 
