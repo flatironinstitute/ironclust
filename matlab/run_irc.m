@@ -12,13 +12,13 @@ function run_irc(vcDir_in, vcDir_out, vcFile_template)
 
 if nargin<2, vcDir_out = ''; end
 if nargin<3, vcFile_template = ''; end
-if isempty(vcDir_out)
-    vcDir_out = strrep(vcDir_in, '/groundtruth/', sprintf('/irc_%s/', irc('version')));
-end
+version = 2; % default version
+
 if ~isdeployed()
     source_path = fileparts(mfilename('fullpath'));
     addpath(genpath(fullfile(source_path)));
 end
+
 if strcmpi(vcDir_in, 'version')
     vcCmd = vcDir_in;
     fprintf('%s\n', irc(vcCmd)); 
@@ -26,10 +26,8 @@ if strcmpi(vcDir_in, 'version')
     return; 
 end
 
-version = 2; % default version
-
-irc('call', 'mkdir', {vcDir_out}); % create temp output directory
-    
+vcDir_out = fill_dir_out_(vcDir_in, vcDir_out);
+ 
 % inferred from the path
 firings_out_fname = fullfile(vcDir_out, 'firings.mda');
 raw_fname = fullfile(vcDir_in, 'raw.mda');
@@ -110,3 +108,15 @@ if fVerbose && ~flag
 end
 end %func
 
+
+%--------------------------------------------------------------------------
+function vcDir_out = fill_dir_out_(vcDir_in, vcDir_out)
+if isempty(vcDir_out)
+    if ~contains(vcDir_out, 'groundtruth')
+        vcDir_out = fullfile(vcDir_in, 'irc2');
+    else
+        vcDir_out = strrep(vcDir_in, 'groundtruth', 'irc2'); 
+    end
+end
+if ~exist_dir_(vcDir_out), mkdir(vcDir_out); end
+end %func

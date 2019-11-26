@@ -22820,6 +22820,7 @@ end
 t1=tic;
 addpath_('mdaio/');
 writemda(mnWav, vcFile_mda, cDataType_(class(mnWav)));
+
 fprintf('Writing to %s took %0.1fs\n', vcFile_mda, toc(t1));
 end %func
 
@@ -23440,6 +23441,7 @@ fclose(F);
 % build meta
 if nargout>=2
     [P.nChans, nSamples_load1] = size(A);
+    P.dim_type_str = dim_type_str;
     P.fTranspose_bin = 1; % force it
     P.vcDataType = class(A);
     vcFile_json = subs_file_(fname, 'params.json');
@@ -27833,7 +27835,7 @@ if ~isempty(vcDir_out)
 end
 disp(vcEval);
 eval(vcEval);
-system('./run_irc  version');
+system([ifeq_(~ispc(), './', ''), 'run_irc  version']);
 fprintf('\n\trun_irc.m is compiled by mcc, took %0.1fs\n', toc(t1));
 end %func
 

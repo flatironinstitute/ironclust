@@ -41,6 +41,12 @@ end
 
 [P, S0, fPlot_gt] = deal([]); 
 switch lower(vcCmd)
+    case 'readmda_header', varargout{1} = readmda_header_(vcArg1); return;
+    case 'mcc', irc('mcc'); return; 
+    case {'join-mda', 'join_mda', 'joinmda'}
+        join_mda_(vcArg1, vcArg2); return;
+    case {'readmda', 'read-mda', 'read_mda'}
+        [varargout{1}, varargout{2}] = readmda_(vcArg1); return;
     case 'import-clip'
         [S0, P] = import_clip_(vcArg1); 
     case 'edit', edit_(vcArg1); return;
@@ -245,7 +251,8 @@ if ~isempty(vcFile_mat1) && ~read_cfg_('fForceRerun')
 else
     % process the data
     fprintf('Running benchmark: ''%s'' using ''%s'': ', vcDir_in1, vcParam1); t1=tic;
-    [~, vcConsoleOut] = system(sprintf('./run_irc %s %s %s', vcDir_in1, vcDir_out1, vcParam1));
+    vcCmd = ifeq_(ispc(), 'run_irc', './run_irc');
+    [~, vcConsoleOut] = system(sprintf('%s %s %s %s', vcCmd, vcDir_in1, vcDir_out1, vcParam1));
     fprintf('took %0.1fs\n', toc(t1));    
 end
 % parse the output
@@ -310,8 +317,8 @@ end %func
 %--------------------------------------------------------------------------
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_()
-vcVer = 'v5.1.1';
-vcDate = '11/25/2019';
+vcVer = 'v5.1.2';
+vcDate = '11/26/2019';
 vcHash = file2hash_();
 
 if nargout==0
@@ -2000,28 +2007,29 @@ if ~isempty(gcp_) && ~fDone  % must debug
         cS_detect{iLoad} = detect_paged_(mrWav_T1, P, S_cache1);
         mrWav_T1 = [];
     end
+    S0 = detect_merge_(cS_detect, viOffset_load, P);
     fprintf('\tMemory use: %0.3f GiB\n', memory_matlab_()/2^30);
-else
+else % save features in series, more memory efficient than parfor
+    [cS_detect{1}, fid_fet, fid_fet2] = detect_paged_save_(cS_detect{1}, P);
     for iLoad = 2:nLoads
         [mrWav_T1, nlim_wav1] = readmda_paged_(); % process first part    
         S_cache.nlim_wav1 = nlim_wav1; % trim waveform
-        cS_detect{iLoad} = detect_paged_(mrWav_T1, P, S_cache);        
-        fprintf('\tMemory use: %0.3f GiB\n', memory_matlab_()/2^30);
+        cS_detect{iLoad} = detect_paged_(mrWav_T1, P, S_cache);   
+        [cS_detect{iLoad}, fid_fet, fid_fet2] = detect_paged_save_(cS_detect{iLoad}, P, fid_fet, fid_fet2);
+%         t_=tic; fprintf('\tMemory use: %0.3f GiB (took %0.1fs)\n', memory_matlab_()/2^30, toc(t_));
         mrWav_T1 = [];
-    end
+    end    
+    fclose_(fid_fet); 
+    fclose_(fid_fet2);
+    S0 = detect_merge_(cS_detect, viOffset_load, P);
+%     t_=tic; fprintf('\tMemory use: %0.3f GiB (took %0.1fs)\n', memory_matlab_()/2^30, toc(t_));
 end
-switch 2 % Option 2 saves RAM by half by not keeping trPc_spk and trPc2_spk in RAM
-    case 1
-        S0 = detect_merge_1_(cS_detect, viOffset_load);
-        [S0.mrPos_spk, S0.vrPow_spk] = calc_pos_spk_(S0.trPc_spk, S0.viSite_spk, P);
-    case 2
-        S0 = detect_merge_2_(cS_detect, viOffset_load, P);
-end %switch
-% Save output
+
 runtime_detect = toc(runtime_detect);
 memory_detect = memory_matlab_();
 S0 = struct_add_(S0, vrThresh_site, mrPv_global, runtime_detect, P, memory_detect, memory_init);
-fprintf('detect_: took %0.1fs (fParfor=%d, fGpu=%d)\n', runtime_detect, P.fParfor, P.fGpu);
+fprintf('Detection took %0.1fs and used %0.3f GiB (fParfor=%d, fGpu=%d)\n', ...
+    runtime_detect, memory_detect, P.fParfor, P.fGpu);
 end %func
 
 
@@ -2114,7 +2122,7 @@ end %func
 %--------------------------------------------------------------------------
 % ALSO COMPUTE POSITION AND POWER
 % save _fet.irc and _fet2.irc
-function S0 = detect_merge_2_(cS_detect, viOffset_load, P)
+function S0 = detect_merge_(cS_detect, viOffset_load, P)
 %    [mrPos_spk, vrPow_spk] = calc_pos_spk_(S0.trPc_spk, S0.viSite_spk, P);
 
 vnSpk_load = cellfun(@(x)numel(x.viSite_spk), cS_detect);
@@ -2129,25 +2137,36 @@ viOffset_load = int64(viOffset_load);
 [mrVp_spk, fid_fet, fid_fet2, type_fet, dimm_fet, viSite2_spk] = deal([]);
 for iLoad = 1:numel(cS_detect)
     S1 = cS_detect{iLoad};
-    if isempty(fid_fet)
+    if isempty(fid_fet) && ~isempty(S1.trPc_spk)
         fid_fet = fopen(strrep(P.vcFile_prm, '.prm', '_fet.irc'), 'w');
         type_fet = class(S1.trPc_spk);
         dimm_fet = [size(S1.trPc_spk,1), size(S1.trPc_spk,2), nSpk];
-    end
-    if isempty(fid_fet2) && ~isempty(S1.trPc2_spk)
-        fid_fet2 = fopen(strrep(P.vcFile_prm, '.prm', '_fet2.irc'), 'w');
-        viSite2_spk = zeros(nSpk, 1, 'int32');
+    elseif isempty(type_fet) && isempty(dimm_fet)
+        type_fet = S1.type_fet;
+        dimm_fet = [S1.dimm_fet(1), S1.dimm_fet(2), nSpk];
     end
     viSpk1 = miSpk_load(iLoad,1):miSpk_load(iLoad,2);
     viSite_spk(viSpk1) = S1.viSite_spk;
     viTime_spk(viSpk1) = int64(S1.viTime_spk) + viOffset_load(iLoad);
     vrAmp_spk(viSpk1) = S1.vrAmp_spk;
-    [mrPos_spk(viSpk1,:), vrPow_spk(viSpk1)] = calc_pos_spk_(S1.trPc_spk, S1.viSite_spk, P);    
-    write_bin_(fid_fet, S1.trPc_spk);    
-    if ~isempty(fid_fet2)
-        viSite2_spk(viSpk1) = S1.viSite2_spk;
-        write_bin_(fid_fet2, S1.trPc2_spk);
+    if isfield(S1, 'mrPos_spk') && isfield(S1, 'vrPow_spk')
+        [mrPos_spk(viSpk1,:), vrPow_spk(viSpk1)] = deal(S1.mrPos_spk, S1.vrPow_spk);    
+    else
+        [mrPos_spk(viSpk1,:), vrPow_spk(viSpk1)] = calc_pos_spk_(S1.trPc_spk, S1.viSite_spk, P);            
     end
+    if ~isempty(fid_fet), write_bin_(fid_fet, S1.trPc_spk); end
+    
+    % secondary peak 
+    if isempty(fid_fet2) && ~isempty(S1.trPc2_spk)
+        fid_fet2 = fopen(strrep(P.vcFile_prm, '.prm', '_fet2.irc'), 'w');        
+    end    
+    if ~isempty(get_(S1, 'viSite2_spk'))
+        if isempty(viSite2_spk)
+            viSite2_spk = zeros(nSpk, 1, 'int32');
+        end
+        viSite2_spk(viSpk1) = S1.viSite2_spk;
+    end
+    if ~isempty(fid_fet2), write_bin_(fid_fet2, S1.trPc2_spk); end
 end
 fclose_(fid_fet);
 fclose_(fid_fet2);
@@ -2155,6 +2174,32 @@ fclose_(fid_fet2);
 S0 = makeStruct_(viSite_spk, viTime_spk, vrAmp_spk, mrVp_spk, ...
          viSite2_spk, trPc_spk, trPc2_spk, type_fet, dimm_fet, ...
          mrPos_spk, vrPow_spk); 
+end %func
+
+
+%--------------------------------------------------------------------------
+% Save trPc_spk and trPc2_spk and remove from the struct
+function [S_detect, fid_fet, fid_fet2] = detect_paged_save_(S_detect, P, fid_fet, fid_fet2)
+%    [mrPos_spk, vrPow_spk] = calc_pos_spk_(S0.trPc_spk, S0.viSite_spk, P);
+if nargin<3, fid_fet = []; end
+if nargin<4, fid_fet2 = []; end
+
+if isempty(fid_fet)
+    fid_fet = fopen(strrep(P.vcFile_prm, '.prm', '_fet.irc'), 'w');
+end
+write_bin_(fid_fet, S_detect.trPc_spk);    
+S_detect.type_fet = class(S_detect.trPc_spk);
+S_detect.dimm_fet = size(S_detect.trPc_spk);
+S_detect.trPc_spk = [];
+
+% save fet2
+if ~isempty(get_(S_detect, 'trPc2_spk'))
+    if isempty(fid_fet2)
+        fid_fet2 = fopen(strrep(P.vcFile_prm, '.prm', '_fet2.irc'), 'w');
+    end
+    write_bin_(fid_fet2, S_detect.trPc2_spk);
+    S_detect.trPc2_spk = [];
+end
 end %func
 
 
@@ -2282,8 +2327,9 @@ end
 
 % return struct
 if nPad_pre > 0, viTime_spk = viTime_spk - nPad_pre; end
+[mrPos_spk, vrPow_spk] = calc_pos_spk_(trPc_spk, viSite_spk, P); 
 S_detect = makeStruct_(trPc_spk, mrPv_global, viTime_spk, vrAmp_spk, viSite_spk, ...
-    mrVp_spk, trPc2_spk, viSite2_spk, vrThresh_site);
+    mrVp_spk, trPc2_spk, viSite2_spk, vrThresh_site, mrPos_spk, vrPow_spk);
 end %func
 
 
@@ -2670,9 +2716,7 @@ if strcmpi(vcExt_, '.mda')
 else
     vcFile_raw = fullfile(vcDir_in, 'raw.mda');
 end
-
-if isempty(vcDir_out), vcDir_out = strrep(vcDir_in, 'groundtruth', 'irc2'); end
-if ~exist_dir_(vcDir_out), mkdir(vcDir_out); end
+vcDir_out = fill_dir_out_(vcDir_in, vcDir_out);
 
 % assume there is raw.mda, geom.csv, params.json, firings_true.mda
 P = file2struct_(ircpath_(read_cfg_('default_prm', 0)));
@@ -2727,6 +2771,19 @@ end %func
 
 
 %--------------------------------------------------------------------------
+function vcDir_out = fill_dir_out_(vcDir_in, vcDir_out)
+if isempty(vcDir_out)
+    if ~contains(vcDir_out, 'groundtruth')
+        vcDir_out = fullfile(vcDir_in, 'irc2');
+    else
+        vcDir_out = strrep(vcDir_in, 'groundtruth', 'irc2'); 
+    end
+end
+if ~exist_dir_(vcDir_out), mkdir(vcDir_out); end
+end %func
+
+
+%--------------------------------------------------------------------------
 function [S_mda, fid_r] = readmda_header_(fname)
 fid_r = fopen(fname,'rb');
 
@@ -2777,7 +2834,20 @@ end %if
 
 % integrity check
 nBytes_data = prod(dimm) * bytesPerSample_(vcDataType);
-nBytes_missing = nBytes_data - filesize_(fname) + nBytes_header;
+nBytes_file = filesize_(fname);
+nBytes_missing = nBytes_data + nBytes_header - nBytes_file;
+
+% deal with overflow case when one dimension exceeds 2^31
+if nBytes_missing < 0 && strcmpi(dim_type_str, 'int32') && dimm(end) >= 2^31-1
+    nSamples = (nBytes_file-nBytes_header) / bytesPerSample_(vcDataType);
+    if num_dims == 1
+        dimm = nSamples;
+    else
+        dimm(end) = round(nSamples / prod(dimm(1:end-1)));
+    end
+    nBytes_data = prod(dimm) * bytesPerSample_(vcDataType);
+    nBytes_missing = nBytes_data + nBytes_header - nBytes_file;
+end
 
 S_mda = struct('dimm', dimm, 'vcDataType', vcDataType, ...
     'nBytes_header', nBytes_header, 'nBytes_sample', nBytes_sample, ...
@@ -3118,6 +3188,25 @@ end %func
 
 
 %--------------------------------------------------------------------------
+function join_mda_(vcFile_txt, vcFile_out)
+if isTextFile_(vcFile_txt)
+    csFiles = load_batch_(vcFile_txt);
+else
+    csFiles = list_files_(vcFile_txt, 1);
+end
+csFiles = setdiff(csFiles, vcFile_out);
+fprintf('Joining %d files\n', numel(csFiles)); t1=tic;
+fid_w = fopen(vcFile_out, 'w');
+for iFile = 1:numel(csFiles)
+    fid_w = writemda_fid(fid_w, readmda_(csFiles{iFile}));
+    fprintf('\tAppended %d/%d: %s\n', iFile, numel(csFiles), csFiles{iFile});
+end
+writemda_fid(fid_w, 'close');
+fprintf('\tWrote to %s, took %0.1fs\n', vcFile_out, toc(t1));
+end %func
+
+
+%--------------------------------------------------------------------------
 function frewind_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
 function disperr_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
 function struct_save_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
@@ -3129,6 +3218,10 @@ function close_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
 function auto_scale_proj_time_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
 function save_log_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
 function edit_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
+
+function out1 = isTextFile_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
+function out1 = load_batch_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
+function out1 = list_files_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 
 function out1 = meta2struct_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = struct_merge_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
@@ -3190,7 +3283,7 @@ function out1 = get_fig_cache_(varargin), fn=dbstack(); out1 = irc('call', fn(1)
 function out1 = S_clu_position_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = S_clu_quality_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 
-% function [out1, out2] = readmda_header_(varargin), fn=dbstack(); [out1, out2] = irc('call', fn(1).name, varargin); end
+function [out1, out2] = readmda_(varargin), fn=dbstack(); [out1, out2] = irc('call', fn(1).name, varargin); end
 function [out1, out2] = mr2thresh_(varargin), fn=dbstack(); [out1, out2] = irc('call', fn(1).name, varargin); end
 function [out1, out2] = gpuArray_(varargin), fn=dbstack(); [out1, out2] = irc('call', fn(1).name, varargin); end
 function [out1, out2] = filt_car_(varargin), fn=dbstack(); [out1, out2] = irc('call', fn(1).name, varargin); end

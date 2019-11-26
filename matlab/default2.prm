@@ -1,6 +1,6 @@
 % [Execution parameters]
 fGpu = 1;                   % Enable GPU if available
-fParfor = 1;                % Enable multi-processing if available
+fParfor = 0;                % Enable multi-processing if available
 MAX_BYTES_LOAD = .5e9;
 
 % [Detect stage: filter and detect spikes]

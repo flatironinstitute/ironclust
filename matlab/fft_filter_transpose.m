@@ -16,7 +16,7 @@ fDebug = 0;
 fVerbose = 0;
 
 NSKIP_MAX = 2^16; % fft work length
-vcDataType_filter = get_set_(P, 'vcDataType_filter', 'int16');
+vcDataType_filter = get_set_(P, 'vcDataType_filter', 'single');
 if strcmpi(vcDataType_filter, 'int16')
     scale_filter = get_set_(P, 'scale_filter', 1);
 else
@@ -25,8 +25,9 @@ end
 nPad = 300;
 [nC, nT] = size(mrWav_T);
 nSkip = min(nT, NSKIP_MAX);
-[sRateHz, freqLim, freqLim_width, fGpu] = ...
-    struct_get_(P, 'sRateHz', 'freqLim', 'freqLim_width', 'fGpu');
+freqLim_width = get_set_(P, 'freqLim_width', [100,1000]);
+[sRateHz, freqLim] = struct_get_(P, 'sRateHz', 'freqLim');
+fGpu = get_set_(P, 'fGpu', 1);
 if isempty(freqLim), mrWav_filt = single(mrWav_T'); return; end
 
 mrWav_filt = zeros(nT, nC, 'single'); 
