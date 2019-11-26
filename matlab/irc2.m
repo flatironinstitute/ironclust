@@ -2029,7 +2029,7 @@ runtime_detect = toc(runtime_detect);
 memory_detect = memory_matlab_();
 S0 = struct_add_(S0, vrThresh_site, mrPv_global, runtime_detect, P, memory_detect, memory_init);
 fprintf('Detection took %0.1fs and used %0.3f GiB (fParfor=%d, fGpu=%d)\n', ...
-    runtime_detect, memory_detect, P.fParfor, P.fGpu);
+    runtime_detect, memory_detect/2^30, P.fParfor, P.fGpu);
 end %func
 
 
