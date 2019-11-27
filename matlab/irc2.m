@@ -42,6 +42,8 @@ end
 
 [P, S0, fPlot_gt] = deal([]); 
 switch lower(vcCmd)
+    case 'compile-deploy', compile_cuda_([], '1'); return
+    case {'compile', 'install'}, compile_cuda_([], '0'); return
     case 'readmda_header', varargout{1} = readmda_header_(vcArg1); return;
     case 'mcc', irc('mcc'); return; 
     case {'join-mda', 'join_mda', 'joinmda'}
@@ -598,6 +600,7 @@ try
     csDesc{end+1} = sprintf('Execution');
     csDesc{end+1} = sprintf('    fGpu (GPU use):         %d', P.fGpu);
     csDesc{end+1} = sprintf('    fParfor (parfor use):   %d', P.fParfor);
+    csDesc{end+1} = sprintf('    fSave_fet:              %d', get_set_(P, 'fSave_fet', 1));
     csDesc{end+1} = sprintf('    Parameter file:         %s', P.vcFile_prm);
 catch
     ;
@@ -3176,6 +3179,8 @@ end %func
 
 
 %--------------------------------------------------------------------------
+% Call from irc.m
+function compile_cuda_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
 function frewind_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
 function disperr_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
 function struct_save_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end

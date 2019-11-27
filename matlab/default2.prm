@@ -2,7 +2,7 @@
 fGpu = 1;                   % Enable GPU if available
 fParfor = 1;                % Enable multi-processing if available
 MAX_BYTES_LOAD = .5e9;
-fSave_fet = 0;              % Save feature files (or keep in RAM for faster speed but 2x more RAM usage)
+fSave_fet = 1;              % Save feature files (or keep in RAM for faster speed but 2x more RAM usage)
 
 % [Detect stage: filter and detect spikes]
 vcFilter = 'bandpass';
