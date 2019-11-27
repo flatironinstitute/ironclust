@@ -17,8 +17,9 @@ if nargin<4, vcArg3 = ''; end
 persistent vcFile_prm_
 
 % batch processing. it uses default param for now
-if iscell(vcDir_in) && iscell(vcDir_out)
-    fForceRerun = read_cfg_('fForceRerun');
+fForceRerun = read_cfg_('fForceRerun');
+
+if iscell(vcDir_in) && iscell(vcDir_out)    
     [csDir_in, csDir_out, csFile_arg] = deal(vcDir_in, vcDir_out, vcFile_arg);
     parfor iFile = 1:numel(csDir_in)
         try
@@ -92,6 +93,7 @@ switch lower(vcCmd)
             'test-bionet', 'test-bionet1', 'test-monotrode', ...
             'test-monotrode1', 'test-monotrode2', 'test-monotrode3'}
         vcDir_in = get_test_data_(strsplit_get_(vcCmd,'-',2));
+        fForceRerun = 1;
     case 'export', irc('export', vcArg1); return;
     case {'export-phy', 'phy'}, irc2phy(vcArg1, vcArg2); return;
     case {'export-klusters', 'klusters', 'neurosuite'}, irc2klusters_v2(vcArg1, vcArg2); return;
@@ -105,17 +107,21 @@ if isempty(P)
     P = makeParam_(vcDir_in, vcDir_out, vcFile_arg);
 end
 vcFile_prm_ = P.vcFile_prm;
-if isempty(S0)
-    S0 = get(0, 'UserData');
-end
-if isempty(struct_get_(S0, 'trPc_spk'))
+vcFile_mat = strrep(P.vcFile_prm, '.prm', '_irc.mat');
+if exist_file_(vcFile_mat) && ~fForceRerun
+    S0 = load0_(P.vcFile_prm);
+else
     S0 = detect_(P); 
-    set(0, 'UserData', S0);
 end
+set(0, 'UserData', S0);
+
+if strcmpi(vcCmd, 'sort'), S0.S_clu = []; end
 if isempty(struct_get_(S0, 'S_clu'))
     S0 = sort_(S0, P);
     set(0, 'UserData', S0);
 end
+
+% end
 S0 = auto_(S0, P);
 set(0, 'UserData', S0);
 describe_(S0);
@@ -186,6 +192,12 @@ end
 S0 = load0_(P.vcFile_prm);
 P.fParfor = 0;
 fDebug_ui = false;
+
+if isempty(get_(S0.S_clu, 'mrCC'))
+    S0.S_clu.mrCC = correlogram_(S0.S_clu, get0('viTime_spk'), P);
+    S0.S_clu = calc_clu_wav_(S0, P);
+    S0.S_clu = S_clu_quality_(S0.S_clu, P);
+end
 
 hMsg = msgbox_('Plotting... (this closes automatically)'); t1=tic;
 S0 = figures_manual_(P); %create figures for manual interface
@@ -318,7 +330,7 @@ end %func
 %--------------------------------------------------------------------------
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_()
-vcVer = 'v5.1.3';
+vcVer = 'v5.1.4';
 vcDate = '11/26/2019';
 vcHash = file2hash_();
 
@@ -387,16 +399,16 @@ vcFile_fet2 = strrep(vcFile_prm, '.prm', '_fet2.irc');
 vcFile_knn = strrep(vcFile_prm, '.prm', '_knn.irc');
 
 S0 = load(vcFile_mat);
-if isempty(get_(S0, 'trPc_spk'))
-    if exist_file_(vcFile_fet)
-        S0.trPc_spk = load_bin_(vcFile_fet, S0.type_fet, S0.dimm_fet);
-    end
-end
-if isempty(get_(S0, 'trPc2_spk'))
-    if exist_file_(vcFile_fet2)
-        S0.trPc2_spk = load_bin_(vcFile_fet2, S0.type_fet, S0.dimm_fet);
-    end
-end
+% if isempty(get_(S0, 'trPc_spk'))
+%     if exist_file_(vcFile_fet)
+%         S0.trPc_spk = load_bin_(vcFile_fet, S0.type_fet, S0.dimm_fet);
+%     end
+% end
+% if isempty(get_(S0, 'trPc2_spk'))
+%     if exist_file_(vcFile_fet2)
+%         S0.trPc2_spk = load_bin_(vcFile_fet2, S0.type_fet, S0.dimm_fet);
+%     end
+% end
 
 S_clu = get_(S0, 'S_clu');
 if isempty(get_(S_clu, 'miKnn'))
@@ -571,12 +583,6 @@ end
 % compute SNR per cluster and remove small SNR
 S0.S_clu = S_clu_sort_(S0.S_clu, 'viSite_clu');
 S0.S_clu = S_clu_refrac_(S0.S_clu, P); % refractory violation removal
-
-if read_cfg_('fExport_ui', 0)
-    S0.S_clu.mrCC = correlogram_(S0.S_clu, get0('viTime_spk'), P);
-    S0.S_clu = calc_clu_wav_(S0, P);
-    S0.S_clu = S_clu_quality_(S0.S_clu, P);
-end
 
 S0.runtime_automerge = toc(runtime_automerge);
 fprintf('\n\tauto-merging took %0.1fs (fGpu=%d, fParfor=%d)\n', ...
@@ -1171,6 +1177,7 @@ end %func
 
 
 %--------------------------------------------------------------------------
+% multiply triangular weighing factor
 function [ctrPc_clu, cviSite_clu] = merge_clu_pre3_(cS_pre3, S0, P)
 [ctrPc_clu, cviSite_clu] = deal(cell(size(cS_pre3)));
 
@@ -1179,10 +1186,21 @@ if isempty(trPc_spk)
     vcFile_fet = strrep(P.vcFile_prm, '.prm', '_fet.irc');
     trPc_spk = load_bin_(vcFile_fet, S0.type_fet, S0.dimm_fet);
 end
+nPcPerChan = get_set_(P, 'nPcPerChan', 0);
+switch 3
+    case 1, mean_ = @(y,x)mean(y(:,:,x),3);
+    case 2
+        mlPc = calc_mlPc_(nPcPerChan, size(trPc_spk));
+        mean_ = @(y,x)mask_mr_(mean(y(:,:,x),3), mlPc); 
+    case 3
+        nSites_fet = min(size(trPc_spk,2), P.nPc_spk);
+        mean_ = @(y,x)mean(y(:,1:nSites_fet,x),3);
+end %switch
+
 for iClu = 1:numel(cS_pre3)
     S_pre3 = cS_pre3{iClu};
     cviSite_clu{iClu} = [S_pre3.viSite1(:); S_pre3.viSite2(:)];
-    trPc_clu1 = cellfun(@(x)mean(trPc_spk(:,:,x),3), S_pre3.cviSpk1, 'UniformOutput', false);
+    trPc_clu1 = cellfun(@(x)mean_(trPc_spk,x), S_pre3.cviSpk1, 'UniformOutput', false);
     ctrPc_clu{iClu} = cat(3,trPc_clu1{:}); % faster than pre-allocating
 end
 trPc_spk = []; % clear from memory
@@ -1195,11 +1213,16 @@ end
 if isempty(trPc2_spk), return; end
 for iClu = 1:numel(cS_pre3)
     S_pre3 = cS_pre3{iClu};
-    trPc_clu2 = cellfun(@(x)mean(trPc2_spk(:,:,x),3), S_pre3.cviSpk2, 'UniformOutput', false);
+    trPc_clu2 = cellfun(@(x)mean_(trPc2_spk,x), S_pre3.cviSpk2, 'UniformOutput', false);
     ctrPc_clu{iClu} = cat(3, ctrPc_clu{iClu}, cat(3,trPc_clu2{:}));
 end
 end %func
 
+
+%--------------------------------------------------------------------------
+function mr = mask_mr_(mr, ml)
+mr(~ml) = 0;
+end %func
 
 %--------------------------------------------------------------------------
 function [ctrPc_clu, cviSite_clu] = merge_clu_pre3_2_(cS_pre3, trPc_spk, trPc2_spk, P)
@@ -1757,32 +1780,15 @@ trPc = get_(S0, 'trPc_spk');
 if isempty(trPc)
     trPc = load_bin_(strrep(P.vcFile_prm, '.prm', '_fet.irc'), S0.type_fet, S0.dimm_fet);
 end
-[nPc_spk, nSites_spk, nSpk] = size(trPc);
+dimm_fet = size(trPc);
+nSpk = dimm_fet(3);
 
 % determine vnPc_site
 nPcPerChan = get_set_(P, 'nPcPerChan', 0);
-if isempty(nPcPerChan), nPcPerChan = 0; end
-if numel(nPcPerChan) == 1
-    if nPcPerChan == 0
-        vnPc_site = nPc_spk:-1:1;
-    else
-        vnPc_site = repmat(nPcPerChan, [1, nSites_fet]);
-    end
-else
-    vnPc_site = nPcPerChan;
-end
-
-% determine miPc
-miPc = false(nPc_spk, nSites_spk);
-nSites1 = min(nSites_spk, numel(vnPc_site));
-for iSite = 1:nSites1
-    nPc1 = vnPc_site(iSite);
-    miPc(1:nPc1, iSite) = true;
-end
-miPc(1,:) = true;
+mlPc = calc_mlPc_(nPcPerChan, dimm_fet);
 
 trPc = reshape(trPc, [], nSpk);
-trPc = reshape(trPc(miPc(:),:), [sum(miPc(:)), 1, nSpk]);
+trPc = reshape(trPc(mlPc(:),:), [sum(mlPc(:)), 1, nSpk]);
 
 % append secondary peak feature
 trPc2 = get_(S0, 'trPc2_spk');
@@ -1791,7 +1797,7 @@ if isempty(trPc2)
 end
 if ~isempty(trPc2)
     trPc2 = reshape(trPc2, [], nSpk);
-    trPc2 = reshape(trPc2(miPc(:),:), [sum(miPc(:)), 1, nSpk]);    
+    trPc2 = reshape(trPc2(mlPc(:),:), [sum(mlPc(:)), 1, nSpk]);    
     trPc = cat(2, trPc, trPc2);
 end
 
@@ -1804,6 +1810,32 @@ try
 catch
     disperr_();
 end
+end %func
+
+
+%--------------------------------------------------------------------------
+function [mlPc, vnPc_site] = calc_mlPc_(nPcPerChan, dimm_fet)
+[nPc_spk, nSites_spk] = deal(dimm_fet(1), dimm_fet(2));
+
+if isempty(nPcPerChan), nPcPerChan = 0; end
+if numel(nPcPerChan) == 1
+    if nPcPerChan == 0
+        vnPc_site = nPc_spk:-1:1;
+    else
+        vnPc_site = repmat(nPcPerChan, [1, nSites_spk]);
+    end
+else
+    vnPc_site = nPcPerChan;
+end
+
+% determine miPc
+mlPc = false(nPc_spk, nSites_spk);
+nSites1 = min(nSites_spk, numel(vnPc_site));
+for iSite = 1:nSites1
+    nPc1 = vnPc_site(iSite);
+    mlPc(1:nPc1, iSite) = true;
+end
+% mlPc(1,:) = true;
 end %func
 
 
@@ -2001,13 +2033,16 @@ S_cache = makeStruct_(vrThresh_site, mrPv_global);
 fprintf('Memory use: %0.3f GiB\n', (memory_matlab_()-memory_init)/2^30);
 if ~isempty(gcp_) && ~fDone  % must debug
     [vcFile, vS_load] = readmda_paged_('close'); % close the file
+    cS_detect{1} = detect_paged_save_(cS_detect{1}, P, 1);
     parfor iLoad = 2:nLoads  % change to for loop for debugging
         S_load1 = vS_load(iLoad);
         mrWav_T1 = load_file_part_(vcFile, S_load1);
         S_cache1 = setfield(S_cache, 'nlim_wav1', S_load1.nlim);
         cS_detect{iLoad} = detect_paged_(mrWav_T1, P, S_cache1);
+        cS_detect{iLoad} = detect_paged_save_(cS_detect{iLoad}, P, iLoad);
         mrWav_T1 = [];
     end
+    detect_paged_save_('merge', P, nLoads); % merge 
     S0 = detect_merge_(cS_detect, viOffset_load, P);
     fprintf('\tMemory use: %0.3f GiB\n', memory_matlab_()/2^30);
 else % save features in series, more memory efficient than parfor
@@ -2050,7 +2085,7 @@ switch 1
     case 4, mrW = squeeze_(abs(trPc_spk(1,:,:)),1);
     case 3, mrW = squeeze_(sum(trPc_spk(1:P.nPcPerChan,:,:).^2),1);
     case 2, mrW = squeeze_(sum(trPc_spk.^2),1);
-    case 1, mrW = squeeze_(trPc_spk(1,:,:),1) .^2;
+    case 1, mrW = squeeze_(trPc_spk(1,1:P.nSites_fet,:),1) .^2;
 end
 vrPow_spk = sum(mrW,1)';
 
@@ -2058,7 +2093,7 @@ vrPow_spk = sum(mrW,1)';
 toVec_ = @(x)x(:);
 switch 1        
     case 1 % centroid       
-        trSiteXY_spk = reshape(P.mrSiteXY(P.miSites(:, viSite_spk),:), nSites_spk, nSpk, 2);
+        trSiteXY_spk = reshape(P.mrSiteXY(P.miSites(1:P.nSites_fet, viSite_spk),:), P.nSites_fet, nSpk, 2);
         mrPos_spk = [sum(mrW .* trSiteXY_spk(:,:,1))', sum(mrW .* trSiteXY_spk(:,:,2))'] ./ vrPow_spk;
 %         figure; plot(mrPos_spk(:,1), mrPos_spk(:,2), '.', 'MarkerSize',1); axis([10 60 10 210])
         % figure; plot3(mrPos_spk(:,1), mrPos_spk(:,2), log(mean(mrW)'), '.');
@@ -2181,14 +2216,50 @@ end %func
 %--------------------------------------------------------------------------
 % Save trPc_spk and trPc2_spk and remove from the struct
 function [S_detect, fid_fet, fid_fet2] = detect_paged_save_(S_detect, P, fid_fet, fid_fet2)
-%    [mrPos_spk, vrPow_spk] = calc_pos_spk_(S0.trPc_spk, S0.viSite_spk, P);
+% usage
+% -----
+% [S_detect, fid_fet, fid_fet2] = detect_paged_save_(S_detect, P)
+%    Open _fet.irc and _fet2.irc files and save
+% S_detect = detect_paged_save_(S_detect, P, fid_fet, fid_fet2)
+%    Save to files
+% S_detect = detect_paged_save_(S_detect, P, iLoad)
+%    save to _fet_{iLoad}.irc and _fet2_{iLoad}.irc
+% S_detect = detect_paged_save_('merge', P, nLoads)
+%    merge _fet_{1:nLoads}.irc and also _fet2_{1:nLoads}.irc
+
 if nargin<3, fid_fet = []; end
 if nargin<4, fid_fet2 = []; end
 
+if ischar(S_detect)
+    if strcmpi(S_detect, 'merge')
+        t1 = tic;
+        nLoads = fid_fet;
+        vcFile_prm_ = strrep(P.vcFile_prm, '.prm', '');
+        csFiles_in = arrayfun_(@(x)[vcFile_prm_, sprintf('_fet_%d.irc',x)], 1:nLoads);
+        merge_files_fet_(csFiles_in, [vcFile_prm_, '_fet.irc'], 1);
+        csFiles2_in = arrayfun_(@(x)[vcFile_prm_, sprintf('_fet2_%d.irc',x)], 1:nLoads);
+        merge_files_fet_(csFiles2_in, [vcFile_prm_, '_fet2.irc'], 1);
+        fprintf('merged *_fet.irc files, took %0.1fs\n', toc(t1));
+    end
+    return;
+elseif nargin==3 && nargout == 1
+    % parfor workers write to individual files
+    fClose_fid = true;
+    iLoad = fid_fet;
+    fid_fet = [];
+else
+    fClose_fid = false;
+end
+
 if isempty(fid_fet)
-    fid_fet = fopen(strrep(P.vcFile_prm, '.prm', '_fet.irc'), 'w');
+    if ~fClose_fid
+        fid_fet = fopen(strrep(P.vcFile_prm, '.prm', '_fet.irc'), 'w');
+    else
+        fid_fet = fopen(strrep(P.vcFile_prm, '.prm', sprintf('_fet_%d.irc', iLoad)), 'w');
+    end
 end
 write_bin_(fid_fet, S_detect.trPc_spk);    
+if fClose_fid, close_(fid_fet); end
 S_detect.type_fet = class(S_detect.trPc_spk);
 S_detect.dimm_fet = size(S_detect.trPc_spk);
 S_detect.trPc_spk = [];
@@ -2196,12 +2267,65 @@ S_detect.trPc_spk = [];
 % save fet2
 if ~isempty(get_(S_detect, 'trPc2_spk'))
     if isempty(fid_fet2)
-        fid_fet2 = fopen(strrep(P.vcFile_prm, '.prm', '_fet2.irc'), 'w');
+        if ~fClose_fid
+            fid_fet2 = fopen(strrep(P.vcFile_prm, '.prm', '_fet2.irc'), 'w');
+        else
+            fid_fet2 = fopen(strrep(P.vcFile_prm, '.prm', sprintf('_fet2_%d.irc', iLoad)), 'w');
+        end
     end
-    write_bin_(fid_fet2, S_detect.trPc2_spk);
+    write_bin_(fid_fet2, S_detect.trPc2_spk);    
+    if fClose_fid, close_(fid_fet2); end
     S_detect.trPc2_spk = [];
 end
 end %func
+
+
+%--------------------------------------------------------------------------
+function varargout = cellfun_(varargin)
+if nargout == 0
+    cellfun(varargin{:}, 'UniformOutput', 0);
+elseif nargout==1
+    varargout{1} = cellfun(varargin{:}, 'UniformOutput', 0);
+elseif nargout==2
+    [varargout{1}, varargout{2}] = cellfun(varargin{:}, 'UniformOutput', 0);    
+elseif nargout==3
+    [varargout{1}, varargout{2}, varargout{3}] = cellfun(varargin{:}, 'UniformOutput', 0);    
+else
+    error('cellfun_: nargout exceeds 3');
+end   
+end %func
+
+
+%--------------------------------------------------------------------------
+function varargout = arrayfun_(varargin)
+if nargout == 0
+    arrayfun(varargin{:}, 'UniformOutput', 0);
+elseif nargout==1
+    varargout{1} = arrayfun(varargin{:}, 'UniformOutput', 0);
+elseif nargout==2
+    [varargout{1}, varargout{2}] = arrayfun(varargin{:}, 'UniformOutput', 0);    
+elseif nargout==3
+    [varargout{1}, varargout{2}, varargout{3}] = arrayfun(varargin{:}, 'UniformOutput', 0);    
+else
+    error('arrayfun_: nargout exceeds 3');
+end   
+end %func
+
+
+%--------------------------------------------------------------------------
+% merge feature files
+function merge_files_fet_(csFiles_in, vcFile_out, fDelete)
+if nargin<3, fDelete = 0; end
+% merge files
+fid_w = fopen(vcFile_out, 'w');
+for iFile = 1:numel(csFiles_in)
+    fid_r1 = fopen(csFiles_in{iFile},'r');
+    fwrite(fid_w, fread(fid_r1, inf, 'single'), 'single');
+    fclose(fid_r1);
+end
+fclose_(fid_w);
+if fDelete, delete_(csFiles_in); end
+end 
 
 
 %--------------------------------------------------------------------------
@@ -2299,17 +2423,7 @@ end%if
 
 % extract spike waveforms
 trWav_spk = get_spkwav_(mrWav2, viSite_spk, viTime_spk, P);
-if 0
-    lim1 = round(size(trWav_spk,1) * [1/4,3/4]);
-    mrVp_spk = min(trWav_spk(lim1(1):lim1(2),:,:));  
-    mrVp_spk = gather_(squeeze_(mrVp_spk,1));
-else
-    mrVp_spk = [];
-end
-if 0
-    dimm_spk = size(trWav_spk);
-    trWav_spk = reshape(meanSubt_(reshape(trWav_spk, [], size(trWav_spk,3))), dimm_spk);
-end
+mrVp_spk = [];
 
 % extract spike feaures
 if isempty(mrPv_global)
@@ -2331,24 +2445,6 @@ if nPad_pre > 0, viTime_spk = viTime_spk - nPad_pre; end
 [mrPos_spk, vrPow_spk] = calc_pos_spk_(trPc_spk, viSite_spk, P); 
 S_detect = makeStruct_(trPc_spk, mrPv_global, viTime_spk, vrAmp_spk, viSite_spk, ...
     mrVp_spk, trPc2_spk, viSite2_spk, vrThresh_site, mrPos_spk, vrPow_spk);
-end %func
-
-
-%--------------------------------------------------------------------------
-function trWav_spk1 = pc2spkwav_(trPc_spk, mrPv_global)
-[nPc_spk, nSites_spk, nSpk] = size(trPc_spk);
-nSamples_spk = size(mrPv_global,1);
-dimm_spk = [nSamples_spk, nSites_spk, nSpk];
-trWav_spk1 = reshape(mrPv_global * reshape(trPc_spk, size(trPc_spk,1), []), dimm_spk);
-end %func
-
-
-%--------------------------------------------------------------------------
-function trPc_spk = project_pc1_(trWav_spk, mrPv)
-[nSamples, nSites, nSpk] = size(trWav_spk);
-nPc = size(mrPv,2);
-mr = reshape(trWav_spk, size(trWav_spk,1), []);
-trPc_spk = reshape((mrPv' * mr), nPc, nSites, nSpk);
 end %func
 
 
@@ -2404,7 +2500,7 @@ MAX_SAMPLE = 10000;
 
 viSpk_sub = subsample_vr_(1:size(tr,3), MAX_SAMPLE);
 switch 2
-    case 2, mr1 = reshape(tr(:, :, viSpk_sub), size(tr,1), []); 
+    case 2, mr1 = reshape(tr(:, 1:P.nSites_fet, viSpk_sub), size(tr,1), []); 
     case 1, mr1 = squeeze(tr(:, 1, viSpk_sub)); 
 end
 nPc_spk = get_set_(P, 'nPc_spk', 6); % # components to compress spike waveforms
@@ -2985,7 +3081,7 @@ if isempty(get_(P, 'nTime_clu'))
     try
         batch_sec_drift = get_set_(P, 'batch_sec_drift', 300);
         P.nTime_clu = max(round(recording_duration_(P) / batch_sec_drift), 1);
-        P.nTime_clu = min(P.nTime_clu, get_set_(P, 'nBatch_max_drift', 32));
+%         P.nTime_clu = min(P.nTime_clu, get_set_(P, 'nBatch_max_drift', 32));
         fprintf('\tnTime_clu = %d (batch_sec_drift = %0.1f s)\n', P.nTime_clu, batch_sec_drift);
     catch
         P.nTime_clu = 1;
@@ -3227,6 +3323,9 @@ if isTextFile_(vcFile_txt)
 else
     csFiles = list_files_(vcFile_txt, 1);
 end
+if isempty(vcFile_out)
+    vcFile_out = fullfile(fileparts(csFiles{1}), 'raw.mda');
+end
 csFiles = setdiff(csFiles, vcFile_out);
 fprintf('Joining %d files\n', numel(csFiles)); t1=tic;
 fid_w = fopen(vcFile_out, 'w');
@@ -3304,7 +3403,6 @@ function out1 = find_site_spk23_(varargin), fn=dbstack(); out1 = irc('call', fn(
 function out1 = mn2tn_wav_spk2_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = matchFileExt_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = load_bin_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
-function out1 = arrayfun_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = delete_clu_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = shift_trWav_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = struct_copyas_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end

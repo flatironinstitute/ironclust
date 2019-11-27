@@ -3,7 +3,7 @@ function run_irc(vcDir_in, vcDir_out, vcFile_template)
 % -----
 % run_irc(command)
 % run_irc(vcDir_in, vcDir_out, vcFile_template)
-%
+%       
 % arguments
 % -----
 % vcDir_in: input directory
@@ -21,7 +21,10 @@ end
 
 if strcmpi(vcDir_in, 'version')
     vcCmd = vcDir_in;
-    fprintf('%s\n', irc(vcCmd)); 
+    switch version
+        case 1, fprintf('%s\n', irc(vcCmd)); 
+        case 2, fprintf('%s\n', irc2(vcCmd)); 
+    end
     exit_deployed_();
     return; 
 end
