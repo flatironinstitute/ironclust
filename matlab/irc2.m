@@ -181,6 +181,54 @@ end %func
 
 
 %--------------------------------------------------------------------------
+function trPc_spk = load_fet_(S0, P, iFet)
+if nargin<3, iFet = 1; end
+vcFile_prm_ = strrep(P.vcFile_prm, '.prm', '');
+fprintf('Loading feature %d...', iFet); t1=tic;
+if iFet==1
+    vcFile_fet = [vcFile_prm_, '_fet.irc'];
+    if exist_file_(vcFile_fet)
+        trPc_spk = load_bin_(vcFile_fet, S0.type_fet, S0.dimm_fet);
+    else
+        csFiles_in = arrayfun_(@(x)[vcFile_prm_, sprintf('_fet_%d.irc',x)], 1:S0.nLoads);
+        trPc_spk = load_bin_merge_(csFiles_in, S0.type_fet, S0.dimm_fet);
+    end
+elseif iFet==2
+    vcFile_fet = [vcFile_prm_, '_fet2.irc'];
+    if exist_file_(vcFile_fet)
+        trPc_spk = load_bin_(vcFile_fet, S0.type_fet, S0.dimm_fet);
+    else
+        csFiles_in = arrayfun_(@(x)[vcFile_prm_, sprintf('_fet2_%d.irc',x)], 1:S0.nLoads);
+        trPc_spk = load_bin_merge_(csFiles_in, S0.type_fet, S0.dimm_fet);
+    end
+else
+    error('invalid feature id');
+end
+fprintf(' took %0.1fs\n', toc(t1));
+end %func
+
+
+%--------------------------------------------------------------------------
+function trPc_spk = load_bin_merge_(csFiles_in, type_fet, dimm_fet)
+trPc_spk = zeros(dimm_fet, type_fet);
+iOffset = 0;
+for iFile = 1:numel(csFiles_in)
+    nBytes_file1 = filesize_(csFiles_in{iFile});
+    dimm_fet1 = dimm_fet;
+    if numel(dimm_fet) == 1
+        dimm_fet1 = nBytes_file1 / bytesPerSample_(type_fet);        
+    else
+        dimm_fet1(end) = nBytes_file1 / bytesPerSample_(type_fet) / prod(dimm_fet(1:end-1));
+    end
+    tr_ = load_bin_(csFiles_in{iFile}, type_fet, dimm_fet1);
+    vi1 = (1:dimm_fet1(end)) + iOffset;
+    trPc_spk(:,:,vi1) = tr_;
+    iOffset = vi1(end);
+end %for
+end %func
+
+
+%--------------------------------------------------------------------------
 function manual_(P)
 global fDebug_ui
 
@@ -194,7 +242,7 @@ P.fParfor = 0;
 fDebug_ui = false;
 
 % keep trPc_spk loaded for manual
-S0.trPc_spk = load_bin_(strrep(P.vcFile_prm, '.prm', '_fet.irc'), S0.type_fet, S0.dimm_fet);
+S0.trPc_spk = load_fet_(S0, P, 1);
 if isempty(get_(S0.S_clu, 'mrCC'))
 %     fprintf('Computing cross-correlogram...'); t1=tic;    
     S0.S_clu = calc_clu_wav_(S0, P);    
@@ -604,7 +652,7 @@ cviSpk_clu = arrayfun_(@(x)find(S_clu.viClu==x), (1:S_clu.nClu)');
 viSite_clu = cellfun(@(x)mode(S0.viSite_spk(x)), cviSpk_clu);
 nT = size(S0.mrPv_global,1);
 if isempty(get_(S0, 'trPc_spk'))
-    trPc_spk = load_bin_(strrep(P.vcFile_prm, '.prm', '_fet.irc'), S0.type_fet, S0.dimm_fet);
+    trPc_spk = load_fet_(S0, P, 1);
 else
     trPc_spk = S0.trPc_spk;
 end
@@ -1004,10 +1052,7 @@ function [ctrPc_clu, cviSite_clu] = merge_clu_pre3_(cS_pre3, S0, P)
 [ctrPc_clu, cviSite_clu] = deal(cell(size(cS_pre3)));
 
 trPc_spk = get_(S0, 'trPc_spk');
-if isempty(trPc_spk)
-    vcFile_fet = strrep(P.vcFile_prm, '.prm', '_fet.irc');
-    trPc_spk = load_bin_(vcFile_fet, S0.type_fet, S0.dimm_fet);
-end
+if isempty(trPc_spk), trPc_spk = load_fet_(S0, P, 1); end
 nPcPerChan = get_set_(P, 'nPcPerChan', 0);
 switch 3
     case 1, mean_ = @(y,x)mean(y(:,:,x),3);
@@ -1029,9 +1074,7 @@ trPc_spk = []; % clear from memory
 
 % Second peak average
 trPc2_spk = get_(S0, 'trPc2_spk');
-if isempty(trPc2_spk)
-    trPc2_spk = load_bin_(strrep(P.vcFile_prm, '.prm', '_fet2.irc'), S0.type_fet, S0.dimm_fet);
-end
+if isempty(trPc2_spk), trPc2_spk = load_fet_(S0, P, 2); end
 if isempty(trPc2_spk), return; end
 for iClu = 1:numel(cS_pre3)
     S_pre3 = cS_pre3{iClu};
@@ -1044,55 +1087,6 @@ end %func
 %--------------------------------------------------------------------------
 function mr = mask_mr_(mr, ml)
 mr(~ml) = 0;
-end %func
-
-%--------------------------------------------------------------------------
-function [ctrPc_clu, cviSite_clu] = merge_clu_pre3_2_(cS_pre3, trPc_spk, trPc2_spk, P)
-[ctrPc_clu, cviSite_clu] = deal(cell(size(cS_pre3)));
-
-tr_ = gpuArray_(trPc_spk(:,1:P.nSites_fet,:), P.fGpu);
-for iClu = 1:numel(cS_pre3)
-    S_pre3 = cS_pre3{iClu};
-    cviSite_clu{iClu} = [S_pre3.viSite1(:); S_pre3.viSite2(:)];
-    trPc_clu1 = cellfun(@(x)mean(tr_(:,:,x),3), S_pre3.cviSpk1, 'UniformOutput', false);
-    ctrPc_clu{iClu} = gather_(cat(3,trPc_clu1{:})); % faster than pre-allocating
-end
-tr_ = []; %clear memory
-
-% Load second peak sites to the GPU memory
-if isempty(trPc2_spk), return; end
-tr_ = gpuArray_(trPc2_spk(:,1:P.nSites_fet,:), P.fGpu);
-for iClu = 1:numel(cS_pre3)
-    S_pre3 = cS_pre3{iClu};
-    cviSpk2 = S_pre3.cviSpk2;
-    trPc_clu2 = cellfun(@(x)mean(tr_(:,:,x),3), S_pre3.cviSpk2, 'UniformOutput', false);
-    ctrPc_clu{iClu} = cat(3, ctrPc_clu{iClu}, gather_(cat(3,trPc_clu2{:})));
-end
-end %func
-
-
-%--------------------------------------------------------------------------
-function [ctrPc_clu, cviSite_clu] = merge_clu_pre3_1_(cS_pre3, trPc_spk, trPc2_spk, P)
-[ctrPc_clu, cviSite_clu] = deal(cell(size(cS_pre3)));
-
-tr_ = gpuArray_(trPc_spk(:,1:P.nSites_fet,:), P.fGpu);
-for iClu = 1:numel(cS_pre3)
-    S_pre3 = cS_pre3{iClu};
-    [cviSite_clu{iClu}, cviSpk1] = deal(S_pre3.viSite1(:), S_pre3.cviSpk1);
-    trPc_clu1 = cellfun(@(x)mean(tr_(:,:,x),3), cviSpk1, 'UniformOutput', false);
-    ctrPc_clu{iClu} = cat(3, trPc_clu1{:});
-end
-tr_ = []; %clear memory
-
-% Load second peak sites to the GPU memory
-tr_ = gpuArray_(trPc2_spk(:,1:P.nSites_fet,:), P.fGpu);
-for iClu = 1:numel(cS_pre3)
-    S_pre3 = cS_pre3{iClu};
-    cviSite_clu{iClu} = [cviSite_clu{iClu}; S_pre3.viSite2(:)];
-    trPc_clu2 = cellfun(@(x)mean(tr_(:,:,x),3), S_pre3.cviSpk2, 'UniformOutput', false);
-    trPc_clu2 = cat(3, trPc_clu2{:});
-    ctrPc_clu{iClu} = gather_(cat(3, ctrPc_clu{iClu}, trPc_clu2));
-end
 end %func
 
 
@@ -1531,7 +1525,7 @@ function trPc = get_pc_sort_(S0, P)
 % Load trPc
 trPc = get_(S0, 'trPc_spk');
 if isempty(trPc)
-    trPc = load_bin_(strrep(P.vcFile_prm, '.prm', '_fet.irc'), S0.type_fet, S0.dimm_fet);
+    trPc = load_fet_(S0, P, 1);
 end
 dimm_fet = size(trPc);
 nSpk = dimm_fet(3);
@@ -1546,7 +1540,7 @@ trPc = reshape(trPc(mlPc(:),:), [sum(mlPc(:)), 1, nSpk]);
 % append secondary peak feature
 trPc2 = get_(S0, 'trPc2_spk');
 if isempty(trPc2)
-    trPc2 = load_bin_(strrep(P.vcFile_prm, '.prm', '_fet2.irc'), S0.type_fet, S0.dimm_fet);
+    trPc2 = load_fet_(S0, P, 2);
 end
 if ~isempty(trPc2)
     trPc2 = reshape(trPc2, [], nSpk);
@@ -1784,9 +1778,10 @@ mrWav_T1 = [];
 [vrThresh_site, mrPv_global] = struct_get_(cS_detect{1}, 'vrThresh_site', 'mrPv_global');
 S_cache = makeStruct_(vrThresh_site, mrPv_global);
 fprintf('Memory use: %0.3f GiB\n', (memory_matlab_()-memory_init)/2^30);
+delete_file_fet_(P); % clear fet
 if ~isempty(gcp_) && ~fDone  % must debug
     [vcFile, vS_load] = readmda_paged_('close'); % close the file
-    cS_detect{1} = detect_paged_save_(cS_detect{1}, P, 1);
+    cS_detect{1} = detect_paged_save_(cS_detect{1}, P, 1);    
     viSite2Chan = get_(P, 'viSite2Chan');
     parfor iLoad = 2:nLoads  % change to for loop for debugging
         S_load1 = vS_load(iLoad);
@@ -1796,7 +1791,9 @@ if ~isempty(gcp_) && ~fDone  % must debug
         cS_detect{iLoad} = detect_paged_save_(cS_detect{iLoad}, P, iLoad);
         mrWav_T1 = [];
     end
-    detect_paged_save_('merge', P, nLoads); % merge 
+    if 0
+        detect_paged_save_('merge', P, nLoads); % merge _fet_#.irc into _fet
+    end
     S0 = detect_merge_(cS_detect, viOffset_load, P);
     fprintf('\tMemory use: %0.3f GiB\n', memory_matlab_()/2^30);
 else % save features in series, more memory efficient than parfor
@@ -1817,9 +1814,16 @@ end
 
 runtime_detect = toc(runtime_detect);
 memory_detect = memory_matlab_();
-S0 = struct_add_(S0, vrThresh_site, mrPv_global, runtime_detect, P, memory_detect, memory_init);
+S0 = struct_add_(S0, vrThresh_site, mrPv_global, runtime_detect, P, memory_detect, memory_init, nLoads);
 fprintf('Detection took %0.1fs and used %0.3f GiB (fParfor=%d, fGpu=%d)\n', ...
     runtime_detect, (memory_detect-memory_init)/2^30, P.fParfor, P.fGpu);
+end %func
+
+
+%--------------------------------------------------------------------------
+function delete_file_fet_(P)
+vcFile_prm_ = strrep(P.vcFile_prm, '.prm', '');
+delete([vcFile_prm_, '_fet*.irc']);
 end %func
 
 
