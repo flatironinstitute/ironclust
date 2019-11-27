@@ -18,7 +18,7 @@ fInterp_fet = 1;            % Set to `1` to interpolate the waveform by 2x
 % [Cluster stage: apply drift-detection and KNN-graph density-peak clustering]
 nPcPerChan = 0;             % #PC/chan. Set to `0` to use a variable # as a function of distance from the center
 step_sec_drift = 20;        % Ave. duration of time batch in sec
-batch_sec_drift = 300;      % Total ave. duration of time batch group in sec
+batch_sec_drift = 600;      % Total ave. duration of time batch group in sec
 fWhiten_fet = 0;            % Set to `1` to whiten features 
 
 % [Auto-merge stage: automatically merge similar clusters based on KNN-graph and waveform similarity]

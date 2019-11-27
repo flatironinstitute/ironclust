@@ -1735,7 +1735,7 @@ viSpk = cell2mat_(cviSpk);      vrSpk = cell2mat_(cvrSpk);
 viSite = cell2mat_(cellfun(@(vi,i)repmat(i,size(vi)), cviSpk, num2cell((1:nSites)'), 'UniformOutput', false));
 [viSpk, viSrt] = sort(viSpk);   vrSpk = vrSpk(viSrt);   viSite = viSite(viSrt);
 viSite = int32(viSite); 
-viSpk = int32(viSpk);   
+viSpk = int64(viSpk);    % deal with longer recording
 
 [cviSpkA, cvrSpkA, cviSiteA] = deal(cell(nSites,1));
 %fParfor = get_set_(P, 'fParfor', 1);
@@ -1843,11 +1843,11 @@ end %func
 function [viTime_spk2, vnAmp_spk2, viSite_spk2] = spikeMerge_single_(viTime_spk, vnAmp_spk, viSite_spk, iSite1, P)
 % maxDist_site_um = get_set_(P, 'maxDist_site_spk_um', 75);
 maxDist_site_um = get_set_(P, 'maxDist_site_um', 50);
-nlimit = int32(abs(P.spkRefrac));
+nlimit = int64(abs(P.spkRefrac));
 % spkLim = [-nlimit, nlimit];
 
 % Find spikes from site 1
-viSpk1 = int32(find(viSite_spk == iSite1)); % pre-cache
+viSpk1 = find(viSite_spk == iSite1); % pre-cache
 [viTime_spk1, vnAmp_spk1] = deal(viTime_spk(viSpk1), vnAmp_spk(viSpk1));
 
 % Find neighboring spikes
@@ -6001,8 +6001,8 @@ uimenu_(mh_view,'Label', 'View all [R]', 'Callback', @(h,e)keyPressFcn_cell_(hFi
 uimenu_(mh_view,'Label', '[Z]oom selected', 'Callback', @(h,e)keyPressFcn_cell_(hFig, 'z'));
 uimenu_(mh_view,'Label', '[W]aveform (toggle)', 'Callback', @(h,e)keyPressFcn_cell_(hFig, 'w'));
 uimenu_(mh_view,'Label', '[N]umbers (toggle)', 'Callback', @(h,e)keyPressFcn_cell_(hFig, 'n'));
-uimenu_(mh_view,'Label', 'Show raw waveform', 'Callback', @(h,e)raw_waveform_(h), ...
-    'Checked', ifeq_(get_(P, 'fWav_raw_show'), 'on', 'off'));
+% uimenu_(mh_view,'Label', 'Show raw waveform', 'Callback', @(h,e)raw_waveform_(h), ...
+%     'Checked', ifeq_(get_(P, 'fWav_raw_show'), 'on', 'off'));
 %uimenu_(mh_view,'Label', 'Threshold by sites', 'Callback', @(h,e)keyPressFcn_thresh_(hFig, 'n'));
 % uimenu_(mh_view,'Label', '.prm file', 'Callback', @edit_prm_);
 uimenu_(mh_view,'Label', 'Show averaged waveforms on all channels','Callback', @(h,e)ui_show_all_chan_(1,h));
@@ -6283,6 +6283,14 @@ if nargin<3, S0 = []; end
 if isempty(S0), S0 = get(0, 'UserData'); end
 [viSite_spk, P] = deal(S0.viSite_spk, S0.P);
 tnWav_raw = get_spkwav_(P, get_set_(P, 'fWavRaw_merge', 1));
+if isempty(tnWav_raw)
+    if isempty(iClu1)
+        selfcorr = nan(1, S_clu.nClu);
+    else
+        selfcorr = nan;
+    end
+    return;
+end
 
 if isempty(iClu1)
     fprintf('Computing self correlation\n\t'); t1=tic;
@@ -11049,12 +11057,12 @@ if isempty(vnThresh_site)
 %     vnThresh_site = int16(mr2rms_(gather_(mnWav3), 1e5) * P.qqFactor);
     vnThresh_site = mr2thresh_(mnWav3, P);
 end
-fprintf('\tDetecting spikes from each channel.\n\t\t'); t1=tic;
+fprintf('\tDetecting spikes from each channel...'); t1=tic;
 % parfor iSite = 1:nSites   
 for iSite = 1:nSites   
     % Find spikes
     [viSpk11, vrSpk11] = spikeDetectSingle_fast_(mnWav3(:,iSite), P, vnThresh_site(iSite));
-    fprintf('.');
+%     fprintf('.');
     
     % Reject global mean
     if isempty(vlKeep_ref)
@@ -11066,7 +11074,7 @@ for iSite = 1:nSites
 end
 vnThresh_site = gather_(vnThresh_site);
 nSpks1 = sum(cellfun(@numel, cviSpk_site));
-fprintf('\n\t\tDetected %d spikes from %d sites; took %0.1fs.\n', nSpks1, nSites, toc(t1));
+fprintf('\n\tDetected %d spikes from %d sites; took %0.1fs.\n', nSpks1, nSites, toc(t1));
 
 % Group spiking events using vrWav_mean1. already sorted by time
 if fMerge_spk

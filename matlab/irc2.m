@@ -193,10 +193,15 @@ S0 = load0_(P.vcFile_prm);
 P.fParfor = 0;
 fDebug_ui = false;
 
+% keep trPc_spk loaded for manual
+S0.trPc_spk = load_bin_(strrep(P.vcFile_prm, '.prm', '_fet.irc'), S0.type_fet, S0.dimm_fet);
 if isempty(get_(S0.S_clu, 'mrCC'))
-    S0.S_clu.mrCC = correlogram_(S0.S_clu, get0('viTime_spk'), P);
-    S0.S_clu = calc_clu_wav_(S0, P);
+%     fprintf('Computing cross-correlogram...'); t1=tic;    
+    S0.S_clu = calc_clu_wav_(S0, P);    
     S0.S_clu = S_clu_quality_(S0.S_clu, P);
+%     S0.S_clu.mrCC = correlogram_(S0.S_clu, get0('viTime_spk'), P);
+    set(0, 'UserData', S0);
+%     fprintf('\n\ttook %0.1fs\n', toc(t1));
 end
 
 hMsg = msgbox_('Plotting... (this closes automatically)'); t1=tic;
@@ -598,7 +603,12 @@ S_clu.nClu = max(S_clu.viClu);
 cviSpk_clu = arrayfun_(@(x)find(S_clu.viClu==x), (1:S_clu.nClu)');
 viSite_clu = cellfun(@(x)mode(S0.viSite_spk(x)), cviSpk_clu);
 nT = size(S0.mrPv_global,1);
-nSites_spk = size(S0.trPc_spk,2);
+if isempty(get_(S0, 'trPc_spk'))
+    trPc_spk = load_bin_(strrep(P.vcFile_prm, '.prm', '_fet.irc'), S0.type_fet, S0.dimm_fet);
+else
+    trPc_spk = S0.trPc_spk;
+end
+nSites_spk = size(trPc_spk,2);
 nSites = numel(P.viSite2Chan);
 trWav_clu = zeros(nT, nSites_spk, S_clu.nClu, 'single');
 tmrWav_clu = zeros(nT, nSites, S_clu.nClu, 'single'); %global waveform
@@ -607,7 +617,7 @@ for iClu = 1:S_clu.nClu
     if isempty(viSpk1), continue; end
     viSite1 = S0.viSite_spk(viSpk1);
     iSite1 = viSite_clu(iClu);
-    trPc1 = S0.trPc_spk(:,:,viSpk1);
+    trPc1 = trPc_spk(:,:,viSpk1);
     mrPc1 = mean(trPc1(:,:,viSite1==iSite1),3);
     mrWav1 = S0.mrPv_global * mrPc1;
     trWav_clu(:,:,iClu) = mrWav1;
@@ -615,7 +625,8 @@ for iClu = 1:S_clu.nClu
     tmrWav_clu(:,viSite_clu1,iClu) = mrWav1;
 end
 [trWav_raw_clu, tmrWav_raw_clu] = deal(trWav_clu, tmrWav_clu); % for now raw is not saved
-S_clu = struct_add_(S_clu, trWav_clu, trWav_raw_clu, tmrWav_clu, viSite_clu, tmrWav_raw_clu);
+[trWav_spk_clu, tmrWav_spk_clu] = deal(trWav_clu, tmrWav_clu); % for now raw is not saved
+S_clu = struct_add_(S_clu, trWav_clu, trWav_raw_clu, tmrWav_clu, viSite_clu, tmrWav_raw_clu, trWav_spk_clu, tmrWav_spk_clu);
 
 % compute SNR
 mrWav1_clu = squeeze_(trWav_clu(:,1,:),2); 
@@ -632,6 +643,7 @@ if ~isempty(get_(P, 'min_snr_clu'))
         nClu_pre = S_clu.nClu;
         S_clu = delete_clu_(S_clu, viClu_delete);
         nClu_post = S_clu.nClu;
+%         S_clu.mrCC_clu = ;
         fprintf('calc_clu_wav_: %d->%d clusters, %d removed below SNR=%0.1f\n', ...
             nClu_pre, nClu_post, numel(viClu_delete), P.min_snr_clu);
     end
@@ -647,91 +659,6 @@ S_clu.mrWavCor = mrWavCor + mrWavCor'; % make it symmetric
 S_clu = S_clu_position_(S_clu);
 S_clu = S_clu_refresh_(S_clu);
 if ~isfield(S_clu, 'csNote_clu'), S_clu.csNote_clu = cell(S_clu.nClu, 1); end
-end %func
-
-
-%--------------------------------------------------------------------------
-function mrDist_clu = calc_dist_clu__(S0, P, fMode)
-% output
-% -----
-% mrDist_clu: 0..1, 1 being most similar, 0 being most dissimilar
-S_clu = S0.S_clu;
-MIN_COUNT = P.min_count;
-
-fprintf('calc_dist_clu_: \n\t'); t1=tic;
-
-% compute average waveforms by clusters
-nClu = max(S_clu.viClu);
-nSites = max(S0.viSite_spk);
-if 0
-    trPc_spk = S0.trPc_spk(:,1:P.nSites_fet,:);
-else
-    trPc_spk = S0.trPc_spk;
-end
-nPc = size(trPc_spk,1);
-% compute average clu waveforms (sort by centers)
-[viClu, vrPos_spk, mrPos_spk] = deal(S_clu.viClu, S0.vrPow_spk, S0.mrPos_spk);
-[nPc_spk, nSites_spk, nSpk] = size(S0.trPc_spk);
-[cviSpk_drift, mlDrift, viDrift_spk] = struct_get_(S0.S_clu.S_drift, 'cviSpk_drift', 'mlDrift', 'viDrift_spk');
-nDrift = numel(cviSpk_drift);
-
-if isempty(cviSpk_drift)
-    mrDist_clu = pos_dist_clu_(viClu, mrPos_spk, vrPos_spk, nClu, MIN_COUNT);
-    return;
-end
-
-
-% compute PC per cluster
-normalize_ = @(x)x ./ sqrt(sum(x.^2));
-qrPc_clu_drift = zeros(nPc, nSites, nClu, nDrift, 'single');
-miSite_clu_drift = zeros(nClu, nDrift);
-for iDrift = 1:nDrift
-    viSpk1 = find(viDrift_spk==iDrift);
-    [viClu1, viSite1, trPc1] = deal(viClu(viSpk1), S0.viSite_spk(viSpk1), trPc_spk(:,:,viSpk1));     
-    for iClu = 1:nClu
-        vl11 = viClu1==iClu;
-        if sum(vl11) < MIN_COUNT, continue; end
-        viSite11 = viSite1(vl11);
-        iSite11 = mode(viSite11);      
-        trPc11 = trPc1(:,:,vl11);
-        miSite_clu_drift(iClu, iDrift) = iSite11;
-        switch 2
-            case 1       
-                vl11 = vl11 & viSite1==iSite11;
-                if sum(vl11) < MIN_COUNT, continue; end
-                viSite_pc_11 = P.miSites(:,iSite11);
-                qrPc_clu_drift(:, viSite_pc_11, iClu, iDrift) = median3_(trPc11,3);                
-            case 2
-                trPc_full11 = trPc_full_(trPc11, viSite11, P.miSites, MIN_COUNT);
-                qrPc_clu_drift(:, :, iClu, iDrift) = nanmedian(trPc_full11,3);
-        end
-    end
-end
-qrPc_clu_drift(isnan(qrPc_clu_drift)) = 0;
-% qrPc_clu_drift = reshape(qrPc_clu_drift, [], nClu, nDrift);
-
-
-mrDist_clu = zeros(nClu, 'single');
-for iDrift = 1:nDrift
-    viDrift1 = find(mlDrift(:,iDrift));
-    qrPc_clu2 = qrPc_clu_drift(:,:,:,viDrift1);
-    trPc_clu1 = qrPc_clu_drift(:,:,:,iDrift);
-    for iClu1 = 1:nClu
-        iSite11 = miSite_clu_drift(iClu1,iDrift);
-        if iSite11==0, continue; end
-        viSite11 = P.miSites(:,iSite11);
-        vrPc11 = trPc_clu1(:,viSite11,iClu1);  vrPc11 = vrPc11(:);
-        if all(vrPc11==0), continue; end        
-        
-        dimm12 = size(qrPc_clu2);
-        trPc12 = reshape(qrPc_clu2(:,viSite11,:,:), [], dimm12(3), dimm12(4));        
-        vrDist1 = min(sum((trPc12 - vrPc11).^2), [], 3) / sum(vrPc11.^2);
-        vrDist1 = 1 - min(vrDist1(:), 1);
-        mrDist_clu(:,iClu1) = max(mrDist_clu(:,iClu1), vrDist1);
-    end
-end %for
-
-fprintf('\n\ttook %0.1fs\n', toc(t1));
 end %func
 
 
@@ -1008,113 +935,8 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function mrDist_clu = wave_similarity_clu__(S0, P, mode_sim)
-S_clu = S0.S_clu;
-MIN_COUNT = P.min_count;
-if nargin<3, mode_sim = []; end
-if isempty(mode_sim), mode_sim = 4; end
-
-% compute average waveforms by clusters
-nClu = max(S_clu.viClu);
-cviSpk_clu = arrayfun(@(x)find(S_clu.viClu==x), 1:nClu, 'UniformOutput', 0);
-% compute average clu waveforms (sort by centers)
-[ctrPc_clu, ctrPos_clu, cviSite_clu] = deal(cell(nClu,1));
-dimm_pc = size(S0.trPc_spk); 
-dimm_pc(2) = min(dimm_pc(2), P.nSites_fet);
-dimm_pos = size(S0.mrPos_spk);
-switch 2
-    case 2, fh_pow_ = @(x)log(x);
-    case 1, fh_pow_ = @(x)x;
-end
-% compute average pc per cluster per site
-% find centroid of the cluster
-for iClu = 1:nClu
-    viSpk1 = cviSpk_clu{iClu};
-    viSite1 = S0.viSite_spk(viSpk1);
-    [viSite1_uniq1, vn_uniq1, cviSpk1_uniq1] = unique_count_(viSite1);
-    trPc_spk1 = S0.trPc_spk(1:dimm_pc(1), 1:dimm_pc(2), viSpk1);
-    mrPos_spk1 = [S0.mrPos_spk(viSpk1,:), fh_pow_(S0.vrPow_spk(viSpk1))];
-    [viSite1_uniq1, cviSpk1_uniq1] = ...
-        multifun_(@(x)x(vn_uniq1>=MIN_COUNT), viSite1_uniq1, cviSpk1_uniq1);
-    trPc1 = zeros(dimm_pc(1), dimm_pc(2), numel(cviSpk1_uniq1), 'single');
-    trPos1 = zeros(dimm_pos(2)+1, 2, numel(cviSpk1_uniq1), 'single');    
-    for iiSite1 = 1:numel(cviSpk1_uniq1)
-        % compute average waveforms by peak sites
-        viSpk11 = cviSpk1_uniq1{iiSite1};
-        trPc1(:,:,iiSite1) = mean(trPc_spk1(:,:,viSpk11), 3);
-        [sd_, med_] = sd_mad_(mrPos_spk1(viSpk11,:));
-        trPos1(:,:,iiSite1) = [med_(:), sd_(:)];
-    end
-    [ctrPc_clu{iClu}, ctrPos_clu{iClu}, cviSite_clu{iClu}] = deal(trPc1, trPos1, viSite1_uniq1);
-end
-% construct arrays and sites
-[viSite_all, viClu_all] = cvr2vr_vi_(cviSite_clu);
-[trPc_all, trPos_all] = deal(cat(3, ctrPc_clu{:}), cat(3, ctrPos_clu{:}));
-
-% compare cluster by cluster
-mrPv_global = S0.mrPv_global(:,1:dimm_pc(1));
-mr2vr_ = @(x)x(:);
-tr2mr_ = @(x)reshape(x,[],size(x,3));
-mrDist_clu = zeros(nClu);
-norm_mean_ = @(x)sqrt(mean(x.^2));
-norm_sum_ = @(x)sqrt(sum(x.^2));
-normalize_mean_ = @(x)x ./ sqrt(mean(x.^2));
-normalize_sum_ = @(x)x ./ sqrt(sum(x.^2));
-for iClu1 = 1:nClu
-    [trPc1, viSite1, trPos1] = deal(ctrPc_clu{iClu1}, cviSite_clu{iClu1}, ctrPos_clu{iClu1});
-    vrDist_clu1 = zeros(nClu,1);
-    for iiSite1 = 1:numel(viSite1)
-        [mrPc1, mrPos1] = deal(trPc1(:,:,iiSite1), trPos1(:,:,iiSite1));
-        vi_all2 = find(viSite_all == viSite1(iiSite1) & viClu_all ~= iClu1);
-        if isempty(vi_all2), continue; end
-        viClu2 = viClu_all(vi_all2);
-        [trPc2, trPos2] = deal(trPc_all(:,:,vi_all2), trPos_all(:,:,vi_all2));
-        switch mode_sim
-            case 7 % centroid merging
-                [mu1, sd1] = deal(mrPos1(:,1), mrPos1(:,2));
-                mu2 = squeeze_(trPos2(:,1,:), 2);
-                vrCorr12 = norm_mean_((mu1-mu2) ./ sd1);
-                vrCorr12 = 1 - min(vrCorr12/10,1);
-            case 6
-                a = normalize_sum_(mr2vr_(pc2wav_(mrPv_global, mrPc1)));
-                b = normalize_sum_(tr2mr_(pc2wav_(mrPv_global, trPc2)));
-                c = a'*a;
-                vrCorr12 = 1-abs(c-a'*b) ./ c;
-            case 5 % rms after normalization
-                a = normalize_sum_(mr2vr_(pc2wav_(mrPv_global, mrPc1)));
-                b = normalize_sum_(tr2mr_(pc2wav_(mrPv_global, trPc2)));
-                vrCorr12 = 1 - std(a-b, 1); % standardized rms
-            case 4 % rms after normalization, .97 threshold
-                a = normalize_sum_(mrPc1(:));
-                b = normalize_sum_(reshape(trPc2, [], size(trPc2,3)));
-                vrCorr12 = 1 - std(a-b, 1); % standardized rms
-            case 3
-                vrCorr12 = normalize_sum_(mrPc1(:))' * normalize_sum_(tr2mr_(trPc2));
-            case 2
-                vrCorr12 = 1-pdist2(mrPc1(:)', reshape(trPc2, [], size(trPc2,3))', 'cosine');
-            case 1
-                vrCorr12 = wavcor_(pc2wav_(mrPv_global, mrPc1), pc2wav_(mrPv_global, trPc2));
-            otherwise, error('wave_similarity_clu_: invalid mode');
-        end
-        vrDist_clu1(viClu2) = max(vrDist_clu1(viClu2), vrCorr12(:));
-    end
-    mrDist_clu(:,iClu1) = vrDist_clu1;
-end
-end %func
-
-
-%--------------------------------------------------------------------------
-function mrDist_clu = wave_similarity_clu_(S0, P)
-switch 3
-    case 1, mrDist_clu = wave_similarity_clu1_(S0, P);
-    case 3, mrDist_clu = wave_similarity_clu3_(S0, P);
-end
-end %func
-
-
-%--------------------------------------------------------------------------
 % keeps trPc in the main memory, not sent out to workers
-function mrDist_clu = wave_similarity_clu3_(S0, P)
+function mrDist_clu = wave_similarity_clu_(S0, P)
 S_clu = S0.S_clu;
 
 KNN_MAX = 16;
@@ -1270,75 +1092,6 @@ for iClu = 1:numel(cS_pre3)
     trPc_clu2 = cellfun(@(x)mean(tr_(:,:,x),3), S_pre3.cviSpk2, 'UniformOutput', false);
     trPc_clu2 = cat(3, trPc_clu2{:});
     ctrPc_clu{iClu} = gather_(cat(3, ctrPc_clu{iClu}, trPc_clu2));
-end
-end %func
-
-
-%--------------------------------------------------------------------------
-function mrDist_clu = wave_similarity_clu1_(S0, P)
-S_clu = S0.S_clu;
-
-[KNN, MAX_SAMPLE, NUM_PC, fUse_raw] = deal(16, 4000, 3, 0);
-nAve_knn = min(KNN, get_set_(P, 'knn', 30));
-MIN_COUNT = get_set_(P, 'min_count');
-trPc_spk = S0.trPc_spk(:,1:P.nSites_fet,:);
-try
-    trPc2_spk = S0.trPc2_spk(:,1:P.nSites_fet,:);
-catch
-    trPc2_spk = [];
-end
-
-fprintf('Automated merging (post-hoc)\n'); t1=tic;
-[viClu_spk, miKnn, vrRho_spk] = struct_get_(S_clu, 'viClu', 'miKnn', 'rho');
-miKnn = miKnn(1:nAve_knn,:);
-[viSite_spk, viSite2_spk, mrPv] = ...
-    struct_get_(S0, 'viSite_spk', 'viSite2_spk', 'mrPv_global');
-nShift_max = ceil(diff(P.spkLim) * P.frac_shift_merge / 2);
-viShift = -nShift_max:nShift_max;
-dimm_spk = [size(trPc_spk,1), size(trPc_spk,2), size(S0.trPc_spk,3)];
-
-% create template (nTemplate per cluster)
-[ctrPc_clu, cviSite_clu] = deal(cell(S_clu.nClu, 1));
-nDrift = get_set_(P, 'nTime_drift', 64);
-nSpk_min = get_set_(P, 'knn', 30);
-nClu = S_clu.nClu;
-
-fprintf('\tComputing template\n\t'); t_template = tic;
-cviSpk_clu = arrayfun_(@(x)find(S_clu.viClu==x), (1:S_clu.nClu)');
-S_pre = makeStruct_(vrRho_spk, viSite_spk, miKnn, nDrift, dimm_spk, nSpk_min, viSite2_spk);
-fParfor = P.fParfor;
-if fParfor
-    try
-        parfor iClu = 1:S_clu.nClu
-            [ctrPc_clu{iClu}, cviSite_clu{iClu}] = wave_similarity_clu_pre_(cviSpk_clu{iClu}, trPc_spk, trPc2_spk, S_pre);
-        end
-    catch
-        fParfor = 0;
-    end
-end
-if ~fParfor
-    for iClu = 1:S_clu.nClu
-        [ctrPc_clu{iClu}, cviSite_clu{iClu}] = wave_similarity_clu_pre_(cviSpk_clu{iClu}, trPc_spk, trPc2_spk, S_pre);
-    end
-end
-fprintf('\n\ttook %0.1fs\n', toc(t_template));
-
-% merge the templates: todo, faster code
-mrDist_clu = nan(S_clu.nClu, 'single');
-S_post = makeStruct_(cviSite_clu, ctrPc_clu, nClu, viShift, mrPv);
-if fParfor
-    try
-        parfor iClu1 = 1:(nClu-1)
-            mrDist_clu(:, iClu1) = wav_similarity_clu_post_(iClu1, S_post);
-        end %for
-    catch
-        fParfor = 0;
-    end 
-end
-if ~fParfor
-    for iClu1 = 1:(nClu-1)
-        mrDist_clu(:, iClu1) = wav_similarity_clu_post_(iClu1, S_post);
-    end %for
 end
 end %func
 
@@ -2034,9 +1787,10 @@ fprintf('Memory use: %0.3f GiB\n', (memory_matlab_()-memory_init)/2^30);
 if ~isempty(gcp_) && ~fDone  % must debug
     [vcFile, vS_load] = readmda_paged_('close'); % close the file
     cS_detect{1} = detect_paged_save_(cS_detect{1}, P, 1);
+    viSite2Chan = get_(P, 'viSite2Chan');
     parfor iLoad = 2:nLoads  % change to for loop for debugging
         S_load1 = vS_load(iLoad);
-        mrWav_T1 = load_file_part_(vcFile, S_load1);
+        mrWav_T1 = load_file_part_(vcFile, S_load1, viSite2Chan);
         S_cache1 = setfield(S_cache, 'nlim_wav1', S_load1.nlim);
         cS_detect{iLoad} = detect_paged_(mrWav_T1, P, S_cache1);
         cS_detect{iLoad} = detect_paged_save_(cS_detect{iLoad}, P, iLoad);
@@ -2070,10 +1824,12 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function mrWav_T1 = load_file_part_(vcFile, S_load1)
+function mrWav_T1 = load_file_part_(vcFile, S_load1, viSite2Chan)
+if nargin<3, viSite2Chan=[]; end
 fid1 = fopen(vcFile, 'r');
 fseek(fid1, S_load1.offset, 'bof');
 mrWav_T1 = fread_(fid1, S_load1.dimm, S_load1.vcDataType);      
+if ~isempty(viSite2Chan), mrWav_T1 = mrWav_T1(viSite2Chan,:); end
 fclose_(fid1);
 end %func
 
@@ -2585,7 +2341,8 @@ end %func
 %--------------------------------------------------------------------------
 function trWav_spk = get_spkwav_(mrWav, viSite_spk, viTime_spk, P)
 nSpks = numel(viTime_spk);
-nSites = numel(P.viSite2Chan);
+% nSites = numel(P.viSite2Chan);
+nSites = size(P.miSites,2);
 spkLim_wav = P.spkLim;
 % spkLim_raw = P.spkLim_raw;
 nSites_spk = size(P.miSites,1); %(P.maxSite * 2) + 1;
@@ -2685,7 +2442,7 @@ function [out, nlim, fDone] = readmda_paged_(P)
 % [out, nlim, fDone] = readmda_paged_() % read next page
 % [vcFile, vS_load] = readmda_paged_('close'): close a file
 
-persistent S_mda fid iLoad nLoads nSamples_load nSamples_last nSamples_pad vcFile P_
+persistent S_mda fid iLoad nLoads nSamples_load nSamples_last nSamples_pad vcFile P_ viSite2Chan_
 
 if nargin==1
     if ischar(P)
@@ -2697,12 +2454,20 @@ if nargin==1
         end
     end
     vcFile = P.vcFile;
-    [S_mda, fid] = readmda_header_(vcFile);
+    switch recording_type_(vcFile)
+        case 'mda'
+            [S_mda, fid] = readmda_header_(vcFile);
+            viSite2Chan_ = [];
+        case 'spikeglx'
+            [S_mda, fid] = spikeglx_header_(vcFile);      
+            viSite2Chan_ = P.viSite2Chan;
+        otherwise, error('unsupported file format');
+    end
     S_mda.dimm = S_mda.dimm(:)'; % formatting
     assert(S_mda.nBytes_missing<1, 'readmda_paged_: mda file is incomplete');
     iLoad = 0;
     [nLoads, nSamples_load, nSamples_last] = plan_load_(S_mda.nBytes_data, P);
-    nSamples_pad = get_set_(P, 'nPad_filt', 100);
+    nSamples_pad = get_set_(P, 'nPad_filt', 300);
     viOffset_load = (0:nLoads-1) * nSamples_load; % return offset
     S_page = makeStruct_(nLoads, nSamples_load, nSamples_last, nSamples_pad, viOffset_load);
     [out, nlim, fDone, P_] = deal(S_page, [], 0, P);    
@@ -2724,6 +2489,7 @@ else
         end
         t1=tic;
         out = fread_(fid, dimm1, S_mda.vcDataType);  % transpose MDA
+        if ~isempty(viSite2Chan_), out = out(P_.viSite2Chan,:); end
         t_dur1 = toc(t1);
 %         out = out'; % transpose
         mb_loaded1 = prod(dimm1) * bytesPerSample_(S_mda.vcDataType) / 1e6;
@@ -2750,7 +2516,7 @@ end %func
 function vS_load = plan_load_pad_(S_mda, P)
 
 [nLoads, nSamples_load, nSamples_last] = plan_load_(S_mda.nBytes_data, P);
-nSamples_pad = get_set_(P, 'nPad_filt', 100);
+nSamples_pad = get_set_(P, 'nPad_filt', 300);
 bytes_per_sample = bytesPerSample_(S_mda.vcDataType);
 nChans = S_mda.dimm(1);
 % nSamples_file = S_mda.nBytes_data / bytes_per_sample / nChans;
@@ -2851,9 +2617,19 @@ switch recording_type_(vcFile_raw)
         S_json = loadjson_(fullfile(vcDir_in, 'params.json'));
         P.sRateHz = get_set_(S_json, 'samplerate', P.sRateHz);
         P.fInverse_file = get_set_(S_json, 'spike_sign', -1) == -1;
-%     case 'spikeglx'
-%         S_meta = read_meta_file_(strrep(vcFile_raw, '.bin', '.meta'));
-%         P.probe_file = fullfile('prb', [S_meta.Smeta.vcProbe, '.prb']);
+        P.viShank_site = deal([]);
+    case 'spikeglx'
+        S_meta = read_meta_file_(strrep(vcFile_raw, '.bin', '.meta'));
+        P.probe_file = fullfile([S_meta.Smeta.vcProbe, '.prb']);
+        [P.sRateHz, P.uV_per_bit, P.vcDataType] = deal(S_meta.sRateHz, S_meta.uV_per_bit, S_meta.vcDataType);
+        if contains(vcFile_raw, '.imec.')
+            P.nChans = (S_meta.nChans+1)/2;
+        else
+            P.nChans = S_meta.nChans;
+        end
+        S_prb = load_prb_(P.probe_file);
+        [P.mrSiteXY, P.vrSiteHW, P.viShank_site, P.viSite2Chan] = ...
+            struct_get_(S_prb, 'mrSiteXY', 'vrSiteHW', 'viShank_site', 'viSite2Chan');
     otherwise
         error('Unsupported recording format');
 end
@@ -2983,6 +2759,26 @@ S_mda = struct('dimm', dimm, 'vcDataType', vcDataType, ...
     'nBytes_missing', nBytes_missing, 'nBytes_data', nBytes_data);
 
 if nargout<2, fclose(fid_r); end
+end %func
+
+
+%--------------------------------------------------------------------------
+function [S_mda, fid_r] = spikeglx_header_(fname)
+S_meta = read_meta_file_(strrep(fname, '.bin', '.meta'));
+vcDataType = S_meta.vcDataType;
+nBytes_sample = bytesPerSample_(S_meta.vcDataType);
+nBytes_data = filesize_(fname);
+nSamples = nBytes_data / nBytes_sample;
+nChans = S_meta.nChans;
+if contains(fname, '.imec.')
+    nChans = (nChans+1)/2;
+end
+dimm = [nChans, floor(nSamples/nChans)];
+S_mda = struct('dimm', dimm, 'vcDataType', vcDataType, ...
+    'nBytes_header', 0, 'nBytes_sample', nBytes_sample, ...
+    'nBytes_missing', 0, 'nBytes_data', nBytes_data);
+
+if nargout>=2, fid_r = fopen(fname,'rb'); end
 end %func
 
 
@@ -3362,6 +3158,7 @@ function auto_scale_proj_time_(varargin), fn=dbstack(); irc('call', fn(1).name, 
 function save_log_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
 function edit_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
 
+function out1 = load_prb_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = read_meta_file_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = isTextFile_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = load_batch_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end

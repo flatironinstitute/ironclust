@@ -71,7 +71,7 @@ nSites_whiten = 32;         % number of sites to use local whtening (only active
 nChans_min_car = 8;        % minimum number of common average referencing
 viSiteZero = [];            % Site# to ignore manually
 viSiteExcl = [];            % Site to exclude manually
-nPad_filt = 100;            % Number of samples to overlap between multiple loading (filter edge safe).
+nPad_filt = 300;            % Number of samples to overlap between multiple loading (filter edge safe).
 thresh_corr_bad_site = [];  % Automatically reject bad sites based on the max. correlation with neighboring sites using raw waveforms. Set to [] to disable
 scale_filter = 8;			% filter multiplier for int16 interal representation (only used if vcDataType_filter='int16', otherwise set to 1)
 
