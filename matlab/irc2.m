@@ -200,6 +200,10 @@ if iFet==1
         trPc_spk = load_bin_merge_(csFiles_in, S0.type_fet, S0.dimm_fet);
     end
 elseif iFet==2
+    if isempty(get_(S0, 'viSite2_spk'))
+        trPc_spk = [];
+        return;
+    end
     if ~isempty(get_(S0, 'trPc2_spk'))
         trPc_spk = S0.trPc2_spk;
         return;
@@ -253,7 +257,7 @@ fDebug_ui = false;
 
 % keep trPc_spk loaded for manual
 S0.trPc_spk = load_fet_(S0, P, 1);
-if isempty(get_(S0.S_clu, 'mrCC'))
+if isempty(get_(S0.S_clu, 'trWav_spk_clu'))
 %     fprintf('Computing cross-correlogram...'); t1=tic;    
     S0.S_clu = calc_clu_wav_(S0, P);    
     S0.S_clu = S_clu_quality_(S0.S_clu, P);
@@ -393,8 +397,8 @@ end %func
 %--------------------------------------------------------------------------
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_()
-vcVer = 'v5.1.4';
-vcDate = '11/26/2019';
+vcVer = 'v5.1.5';
+vcDate = '11/27/2019';
 vcHash = file2hash_();
 
 if nargout==0
@@ -638,16 +642,23 @@ S0.S_clu = struct_copy_(S0.S_clu, ...
 S0.S_clu = postCluster_(S0.S_clu, P); % peak merging
 
 maxWavCor = get_set_(P, 'maxWavCor', .99);
+viClu_delete = [];
 if maxWavCor<1
-    post_merge_mode = get_set_(P, 'post_merge_mode', 1);
+    post_merge_mode = get_set_(P, 'post_merge_mode', 1);    
     switch post_merge_mode 
-        case 1, mrDist_clu = wave_similarity_clu_(S0, P);
+        case 1, [mrDist_clu, viClu_delete] = wave_similarity_clu_(S0, P);
         case 2, mrDist_clu = calc_dist_ccg(S0, P);
         otherwise, mrDist_clu = calc_dist_clu_(S0, P, post_merge_mode);
     end
     S0.S_clu = templateMatch_post_(S0.S_clu, P, mrDist_clu);
 end
-
+% delete low snr clu
+if ~isempty(viClu_delete)
+    nClu_pre = S0.S_clu.nClu;
+    S0.S_clu = delete_clu_(S0.S_clu, viClu_delete);
+    fprintf('calc_clu_wav_: %d->%d clusters, %d removed below SNR=%0.1f\n', ...
+        nClu_pre, S0.S_clu.nClu, numel(viClu_delete), P.min_snr_clu);
+end
 % compute SNR per cluster and remove small SNR
 S0.S_clu = S_clu_sort_(S0.S_clu, 'viSite_clu');
 S0.S_clu = S_clu_refrac_(S0.S_clu, P); % refractory violation removal
@@ -700,19 +711,7 @@ vrRms_site = S0.vrThresh_site(:) / S0.P.qqFactor;
 S_clu.vrSnr_clu = abs(vrVmin_clu(:)) ./ vrRms_site(viSite_clu);
 S_clu.vrSnr2_clu = abs(vrVpp_clu(:)) ./ vrRms_site(viSite_clu);
 
-if ~isempty(get_(P, 'min_snr_clu'))
-    viClu_delete = find(S_clu.vrSnr_clu < P.min_snr_clu);
-    if ~isempty(viClu_delete)
-        nClu_pre = S_clu.nClu;
-        S_clu = delete_clu_(S_clu, viClu_delete);
-        nClu_post = S_clu.nClu;
-%         S_clu.mrCC_clu = ;
-        fprintf('calc_clu_wav_: %d->%d clusters, %d removed below SNR=%0.1f\n', ...
-            nClu_pre, nClu_post, numel(viClu_delete), P.min_snr_clu);
-    end
-else
-    viClu_delete = [];
-end
+viClu_delete = [];
 
 % update similarity
 S0.S_clu = S_clu;
@@ -999,7 +998,7 @@ end %func
 
 %--------------------------------------------------------------------------
 % keeps trPc in the main memory, not sent out to workers
-function mrDist_clu = wave_similarity_clu_(S0, P)
+function [mrDist_clu, viClu_remove] = wave_similarity_clu_(S0, P)
 S_clu = S0.S_clu;
 
 KNN_MAX = 16;
@@ -1015,7 +1014,7 @@ viShift = -nShift_max:nShift_max;
 dimm_spk = [S0.dimm_fet(1), P.nSites_fet, S0.dimm_fet(3)];
 
 % create template (nTemplate per cluster)
-cS_pre3 = cell(S_clu.nClu, 1);
+cS_clu = cell(S_clu.nClu, 1);
 nDrift = get_set_(P, 'nTime_drift', 64);
 nSpk_min = get_set_(P, 'knn', 30);
 nClu = S_clu.nClu;
@@ -1027,7 +1026,7 @@ fParfor = P.fParfor;
 if fParfor
     try
         parfor iClu = 1:S_clu.nClu
-            cS_pre3{iClu} = wave_similarity_clu_pre3_(cviSpk_clu{iClu}, S_pre);
+            cS_clu{iClu} = wave_similarity_clu_pre_(cviSpk_clu{iClu}, S_pre);
         end
     catch
         fParfor = 0;
@@ -1035,10 +1034,10 @@ if fParfor
 end
 if ~fParfor
     for iClu = 1:S_clu.nClu
-        cS_pre3{iClu} = wave_similarity_clu_pre3_(cviSpk_clu{iClu}, S_pre);
+        cS_clu{iClu} = wave_similarity_clu_pre_(cviSpk_clu{iClu}, S_pre);
     end
 end
-[ctrPc_clu, cviSite_clu] = merge_clu_pre3_(cS_pre3, S0, P);
+[ctrPc_clu, cviSite_clu, viClu_remove] = merge_clu_pre_(cS_clu, S0, P);
 fprintf('\n\ttook %0.1fs\n', toc(t_template));
 
 % merge the templates: todo, faster code
@@ -1063,7 +1062,7 @@ end %func
 
 %--------------------------------------------------------------------------
 % multiply triangular weighing factor
-function [ctrPc_clu, cviSite_clu] = merge_clu_pre3_(cS_pre3, S0, P)
+function [ctrPc_clu, cviSite_clu, viClu_remove] = merge_clu_pre_(cS_pre3, S0, P)
 [ctrPc_clu, cviSite_clu] = deal(cell(size(cS_pre3)));
 
 trPc_spk = get_(S0, 'trPc_spk');
@@ -1094,7 +1093,26 @@ if isempty(trPc2_spk), return; end
 for iClu = 1:numel(cS_pre3)
     S_pre3 = cS_pre3{iClu};
     trPc_clu2 = cellfun(@(x)mean_(trPc2_spk,x), S_pre3.cviSpk2, 'UniformOutput', false);
-    ctrPc_clu{iClu} = cat(3, ctrPc_clu{iClu}, cat(3,trPc_clu2{:}));
+    trPc_clu2 = cat(3,trPc_clu2{:});
+    ctrPc_clu{iClu} = cat(3, ctrPc_clu{iClu}, trPc_clu2);
+end
+
+% remove low-snr peaks
+if true
+    [nRemoved, nTotal] = deal(0);
+    for iClu = 1:numel(ctrPc_clu)
+        [trPc_clu1, viSite_clu1] = deal(ctrPc_clu{iClu}, cviSite_clu{iClu});
+        if isempty(trPc_clu1), continue; end
+        vrVmin_clu1 = min(S0.mrPv_global * squeeze_(trPc_clu1(:,1,:),2),[],1);
+        vrSnr_clu1 = abs(vrVmin_clu1) ./ S0.vrThresh_site(viSite_clu1) * P.qqFactor;
+        vlKeep1 = vrSnr_clu1 >= P.qqFactor;
+        [nRemoved, nTotal] = deal(nRemoved + sum(~vlKeep1), nTotal + numel(vlKeep1));
+        [ctrPc_clu{iClu}, cviSite_clu{iClu}] = deal(trPc_clu1(:,:,vlKeep1), viSite_clu1(vlKeep1));
+    end %for
+    viClu_remove = find(cellfun(@isempty, ctrPc_clu));
+    fprintf('merge: removed %d/%d templates below SNR=%0.3f\n', nRemoved, nTotal, P.min_snr_clu);    
+else
+    viClu_remove = [];
 end
 end %func
 
@@ -1136,17 +1154,8 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function [trPc1, viSite1] = wave_similarity_clu_pre_(viSpk1, trPc_spk, trPc2_spk, S)
-switch 2
-    case 1, [trPc1, viSite1] = wave_similarity_clu_pre1_(viSpk1, trPc_spk, trPc2_spk, S);
-    case 2, [trPc1, viSite1] = wave_similarity_clu_pre2_(viSpk1, trPc_spk, trPc2_spk, S);
-end
-end %func
-
-
-%--------------------------------------------------------------------------
 % iterate by drift, not sites
-function S_pre3 = wave_similarity_clu_pre3_(viSpk1, S)
+function S_pre3 = wave_similarity_clu_pre_(viSpk1, S)
 
 [vrRho_spk, viSite_spk, viSite2_spk, miKnn, nDrift, dimm_spk, nSpk_min] = ...
     struct_get_(S, 'vrRho_spk', 'viSite_spk', 'viSite2_spk', 'miKnn', 'nDrift', 'dimm_spk', 'nSpk_min');
@@ -1179,80 +1188,6 @@ for iDrift = 1:nDrift
 end
 [viSite1, viSite2] = deal(cell2mat(viSite1), cell2mat(viSite2)); 
 S_pre3 = makeStruct_(viSite1, viSite2, cviSpk1, cviSpk2);
-end %func
-
-
-%--------------------------------------------------------------------------
-% iterate by drift, not sites
-function [trPc1, viSite1] = wave_similarity_clu_pre2_(viSpk1, trPc_spk, trPc2_spk, S)
-
-[vrRho_spk, viSite_spk, viSite2_spk, miKnn, nDrift, dimm_spk, nSpk_min] = ...
-    struct_get_(S, 'vrRho_spk', 'viSite_spk', 'viSite2_spk', 'miKnn', 'nDrift', 'dimm_spk', 'nSpk_min');
-viSpk1 = viSpk1(:);
-viiSpk1 = round(linspace(1, numel(viSpk1), nDrift+1));
-[miKnn1, vrRho1] = deal(miKnn(:,viSpk1), vrRho_spk(viSpk1)');
-[trPc1, viSite1] = deal({});
-for iDrift = 1:nDrift
-    vii1 = viiSpk1(iDrift):viiSpk1(iDrift+1);
-    miKnn11 = miKnn1(:,vii1);
-    viSpk11 = unique(miKnn11(vrRho_spk(miKnn11) >= vrRho1(vii1)));
-    
-    viSite_spk111 = viSite_spk(viSpk11);
-    iSite111 = mode(viSite_spk111);
-    viSpk111 = viSpk11(viSite_spk111 == iSite111);   
-    if numel(viSpk111) >= nSpk_min
-        trPc1{end+1} = mean(trPc_spk(:,:,viSpk111),3);
-        viSite1{end+1} = iSite111;
-    end
-    
-    viSite_spk112 = viSite2_spk(viSpk11);
-    iSite112 = mode(viSite_spk112);
-    viSpk112 = viSpk11(viSite_spk112 == iSite112);   
-    if numel(viSpk112) >= nSpk_min
-        trPc1{end+1} = mean(trPc2_spk(:,:,viSpk112),3);
-        viSite1{end+1} = iSite112;
-    end    
-end
-if ~isempty(trPc1)
-    trPc1 = cat(3, trPc1{:});
-    viSite1 = cell2mat(viSite1); 
-    viSite1 = viSite1(:);
-else
-    [trPc1, viSite1] = deal([]);
-end
-end %func
-
-
-%--------------------------------------------------------------------------
-% iterate by drift, not sites
-function [trPc1, viSite1] = wave_similarity_clu_pre1_(viSpk1, trPc_spk, trPc2_spk, S)
-
-[vrRho_spk, viSite_spk, miKnn, nDrift, dimm_spk, nSpk_min] = ...
-    struct_get_(S, 'vrRho_spk', 'viSite_spk', 'miKnn', 'nDrift', 'dimm_spk', 'nSpk_min');
-viSpk1 = viSpk1(:);
-viiSpk1 = round(linspace(1, numel(viSpk1), nDrift+1));
-[vlKeep_clu1, viSite_clu1] = deal(true(nDrift, 1), zeros(nDrift,1));
-trPc_drift1 = zeros(dimm_spk(1), dimm_spk(2), nDrift, 'single');
-[miKnn1, vrRho1] = deal(miKnn(:,viSpk1), vrRho_spk(viSpk1)');
-for iDrift = 1:nDrift
-    vii1 = viiSpk1(iDrift):viiSpk1(iDrift+1);
-    [viSpk11, vrRho11, miKnn11] = deal(viSpk1(vii1), vrRho1(vii1), miKnn1(:,vii1));
-    viSpk11 = miKnn11(vrRho_spk(miKnn11) >= vrRho11);
-    viSpk11 = unique(viSpk11);
-    iSite11 = mode(viSite_spk(viSpk11));
-    vl_ = viSite_spk(viSpk11) == iSite11;
-    viSpk11 = viSpk11(vl_);   
-
-    viSite_clu1(iDrift) = iSite11;
-    if numel(viSpk11) < nSpk_min
-        vlKeep_clu1(iDrift) = false;
-        continue;
-    end
-    trPc_drift1(:,:,iDrift) = mean(trPc_spk(:,:,viSpk11),3);
-end
-trPc1 = trPc_drift1(:,:,vlKeep_clu1);
-viSite1 = viSite_clu1(vlKeep_clu1);
-% fprintf('.');
 end %func
 
 
@@ -2232,6 +2167,13 @@ end
 % return struct
 if nPad_pre > 0, viTime_spk = viTime_spk - nPad_pre; end
 [mrPos_spk, vrPow_spk] = calc_pos_spk_(trPc_spk, viSite_spk, P); 
+if false % average the first and second peak locations
+    if ~isempty(trPc2_spk) && ~isempty(viSite2_spk)
+        [mrPos2_spk, vrPow2_spk] = calc_pos_spk_(trPc2_spk, viSite2_spk, P);
+        mrPos_spk = (mrPos_spk+mrPos2_spk)/2;
+        vrPow_spk = (vrPow_spk+vrPow2_spk)/2;
+    end
+end
 S_detect = makeStruct_(trPc_spk, mrPv_global, viTime_spk, vrAmp_spk, viSite_spk, ...
     mrVp_spk, trPc2_spk, viSite2_spk, vrThresh_site, mrPos_spk, vrPow_spk);
 end %func

@@ -13,18 +13,19 @@ vcCommonRef = 'mean';       % common reference mode {'none', 'mean', 'median', '
 nChans_min_car = 16;        % disable common ref subtraction if the number of channels is less than this number
 qqFactor = 4;               % Detection threshold (estimated SD from the median to exclude spiking activity)
 nPc_spk = 9;                % Number of components per spike per channel to compress the spike waveform
-spkLim_ms = [-.25, .75];    % Time range to extract spikes in milliseconds
+spkLim_ms = [-.2, .8];      % Time range to extract spikes in milliseconds
 fInterp_fet = 1;            % Set to `1` to interpolate the waveform by 2x
+spkRefrac_ms = .25;         % reject spikes occcuring closer than this
 
 % [Cluster stage: apply drift-detection and KNN-graph density-peak clustering]
 nPcPerChan = 0;             % #PC/chan. Set to `0` to use a variable # as a function of distance from the center
 step_sec_drift = 20;        % Ave. duration of time batch in sec
-batch_sec_drift = 600;      % Total ave. duration of time batch group in sec
+batch_sec_drift = 300;      % Total ave. duration of time batch group in sec
 fWhiten_fet = 0;            % Set to `1` to whiten features 
 
 % [Auto-merge stage: automatically merge similar clusters based on KNN-graph and waveform similarity]
+maxWavCor = .98;            % Automated merge thresohld based on waveform correlation
+min_snr_clu = [];            % Automatically remove clusters below this SNR threshold, set to `[]` to disable
+spkRefrac_merge_ms = .5;   % Remove spikes violating this refractory period in msec when merged
 post_merge_mode0 = 5;
 post_merge_mode = 1; 
-maxWavCor = .99;            % Automated merge thresohld based on waveform correlation
-min_snr_clu = 4;            % Automatically remove clusters below this SNR threshold, set to `[]` to disable
-spkRefrac_merge_ms = .5;    % Remove spikes violating this refractory period in msec when merged
