@@ -186,6 +186,10 @@ if nargin<3, iFet = 1; end
 vcFile_prm_ = strrep(P.vcFile_prm, '.prm', '');
 fprintf('Loading feature %d...', iFet); t1=tic;
 if iFet==1
+    if ~isempty(get_(S0, 'trPc_spk'))
+        trPc_spk = S0.trPc_spk;
+        return;
+    end
     vcFile_fet = [vcFile_prm_, '_fet.irc'];
     if exist_file_(vcFile_fet)
         trPc_spk = load_bin_(vcFile_fet, S0.type_fet, S0.dimm_fet);
@@ -194,6 +198,10 @@ if iFet==1
         trPc_spk = load_bin_merge_(csFiles_in, S0.type_fet, S0.dimm_fet);
     end
 elseif iFet==2
+    if ~isempty(get_(S0, 'trPc2_spk'))
+        trPc_spk = S0.trPc2_spk;
+        return;
+    end    
     vcFile_fet = [vcFile_prm_, '_fet2.irc'];
     if exist_file_(vcFile_fet)
         trPc_spk = load_bin_(vcFile_fet, S0.type_fet, S0.dimm_fet);
@@ -418,7 +426,9 @@ vcFile_fet2 = strrep(S0.P.vcFile_prm, '.prm', '_fet2.irc');
 vcFile_knn = strrep(S0.P.vcFile_prm, '.prm', '_knn.irc');
 
 trPc_spk = gather_(get_(S0, 'trPc_spk'));
-if ~isempty(trPc_spk)
+S0.trPc_spk = [];
+fSave_fet = get_set_(S0.P, 'fSave_fet', 1);
+if ~isempty(trPc_spk) && fSave_fet
     S0.trPc_spk = [];
     S0.dimm_fet = size(trPc_spk);
     S0.type_fet = class(trPc_spk);
@@ -426,13 +436,15 @@ if ~isempty(trPc_spk)
 end
 
 trPc2_spk = gather_(get_(S0, 'trPc2_spk'));
-if ~isempty(trPc2_spk)
+S0.trPc2_spk = [];
+if ~isempty(trPc2_spk) && fSave_fet
     S0.trPc2_spk = [];
     write_bin_(vcFile_fet2, trPc2_spk);
 end
 
 S_clu = get_(S0, 'S_clu');
 miKnn = gather_(get_(S_clu, 'miKnn'));
+S0.S_clu.miKnn = [];
 if ~isempty(miKnn)
     S0.S_clu.miKnn = [];
     S0.dimm_knn = size(miKnn);
@@ -447,8 +459,8 @@ end %
 %--------------------------------------------------------------------------
 function S0 = load0_(vcFile_prm)
 vcFile_mat = strrep(vcFile_prm, '.prm', '_irc.mat');
-vcFile_fet = strrep(vcFile_prm, '.prm', '_fet.irc');
-vcFile_fet2 = strrep(vcFile_prm, '.prm', '_fet2.irc');
+% vcFile_fet = strrep(vcFile_prm, '.prm', '_fet.irc');
+% vcFile_fet2 = strrep(vcFile_prm, '.prm', '_fet2.irc');
 vcFile_knn = strrep(vcFile_prm, '.prm', '_knn.irc');
 
 S0 = load(vcFile_mat);
@@ -1920,7 +1932,7 @@ end %func
 % save _fet.irc and _fet2.irc
 function S0 = detect_merge_(cS_detect, viOffset_load, P)
 %    [mrPos_spk, vrPow_spk] = calc_pos_spk_(S0.trPc_spk, S0.viSite_spk, P);
-
+fSave_fet = get_set_(P, 'fSave_fet', 1);
 vnSpk_load = cellfun(@(x)numel(x.viSite_spk), cS_detect);
 miSpk_load = [0; cumsum(vnSpk_load)];
 miSpk_load = [miSpk_load(1:end-1)+1, miSpk_load(2:end)];
@@ -1930,10 +1942,10 @@ nSpk = sum(vnSpk_load);
     deal(zeros(nSpk, 1, 'int32'), zeros(nSpk, 1, 'int64'), zeros(nSpk, 2, 'single'));
 [vrPow_spk, vrAmp_spk] = deal(zeros(nSpk, 1, 'single'));
 viOffset_load = int64(viOffset_load);
-[mrVp_spk, fid_fet, fid_fet2, type_fet, dimm_fet, viSite2_spk] = deal([]);
+[mrVp_spk, fid_fet, fid_fet2, type_fet, dimm_fet, viSite2_spk, trPc_spk, trPc2_spk] = deal([]);
 for iLoad = 1:numel(cS_detect)
     S1 = cS_detect{iLoad};
-    if isempty(fid_fet) && ~isempty(S1.trPc_spk)
+    if isempty(fid_fet) && ~isempty(S1.trPc_spk) && fSave_fet
         fid_fet = fopen(strrep(P.vcFile_prm, '.prm', '_fet.irc'), 'w');
         type_fet = class(S1.trPc_spk);
         dimm_fet = [size(S1.trPc_spk,1), size(S1.trPc_spk,2), nSpk];
@@ -1950,10 +1962,15 @@ for iLoad = 1:numel(cS_detect)
     else
         [mrPos_spk(viSpk1,:), vrPow_spk(viSpk1)] = calc_pos_spk_(S1.trPc_spk, S1.viSite_spk, P);            
     end
-    if ~isempty(fid_fet), write_bin_(fid_fet, S1.trPc_spk); end
+    if ~isempty(fid_fet)
+        write_bin_(fid_fet, S1.trPc_spk); 
+    elseif ~fSave_fet
+        if isempty(trPc_spk), trPc_spk = zeros(dimm_fet, 'single'); end
+        trPc_spk(:,:,viSpk1) = S1.trPc_spk;
+    end
     
     % secondary peak 
-    if isempty(fid_fet2) && ~isempty(S1.trPc2_spk)
+    if isempty(fid_fet2) && ~isempty(S1.trPc2_spk) && fSave_fet
         fid_fet2 = fopen(strrep(P.vcFile_prm, '.prm', '_fet2.irc'), 'w');        
     end    
     if ~isempty(get_(S1, 'viSite2_spk'))
@@ -1962,11 +1979,15 @@ for iLoad = 1:numel(cS_detect)
         end
         viSite2_spk(viSpk1) = S1.viSite2_spk;
     end
-    if ~isempty(fid_fet2), write_bin_(fid_fet2, S1.trPc2_spk); end
+    if ~isempty(fid_fet2)
+        write_bin_(fid_fet2, S1.trPc2_spk); 
+    elseif ~fSave_fet
+        if isempty(trPc2_spk), trPc2_spk = zeros(dimm_fet, 'single'); end
+        trPc2_spk(:,:,viSpk1) = S1.trPc2_spk;
+    end
 end
 fclose_(fid_fet);
 fclose_(fid_fet2);
-[trPc_spk, trPc2_spk] = deal([]);
 S0 = makeStruct_(viSite_spk, viTime_spk, vrAmp_spk, mrVp_spk, ...
          viSite2_spk, trPc_spk, trPc2_spk, type_fet, dimm_fet, ...
          mrPos_spk, vrPow_spk); 
@@ -1989,7 +2010,12 @@ function [S_detect, fid_fet, fid_fet2] = detect_paged_save_(S_detect, P, fid_fet
 
 if nargin<3, fid_fet = []; end
 if nargin<4, fid_fet2 = []; end
-
+fSave_fet = get_set_(P, 'fSave_fet', 1);
+if ~fSave_fet
+    S_detect.type_fet = class(S_detect.trPc_spk);
+    S_detect.dimm_fet = size(S_detect.trPc_spk);
+    return; 
+end
 if ischar(S_detect)
     if strcmpi(S_detect, 'merge')
         t1 = tic;
