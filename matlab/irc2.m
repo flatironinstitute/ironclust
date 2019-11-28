@@ -17,13 +17,13 @@ if nargin<4, vcArg3 = ''; end
 persistent vcFile_prm_
 
 % batch processing. it uses default param for now
-fForceRerun = read_cfg_('fForceRerun');
+fDetect = read_cfg_('fForceRerun');
 
 if iscell(vcDir_in) && iscell(vcDir_out)    
     [csDir_in, csDir_out, csFile_arg] = deal(vcDir_in, vcDir_out, vcFile_arg);
     parfor iFile = 1:numel(csDir_in)
         try
-            if exist_file_(fullfile(csDir_out{iFile}, 'firings.mda')) && ~fForceRerun
+            if exist_file_(fullfile(csDir_out{iFile}, 'firings.mda')) && ~fDetect
                 continue;
             end
             fprintf('irc2 batch-processing %s (%d/%d)\n', csDir_in{iFile}, iFile, numel(csDir_in));
@@ -39,8 +39,8 @@ end
 if isempty(vcFile_arg)
     vcFile_arg = file2struct_(read_cfg_('default2_prm'));
 end
-
-[P, S0, fPlot_gt] = deal([]); 
+[fDetect, fSort] = deal(exist_file_(vcDir_in) || exist_dir_(vcDir_in)); % cmd mode
+[P, S0, fPlot_gt, fValidate] = deal([]); 
 switch lower(vcCmd)
     case 'compile-deploy', compile_cuda_([], '1'); return
     case {'compile', 'install'}, compile_cuda_([], '0'); return
@@ -61,7 +61,8 @@ switch lower(vcCmd)
         end
         return;
     case 'scoreboard', irc2_scoreboard(); return;
-    case {'spikesort', 'detect-sort', 'sort', 'auto', '', 'describe', 'verify', 'manual'}
+    case {'spikesort', 'detect-sort', 'sort', 'auto', '', 'describe', 'manual', ...
+            'verify', 'auto-verify', 'sort-verify', 'spikesort-verify'}
         if isempty(vcDir_out)
             vcFile_prm = vcFile_prm_;
             fprintf('irc2 (%s) opening %s\n', version_(), vcFile_prm);
@@ -73,15 +74,15 @@ switch lower(vcCmd)
         if ~exist_file_(vcFile_prm)
             fprintf(2, 'File does not exist: %s\n', vcFile_prm); return;
         end
-        P = file2struct_(vcFile_prm);
-        S0 = load0_(P.vcFile_prm);
+        P = file2struct_(vcFile_prm);        
         switch lower(vcCmd)
-            case {'detect-sort', 'spikesort'}, clear_();
-            case 'sort', clear_('sort');
-            case 'describe', describe_(S0); return;
+            case {'detect-sort', 'spikesort', 'spikesort-verify'}, clear_(); fDetect = 1; fSort = 1;
+            case {'sort', 'sort-verify'}, clear_('sort'); fDetect = 0; fSort = 1;          
+            case 'describe', describe_(vcFile_prm); return;
             case {'verify', 'validate'}, validate_(P, fPlot_gt); return;
             case 'manual', manual_(P); return;
         end
+        fValidate = contains(vcCmd, {'auto-verify', 'sort-verify', 'spikesort-verify'});
     case 'benchmark'
         if nargout==0, benchmark_(vcArg1, vcArg2, vcArg3); 
         else, varargout{1} = benchmark_(vcArg1, vcArg2, vcArg3); 
@@ -95,12 +96,11 @@ switch lower(vcCmd)
             'test-bionet', 'test-bionet1', 'test-monotrode', ...
             'test-monotrode1', 'test-monotrode2', 'test-monotrode3'}
         vcDir_in = get_test_data_(strsplit_get_(vcCmd,'-',2));
-        fForceRerun = 1;
+        [fDetect, fSort, fValidate] = deal(1, 1, 1);
     case 'export', irc('export', vcArg1); return;
     case {'export-phy', 'phy'}, irc2phy(vcArg1, vcArg2); return;
     case {'export-klusters', 'klusters', 'neurosuite'}, irc2klusters_v2(vcArg1, vcArg2); return;
-    otherwise
-        clear_();
+    otherwise, clear_();
 end
 
 fprintf('Running irc2.m (%s)\n', version_());
@@ -110,34 +110,50 @@ if isempty(P)
 end
 vcFile_prm_ = P.vcFile_prm;
 vcFile_mat = strrep(P.vcFile_prm, '.prm', '_irc.mat');
-if exist_file_(vcFile_mat) && ~fForceRerun
+if exist_file_(vcFile_mat) && ~fDetect
     S0 = load0_(P.vcFile_prm);
 else
+    clear_(P.vcFile_prm);
     S0 = detect_(P); 
+    save0_(S0);
 end
 set(0, 'UserData', S0);
 
-if strcmpi(vcCmd, 'sort'), S0.S_clu = []; end
-if isempty(struct_get_(S0, 'S_clu'))
+if isempty(struct_get_(S0, 'S_clu')) || fSort
     S0 = sort_(S0, P);
     set(0, 'UserData', S0);
 end
-
-% end
 S0 = auto_(S0, P);
-set(0, 'UserData', S0);
 describe_(S0);
+set(0, 'UserData', S0);
+
+% save clu
+save_clu_(S0.S_clu, P);
 
 % output
-save0_(S0);
-% struct_save_(S0, strrep(P.vcFile_prm, '.prm', '_irc.mat'));
 vcFile_firings_mda = fullfile(P.vcDir_out, 'firings.mda');
 save_firings_mda_(S0, vcFile_firings_mda);
 
 % Validate
-if get_set_(P, 'fValidate', 1) && ~strcmpi(vcCmd, 'auto')
-    validate_(P, fPlot_gt);
+if fValidate, validate_(P, fPlot_gt); end
+end %func
+
+
+%--------------------------------------------------------------------------
+function save_clu_(S_clu, P)
+if isempty(S_clu), return; end
+
+vcFile_prm_ = strrep(P.vcFile_prm, '.prm', '');
+
+miKnn = get_(S_clu, 'miKnn');
+if ~isempty(miKnn)
+    S_clu.miKnn = [];
+    S_clu.dimm_knn = size(miKnn);
+    S_clu.type_knn = class(miKnn);
+    write_bin_([vcFile_prm_, '_knn.irc'], miKnn);
 end
+
+struct_save_(S_clu, [vcFile_prm_, '_clu_irc.mat'], 1);
 end %func
 
 
@@ -185,6 +201,13 @@ end %func
 %--------------------------------------------------------------------------
 function trPc_spk = load_fet_(S0, P, iFet)
 if nargin<3, iFet = 1; end
+
+% return empty if trPc_spk should be loaded partially
+if get_set_(P, 'fLargeRecording', 0)
+    trPc_spk=[]; 
+    return; 
+end
+
 vcFile_prm_ = strrep(P.vcFile_prm, '.prm', '');
 fprintf('Loading feature %d...', iFet); t1=tic;
 if iFet==1
@@ -224,7 +247,11 @@ end %func
 
 %--------------------------------------------------------------------------
 function trPc_spk = load_bin_merge_(csFiles_in, type_fet, dimm_fet)
-trPc_spk = zeros(dimm_fet, type_fet);
+try
+    trPc_spk = zeros(dimm_fet, type_fet);
+catch
+    trPc_spk = []; return; % memory out
+end
 iOffset = 0;
 for iFile = 1:numel(csFiles_in)
     nBytes_file1 = filesize_(csFiles_in{iFile});
@@ -239,6 +266,72 @@ for iFile = 1:numel(csFiles_in)
     trPc_spk(:,:,vi1) = tr_;
     iOffset = vi1(end);
 end %for
+end %func
+
+
+%--------------------------------------------------------------------------
+% convert _fet.irc and _fet2.irc to _fet_site.irc and _fet_site2.irc 
+%   so that spikes can be indexed by sites first (transposing dimm 2 and 3)
+function [fid_fet_site, fid_fet_site2, P_] = save_fet_site_(S0, P, cviSpk_site, cviSpk2_site)
+vcFile_prm_ = strrep(P.vcFile_prm, '.prm', '');
+mlPc = calc_mlPc_(P.nPcPerChan, S0.dimm_fet);
+if exist_file_([vcFile_prm_, '_fet.irc'])
+    % load loop
+    error('save_fet_site_: single _fet.irc format is not currently unsupported');
+else % load loop
+    [type_fet, dimm_fet, viSite_spk, viSite2_spk, nLoads] = ...
+        struct_get_(S0, 'type_fet', 'dimm_fet', 'viSite_spk', 'viSite2_spk', 'nLoads');
+    csFiles_in = arrayfun_(@(x)[vcFile_prm_, sprintf('_fet_%d.irc',x)], 1:nLoads);
+    vcFile_fet_site = [vcFile_prm_, '_fet_site.irc'];
+    P_ = makeStruct_(type_fet, dimm_fet, nLoads, mlPc);
+    fid_fet_site = save_fet_site1_(csFiles_in, vcFile_fet_site, cviSpk_site, viSite_spk, P_);
+    if ~isempty(cviSpk2_site)
+        vcFile_fet2_site = [vcFile_prm_, '_fet2_site.irc'];
+        csFiles2_in = arrayfun_(@(x)[vcFile_prm_, sprintf('_fet2_%d.irc',x)], 1:nLoads);
+        fid_fet_site2 = save_fet_site1_(csFiles2_in, vcFile_fet2_site, cviSpk2_site, viSite2_spk, P_);
+    else
+        vcFile_fet2_site = [];
+    end
+end %if
+end %func
+
+
+%--------------------------------------------------------------------------
+function fid_r = save_fet_site1_(csFiles_in, vcFile_out, cviSpk_site, viSite_spk, P_)
+t1=tic;
+[type_fet, dimm_fet, nLoads] = struct_get_(P_, 'type_fet', 'dimm_fet', 'nLoads');
+
+% open and preallocate
+fid_w = fopen(vcFile_out, 'w');
+fwrite(fid_w, '0', 'char', bytesPerSample_(type_fet) * prod(dimm_fet)-1);
+% filesize_(vcFile_out)
+
+[iSpk_offset, nSites] = deal(0, numel(cviSpk_site));
+vnSpk_site = cellfun(@numel, cviSpk_site); vnSpk_site = vnSpk_site(:)';
+viOffset_site = cumsum([0, vnSpk_site(1:end-1)]);
+bytes_sample = bytesPerSample_(type_fet) * prod(dimm_fet(1:2));
+for iFile = 1:nLoads
+    nBytes_file1 = filesize_(csFiles_in{iFile});
+    dimm_fet1 = dimm_fet;
+    if numel(dimm_fet) == 1
+        dimm_fet1 = nBytes_file1 / bytesPerSample_(type_fet);        
+    else
+        dimm_fet1(end) = nBytes_file1 / bytesPerSample_(type_fet) / prod(dimm_fet(1:end-1));
+    end
+    trFet_spk1 = load_bin_(csFiles_in{iFile}, type_fet, dimm_fet1);
+    viSpk1 = (1:dimm_fet1(end)) + iSpk_offset;
+    cviiSpk1 = arrayfun_(@(x)find(viSite_spk(viSpk1) == x), 1:nSites);
+    vnSpk_site1 = cellfun(@numel, cviiSpk1);
+    for iSite = 1:nSites
+        fseek(fid_w, viOffset_site(iSite) * bytes_sample, 'bof');
+        fwrite(fid_w, trFet_spk1(:,:,cviiSpk1{iSite}), type_fet);
+    end
+    viOffset_site = viOffset_site + vnSpk_site1;
+    iSpk_offset = viSpk1(end);      
+end
+fclose(fid_w);
+if nargout>=1, fid_r = fopen(vcFile_out, 'r'); end
+fprintf('Writing to %s took %0.1fs\n', vcFile_out, toc(t1));
 end %func
 
 
@@ -426,10 +519,8 @@ end %func
 function save0_(S0)
 if nargin<1, S0 = []; end
 if isempty(S0), S0 = get(0, 'UserData'); end
-vcFile_mat = strrep(S0.P.vcFile_prm, '.prm', '_irc.mat');
-vcFile_fet = strrep(S0.P.vcFile_prm, '.prm', '_fet.irc');
-vcFile_fet2 = strrep(S0.P.vcFile_prm, '.prm', '_fet2.irc');
-vcFile_knn = strrep(S0.P.vcFile_prm, '.prm', '_knn.irc');
+
+vcFile_prm_ = strrep(S0.P.vcFile_prm, '.prm', '');
 
 trPc_spk = gather_(get_(S0, 'trPc_spk'));
 S0.trPc_spk = [];
@@ -438,53 +529,38 @@ if ~isempty(trPc_spk) && fSave_fet
     S0.trPc_spk = [];
     S0.dimm_fet = size(trPc_spk);
     S0.type_fet = class(trPc_spk);
-    write_bin_(vcFile_fet, trPc_spk);
+    write_bin_([vcFile_prm_, '_fet.irc'], trPc_spk);
 end
 
 trPc2_spk = gather_(get_(S0, 'trPc2_spk'));
 S0.trPc2_spk = [];
 if ~isempty(trPc2_spk) && fSave_fet
     S0.trPc2_spk = [];
-    write_bin_(vcFile_fet2, trPc2_spk);
+    write_bin_([vcFile_prm_, '_fet2.irc'], trPc2_spk);
 end
 
 S_clu = get_(S0, 'S_clu');
-miKnn = gather_(get_(S_clu, 'miKnn'));
-S0.S_clu.miKnn = [];
-if ~isempty(miKnn)
-    S0.S_clu.miKnn = [];
-    S0.dimm_knn = size(miKnn);
-    S0.type_knn = class(miKnn);
-    write_bin_(vcFile_knn, miKnn);
-end
+S0.S_clu = [];
+struct_save_(S0, [vcFile_prm_, '_irc.mat'], 1);
 
-struct_save_(S0, vcFile_mat);
+if ~isempty(S_clu), save_clu_(S_clu, P); end
 end %
 
 
 %--------------------------------------------------------------------------
 function S0 = load0_(vcFile_prm)
 vcFile_mat = strrep(vcFile_prm, '.prm', '_irc.mat');
-% vcFile_fet = strrep(vcFile_prm, '.prm', '_fet.irc');
-% vcFile_fet2 = strrep(vcFile_prm, '.prm', '_fet2.irc');
+vcFile_clu_mat = strrep(vcFile_prm, '.prm', '_clu_irc.mat');
 vcFile_knn = strrep(vcFile_prm, '.prm', '_knn.irc');
 
 S0 = load(vcFile_mat);
-% if isempty(get_(S0, 'trPc_spk'))
-%     if exist_file_(vcFile_fet)
-%         S0.trPc_spk = load_bin_(vcFile_fet, S0.type_fet, S0.dimm_fet);
-%     end
-% end
-% if isempty(get_(S0, 'trPc2_spk'))
-%     if exist_file_(vcFile_fet2)
-%         S0.trPc2_spk = load_bin_(vcFile_fet2, S0.type_fet, S0.dimm_fet);
-%     end
-% end
+if isempty(get_(S0, 'S_clu')) && exist_file_(vcFile_clu_mat)
+    S0.S_clu = load(vcFile_clu_mat);
+end
 
-S_clu = get_(S0, 'S_clu');
-if isempty(get_(S_clu, 'miKnn'))
+if isempty(get_(S0.S_clu, 'miKnn'))
     if exist_file_(vcFile_knn)
-        S0.S_clu.miKnn = load_bin_(vcFile_knn, S0.type_knn, S0.dimm_knn);
+        S0.S_clu.miKnn = load_bin_(vcFile_knn, S0.S_clu.type_knn, S0.S_clu.dimm_knn);
     end
 end
 set(0, 'UserData', S0);
@@ -519,20 +595,44 @@ switch vcMode
         catch
             vcDir_in = '';
         end
+    otherwise
+        if exist_file_(vcMode)
+            vcFile_prm_ = strrep(vcMode, '.prm', '');
+            delete([vcFile_prm_, '*.irc']);
+            delete([vcFile_prm_, '*_irc.mat']);
+        else
+            error('pass a parameter file');
+        end
 end
 end
 
 %--------------------------------------------------------------------------
 function csDesc = describe_(S0)
+% usage
+% ----
+% describe_(S0)
+% describe_(vcFile_prm)
+% csDesc = describe_(S0)
+
+if ischar(S0)
+    vcFile_prm = S0;
+    S0 = load0_(vcFile_prm);
+end 
 P=S0.P;
 
-runtime_total = S0.runtime_detect + S0.runtime_sort + S0.runtime_automerge;
+try
+    [runtime_detect, runtime_sort, runtime_automerge] = ...
+        deal(S0.runtime_detect, S0.S_clu.runtime_sort, S0.S_clu.runtime_automerge);
+    runtime_total = runtime_detect + runtime_sort + runtime_automerge;
+catch
+    runtime_total = nan;
+end
 try
     tDur = recording_duration_(S0.P, S0); 
 catch
     tDur = nan;
 end
-memory_sort = S0.memory_sort - S0.memory_init;
+memory_sort = S0.S_clu.memory_sort - S0.memory_init;
 memory_detect = S0.memory_detect - S0.memory_init;
 nSites = numel(P.viSite2Chan);
 nShanks = max(P.viShank_site);
@@ -549,6 +649,10 @@ end
 csDesc = {};
 try
     csDesc = {};
+    csDesc{end+1} = sprintf('');    
+    csDesc{end+1} = sprintf('------------------------------');    
+    csDesc{end+1} = sprintf('Summary of %s', P.vcFile_prm);
+    csDesc{end+1} = sprintf('------------------------------');    
     csDesc{end+1} = sprintf('Recording format');
     csDesc{end+1} = sprintf('    Recording file:         %s', P.vcFile);
     csDesc{end+1} = sprintf('    Probe file:             %s', P.probe_file);
@@ -591,13 +695,13 @@ if isfield(S0, 'S_clu')
 end
 try
     csDesc{end+1} = sprintf('Runtime (s)');
-    csDesc{end+1} = sprintf('    Detect + feature (s):   %0.1fs', S0.runtime_detect);    
-    csDesc{end+1} = sprintf('    Cluster runtime (s):    %0.1fs', S0.runtime_sort);
-    csDesc{end+1} = sprintf('    merge runtime (s):      %0.1fs', S0.runtime_automerge);
+    csDesc{end+1} = sprintf('    Detect + feature (s):   %0.1fs', runtime_detect);    
+    csDesc{end+1} = sprintf('    Cluster runtime (s):    %0.1fs', runtime_sort);
+    csDesc{end+1} = sprintf('    merge runtime (s):      %0.1fs', runtime_automerge);
     csDesc{end+1} = sprintf('    Total runtime (s):      %0.1fs', runtime_total);
     csDesc{end+1} = sprintf('    Runtime speed:          x%0.1f realtime', tDur / runtime_total);    
 
-    csDesc{end+1} = sprintf('memory usage (GiB):         %0.3f', max(memory_detect,memory_sort)/2^30);
+    csDesc{end+1} = sprintf('memory usage (GiB):         %0.3f', max(memory_detect, memory_sort)/2^30);
     csDesc{end+1} = sprintf('    detect(GiB):            %0.3f', memory_detect/2^30);
     csDesc{end+1} = sprintf('    sort(GiB):              %0.3f', memory_sort/2^30);
 
@@ -633,12 +737,13 @@ elseif isempty(P)
     P = S0.P;
 end
 
-fprintf('\nauto-merging...\n'); runtime_automerge=tic;
+fprintf('\nauto-merging...\n'); runtime_automerge = tic;
 
 
 % refresh clu, start with fundamentals
 S0.S_clu = struct_copy_(S0.S_clu, ...
-    'rho', 'delta', 'ordrho', 'nneigh', 'P', 'miKnn', 'S_drift', 'nFeatures');
+    'rho', 'delta', 'ordrho', 'nneigh', 'P', 'miKnn', 'S_drift', ...
+    'nFeatures', 'runtime_sort', 'memory_sort');
 S0.S_clu = postCluster_(S0.S_clu, P); % peak merging
 
 maxWavCor = get_set_(P, 'maxWavCor', .99);
@@ -663,9 +768,9 @@ end
 S0.S_clu = S_clu_sort_(S0.S_clu, 'viSite_clu');
 S0.S_clu = S_clu_refrac_(S0.S_clu, P); % refractory violation removal
 
-S0.runtime_automerge = toc(runtime_automerge);
+S0.S_clu.runtime_automerge = toc(runtime_automerge);
 fprintf('\n\tauto-merging took %0.1fs (fGpu=%d, fParfor=%d)\n', ...
-    S0.runtime_automerge, P.fGpu, P.fParfor);
+    S0.S_clu.runtime_automerge, P.fGpu, P.fParfor);
 end %func
 
 
@@ -1019,7 +1124,7 @@ nDrift = get_set_(P, 'nTime_drift', 64);
 nSpk_min = get_set_(P, 'knn', 30);
 nClu = S_clu.nClu;
 
-fprintf('\tComputing template\n\t'); t_template = tic;
+fprintf('\tComputing template\n'); t_template = tic;
 cviSpk_clu = arrayfun_(@(x)find(S_clu.viClu==x), (1:S_clu.nClu)');
 S_pre = makeStruct_(vrRho_spk, viSite_spk, miKnn, nDrift, dimm_spk, nSpk_min, viSite2_spk);
 fParfor = P.fParfor;
@@ -1065,8 +1170,14 @@ end %func
 function [ctrPc_clu, cviSite_clu, viClu_remove] = merge_clu_pre_(cS_pre3, S0, P)
 [ctrPc_clu, cviSite_clu] = deal(cell(size(cS_pre3)));
 
-trPc_spk = get_(S0, 'trPc_spk');
-if isempty(trPc_spk), trPc_spk = load_fet_(S0, P, 1); end
+% P.fLargeRecording = 0; % debug
+
+trPc_spk = load_fet_(S0, P, 1);
+if isempty(trPc_spk)
+    [ctrPc_clu, cviSite_clu, viClu_remove] = merge_clu_pre_load_(cS_pre3, S0, P);
+    return;
+end
+
 nPcPerChan = get_set_(P, 'nPcPerChan', 0);
 switch 3
     case 1, mean_ = @(y,x)mean(y(:,:,x),3);
@@ -1081,39 +1192,132 @@ end %switch
 for iClu = 1:numel(cS_pre3)
     S_pre3 = cS_pre3{iClu};
     cviSite_clu{iClu} = [S_pre3.viSite1(:); S_pre3.viSite2(:)];
-    trPc_clu1 = cellfun(@(x)mean_(trPc_spk,x), S_pre3.cviSpk1, 'UniformOutput', false);
+    trPc_clu1 = cellfun_(@(x)mean_(trPc_spk,x), S_pre3.cviSpk1);
     ctrPc_clu{iClu} = cat(3,trPc_clu1{:}); % faster than pre-allocating
 end
 trPc_spk = []; % clear from memory
 
 % Second peak average
-trPc2_spk = get_(S0, 'trPc2_spk');
-if isempty(trPc2_spk), trPc2_spk = load_fet_(S0, P, 2); end
+trPc2_spk = load_fet_(S0, P, 2);
 if isempty(trPc2_spk), return; end
 for iClu = 1:numel(cS_pre3)
     S_pre3 = cS_pre3{iClu};
-    trPc_clu2 = cellfun(@(x)mean_(trPc2_spk,x), S_pre3.cviSpk2, 'UniformOutput', false);
+    trPc_clu2 = cellfun_(@(x)mean_(trPc2_spk,x), S_pre3.cviSpk2);
     trPc_clu2 = cat(3,trPc_clu2{:});
     ctrPc_clu{iClu} = cat(3, ctrPc_clu{iClu}, trPc_clu2);
 end
 
 % remove low-snr peaks
-if true
-    [nRemoved, nTotal] = deal(0);
-    for iClu = 1:numel(ctrPc_clu)
-        [trPc_clu1, viSite_clu1] = deal(ctrPc_clu{iClu}, cviSite_clu{iClu});
-        if isempty(trPc_clu1), continue; end
-        vrVmin_clu1 = min(S0.mrPv_global * squeeze_(trPc_clu1(:,1,:),2),[],1);
-        vrSnr_clu1 = abs(vrVmin_clu1) ./ S0.vrThresh_site(viSite_clu1) * P.qqFactor;
-        vlKeep1 = vrSnr_clu1 >= P.qqFactor;
-        [nRemoved, nTotal] = deal(nRemoved + sum(~vlKeep1), nTotal + numel(vlKeep1));
-        [ctrPc_clu{iClu}, cviSite_clu{iClu}] = deal(trPc_clu1(:,:,vlKeep1), viSite_clu1(vlKeep1));
-    end %for
-    viClu_remove = find(cellfun(@isempty, ctrPc_clu));
-    fprintf('merge: removed %d/%d templates below SNR=%0.3f\n', nRemoved, nTotal, P.min_snr_clu);    
-else
-    viClu_remove = [];
+viClu_remove = find_low_snr_clu_(S0, P, ctrPc_clu, cviSite_clu);
+end %func
+
+
+%--------------------------------------------------------------------------
+function viClu_remove = find_low_snr_clu_(S0, P, ctrPc_clu, cviSite_clu)
+[nRemoved, nTotal] = deal(0);
+for iClu = 1:numel(ctrPc_clu)
+    [trPc_clu1, viSite_clu1] = deal(ctrPc_clu{iClu}, cviSite_clu{iClu});
+    if isempty(trPc_clu1), continue; end
+    vrVmin_clu1 = min(S0.mrPv_global * squeeze_(trPc_clu1(:,1,:),2),[],1);
+    vrSnr_clu1 = abs(vrVmin_clu1) ./ S0.vrThresh_site(viSite_clu1) * P.qqFactor;
+    vlKeep1 = vrSnr_clu1 >= P.qqFactor;
+    [nRemoved, nTotal] = deal(nRemoved + sum(~vlKeep1), nTotal + numel(vlKeep1));
+    [ctrPc_clu{iClu}, cviSite_clu{iClu}] = deal(trPc_clu1(:,:,vlKeep1), viSite_clu1(vlKeep1));
+end %for
+viClu_remove = find(cellfun(@isempty, ctrPc_clu));
+fprintf('merge: removed %d/%d templates below SNR=%0.3f\n', nRemoved, nTotal, P.min_snr_clu);    
+end %func
+
+
+%--------------------------------------------------------------------------
+% long recording version
+function [ctrPc_clu, cviSite_clu, viClu_remove] = merge_clu_pre_load_(cS_pre3, S0, P)
+[ctrPc_clu, cviSite_clu] = deal(cell(size(cS_pre3)));
+
+% P.fLargeRecording=0; % debug
+[cviFet_clu, ccviSpk_clu] = deal(cell(size(cS_pre3)));
+for iClu = 1:numel(cS_pre3)
+    S_pre3 = cS_pre3{iClu};
+    cviSite_clu{iClu} = [S_pre3.viSite1(:); S_pre3.viSite2(:)];    
+    n1 = numel(S_pre3.viSite1);
+    n2 = numel(S_pre3.viSite2);
+    cviFet_clu{iClu} = [repmat(1,n1,1); repmat(2,n2,1)];
+    if n2>0
+        ccviSpk_clu{iClu} = [cS_pre3{iClu}.cviSpk1, cS_pre3{iClu}.cviSpk2];
+    else
+        ccviSpk_clu{iClu} = cS_pre3{iClu}.cviSpk1;
+    end
 end
+ctrPc_clu = mean_fet_load_(cviSite_clu, cviFet_clu, ccviSpk_clu, S0, P);
+
+% remove low-snr peaks
+viClu_remove = find_low_snr_clu_(S0, P, ctrPc_clu, cviSite_clu);
+end %func
+
+
+%--------------------------------------------------------------------------
+function ctrPc_clu = mean_fet_load_(cviSite_clu, cviFet_clu, ccviSpk_clu, S0, P)
+fprintf('mean_fet_load_... '); t1=tic;
+viSite_all = cell2mat_(cviSite_clu);
+viFet_all = cell2mat_(cviFet_clu);
+cviSpk_all = [ccviSpk_clu{:}];
+ctrPc_all = cell(size(cviSpk_all));
+nSites_fet = min(S0.dimm_fet(2), P.nPc_spk);
+mean_ = @(y,x)mean(y(:,1:nSites_fet,x),3);
+
+% collect mrPc and distribute
+vcFile_prm_ = strrep(P.vcFile_prm, '.prm', '');
+vcFile_fet_site = [vcFile_prm_, '_fet_site.irc'];
+if exist_file_(vcFile_fet_site)
+    fid_r = fopen(vcFile_fet_site, 'r');
+else
+    error('%s does not exist', vcFile_fet_site);
+end
+vcFile_fet2_site = [vcFile_prm_, '_fet2_site.irc'];
+if exist_file_(vcFile_fet2_site)
+    fid_r2 = fopen(vcFile_fet2_site, 'r');
+else
+    fid_r2 = [];
+end
+
+% read the whole site and trim
+[cviSpk_site, cviSpk2_site] = calc_cviSpk_site_(S0, P);
+[type_fet, dimm_fet] = deal(S0.type_fet, S0.dimm_fet);
+nSites = size(P.miSites, 2);
+for iSite = 1:nSites
+    vi_all1 = find(viSite_all == iSite & viFet_all == 1);
+    trPc_site1 = load_fet_site_(fid_r, cviSpk_site, iSite, type_fet, dimm_fet);  
+    [~,cviSpk_all1] = cellfun_(@(x)ismember(x,cviSpk_site{iSite}), cviSpk_all(vi_all1));
+    ctrPc_all(vi_all1) = cellfun_(@(x)mean_(trPc_site1,x), cviSpk_all1);
+    if ~isempty(fid_r2)
+        vi_all2 = find(viSite_all == iSite & viFet_all == 2);
+        trPc_site2 = load_fet_site_(fid_r2, cviSpk2_site, iSite, type_fet, dimm_fet);
+        [~,cviSpk_all2] = cellfun_(@(x)ismember(x,cviSpk2_site{iSite}), cviSpk_all(vi_all2));
+        ctrPc_all(vi_all2) = cellfun_(@(x)mean_(trPc_site2,x), cviSpk_all2);
+    end
+end
+fclose_(fid_r);
+fclose_(fid_r2);
+
+% repackage to clu index
+vnSpk_clu = cellfun(@numel, cviSite_clu);
+ctrPc_clu = arrayfun_(@(x,y)cat(3, ctrPc_all{x:y}), cumsum(vnSpk_clu)-vnSpk_clu+1, cumsum(vnSpk_clu));
+fprintf('took %0.1fs\n', toc(t1));
+end %func
+
+
+%--------------------------------------------------------------------------
+function trPc = load_fet_site_(fid_r, cviSpk_site, iSite, type_fet, dimm_fet)
+% skip, load, and return 
+vnSpk_site = cellfun(@numel, cviSpk_site);
+if iSite==1
+    iOffset = 0;    
+else
+    iOffset = sum(vnSpk_site(1:iSite-1));
+end
+nBytes_skip = iOffset * bytesPerSample_(type_fet) * prod(dimm_fet(1:2));
+fseek(fid_r, nBytes_skip, 'bof');
+trPc = load_bin_(fid_r, type_fet, [dimm_fet(1), dimm_fet(2), vnSpk_site(iSite)]);
 end %func
 
 
@@ -1361,6 +1565,19 @@ end %func
 
 
 %--------------------------------------------------------------------------
+function [cviSpk_site, cviSpk2_site] = calc_cviSpk_site_(S0, P)
+nSites = size(P.miSites,2);
+cviSpk_site = arrayfun(@(x)find(S0.viSite_spk==x), 1:nSites, 'UniformOutput', 0)';
+viSite2_spk = get_(S0, 'viSite2_spk');
+if ~isempty(viSite2_spk)
+    cviSpk2_site = arrayfun(@(x)find(S0.viSite2_spk==x), 1:nSites, 'UniformOutput', 0)';
+else
+    cviSpk2_site = cell(size(cviSpk_site));
+end
+end %func
+
+
+%--------------------------------------------------------------------------
 % todo: delayed execution, use parfeval
 function S0 = sort_(S0, P)
 
@@ -1370,45 +1587,53 @@ runtime_sort = tic;
 
 [nSites_fet, miSites, knn, nPc_spk] = ...
     struct_get_(P, 'nSites_fet', 'miSites', 'knn', 'nPc_spk');
-trPc_spk = get_pc_sort_(S0, P);
-nFeatures = size(trPc_spk,1);
+[trPc_spk, nFeatures] = get_pc_sort_(S0, P);
 
 nSites = size(P.miSites,2);
-cviSpk_site = arrayfun(@(x)find(S0.viSite_spk==x), 1:nSites, 'UniformOutput', 0)';
-viSite2_spk = get_(S0, 'viSite2_spk');
-if ~isempty(viSite2_spk)
-    cviSpk2_site = arrayfun(@(x)find(S0.viSite2_spk==x), 1:nSites, 'UniformOutput', 0)';
-else
-    cviSpk2_site = cell(size(cviSpk_site));
-end
+[cviSpk_site, cviSpk2_site] = calc_cviSpk_site_(S0, P);
+
 nSpk = numel(S0.viSite_spk);
 
 % parfor loop
 fParfor = get_set_(P, 'fParfor', true) && nSites>1;
+
+S_drift = calc_drift_(S0, P);
+[viDrift_spk, mlDrift] = struct_get_(S_drift, 'viDrift_spk', 'mlDrift');
+
+if isempty(trPc_spk)
+    [fid_fet_site, fid_fet_site2, P_] = save_fet_site_(S0, P, cviSpk_site, cviSpk2_site);
+    get_fet_ = @(iSite)load_pc2fet_site_(fid_fet_site, fid_fet_site2, cviSpk_site, cviSpk2_site, viDrift_spk, iSite, P_);
+    fParfor = 0; %turn off fParfor to save memory
+else
+    get_fet_ = @(iSite)pc2fet_site2_(trPc_spk, cviSpk_site, cviSpk2_site, viDrift_spk, iSite);
+    [fid_fet_site, fid_fet_site2] = deal([]);
+end
+
 if fParfor
     gcp_ = gcp();
 else
     gcp_ = [];
 end
-S_drift = calc_drift_(S0, P);
-[viDrift_spk, mlDrift] = struct_get_(S_drift, 'viDrift_spk', 'mlDrift');
 
 % Calculate Rho
-P_sort = struct_set_(P, 'mlDrift', mlDrift, 'fSort_drift', 1);
+P_sort = struct_set_(P, 'mlDrift', mlDrift, 'fSort_drift', 1, 'fParfor', fParfor);
 [vrRho, vrDelta] = deal(zeros(nSpk, 1, 'single'));
 miKnn = zeros(knn, nSpk, 'int32');
 fprintf('Calculating Rho\n\t'); t1=tic;
 [cvrRho, cmiKnn, cvrDelta, cviNneigh] = deal(cell(nSites,1));
 % send jobs
 for iSite = 1:nSites
-    [mrFet12, viSpk12, viDrift12, n1, n2] = pc2fet_site2_(trPc_spk, cviSpk_site, cviSpk2_site, viDrift_spk, iSite, P_sort);
+    [mrFet12, viSpk12, viDrift12, n1] = get_fet_(iSite);
     if isempty(mrFet12), continue; end
     if ~isempty(gcp_)
         vS_out(iSite) = parfeval(gcp_, ...
             @(x,y,z,a)rho_knn_(x,y,z,a, P_sort), 2, mrFet12, viSpk12, viDrift12, n1);
     else
         [cvrRho{iSite}, cmiKnn{iSite}, P_sort.fGpu] = ...
-            rho_knn_(mrFet12, viSpk12, viDrift12, n1, P_sort);      
+            rho_knn_(mrFet12, viSpk12, viDrift12, n1, P_sort);  
+        if P_sort.fGpu==0
+            dbstack();
+        end
     end
 end %for
 % collect jobs
@@ -1431,7 +1656,7 @@ fprintf('\n\ttook %0.1fs (fGpu=%d, fParfor=%d)\n', toc(t1), P_sort.fGpu, P_sort.
 fprintf('Calculating Delta\n\t'); t2=tic;
 % send jobs
 for iSite = 1:nSites
-    [mrFet12, viSpk12, viDrift12, n1, n2] = pc2fet_site2_(trPc_spk, cviSpk_site, cviSpk2_site, viDrift_spk, iSite, P_sort);
+    [mrFet12, viSpk12, viDrift12, n1] = get_fet_(iSite);
     if isempty(mrFet12), continue; end
     vrRho12 = vrRho(viSpk12);
     if ~isempty(gcp_)
@@ -1457,6 +1682,8 @@ for iSite = 1:nSites
 end %for
 vrRho = vrRho / max(vrRho) / 10;     % divide by 10 to be compatible with previous version displays
 fprintf('\n\ttook %0.1fs (fGpu=%d, fParfor=%d)\n', toc(t2), P_sort.fGpu, P_sort.fParfor);
+fclose_(fid_fet_site);
+fclose_(fid_fet_site2);
 
 % output
 runtime_sort = toc(runtime_sort);
@@ -1464,26 +1691,27 @@ runtime_sort = toc(runtime_sort);
 memory_sort = memory_matlab_();
 S0.S_clu = struct('rho', vrRho, 'delta', vrDelta, 'ordrho', ordrho, 'nneigh', viNneigh, ...
     'P', P, 'miKnn', miKnn, 'S_drift', S_drift, 'nFeatures', nFeatures);
-S0.runtime_sort = runtime_sort;
-S0.memory_sort = memory_sort;
+S0.S_clu.runtime_sort = runtime_sort;
+S0.S_clu.memory_sort = memory_sort;
 end %func
 
 
 %--------------------------------------------------------------------------
-function trPc = get_pc_sort_(S0, P)
+% returns empty if memory runs out
+function [trPc, nFeatures] = get_pc_sort_(S0, P)
+
+% dimm_fet = size(trPc);
+nSpk = S0.dimm_fet(3);
+nPcPerChan = get_set_(P, 'nPcPerChan', 0);
+mlPc = calc_mlPc_(nPcPerChan, S0.dimm_fet);
+nFeatures = sum(mlPc(:));
 
 % Load trPc
 trPc = get_(S0, 'trPc_spk');
 if isempty(trPc)
     trPc = load_fet_(S0, P, 1);
+    if isempty(trPc), return; end
 end
-dimm_fet = size(trPc);
-nSpk = dimm_fet(3);
-
-% determine vnPc_site
-nPcPerChan = get_set_(P, 'nPcPerChan', 0);
-mlPc = calc_mlPc_(nPcPerChan, dimm_fet);
-
 trPc = reshape(trPc, [], nSpk);
 trPc = reshape(trPc(mlPc(:),:), [sum(mlPc(:)), 1, nSpk]);
 
@@ -1491,6 +1719,7 @@ trPc = reshape(trPc(mlPc(:),:), [sum(mlPc(:)), 1, nSpk]);
 trPc2 = get_(S0, 'trPc2_spk');
 if isempty(trPc2)
     trPc2 = load_fet_(S0, P, 2);
+    if isempty(trPc2), trPc=[]; return; end
 end
 if ~isempty(trPc2)
     trPc2 = reshape(trPc2, [], nSpk);
@@ -1537,41 +1766,75 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function [mrFet12, viSpk12, viDrift12, n1, n2] = pc2fet_site2_(trPc_spk, cviSpk_site, cviSpk2_site, viDrift_spk, iSite, P)
+function mrFet = load_pc2fet_site1_(fid_r, cviSpk_site, iSite, P_)
+% skip, load, and return 
+[mlPc, dimm_fet, type_fet] = struct_get_(P_, 'mlPc', 'dimm_fet', 'type_fet');
+vnSpk_site = cellfun(@numel, cviSpk_site);
+if iSite==1
+    iOffset = 0;    
+else
+    iOffset = sum(vnSpk_site(1:iSite-1));
+end
+nSpk1 = vnSpk_site(iSite);
+nBytes_skip = iOffset * bytesPerSample_(type_fet) * prod(dimm_fet(1:2));
+fseek(fid_r, nBytes_skip, 'bof');
+trPc = load_bin_(fid_r, type_fet, [dimm_fet(1)*dimm_fet(2), nSpk1]);
+mrFet = reshape(trPc(mlPc(:),:), [sum(mlPc(:)), nSpk1]); 
+end %func
+
+
+%--------------------------------------------------------------------------
+function [mrFet12, viSpk12, viDrift12, n1] = pc2fet_site2_(trPc_spk, cviSpk_site, cviSpk2_site, viDrift_spk, iSite)
 % decide whether to use 1, 2, or 3 features
 
 if isempty(cviSpk_site{iSite})
     [mrFet12, viSpk12, viDrift12] = deal([]);
-    [n1, n2] = deal(0); 
+    n1 = 0;
     return;
 end
 % [nSites_fet, miSites] = struct_get_(P, 'nSites_fet', 'miSites');
 
 [viSpk1, viSpk2] = deal(cviSpk_site{iSite}, cviSpk2_site{iSite});
+viSpk12 = [viSpk1; viSpk2];
+n1 = numel(viSpk1);
+
 if isempty(viSpk2)
     mrFet12 = squeeze_(trPc_spk(:,1,viSpk1),2);
 else
     mrFet12 = [squeeze_(trPc_spk(:,1,viSpk1),2), squeeze_(trPc_spk(:,2,viSpk2),2)];
 end
-viSpk12 = [viSpk1; viSpk2];
-[n1, n2] = deal(numel(viSpk1), numel(viSpk2));
         
 if isempty(viDrift_spk)
     viDrift12 = [];
 else
     viDrift12 = viDrift_spk(viSpk12);
 end    
+end %func
 
-nFet_max = get_set_(P, 'nFet_max', 0);
-if nFet_max > 0
-    if size(mrFet12,1) > nFet_max
-        [~, mrFet12] = pca(mrFet12', 'NumComponents', nFet_max);
-        mrFet12 = mrFet12';
-    end
+
+%--------------------------------------------------------------------------
+function [mrFet12, viSpk12, viDrift12, n1] = ...
+        load_pc2fet_site_(fid_fet_site, fid_fet_site2, cviSpk_site, cviSpk2_site, viDrift_spk, iSite, P_)
+if isempty(cviSpk_site{iSite})
+    [mrFet12, viSpk12, viDrift12] = deal([]);
+    n1 = 0;
+    return;
 end
-if get_set_(P, 'fWhiten_fet', 0)
-	mrFet12 = whiten_(mrFet12);
+
+[viSpk1, viSpk2] = deal(cviSpk_site{iSite}, cviSpk2_site{iSite});
+viSpk12 = [viSpk1; viSpk2];
+n1 = numel(viSpk1);
+
+mrFet12 = load_pc2fet_site1_(fid_fet_site, cviSpk_site, iSite, P_);
+if ~isempty(viSpk2)
+    mrFet12 = [mrFet12, load_pc2fet_site1_(fid_fet_site2, cviSpk2_site, iSite, P_)];
 end
+        
+if isempty(viDrift_spk)
+    viDrift12 = [];
+else
+    viDrift12 = viDrift_spk(viSpk12);
+end    
 end %func
 
 
@@ -2049,7 +2312,7 @@ for iFile = 1:numel(csFiles_in)
 end
 fclose_(fid_w);
 if fDelete, delete_(csFiles_in); end
-end 
+end %func
 
 
 %--------------------------------------------------------------------------
