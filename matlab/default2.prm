@@ -2,7 +2,7 @@
 fGpu = 1;                   % Enable GPU if available
 fParfor = 1;                % Enable multi-processing if available
 MAX_BYTES_LOAD = .5e9;
-fSave_fet = 1;              % Save feature files (or keep in RAM for faster speed but 2x more RAM usage)
+fSave_fet = 1;              % Save feature files (disable for ~10% speed-up on SSD but 2x more RAM use)
 
 % [Detect stage: filter and detect spikes]
 vcFilter = 'bandpass';
@@ -30,4 +30,4 @@ spkRefrac_merge_ms = .25;   % Remove spikes violating this refractory period in 
 post_merge_mode0 = 5;
 post_merge_mode = 1; 
 
-fLargeRecording = 0;        % Turn it on to save memory use at the cost of slower processing. this gets turned on when memory error occurs
+fLargeRecording = 1;        % Turn it on to save memory use at the cost of slower processing. this gets turned on when memory error occurs

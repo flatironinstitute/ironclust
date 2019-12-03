@@ -72,18 +72,18 @@ for iStart = 1:nSkip:nT
         if scale_filter ~= 1
             vrFilt1 = vrFilt1 * scale_filter;
         end
-        [gvrFilt1, fGpu] = gpuArray_(vrFilt1, fGpu);
+        [gvrFilt1, fGpu_] = gpuArray_(vrFilt1, fGpu);
         n_prev = n1;
     end    
     if ~isempty(vrFilt1)        
-        if fGpu
+        if fGpu_
             try
                 mrWav1 = fh_filter(gpuArray(mrWav1), gvrFilt1);  
             catch
-                fGpu = 0;
+                fGpu_ = 0;
             end
         end
-        if ~fGpu
+        if ~fGpu_
             mrWav1 = fh_filter(mrWav1, vrFilt1);  
         end
     end

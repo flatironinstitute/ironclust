@@ -2193,10 +2193,11 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function dimm_mr = write_bin_(vcFile, mr)
+function dimm_mr = write_bin_(vcFile, mr, fVerbose)
+if nargin<3, fVerbose = []; end
+
 t1=tic;
 dimm_mr = size(mr);
-fVerbose = 1;
 if isempty(mr), return; end
 if isstruct(mr)
     save(vcFile, '-struct', 'mr', '-v7.3'); % save to matlab file
