@@ -114,7 +114,6 @@ nTime_drift = [];          % divide to n drift time bins
 nThreads = 128;             % number of GPU threads for clustering
 batch_sec_drift = 300;        % batch duration in seconds. clustering time duration
 step_sec_drift = 20;          % compute anatomical similarity every n sec
-fSpatialMask_clu = 1;       % Apply spatial mask calculated from the distances between sites to the peak site (half-scale: P.mnPcPerChanaxDist_site_um). circa v3.1.10
 nBatch_max_drift = 32;      % max number of batch size
 
 % #Post-cluster auto-merging parameters (run "jrc auto" after change)

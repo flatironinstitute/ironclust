@@ -13,7 +13,7 @@ vcCommonRef = 'mean';       % common reference mode {'none', 'mean', 'median', '
 nChans_min_car = 16;        % disable common ref subtraction if the number of channels is less than this number
 qqFactor = 4;               % Detection threshold (estimated SD from the median to exclude spiking activity)
 nPc_spk = 9;                % Number of components per spike per channel to compress the spike waveform
-spkLim_ms = [-.2, .8];      % Time range to extract spikes in milliseconds
+spkLim_ms = [-.25, .75];      % Time range to extract spikes in milliseconds
 fInterp_fet = 1;            % Set to `1` to interpolate the waveform by 2x
 spkRefrac_ms = .25;         % reject spikes occcuring closer than this
 
@@ -30,4 +30,5 @@ spkRefrac_merge_ms = .25;   % Remove spikes violating this refractory period in 
 post_merge_mode0 = 5;
 post_merge_mode = 1; 
 
-fLargeRecording = 1;        % Turn it on to save memory use at the cost of slower processing. this gets turned on when memory error occurs
+fLargeRecording = 0;        % Turn it on to save memory use at the cost of slower processing. this gets turned on when memory error occurs
+mode_merge_mean = 1;        % 1 uses all 2 uses masked
