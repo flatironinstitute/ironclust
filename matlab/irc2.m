@@ -424,8 +424,8 @@ end %func
 %--------------------------------------------------------------------------
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_()
-vcVer = 'v5.1.7';
-vcDate = '12/3/2019';
+vcVer = 'v5.1.8';
+vcDate = '12/4/2019';
 vcHash = file2hash_();
 
 if nargout==0
@@ -2598,10 +2598,10 @@ vcFile_prm_ = strrep(P.vcFile_prm, '.prm', '');
 write_bin_([vcFile_prm_, sprintf('_fet_%d.irc', iLoad)], S_detect.trPc_spk);    
 S_detect.type_fet = class(S_detect.trPc_spk);
 S_detect.dimm_fet = size(S_detect.trPc_spk);
-if get_set_(P, 'fLargeRecording', false)
-    S_detect.cviSpk_site = save_paged_fet_site_(...
-        [vcFile_prm_, sprintf('_fet_site_%d.irc', iLoad)], S_detect.trPc_spk, S_detect.viSite_spk);
-end
+% if get_set_(P, 'fLargeRecording', false)
+S_detect.cviSpk_site = save_paged_fet_site_(...
+    [vcFile_prm_, sprintf('_fet_site_%d.irc', iLoad)], S_detect.trPc_spk, S_detect.viSite_spk);
+% end
 S_detect.trPc_spk = [];
 
 % save fet2
@@ -2610,10 +2610,10 @@ if isempty(get_(S_detect, 'trPc2_spk'))
     return; 
 end   
 write_bin_([vcFile_prm_, sprintf('_fet2_%d.irc', iLoad)], S_detect.trPc2_spk);    
-if get_set_(P, 'fLargeRecording', false)
-    S_detect.cviSpk2_site = save_paged_fet_site_(...
-        [vcFile_prm_, sprintf('_fet2_site_%d.irc', iLoad)], S_detect.trPc2_spk, S_detect.viSite2_spk);
-end
+% if get_set_(P, 'fLargeRecording', false)
+S_detect.cviSpk2_site = save_paged_fet_site_(...
+    [vcFile_prm_, sprintf('_fet2_site_%d.irc', iLoad)], S_detect.trPc2_spk, S_detect.viSite2_spk);
+% end
 S_detect.trPc2_spk = [];
 end %func
 
