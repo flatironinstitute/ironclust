@@ -24,11 +24,11 @@ batch_sec_drift = 300;      % Total ave. duration of time batch group in sec
 fWhiten_fet = 0;            % Set to `1` to whiten features 
 
 % [Auto-merge stage: automatically merge similar clusters based on KNN-graph and waveform similarity]
-maxWavCor = .98;            % Automated merge thresohld based on waveform correlation
+maxWavCor = .99;            % Automated merge thresohld based on waveform correlation
 min_snr_clu = [];           % Automatically remove clusters below this SNR threshold, set to `[]` to disable
 spkRefrac_merge_ms = .25;   % Remove spikes violating this refractory period in msec when merged
 post_merge_mode0 = 5;
 post_merge_mode = 1; 
 
-fLargeRecording = 0;        % Turn it on to save memory use at the cost of slower processing. this gets turned on when memory error occurs
+fLargeRecording = 1;        % Turn it on to save memory use at the cost of slower processing. this gets turned on when memory error occurs
 mode_merge_mean = 1;        % 1 uses all 2 uses masked

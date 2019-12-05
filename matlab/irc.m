@@ -10312,21 +10312,23 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function [S_clu, nRemoved] = S_clu_refrac_(S_clu, P, iClu1)
+function [S_clu, nRemoved] = S_clu_refrac_(S_clu, P, iClu1, viTime_spk)
+if nargin<3, iClu1 = []; end
+if nargin<4, viTime_spk = []; end
 % clu_refrac(Sclu, P)   %process refrac on all clusters
 % clu_refrac(Sclu, P, iClu1) %process on specific clusters
 % P.nSkip_refrac = 4; 
 % P.fShow_refrac = 0;
-viTime_spk = get0_('viTime_spk');
+if isempty(viTime_spk), viTime_spk = get0_('viTime_spk'); end
 % remove refractory spikes
-if nargin==2
+if isempty(iClu1)
 %     P = varargin{1}; %second input
     nClu = max(S_clu.viClu);
     P.fShow_refrac = 1;
     nRemoved = 0;
     nTotal = sum(S_clu.viClu>0);
     for iClu=1:nClu
-        [S_clu, nRemoved1] = S_clu_refrac_(S_clu, P, iClu);
+        [S_clu, nRemoved1] = S_clu_refrac_(S_clu, P, iClu, viTime_spk);
         nRemoved = nRemoved + nRemoved1;
     end
     fprintf('Removed %d/%d (%0.1f%%) duplicate spikes\n', ...
