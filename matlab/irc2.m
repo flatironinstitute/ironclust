@@ -422,8 +422,8 @@ end %func
 %--------------------------------------------------------------------------
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_()
-vcVer = 'v5.2.0';
-vcDate = '12/5/2019';
+vcVer = 'v5.2.1';
+vcDate = '12/6/2019';
 vcHash = file2hash_();
 
 if nargout==0
@@ -916,6 +916,7 @@ else
         case 2
             nSites_fet = min(S0.dimm_fet(2), P.nPc_spk);
             mean_ = @(y,x)mean(y(:,1:nSites_fet,x),3);
+        case 3, mean_ = @(y,x)median(y(:,:,x),3);
     end
 
     for iClu = 1:numel(cS_pre3)
@@ -995,6 +996,7 @@ switch get_set_(P, 'mode_merge_mean', 2)
     case 2
         nSites_fet = min(S0.dimm_fet(2), P.nPc_spk);
         mean_ = @(y,x)mean(y(:,1:nSites_fet,x),3);
+    case 3, mean_ = @(y,x)median(y(:,:,x),3);
 end
 
 % read the whole site and trim
@@ -1362,6 +1364,85 @@ end %func
 
 %--------------------------------------------------------------------------
 function [vrRho, vrDelta, miKnn, viNneigh, memory_sort] = sort_disk_(S0, P, S_drift)
+
+[cviSpk_site, cviSpk2_site] = calc_cviSpk_site_(S0, P);
+% viDrift_spk = get_viDrift_spk_(S_drift);
+[viLim_drift, mlDrift] = get_(S_drift, 'viLim_drift', 'mlDrift');
+[viSite_spk] = struct_get_(S0, 'viSite_spk');
+nSpk = numel(viSite_spk);
+nSites = size(P.miSites,2);
+fParfor = get_set_(P, 'fParfor', true) && nSites>1;
+nPcPerChan = get_set_(P, 'nPcPerChan', 0);
+miKnn = [];
+
+% Calculate Rho
+[vrRho, vrDelta] = deal(zeros(nSpk, 1, 'single'));
+viNneigh = zeros(nSpk, 1, 'int64');
+mlPc = calc_mlPc_(nPcPerChan, S0.dimm_fet);
+S_fet = struct_add_(P, mlDrift, fParfor, mlPc, viLim_drift);
+S_fet = struct_merge_(S_fet, ...
+    struct_copy_(S0, 'type_fet', 'dimm_fet', 'nLoads', 'ccviSpk_site_load', 'ccviSpk_site2_load', 'vnSpk_load'));
+
+fprintf('Calculating Rho (sort_disk_)\n\t'); t1=tic;
+for iSite = 1:nSites         
+    [viSpk1, viSpk2] = deal(cviSpk_site{iSite}, cviSpk2_site{iSite});
+    if isempty(viSpk1), continue; end
+    vrRho(viSpk1) = rho_knn_disk_(iSite, viSpk1, viSpk2, S_fet);    
+end
+fprintf('\n\ttook %0.1fs (fGpu=%d, fParfor=%d)\n', toc(t1), S_fet.fGpu, fParfor);
+
+fprintf('Calculating Delta (sort_disk_)\n\t'); t1=tic;
+for iSite = 1:nSites 
+    [viSpk1, viSpk2] = deal(cviSpk_site{iSite}, cviSpk2_site{iSite});
+    if isempty(viSpk1), continue; end
+    [vrDelta(viSpk1), viNneigh(viSpk1)] = delta_knn_disk_(iSite, viSpk1, viSpk2, vrRho, S_fet);
+end
+fprintf('\n\ttook %0.1fs (fGpu=%d, fParfor=%d)\n', toc(t1), S_fet.fGpu, fParfor);
+memory_sort = memory_matlab_();
+end %func
+
+
+%--------------------------------------------------------------------------
+% 8/2/17 JJJ: Documentation and test
+function n = bytesPerSample_(vcDataType)
+% Return number of bytes per data type
+% syntax
+% -----
+% n = bytesPerSample_(vcDataType)   % pass string
+% n = bytesPerSample_(variable) % pass variable
+
+if ~ischar(vcDataType), vcDataType = class_(vcDataType); end
+    
+switch lower(vcDataType)
+    case {'char', 'byte', 'int8', 'uint8', 'uchar'}
+        n = 1;    
+    case {'int16', 'uint16'}
+        n = 2;
+    case {'single', 'float', 'int32', 'uint32', 'float32'}
+        n = 4;
+    case {'double', 'int64', 'uint64'}
+        n = 8;
+    otherwise
+        n = [];
+        fprintf(2, 'Unsupported data type: %s\n', vcDataType);
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+function [vc, fGpu] = class_(vr)
+% Return the class for GPU or CPU arrays 
+if isempty(vr)
+    vc = class(gather_(vr));
+else
+    vc = class(gather_(vr(1)));
+end
+if nargout>=2, fGpu = isGpu_(vr); end
+end %func
+
+
+%--------------------------------------------------------------------------
+function [vrRho, vrDelta, miKnn, viNneigh, memory_sort] = sort_disk1_(S0, P, S_drift)
 
 [cviSpk_site, cviSpk2_site] = calc_cviSpk_site_(S0, P);
 % viDrift_spk = get_viDrift_spk_(S_drift);
@@ -1811,6 +1892,186 @@ end
 end %func
 
 
+%--------------------------------------------------------------------------
+function vrRho1 = rho_knn_disk_(iSite, viSpk1, viSpk2, S_fet)
+% S_fet contains {type_fet, dimm_fet, nLoads, vcFile_prm, mlPc, mlDrift, viLim_drift}
+    
+[mlDrift, viLim_drift, vcFile_prm] = ...
+    struct_get_(S_fet, 'mlDrift', 'viLim_drift', 'vcFile_prm');
+n1 = numel(viSpk1);
+nDrift = size(mlDrift,1);
+knn = get_set_(S_fet, 'knn', 30);
+[cvrRho_drift1, cmiKnn_drift1] = deal(cell(1, nDrift));
+cviiSpk1_drift = vi2cell_(discretize(viSpk1, viLim_drift), nDrift);
+cviiSpk2_drift = vi2cell_(discretize(viSpk2, viLim_drift), nDrift);
+
+fParfor = get_set_(S_fet, 'fParfor', 0);
+if fParfor
+    try
+        for iDrift = 1:nDrift    
+            [cvrRho_drift1{iDrift}, cmiKnn_drift1{iDrift}] = ...
+                rho_knn_disk_aux_(iSite, viSpk1, viSpk2, ...
+                    cviiSpk1_drift{iDrift}, cviiSpk2_drift{iDrift}, S_fet);
+        end
+    catch
+        fParfor = 0;
+    end
+end
+if ~fParfor
+    for iDrift = 1:nDrift    
+        [cvrRho_drift1{iDrift}, cmiKnn_drift1{iDrift}] = ...
+            rho_knn_disk_aux_(iSite, viSpk1, viSpk2, ...
+                cviiSpk1_drift{iDrift}, cviiSpk2_drift{iDrift}, S_fet);
+    end    
+end
+
+% Combine miKnn1 and save
+vrRho1 = zeros(n1, 1, 'single');
+miKnn1 = zeros(knn, n1, 'int64');
+for iDrift = 1:nDrift
+    vii1_ = cviiSpk1_drift{iDrift};
+    [vrRho1(vii1_), miKnn1(:,vii1_)] = ...
+        deal(cvrRho_drift1{iDrift}, cmiKnn_drift1{iDrift});    
+end
+save_miKnn_site_(vcFile_prm, iSite, miKnn1);
+end %func
+
+
+%--------------------------------------------------------------------------
+function [vrRho1, miKnn1] = rho_knn_disk_aux_(iSite, viSpk1, viSpk2, vii1, vii2, S_fet)
+% [vii1_, vii2_] = deal(cviiSpk1_drift{iDrift}, cviiSpk2_drift{iDrift});
+if isempty(vii1), [vrRho1, miKnn1] = deal([]); return; end    
+knn = get_set_(S_fet, 'knn', 30);
+mrFet1_ = load_fet2pc_site_(S_fet, 1, iSite, viSpk1(vii1));    
+mrFet2_ = load_fet2pc_site_(S_fet, 2, iSite, viSpk2(vii2));    
+[vrRho1, ~, miKnn1] = cuda_knn_([mrFet1_, mrFet2_], mrFet1_, S_fet);
+vrRho1 = gather_(1./vrRho1);
+
+% save miKnn
+viSpk12_ = int64([viSpk1(vii1); viSpk2(vii2)]);
+miKnn1 = viSpk12_(gather_(miKnn1));    
+n2 = size(miKnn1,1);
+if n2 < knn       
+    miKnn1 = [miKnn1; repmat(miKnn1(end,:), [knn-n2, 1])];
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+function [vrDelta1, viNneigh1] = delta_knn_disk_(iSite, viSpk1, viSpk2, vrRho, S_fet)
+% S_fet contains {type_fet, dimm_fet, nLoads, vcFile_prm, mlPc, mlDrift, viLim_drift}
+    
+[mlDrift, viLim_drift, vcFile_prm] = ...
+    struct_get_(S_fet, 'mlDrift', 'viLim_drift', 'vcFile_prm');
+n1 = numel(viSpk1);
+nDrift = size(mlDrift,1);
+[cvrDelta_drift1, cviNneigh_drift1] = deal(cell(1, nDrift));
+cviiSpk1_drift = vi2cell_(discretize(viSpk1, viLim_drift), nDrift);
+cviiSpk2_drift = vi2cell_(discretize(viSpk2, viLim_drift), nDrift);
+[vrRho1, vrRho2] = deal(vrRho(viSpk1), vrRho(viSpk2));
+fParfor = get_set_(S_fet, 'fParfor', 0);
+if fParfor
+    try
+        for iDrift = 1:nDrift    
+            [cvrDelta_drift1{iDrift}, cviNneigh_drift1{iDrift}] = ...
+                delta_knn_disk_aux_(iSite, viSpk1, viSpk2, ...
+                    cviiSpk1_drift{iDrift}, cviiSpk2_drift{iDrift}, vrRho1, vrRho2, S_fet);
+        end
+    catch
+        fParfor = 0;
+    end
+end
+if ~fParfor
+    for iDrift = 1:nDrift    
+        [cvrDelta_drift1{iDrift}, cviNneigh_drift1{iDrift}] = ...
+            delta_knn_disk_aux_(iSite, viSpk1, viSpk2, ...
+                cviiSpk1_drift{iDrift}, cviiSpk2_drift{iDrift}, vrRho1, vrRho2, S_fet);
+    end    
+end
+
+% Combine miKnn1 and save
+vrDelta1 = zeros(n1, 1, 'single');
+viNneigh1 = zeros(n1, 1, 'int64');
+for iDrift = 1:nDrift
+    vii1_ = cviiSpk1_drift{iDrift};
+    [vrDelta1(vii1_), viNneigh1(vii1_)] = ...
+        deal(cvrDelta_drift1{iDrift}, cviNneigh_drift1{iDrift});    
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+function [vrDelta1, viNneigh1] = delta_knn_disk_aux_(iSite, viSpk1, viSpk2, vii1, vii2, vrRho1, vrRho2, S_fet)
+% [vii1_, vii2_] = deal(cviiSpk1_drift{iDrift}, cviiSpk2_drift{iDrift});
+if isempty(vii1), [vrDelta1, viNneigh1] = deal([]); return; end    
+
+mrFet1_ = load_fet2pc_site_(S_fet, 1, iSite, viSpk1(vii1));    
+mrFet2_ = load_fet2pc_site_(S_fet, 2, iSite, viSpk2(vii2));    
+vrRho12 = [vrRho1(vii1); vrRho2(vii2)];
+[vrDelta1, viNneigh1] = cuda_delta_knn_([mrFet1_, mrFet2_], vrRho12, [], numel(vii1), S_fet);
+vrDelta1 = gather_(vrDelta1);
+
+% save miKnn
+viSpk12_ = int64([viSpk1(vii1); viSpk2(vii2)]);
+viNneigh1 = viSpk12_(gather_(viNneigh1));    
+end %func
+
+
+%--------------------------------------------------------------------------
+% load specific site and drift
+% todo: speed up by using cache
+function out1 = load_fet2pc_site_(S_fet, iFet, iSite, viSpk)
+
+[type_fet, dimm_fet, nLoads, vcFile_prm, mlPc, vnSpk_load] = ...
+    struct_get_(S_fet, ...
+    'type_fet', 'dimm_fet', 'nLoads', 'vcFile_prm', 'mlPc', 'vnSpk_load');
+vcFile_prm_ = strrep(vcFile_prm, '.prm', '');
+bytes_per_spk = bytesPerSample_(type_fet) * dimm_fet(1) * dimm_fet(2);
+fh_sum = @(x,y)sum(cellfun(@numel, x(1:y-1)));
+viSpk_offset_load = cumsum([0; vnSpk_load]);
+switch iFet
+    case 1
+        vnSpk_load = cellfun(@(x)numel(x{iSite}), S_fet.ccviSpk_site_load);
+        vnBytes_offset_load = cellfun(@(x)fh_sum(x, iSite), S_fet.ccviSpk_site_load) * bytes_per_spk;
+        csFiles_fet = arrayfun_(@(x)[vcFile_prm_, sprintf('_fet_site_%d.irc',x)], 1:nLoads);
+        cviSpk_load = cellfun_(@(x)x{iSite}, S_fet.ccviSpk_site_load);
+    case 2
+        vnSpk_load = cellfun(@(x)numel(x{iSite}), S_fet.ccviSpk_site2_load);
+        csFiles_fet = arrayfun_(@(x)[vcFile_prm_, sprintf('_fet2_site_%d.irc',x)], 1:nLoads);
+        vnBytes_offset_load = cellfun(@(x)fh_sum(x, iSite), S_fet.ccviSpk_site2_load) * bytes_per_spk;
+        cviSpk_load = cellfun_(@(x)x{iSite}, S_fet.ccviSpk_site2_load);
+end
+if ~isempty(mlPc)
+    nFeatures = sum(mlPc(:));
+    tr2mr_ = @(x)reshape(x, [], size(x,3));
+    fet2pc_ = @(x)reshape(x(mlPc(:),:), [nFeatures, size(x,2)]); 
+    mrFet1 = zeros(nFeatures, numel(viSpk), type_fet);
+else
+    trPc1 = zeros(dimm_fet(1), dimm_fet(2), numel(viSpk), type_fet);
+end
+iOffset_spk = 0;
+for iLoad = 1:numel(csFiles_fet)
+    [vl_, vi_] = ismember(viSpk, cviSpk_load{iLoad} + viSpk_offset_load(iLoad));
+    if ~any(vl_), continue; end
+    viiSpk_ = vi_(vl_);
+    viSpk1 = (1:numel(viiSpk_)) + iOffset_spk;
+    dimm_fet1 = [dimm_fet(1), dimm_fet(2), vnSpk_load(iLoad)];
+    trPc_load1 = load_bin_(csFiles_fet{iLoad}, type_fet, dimm_fet1, vnBytes_offset_load(iLoad));    
+    if ~isempty(mlPc)
+        mrFet1(:,viSpk1) = fet2pc_(tr2mr_(trPc_load1(:,:,viiSpk_)));
+    else
+        trPc1(:,:,viSpk1) = trPc_load1(:,:,viiSpk_);
+    end
+    iOffset_spk = viSpk1(end);
+end
+if ~isempty(mlPc)
+    out1 = mrFet1;
+else
+    out1 = trPc1;
+end
+end %func
+   
+    
 %--------------------------------------------------------------------------
 function [vrRho1, miKnn1, fGpu] = rho_knn_(mrFet12, viSpk12, viDrift12, n1, P)
 % mrFet12: matrix or struct
@@ -2381,50 +2642,6 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function S0 = detect_merge_1_(cS_detect, viOffset_load)
-
-vnSpk_load = cellfun(@(x)numel(x.viSite_spk), cS_detect);
-miSpk_load = [0; cumsum(vnSpk_load)];
-miSpk_load = [miSpk_load(1:end-1)+1, miSpk_load(2:end)];
-
-nSpk = sum(vnSpk_load);
-[viSite_spk, viTime_spk, vrAmp_spk] = ...
-    deal(zeros(nSpk, 1, 'int32'), zeros(nSpk, 1, 'int64'), zeros(nSpk, 1, 'single'));
-viOffset_load = int64(viOffset_load);
-[trPc_spk, mrVp_spk, trPc2_spk, viSite2_spk] = deal([]);
-
-for iLoad = 1:numel(cS_detect)
-    S1 = cS_detect{iLoad};
-    viSpk1 = miSpk_load(iLoad,1):miSpk_load(iLoad,2);
-    viSite_spk(viSpk1) = S1.viSite_spk;
-    viTime_spk(viSpk1) = int64(S1.viTime_spk) + viOffset_load(iLoad);
-    vrAmp_spk(viSpk1) = S1.vrAmp_spk;
-    if isempty(trPc_spk)
-        trPc_spk = zeros(size(S1.trPc_spk,1), size(S1.trPc_spk,2), nSpk, 'single');
-    end
-    trPc_spk(:,:,viSpk1) = S1.trPc_spk;
-    if ~isempty(S1.trPc2_spk)
-        if isempty(trPc2_spk)
-            trPc2_spk = zeros(size(trPc_spk), 'single'); 
-            viSite2_spk = zeros(size(viSite_spk), 'int32');
-        end
-        viSite2_spk(viSpk1) = S1.viSite2_spk;
-        trPc2_spk(:,:,viSpk1) = S1.trPc2_spk;
-    end
-    if 0
-        if isempty(mrVp_spk)
-            mrVp_spk = zeros(size(S1.mrVp_spk,1), nSpk, 'single');
-        end
-        mrVp_spk(:,viSpk1) = S1.mrVp_spk;
-    end
-end
-[type_fet, dimm_fet] = deal(class(trPc_spk), size(trPc_spk));
-S0 = makeStruct_(viSite_spk, viTime_spk, vrAmp_spk, trPc_spk, mrVp_spk, ...
-    viSite2_spk, trPc2_spk, type_fet, dimm_fet); 
-end %func
-
-
-%--------------------------------------------------------------------------
 function S_detect = detect_paged_(mrWav_T, P, S_cache)
 % S_detect = detect_paged_(mrWav_T, P, S_cache)
 % S_detect = detect_paged_(file_name, P, S_cache)
@@ -2441,8 +2658,8 @@ end %func
 
 %--------------------------------------------------------------------------
 function S_detect = get_spikes_(mrWav2, P, S_cache)
-[vrThresh_site, nlim_wav1, mrPv_global] = ...
-    struct_get_(S_cache, 'vrThresh_site', 'nlim_wav1', 'mrPv_global');
+[vrThresh_site, nlim_wav1, mrPv_global, vrD_global] = ...
+    struct_get_(S_cache, 'vrThresh_site', 'nlim_wav1', 'mrPv_global', 'vrD_global');
 
 if isempty(nlim_wav1)
     [nPad_pre, nPad_post] = deal(0);
@@ -2503,7 +2720,7 @@ if false % average the first and second peak locations
     end
 end
 S_detect = makeStruct_(trPc_spk, mrPv_global, viTime_spk, vrAmp_spk, viSite_spk, ...
-    mrVp_spk, trPc2_spk, viSite2_spk, vrThresh_site, mrPos_spk, vrPow_spk);
+    mrVp_spk, trPc2_spk, viSite2_spk, vrThresh_site, mrPos_spk, vrPow_spk, vrD_global);
 end %func
 
 
@@ -2553,16 +2770,17 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function [mrPv1, vrD1, fh_proj] = get_pv_(tr, P)
+function [mrPv1, vrD1] = get_pv_(tr, P)
 %tr: nSamples x nSpikes x nChans
 MAX_SAMPLE = 10000;        
 
 viSpk_sub = subsample_vr_(1:size(tr,3), MAX_SAMPLE);
-switch 2
+switch 3
+    case 1, mr1 = squeeze(tr(:, 1, viSpk_sub)); % use peak chan only
     case 2, mr1 = reshape(tr(:, 1:P.nSites_fet, viSpk_sub), size(tr,1), []); 
-    case 1, mr1 = squeeze(tr(:, 1, viSpk_sub)); 
+    case 3, mr1 = reshape(tr(:, :, viSpk_sub), size(tr,1), []); % use all chan
 end
-nPc_spk = get_set_(P, 'nPc_spk', 6); % # components to compress spike waveforms
+nPc_spk = get_set_(P, 'nPc_spk', 9); % # components to compress spike waveforms
 
 switch 2
     case 1
@@ -2572,18 +2790,7 @@ switch 2
         vrD1 = flipud(diag(vrD1));
     case 2
         [mrPv1, ~, vrD1] = pca(gather_(mr1)','Centered',false, 'NumComponents', nPc_spk);
-%     case 3
-%         [mrX1, mrX2] = deal(squeeze(tr(:,1,viSpk_sub)), squeeze(tr(:,end,viSpk_sub)));
-%         [mrA, mrB, r] = canoncorr_(mrX1', mrX2', 0);
-%         fb = wavelets(dwtfilterbank('Wavelet','sym4','SignalLength',size(tr,1),'Level',5,'FilterType','analysis'));
 end
-% spike center should be negative
-% iMid = 1-P.spkLim(1);
-% vrSign = (mrPv1(iMid,:) < 0) * 2 - 1; %1 or -1 depending on the sign
-% mrPv = bsxfun(@times, mrPv1, vrSign);
-% trFft = fft(tr);
-% trFft = abs(trFft(2:end/2,:,:));
-% figure; imagesc(std(trFft,1,3))
 end %func
 
 
@@ -2864,7 +3071,8 @@ switch vcMode
 end
 if ispc()
     vcDir_in = strrep(vcDir_in, '/', '\');    
-    vcDir_in = fullfile('D:\Globus', vcDir_in);
+    vcDir_in = fullfile('D:\Globus', vcDir_in); % RAID5
+%     vcDir_in = fullfile('c:\tmp', vcDir_in); % SSD
 elseif isunix()
     vcDir_in = fullfile('~/ceph', vcDir_in);
 elseif ismac()
@@ -3844,7 +4052,6 @@ function out1 = exist_file_(varargin), fn=dbstack(); out1 = irc('call', fn(1).na
 function out1 = loadjson_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = get_set_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = filesize_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
-function out1 = bytesPerSample_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = mr2ref_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = car_reject_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = struct_copy_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
