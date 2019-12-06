@@ -9560,7 +9560,7 @@ switch lower(P.vcDetrend_postclu)
     case 'logz'
         S_clu.icl = log_ztran_(S_clu.rho, S_clu.delta, P.rho_cut, 4+P.delta1_cut);
     case 'knn'
-        S_clu.icl = find(S_clu.delta(:) > get_set_(P, 'delta_cut', 1.1));
+        S_clu.icl = find(S_clu.delta(:) > get_set_(P, 'delta_cut', 1));
     otherwise
         fprintf(2, 'postCluster_: vcDetrend_postclu = ''%s''; not supported.\n', P.vcDetrend_postclu);
 end
