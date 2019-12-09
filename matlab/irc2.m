@@ -121,15 +121,20 @@ end
 
 if isempty(struct_get_(S0, 'S_clu')) || fSort
     S0.S_clu = sort_(S0, P);
-%     set(0, 'UserData', S0);
 end
 % set(0, 'UserData', S0);
-S0 = auto_(S0, P);
-describe_(S0);
-% set(0, 'UserData', S0);
-
-% save clu
+try
+    S0 = auto_(S0, P);
+    fAuto_pass = true;
+catch
+    fAuto_pass = false;
+end
 save_clu_(S0.S_clu, P);
+describe_(S0);
+if ~fAuto_pass
+    fprintf(2, 'auto-merging error:\n');
+    disp(lasterr());
+end
 
 % output
 vcFile_firings_mda = fullfile(P.vcDir_out, 'firings.mda');
@@ -422,7 +427,7 @@ end %func
 %--------------------------------------------------------------------------
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_()
-vcVer = 'v5.2.3';
+vcVer = 'v5.2.4';
 vcDate = '12/8/2019';
 vcHash = file2hash_();
 
@@ -841,11 +846,6 @@ S_clu = S0.S_clu;
 
 fprintf('Automated merging (post-hoc)\n'); t1=tic;
 [viClu_spk, miKnn, vrRho_spk] = struct_get_(S_clu, 'viClu', 'miKnn', 'rho');
-if false
-    KNN_MAX = 16;
-    nAve_knn = min(KNN_MAX, get_set_(P, 'knn', 30));
-    miKnn = miKnn(1:nAve_knn,:);
-end
 [viSite_spk, viSite2_spk, mrPv] = ...
     struct_get_(S0, 'viSite_spk', 'viSite2_spk', 'mrPv_global');
 nShift_max = ceil(diff(P.spkLim) * P.frac_shift_merge / 2);
@@ -929,12 +929,13 @@ else
 
     % Second peak average
     trPc2_spk = load_fet_(S0, P, 2);
-    if isempty(trPc2_spk), return; end
-    for iClu = 1:numel(cS_pre3)
-        S_pre3 = cS_pre3{iClu};
-        trPc_clu2 = cellfun_(@(x)mean_(trPc2_spk,x), S_pre3.cviSpk2);
-        trPc_clu2 = cat(3,trPc_clu2{:});
-        ctrPc_clu{iClu} = cat(3, ctrPc_clu{iClu}, trPc_clu2);
+    if ~isempty(trPc2_spk)
+        for iClu = 1:numel(cS_pre3)
+            S_pre3 = cS_pre3{iClu};
+            trPc_clu2 = cellfun_(@(x)mean_(trPc2_spk,x), S_pre3.cviSpk2);
+            trPc_clu2 = cat(3,trPc_clu2{:});
+            ctrPc_clu{iClu} = cat(3, ctrPc_clu{iClu}, trPc_clu2);
+        end
     end
 end
 % remove low-snr peaks
@@ -1605,22 +1606,18 @@ fGpu = get_(P, 'fGpu');
 [cvrRho, cvrDelta, cviNneigh, cviSpk_site] = deal(cell(nSites,1));
 fprintf('Calculating Rho (sort_ram_)\n\t'); t1=tic;
 if fParfor
-    try
-        parfor iSite = 1:nSites
+    parfor iSite = 1:nSites
+        try
             [cvrRho{iSite}, cviSpk_site{iSite}] = rho_knn_ram_(iSite, S_fet);  
-        end %for
-    catch
-        fParfor = 0;
-    end
-end
-if ~fParfor
-    for iSite = 1:nSites
-        [cvrRho{iSite}, cviSpk_site{iSite}] = rho_knn_ram_(iSite, S_fet);  
+        catch
+        end
     end %for
 end
-% assemble jobs
 vrRho = zeros(nSpk, 1, 'single');
-for iSite = 1:nSites     
+for iSite = 1:nSites
+    if isempty(cvrRho{iSite}) && isempty(cviSpk_site{iSite})
+        [cvrRho{iSite}, cviSpk_site{iSite}] = rho_knn_ram_(iSite, S_fet);  
+    end
     viSpk1 = cviSpk_site{iSite};
     if isempty(viSpk1), continue; end
     vrRho(viSpk1) = cvrRho{iSite};
@@ -1632,27 +1629,23 @@ fprintf('\n\ttook %0.1fs (fGpu=%d, fParfor=%d)\n', toc(t1), fGpu, fParfor);
 % Calculate Delta
 fprintf('Calculating Delta (sort_ram_)\n\t'); t2=tic;
 if fParfor
-    try
-        parfor iSite = 1:nSites
-            [cvrDelta{iSite}, cviNneigh{iSite}] = delta_knn_ram_(iSite, vrRho, S_fet);  
+    parfor iSite = 1:nSites
+        try
+            [cvrDelta{iSite}, cviNneigh{iSite}] = delta_knn_ram_(iSite, vrRho, S_fet); 
+        catch
         end
-    catch
-        fParfor = 0;
     end
 end %for
-if ~fParfor
-    for iSite = 1:nSites
-        [cvrDelta{iSite}, cviNneigh{iSite}] = delta_knn_ram_(iSite, vrRho, S_fet);  
-    end
-end
-% assemble jobs
 vrDelta = zeros(nSpk, 1, 'single');
 viNneigh = zeros(nSpk, 1, 'int64');
-for iSite = 1:nSites     
+for iSite = 1:nSites
+    if isempty(cvrDelta{iSite}) && isempty(cviNneigh{iSite})
+        [cvrDelta{iSite}, cviNneigh{iSite}] = delta_knn_ram_(iSite, vrRho, S_fet);  
+    end
     viSpk1 = cviSpk_site{iSite};
     if isempty(viSpk1), continue; end
     [vrDelta(viSpk1), viNneigh(viSpk1)] = deal(cvrDelta{iSite}, cviNneigh{iSite});
-end %for
+end
 fprintf('\n\ttook %0.1fs (fGpu=%d, fParfor=%d)\n', toc(t2), fGpu, fParfor);
 memory_sort = memory_matlab_();
 end %func
@@ -1968,6 +1961,7 @@ fLoad_all = isempty(viSpk);
 if fLoad_all
     viSpk = cell2mat_(arrayfun_(@(iLoad)cviSpk_load{iLoad} + viSpk_offset_load(iLoad), (1:nLoads)'));
 end
+if isempty(viSpk), out1=[]; return; end
 if ~isempty(mlPc)
     nFeatures = sum(mlPc(:));
     tr2mr_ = @(x)reshape(x, [], size(x,3));
@@ -3593,14 +3587,12 @@ else % fid directly passed
     if isempty(dimm), dimm = inf; end
 end
 try
-    t1 = tic;
     mnWav = fread_(fid, dimm, vcDataType);
     if ischar(vcFile)
         fclose(fid);
-%         fprintf('Loading %s took %0.1fs\n', vcFile, toc(t1)); 
     end
 catch
-    disperr_();
+    disp(lasterr());
 end
 end %func
 

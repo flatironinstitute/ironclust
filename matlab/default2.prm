@@ -7,7 +7,7 @@ fSave_fet = 1;              % Save feature files (disable for ~10% speed-up on S
 % [Detect stage: filter and detect spikes]
 vcFilter = 'bandpass';
 freqLim = [300, 8000];
-maxDist_site_spk_um = 100;   % Event extraction radius
+maxDist_site_spk_um = 100;  % Event extraction radius
 maxDist_site_um = 50;       % Event merge radius
 vcCommonRef = 'mean';       % common reference mode {'none', 'mean', 'median', 'whiten', 'whiten-mean', 'whiten-median'}
 nChans_min_car = 16;        % disable common ref subtraction if the number of channels is less than this number
@@ -31,5 +31,5 @@ post_merge_mode0 = 5;
 post_merge_mode = 1; 
 
 fLargeRecording = 0;        % Turn it on to save memory use at the cost of slower processing. this gets turned on when memory error occurs
-mode_merge_mean = 2;        % 1 uses all 2 uses masked, 3 is all median
+mode_merge_mean = 1;        % 1 uses all 2 uses masked, 3 is all median
 knn_merge_mode = 1;         % 1 for old and 2 for new fraction-based method
