@@ -130,13 +130,13 @@ catch
     fAuto_pass = false;
 end
 save_clu_(S0.S_clu, P);
-describe_(S0);
 if ~fAuto_pass
-    fprintf(2, 'auto-merging error:\n');
+    fprintf(2, 'auto-merging error: \n\t%s\n', P.vcFile_prm);
     disp(lasterr());
 end
 
 % output
+describe_(S0);
 vcFile_firings_mda = fullfile(P.vcDir_out, 'firings.mda');
 save_firings_mda_(S0, vcFile_firings_mda);
 
@@ -253,6 +253,9 @@ end %func
 
 %--------------------------------------------------------------------------
 function trPc_spk = load_bin_merge_(csFiles_in, type_fet, dimm_fet)
+if ~exist_file_(csFiles_in{1})
+    trPc_spk = []; return; % memory out
+end
 try
     trPc_spk = zeros(dimm_fet, type_fet);
 catch
@@ -268,6 +271,7 @@ for iFile = 1:numel(csFiles_in)
         dimm_fet1(end) = nBytes_file1 / bytesPerSample_(type_fet) / prod(dimm_fet(1:end-1));
     end
     tr_ = load_bin_(csFiles_in{iFile}, type_fet, dimm_fet1);
+    if isempty(tr_), trPc_spk = []; return; end
     vi1 = (1:dimm_fet1(end)) + iOffset;
     trPc_spk(:,:,vi1) = tr_;
     iOffset = vi1(end);
@@ -427,8 +431,8 @@ end %func
 %--------------------------------------------------------------------------
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_()
-vcVer = 'v5.2.4';
-vcDate = '12/8/2019';
+vcVer = 'v5.2.5';
+vcDate = '12/9/2019';
 vcHash = file2hash_();
 
 if nargout==0
@@ -461,7 +465,7 @@ vcFile_prm_ = strrep(S0.P.vcFile_prm, '.prm', '');
 
 trPc_spk = gather_(get_(S0, 'trPc_spk'));
 S0.trPc_spk = [];
-fSave_fet = get_set_(S0.P, 'fSave_fet', 1);
+fSave_fet = get_set_(S0.P, 'fSave_fet', 0);
 if ~isempty(trPc_spk) && fSave_fet
     S0.trPc_spk = [];
     S0.dimm_fet = size(trPc_spk);
@@ -647,7 +651,6 @@ try
     csDesc{end+1} = sprintf('Execution');
     csDesc{end+1} = sprintf('    fGpu (GPU use):         %d', P.fGpu);
     csDesc{end+1} = sprintf('    fParfor (parfor use):   %d', P.fParfor);
-    csDesc{end+1} = sprintf('    fSave_fet:              %d', get_set_(P, 'fSave_fet', 1));
     csDesc{end+1} = sprintf('    fLargeRecording:        %d', get_set_(P, 'fLargeRecording', 0));    
     csDesc{end+1} = sprintf('    Parameter file:         %s', P.vcFile_prm);
 catch
@@ -1002,7 +1005,6 @@ end
 
 % read the whole site and trim
 [cviSpk_site, cviSpk2_site] = calc_cviSpk_site_(S0, P);
-[type_fet, dimm_fet] = deal(S0.type_fet, S0.dimm_fet);
 nSites = size(P.miSites, 2);
 for iSite = 1:nSites
     vi_all1 = find(viSite_all == iSite & viFet_all == 1);
@@ -1352,8 +1354,8 @@ S_drift = calc_drift_(S0, P);
 [viLim_drift, mlDrift] = get_(S_drift, 'viLim_drift', 'mlDrift');
 S_fet = struct_add_(P, mlDrift, mlPc, viLim_drift);
 S_fet = struct_merge_(S_fet, ...
-    struct_copy_(S0, 'type_fet', 'dimm_fet', 'nLoads', ...
-        'ccviSpk_site_load', 'ccviSpk_site2_load', 'vnSpk_load'));
+    struct_copy_(S0, ...
+        'type_fet', 'dimm_fet', 'nLoads', 'ccviSpk_site_load', 'ccviSpk_site2_load'));
 
 if get_set_(P, 'fLargeRecording', 0)
     [vrRho, vrDelta, miKnn, viNneigh, memory_sort] = sort_disk_(S0, P, S_fet);
@@ -1373,11 +1375,6 @@ end %func
 
 %--------------------------------------------------------------------------
 function [mlPc, nFeatures] = get_mlPc_(S0, P)
-
-% dimm_fet = size(trPc);
-[type_fet, dimm_fet, nLoads, vnSpk_load] = ...
-    struct_get_(S0, 'type_fet', 'dimm_fet', 'nLoads', 'vnSpk_load');
-[nSites_spk, nSpk] = deal(dimm_fet(2), dimm_fet(3));
 nPcPerChan = get_set_(P, 'nPcPerChan', 0);
 mlPc = calc_mlPc_(nPcPerChan, S0.dimm_fet);
 nC_max = read_cfg_('nC_max', 0);
@@ -1606,12 +1603,16 @@ fGpu = get_(P, 'fGpu');
 [cvrRho, cvrDelta, cviNneigh, cviSpk_site] = deal(cell(nSites,1));
 fprintf('Calculating Rho (sort_ram_)\n\t'); t1=tic;
 if fParfor
-    parfor iSite = 1:nSites
-        try
-            [cvrRho{iSite}, cviSpk_site{iSite}] = rho_knn_ram_(iSite, S_fet);  
-        catch
-        end
-    end %for
+    try
+        parfor iSite = 1:nSites
+            try
+                [cvrRho{iSite}, cviSpk_site{iSite}] = rho_knn_ram_(iSite, S_fet);  
+            catch
+            end
+        end %for
+    catch
+        fprintf('sort_ram_: parfor failed for calculating Rho, retrying using a for loop\n');
+    end
 end
 vrRho = zeros(nSpk, 1, 'single');
 for iSite = 1:nSites
@@ -1629,11 +1630,15 @@ fprintf('\n\ttook %0.1fs (fGpu=%d, fParfor=%d)\n', toc(t1), fGpu, fParfor);
 % Calculate Delta
 fprintf('Calculating Delta (sort_ram_)\n\t'); t2=tic;
 if fParfor
-    parfor iSite = 1:nSites
-        try
-            [cvrDelta{iSite}, cviNneigh{iSite}] = delta_knn_ram_(iSite, vrRho, S_fet); 
-        catch
+    try
+        parfor iSite = 1:nSites
+            try
+                [cvrDelta{iSite}, cviNneigh{iSite}] = delta_knn_ram_(iSite, vrRho, S_fet); 
+            catch
+            end
         end
+    catch
+        fprintf('sort_ram_: parfor failed for calculating Delta, retrying using a for loop\n');
     end
 end %for
 vrDelta = zeros(nSpk, 1, 'single');
@@ -1938,13 +1943,11 @@ function [out1, viSpk] = load_fet_site_(S_fet, iFet, iSite, viSpk)
 
 if nargin<4, viSpk = []; end
 
-[type_fet, dimm_fet, nLoads, vcFile_prm, mlPc, vnSpk_load] = ...
-    struct_get_(S_fet, ...
-    'type_fet', 'dimm_fet', 'nLoads', 'vcFile_prm', 'mlPc', 'vnSpk_load');
+[type_fet, dimm_fet, nLoads, vcFile_prm, mlPc] = ...
+    struct_get_(S_fet, 'type_fet', 'dimm_fet', 'nLoads', 'vcFile_prm', 'mlPc');
 vcFile_prm_ = strrep(vcFile_prm, '.prm', '');
 bytes_per_spk = bytesPerSample_(type_fet) * dimm_fet(1) * dimm_fet(2);
 fh_sum = @(x,y)sum(cellfun(@numel, x(1:y-1)));
-viSpk_offset_load = cumsum([0; vnSpk_load]);
 switch iFet
     case 1
         vnSpk_load = cellfun(@(x)numel(x{iSite}), S_fet.ccviSpk_site_load);
@@ -1959,7 +1962,7 @@ switch iFet
 end
 fLoad_all = isempty(viSpk);
 if fLoad_all
-    viSpk = cell2mat_(arrayfun_(@(iLoad)cviSpk_load{iLoad} + viSpk_offset_load(iLoad), (1:nLoads)'));
+    viSpk = cell2mat_(arrayfun_(@(iLoad)cviSpk_load{iLoad}, (1:nLoads)'));
 end
 if isempty(viSpk), out1=[]; return; end
 if ~isempty(mlPc)
@@ -1973,7 +1976,7 @@ end
 iOffset_spk = 0;
 for iLoad = 1:numel(csFiles_fet)
     if ~fLoad_all
-        [vl_, vi_] = ismember(viSpk, cviSpk_load{iLoad} + viSpk_offset_load(iLoad));
+        [vl_, vi_] = ismember(viSpk, cviSpk_load{iLoad});
         if ~any(vl_), continue; end
         viiSpk_ = vi_(vl_);
         viSpk1 = (1:numel(viiSpk_)) + iOffset_spk;        
@@ -2345,25 +2348,21 @@ end %func
 % save _fet.irc and _fet2.irc
 function S0 = detect_merge_(cS_detect, viOffset_load, P)
 %    [mrPos_spk, vrPow_spk] = calc_pos_spk_(S0.trPc_spk, S0.viSite_spk, P);
-fSave_fet = get_set_(P, 'fSave_fet', 1);
 vnSpk_load = cellfun(@(x)numel(x.viSite_spk), cS_detect);
 miSpk_load = [0; cumsum(vnSpk_load)];
 miSpk_load = [miSpk_load(1:end-1)+1, miSpk_load(2:end)];
-
+viSpk_offset_load = cumsum([0; vnSpk_load]);
+cell_offset_ = @(x, iLoad)cellfun_(@(y)y + viSpk_offset_load(iLoad), x);
 nSpk = sum(vnSpk_load);
 [viSite_spk, viTime_spk, mrPos_spk] = ...
     deal(zeros(nSpk, 1, 'int32'), zeros(nSpk, 1, 'int64'), zeros(nSpk, 2, 'single'));
 [vrPow_spk, vrAmp_spk] = deal(zeros(nSpk, 1, 'single'));
 viOffset_load = int64(viOffset_load);
-[mrVp_spk, fid_fet, fid_fet2, type_fet, dimm_fet, viSite2_spk, trPc_spk, trPc2_spk] = deal([]);
+[mrVp_spk, type_fet, dimm_fet, viSite2_spk, trPc_spk, trPc2_spk] = deal([]);
 [ccviSpk_site_load, ccviSpk_site2_load] = deal(cell(size(cS_detect)));
 for iLoad = 1:numel(cS_detect)
     S1 = cS_detect{iLoad};
-    if isempty(fid_fet) && ~isempty(S1.trPc_spk) && fSave_fet
-        fid_fet = fopen(strrep(P.vcFile_prm, '.prm', '_fet.irc'), 'w');
-        type_fet = class(S1.trPc_spk);
-        dimm_fet = [size(S1.trPc_spk,1), size(S1.trPc_spk,2), nSpk];
-    elseif isempty(type_fet) && isempty(dimm_fet)
+    if isempty(type_fet) && isempty(dimm_fet)
         type_fet = S1.type_fet;
         dimm_fet = [S1.dimm_fet(1), S1.dimm_fet(2), nSpk];
     end
@@ -2373,38 +2372,19 @@ for iLoad = 1:numel(cS_detect)
     vrAmp_spk(viSpk1) = S1.vrAmp_spk;
     if isfield(S1, 'mrPos_spk') && isfield(S1, 'vrPow_spk')
         [mrPos_spk(viSpk1,:), vrPow_spk(viSpk1)] = deal(S1.mrPos_spk, S1.vrPow_spk);    
-    else
-        [mrPos_spk(viSpk1,:), vrPow_spk(viSpk1)] = calc_pos_spk_(S1.trPc_spk, S1.viSite_spk, P);            
     end
-    if ~isempty(fid_fet)
-        write_bin_(fid_fet, S1.trPc_spk); 
-    elseif ~fSave_fet
-        if isempty(trPc_spk), trPc_spk = zeros(dimm_fet, 'single'); end
-        trPc_spk(:,:,viSpk1) = S1.trPc_spk;
-    end
-    ccviSpk_site_load{iLoad} = get_(S1, 'cviSpk_site');
+    ccviSpk_site_load{iLoad} = cell_offset_(get_(S1, 'cviSpk_site'), iLoad);
     
-    % secondary peak 
-    if isempty(fid_fet2) && ~isempty(S1.trPc2_spk) && fSave_fet
-        fid_fet2 = fopen(strrep(P.vcFile_prm, '.prm', '_fet2.irc'), 'w');        
-    end    
+    % secondary peak   
     if ~isempty(get_(S1, 'viSite2_spk'))
         if isempty(viSite2_spk)
             viSite2_spk = zeros(nSpk, 1, 'int32');
         end
         viSite2_spk(viSpk1) = S1.viSite2_spk;
     end
-    if ~isempty(fid_fet2)
-        write_bin_(fid_fet2, S1.trPc2_spk); 
-    elseif ~fSave_fet
-        if isempty(trPc2_spk), trPc2_spk = zeros(dimm_fet, 'single'); end
-        trPc2_spk(:,:,viSpk1) = S1.trPc2_spk;
-    end
-    ccviSpk_site2_load{iLoad} = get_(S1, 'cviSpk2_site');
+    ccviSpk_site2_load{iLoad} = cell_offset_(get_(S1, 'cviSpk2_site'), iLoad);
     
 end
-fclose_(fid_fet);
-fclose_(fid_fet2);
 S0 = makeStruct_(viSite_spk, viTime_spk, vrAmp_spk, mrVp_spk, ...
          viSite2_spk, trPc_spk, trPc2_spk, type_fet, dimm_fet, ...
          mrPos_spk, vrPow_spk, ccviSpk_site_load, ccviSpk_site2_load, vnSpk_load); 
@@ -2414,58 +2394,43 @@ end %func
 %--------------------------------------------------------------------------
 % Save trPc_spk and trPc2_spk and remove from the struct
 function S_detect = detect_paged_save_(S_detect, P, iLoad)
-% usage
-% -----
-% [S_detect, fid_fet, fid_fet2] = detect_paged_save_(S_detect, P)
-%    Open _fet.irc and _fet2.irc files and save
-% S_detect = detect_paged_save_(S_detect, P, fid_fet, fid_fet2)
-%    Save to files
-% S_detect = detect_paged_save_(S_detect, P, iLoad)
-%    save to _fet_{iLoad}.irc and _fet2_{iLoad}.irc
-% S_detect = detect_paged_save_('merge', P, nLoads)
-%    merge _fet_{1:nLoads}.irc and also _fet2_{1:nLoads}.irc
 
-fSave_fet = get_set_(P, 'fSave_fet', 1);
-if ~fSave_fet
-    S_detect.type_fet = class(S_detect.trPc_spk);
-    S_detect.dimm_fet = size(S_detect.trPc_spk);
-    return; 
-end
+fSave_fet = get_set_(P, 'fSave_fet', 0);
+nSites = size(P.miSites, 2);
 
 vcFile_prm_ = strrep(P.vcFile_prm, '.prm', '');
-write_bin_([vcFile_prm_, sprintf('_fet_%d.irc', iLoad)], S_detect.trPc_spk);    
+if fSave_fet
+    write_bin_([vcFile_prm_, sprintf('_fet_%d.irc', iLoad)], S_detect.trPc_spk);    
+end
 S_detect.type_fet = class(S_detect.trPc_spk);
 S_detect.dimm_fet = size(S_detect.trPc_spk);
-% if get_set_(P, 'fLargeRecording', false)
 S_detect.cviSpk_site = save_paged_fet_site_(...
-    [vcFile_prm_, sprintf('_fet_site_%d.irc', iLoad)], S_detect.trPc_spk, S_detect.viSite_spk);
-% end
+    [vcFile_prm_, sprintf('_fet_site_%d.irc', iLoad)], ...
+        S_detect.trPc_spk, S_detect.viSite_spk, nSites);
 S_detect.trPc_spk = [];
-
-% save fet2
 if isempty(get_(S_detect, 'trPc2_spk'))
     S_detect.cviSpk2_site = cell(size(S_detect.cviSpk_site));
     return; 
 end   
-write_bin_([vcFile_prm_, sprintf('_fet2_%d.irc', iLoad)], S_detect.trPc2_spk);    
-% if get_set_(P, 'fLargeRecording', false)
+if fSave_fet
+    write_bin_([vcFile_prm_, sprintf('_fet2_%d.irc', iLoad)], S_detect.trPc2_spk);    
+end
 S_detect.cviSpk2_site = save_paged_fet_site_(...
-    [vcFile_prm_, sprintf('_fet2_site_%d.irc', iLoad)], S_detect.trPc2_spk, S_detect.viSite2_spk);
-% end
+    [vcFile_prm_, sprintf('_fet2_site_%d.irc', iLoad)], ...
+        S_detect.trPc2_spk, S_detect.viSite2_spk, nSites);
 S_detect.trPc2_spk = [];
 end %func
 
 
 %--------------------------------------------------------------------------
-function cviSpk_site = save_paged_fet_site_(vcFile_out, trFet_spk, viSite_spk)
+function cviSpk_site = save_paged_fet_site_(vcFile_out, trFet_spk, viSite_spk, nSites)
 % t1=tic;
-[cviSpk_site, nSites] = vi2cell_(viSite_spk);
+[cviSpk_site] = vi2cell_(viSite_spk, nSites);
 fid_w = fopen(vcFile_out, 'w');
 for iSite = 1:nSites
     write_bin_(fid_w, trFet_spk(:,:,cviSpk_site{iSite}));
 end
 fclose(fid_w);
-% fprintf('save_paged_fet_site_: took %0.1fs\n', toc(t1));
 end %func
 
 
