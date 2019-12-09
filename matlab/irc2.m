@@ -422,7 +422,7 @@ end %func
 %--------------------------------------------------------------------------
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_()
-vcVer = 'v5.2.2';
+vcVer = 'v5.2.3';
 vcDate = '12/8/2019';
 vcHash = file2hash_();
 
@@ -1348,19 +1348,17 @@ fprintf('Clustering\n');
 runtime_sort = tic;
 [mlPc, nFeatures] = get_mlPc_(S0, P);    
 S_drift = calc_drift_(S0, P);
-switch 1
-    case 1
-        [trPc_spk, nFeatures] = get_pc_sort_(S0, P);
-        [vrRho, vrDelta, miKnn, viNneigh, memory_sort] = sort_ram1_(S0, P, trPc_spk, S_drift);
-    case 2
-        [viLim_drift, mlDrift] = get_(S_drift, 'viLim_drift', 'mlDrift');
-        S_fet = struct_add_(P, mlDrift, mlPc, viLim_drift);
-        S_fet = struct_merge_(S_fet, ...
-            struct_copy_(S0, 'type_fet', 'dimm_fet', 'nLoads', ...
-                'ccviSpk_site_load', 'ccviSpk_site2_load', 'vnSpk_load'));
-        [vrRho, vrDelta, miKnn, viNneigh, memory_sort] = sort_ram2_(S0, P, S_fet);
+[viLim_drift, mlDrift] = get_(S_drift, 'viLim_drift', 'mlDrift');
+S_fet = struct_add_(P, mlDrift, mlPc, viLim_drift);
+S_fet = struct_merge_(S_fet, ...
+    struct_copy_(S0, 'type_fet', 'dimm_fet', 'nLoads', ...
+        'ccviSpk_site_load', 'ccviSpk_site2_load', 'vnSpk_load'));
+
+if get_set_(P, 'fLargeRecording', 0)
+    [vrRho, vrDelta, miKnn, viNneigh, memory_sort] = sort_disk_(S0, P, S_fet);
+else
+    [vrRho, vrDelta, miKnn, viNneigh, memory_sort] = sort_ram_(S0, P, S_fet);
 end
-%     [vrRho, vrDelta, miKnn, viNneigh, memory_sort] = sort_disk_(S0, P, S_fet);
 
 % output
 vrRho = vrRho / max(vrRho) / 10;     % divide by 10 to be compatible with previous version displays
@@ -1463,101 +1461,6 @@ else
     vc = class(gather_(vr(1)));
 end
 if nargout>=2, fGpu = isGpu_(vr); end
-end %func
-
-
-%--------------------------------------------------------------------------
-function [vrRho, vrDelta, miKnn, viNneigh, memory_sort] = sort_disk1_(S0, P, S_drift)
-
-[cviSpk_site, cviSpk2_site] = calc_cviSpk_site_(S0, P);
-% viDrift_spk = get_viDrift_spk_(S_drift);
-[viLim_drift, mlDrift] = get_(S_drift, 'viLim_drift', 'mlDrift');
-vcFile_prm = P.vcFile_prm;
-[viSite_spk, vnSpk_load, nLoads] = struct_get_(S0, 'viSite_spk', 'vnSpk_load', 'nLoads');
-nSpk = numel(viSite_spk);
-nSites = size(P.miSites,2);
-knn = get_set_(P, 'knn', 30);
-fParfor = get_set_(P, 'fParfor', true) && nSites>1;
-nPcPerChan = get_set_(P, 'nPcPerChan', 0);
-miKnn = [];
-
-% Calculate Rho
-[vrRho, vrDelta] = deal(zeros(nSpk, 1, 'single'));
-viNneigh = zeros(nSpk, 1, 'int64');
-mlPc = calc_mlPc_(nPcPerChan, S0.dimm_fet);
-P_sort = struct_add_(P, mlDrift, fParfor, mlPc);
-P_sort = struct_merge_(P_sort, ...
-    struct_copy_(S0, 'type_fet', 'dimm_fet', 'nLoads', 'ccviSpk_site_load', 'ccviSpk_site2_load'));
-
-fprintf('Calculating Rho (sort_disk_)\n\t'); t1=tic;
-[cvrRho_site, cvrDelta_site, cviNneigh_site] = deal(cell(nSites,1));
-if fParfor   
-    try
-        parfor iSite = 1:nSites 
-            try
-                [viSpk1, viSpk2] = deal(cviSpk_site{iSite}, cviSpk2_site{iSite});
-                if isempty(viSpk1), continue; end
-                mrFet12 = load_fet_drift_(P_sort, iSite, P_sort.mlPc);
-                viSpk12 = int64([viSpk1; viSpk2]); 
-                [cvrRho_site{iSite}, miKnn_] = rho_knn_(mrFet12, viSpk12, ...
-                    discretize(viSpk12, viLim_drift), numel(viSpk1), P_sort);
-                save_miKnn_site_(vcFile_prm, iSite, miKnn_);
-            catch
-                fParfor = 0;
-            end
-        end
-    catch
-        fParfor = 0;
-    end
-end
-for iSite = 1:nSites         
-    [viSpk1, viSpk2] = deal(cviSpk_site{iSite}, cviSpk2_site{iSite});
-    if isempty(viSpk1), continue; end
-    if isempty(cvrRho_site{iSite})
-        mrFet12 = load_fet_drift_(P_sort, iSite, P_sort.mlPc); 
-        viSpk12 = int64([viSpk1; viSpk2]); 
-        [cvrRho_site{iSite}, miKnn_] = rho_knn_(mrFet12, viSpk12, ...
-            discretize(viSpk12, viLim_drift), numel(viSpk1), P_sort);
-        save_miKnn_site_(vcFile_prm, iSite, miKnn_);
-    end
-    vrRho(viSpk1) = cvrRho_site{iSite};
-end
-fprintf('\n\ttook %0.1fs (fGpu=%d, fParfor=%d)\n', toc(t1), P_sort.fGpu, fParfor);
-
-fprintf('Calculating Delta (sort_disk_)\n\t'); t1=tic;
-if fParfor
-    try
-        parfor iSite = 1:nSites 
-            try
-                [viSpk1, viSpk2] = deal(cviSpk_site{iSite}, cviSpk2_site{iSite});
-                if isempty(viSpk1), continue; end
-                mrFet12 = load_fet_drift_(P_sort, iSite, P_sort.mlPc);  
-                viSpk12 = int64([viSpk1; viSpk2]); 
-                [cvrDelta_site{iSite}, cviNneigh_site{iSite}] = ...
-                    delta_knn_(mrFet12, viSpk12, [vrRho(viSpk1); vrRho(viSpk2)], ...
-                        discretize(viSpk12, viLim_drift), numel(viSpk1), P_sort);
-            catch
-                fParfor = 0;
-            end
-        end
-    catch
-        fParfor = 0;
-    end
-end
-for iSite = 1:nSites 
-    [viSpk1, viSpk2] = deal(cviSpk_site{iSite}, cviSpk2_site{iSite});
-    if isempty(viSpk1), continue; end
-    if isempty(cvrDelta_site{iSite}) && isempty(cviNneigh_site{iSite})
-        mrFet12 = load_fet_drift_(P_sort, iSite, P_sort.mlPc);  
-        viSpk12 = int64([viSpk1; viSpk2]); 
-        [cvrDelta_site{iSite}, cviNneigh_site{iSite}] = ...
-            delta_knn_(mrFet12, viSpk12, [vrRho(viSpk1); vrRho(viSpk2)], ...
-                discretize(viSpk12, viLim_drift), numel(viSpk1), P_sort);
-    end
-    [vrDelta(viSpk1), viNneigh(viSpk1)] = deal(cvrDelta_site{iSite}, cviNneigh_site{iSite});
-end
-fprintf('\n\ttook %0.1fs (fGpu=%d, fParfor=%d)\n', toc(t1), P_sort.fGpu, fParfor);
-memory_sort = memory_matlab_();
 end %func
 
 
@@ -1689,112 +1592,22 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function [vrRho, vrDelta, miKnn, viNneigh, memory_sort] = sort_ram1_(S0, P, trPc_spk, S_drift)
-
-viDrift_spk = get_viDrift_spk_(S_drift);
-mlDrift = S_drift.mlDrift;
-
-nSpk = numel(S0.viSite_spk);
-nSites = size(P.miSites,2);
-knn = get_set_(P, 'knn', 30);
-[cviSpk_site, cviSpk2_site] = calc_cviSpk_site_(S0, P);
-fParfor = get_set_(P, 'fParfor', true) && nSites>1;
-
-% Calculate Rho
-P_sort = struct_set_(P, 'mlDrift', mlDrift, 'fSort_drift', 1, 'fParfor', 0);
-[vrRho, vrDelta] = deal(zeros(nSpk, 1, 'single'));
-viNneigh = zeros(nSpk, 1, 'int64');
-miKnn = zeros(knn, nSpk, 'int64');
-[cvrRho, cmiKnn, cvrDelta, cviNneigh] = deal(cell(nSites,1));
-% send jobs
-
-if fParfor 
-    gcp_ = gcp();
-else
-    gcp_ = [];
-end
-
-fprintf('Calculating Rho (sort_ram_)\n\t'); t1=tic;
-for iSite = 1:nSites
-    [mrFet12, viSpk12, viDrift12, n1] = ...
-        pc2fet_site2_(trPc_spk, cviSpk_site, cviSpk2_site, viDrift_spk, iSite);
-    if isempty(mrFet12), continue; end
-    if ~isempty(gcp_)
-        vS_out(iSite) = parfeval(gcp_, ...
-            @(x,y,z,a)rho_knn_(x,y,z,a, P_sort), 2, mrFet12, viSpk12, viDrift12, n1);
-    else
-        [cvrRho{iSite}, cmiKnn{iSite}, P_sort.fGpu] = ...
-            rho_knn_(mrFet12, viSpk12, viDrift12, n1, P_sort);  
-    end
-end %for
-% collect jobs
-if ~isempty(gcp_)
-    for iSite1 = 1:nSites
-        [iSite, vrRho1, miKnn1] = fetchNext(vS_out);
-        [cvrRho{iSite}, cmiKnn{iSite}] = deal(vrRho1, miKnn1);
-    end
-end
-% assemble jobs
-for iSite = 1:nSites     
-    viSpk1 = cviSpk_site{iSite};
-    if isempty(viSpk1), continue; end
-    [vrRho(viSpk1), miKnn(:,viSpk1)] = deal(cvrRho{iSite}, cmiKnn{iSite});
-end %for
-[cvrRho, cmiKnn] = deal([]); % clear memory
-fprintf('\n\ttook %0.1fs (fGpu=%d, fParfor=%d)\n', toc(t1), P_sort.fGpu, fParfor);
-
-
-% Calculate Delta
-fprintf('Calculating Delta (sort_ram_)\n\t'); t2=tic;
-% send jobs
-for iSite = 1:nSites
-    [mrFet12, viSpk12, viDrift12, n1] = ...
-        pc2fet_site2_(trPc_spk, cviSpk_site, cviSpk2_site, viDrift_spk, iSite);
-    if isempty(mrFet12), continue; end
-    vrRho12 = vrRho(viSpk12);
-    if ~isempty(gcp_)
-        vS_out(iSite) = parfeval(gcp_, ...
-            @(x,y,z,a,b)delta_knn_(x,y,z,a,b, P_sort), 2, mrFet12, viSpk12, vrRho12, viDrift12, n1);
-    else
-        [cvrDelta{iSite}, cviNneigh{iSite}, P_sort.fGpu] = ...
-            delta_knn_(mrFet12, viSpk12, vrRho12, viDrift12, n1, P_sort);
-    end
-end %for
-% collect jobs
-if ~isempty(gcp_)
-    for iSite1 = 1:nSites
-        [iSite, vrDelta1, viNneigh1] = fetchNext(vS_out);
-        [cvrDelta{iSite}, cviNneigh{iSite}] = deal(vrDelta1, viNneigh1);
-    end
-end
-% assemble jobs
-for iSite = 1:nSites     
-    viSpk1 = cviSpk_site{iSite};
-    if isempty(viSpk1), continue; end
-    [vrDelta(viSpk1), viNneigh(viSpk1)] = deal(cvrDelta{iSite}, cviNneigh{iSite});
-end %for
-fprintf('\n\ttook %0.1fs (fGpu=%d, fParfor=%d)\n', toc(t2), P_sort.fGpu, fParfor);
-memory_sort = memory_matlab_();
-end %func
-
-
-%--------------------------------------------------------------------------
-function [vrRho, vrDelta, miKnn, viNneigh, memory_sort] = sort_ram2_(S0, P, S_fet)
+function [vrRho, vrDelta, miKnn, viNneigh, memory_sort] = sort_ram_(S0, P, S_fet)
 
 %viDrift_spk = get_viDrift_spk_(S_drift);
 nSpk = numel(S0.viSite_spk);
 nSites = size(P.miSites,2);
-knn = get_set_(P, 'knn', 30);
-% [cviSpk_site, cviSpk2_site] = calc_cviSpk_site_(S0, P);
+miKnn = [];
 fParfor = get_set_(P, 'fParfor', true) && nSites>1;
 fGpu = get_(P, 'fGpu');
+
 % Calculate Rho
-[cvrRho, cmiKnn, cvrDelta, cviNneigh, cviSpk_site] = deal(cell(nSites,1));
+[cvrRho, cvrDelta, cviNneigh, cviSpk_site] = deal(cell(nSites,1));
 fprintf('Calculating Rho (sort_ram_)\n\t'); t1=tic;
 if fParfor
     try
         parfor iSite = 1:nSites
-            [cvrRho{iSite}, cmiKnn{iSite}, cviSpk_site{iSite}] = rho_knn_ram_(iSite, S_fet);  
+            [cvrRho{iSite}, cviSpk_site{iSite}] = rho_knn_ram_(iSite, S_fet);  
         end %for
     catch
         fParfor = 0;
@@ -1802,18 +1615,17 @@ if fParfor
 end
 if ~fParfor
     for iSite = 1:nSites
-        [cvrRho{iSite}, cmiKnn{iSite}, cviSpk_site{iSite}] = rho_knn_ram_(iSite, S_fet);  
+        [cvrRho{iSite}, cviSpk_site{iSite}] = rho_knn_ram_(iSite, S_fet);  
     end %for
 end
 % assemble jobs
 vrRho = zeros(nSpk, 1, 'single');
-miKnn = zeros(knn, nSpk, 'int64');
 for iSite = 1:nSites     
     viSpk1 = cviSpk_site{iSite};
     if isempty(viSpk1), continue; end
-    [vrRho(viSpk1), miKnn(:,viSpk1)] = deal(cvrRho{iSite}, cmiKnn{iSite});
+    vrRho(viSpk1) = cvrRho{iSite};
 end %for
-[cvrRho, cmiKnn] = deal([]); % clear memory
+cvrRho = [];
 fprintf('\n\ttook %0.1fs (fGpu=%d, fParfor=%d)\n', toc(t1), fGpu, fParfor);
 
 
@@ -1847,67 +1659,6 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function [trPc, nFeatures] = get_pc_sort_(S0, P)
-
-% dimm_fet = size(trPc);
-[type_fet, dimm_fet, nLoads, vnSpk_load] = ...
-    struct_get_(S0, 'type_fet', 'dimm_fet', 'nLoads', 'vnSpk_load');
-[nSites_spk, nSpk] = deal(dimm_fet(2), dimm_fet(3));
-nPcPerChan = get_set_(P, 'nPcPerChan', 0);
-mlPc = calc_mlPc_(nPcPerChan, S0.dimm_fet);
-nC_max = read_cfg_('nC_max', 0);
-nFeatures = sum(mlPc(:));
-if nFeatures > nC_max
-    fprintf('get_pc_sort_: feature trimmed %d->%d\n', nFeatures, nC_max);
-    nFeatures = nC_max;
-    vi_ = find(mlPc(:));
-    mlPc(vi_(nC_max+1:end)) = false;
-end
-
-% return empty if trPc_spk should be loaded partially
-if get_set_(P, 'fLargeRecording', 0)
-    trPc=[]; 
-    return; 
-end
-vcFile_prm_ = strrep(P.vcFile_prm, '.prm', '');
-csFiles_in1 = arrayfun_(@(x)[vcFile_prm_, sprintf('_fet_%d.irc',x)], 1:nLoads);
-try
-    if isempty(get_(S0, 'viSite2_spk'))
-        trPc = zeros([nFeatures, 1, nSpk], type_fet);
-        csFiles_in2 = [];
-    else
-        trPc = zeros([nFeatures, 2, nSpk], type_fet);
-        csFiles_in2 = arrayfun_(@(x)[vcFile_prm_, sprintf('_fet2_%d.irc',x)], 1:nLoads);
-    end
-catch
-    fprintf('get_pc_sort_: memory out, switched to `fLargeRecording=1`\n');
-    trPc=[]; 
-    return; 
-end
-
-fprintf('get_pc_sort_...'); t1=tic;
-
-tr2mr_ = @(x)reshape(x, [], size(x,3));
-pc2fet_ = @(x)reshape(x(mlPc(:),:), [sum(mlPc(:)), 1, size(x,2)]);
-loadfet_ = @(csFiles, iLoad)pc2fet_(tr2mr_(...
-    load_bin_(csFiles{iLoad}, type_fet, ...
-        [dimm_fet(1), dimm_fet(2), vnSpk_load(iLoad)])));
-
-iSpk_offset = 0;
-for iLoad = 1:nLoads
-    nSpk1 = vnSpk_load(iLoad);
-    viSpk1 = (1:nSpk1) + iSpk_offset;
-    trPc(:,1,viSpk1) = loadfet_(csFiles_in1, iLoad);
-    if ~isempty(csFiles_in2)
-        trPc(:,2,viSpk1) = loadfet_(csFiles_in2, iLoad);
-    end
-    iSpk_offset = viSpk1(end);
-end
-fprintf(' took %0.1fs\n', toc(t1));
-end %func
-
-
-%--------------------------------------------------------------------------
 function [mlPc, vnPc_site] = calc_mlPc_(nPcPerChan, dimm_fet)
 [nPc_spk, nSites_spk] = deal(dimm_fet(1), dimm_fet(2));
 
@@ -1934,59 +1685,7 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function mrFet = load_pc2fet_site1_(fid_r, cviSpk_site, iSite, P_)
-% skip, load, and return 
-[mlPc, dimm_fet, type_fet] = struct_get_(P_, 'mlPc', 'dimm_fet', 'type_fet');
-vnSpk_site = cellfun(@numel, cviSpk_site);
-if iSite==1
-    iOffset = 0;    
-else
-    iOffset = sum(vnSpk_site(1:iSite-1));
-end
-nSpk1 = vnSpk_site(iSite);
-nBytes_skip = iOffset * bytesPerSample_(type_fet) * prod(dimm_fet(1:2));
-fseek(fid_r, nBytes_skip, 'bof');
-trPc = load_bin_(fid_r, type_fet, [dimm_fet(1)*dimm_fet(2), nSpk1]);
-mrFet = reshape(trPc(mlPc(:),:), [sum(mlPc(:)), nSpk1]); 
-end %func
-
-
-%--------------------------------------------------------------------------
-function [mrFet12, viSpk12, viDrift12, n1] = pc2fet_site2_(trPc_spk, cviSpk_site, cviSpk2_site, viDrift_spk, iSite)
-% decide whether to use 1, 2, or 3 features
-
-if isempty(cviSpk_site{iSite})
-    [mrFet12, viSpk12, viDrift12] = deal([]);
-    n1 = 0;
-    return;
-end
-% [nSites_fet, miSites] = struct_get_(P, 'nSites_fet', 'miSites');
-
-[viSpk1, viSpk2] = deal(cviSpk_site{iSite}, cviSpk2_site{iSite});
-viSpk12 = [viSpk1; viSpk2];
-n1 = numel(viSpk1);
-
-if isempty(trPc_spk)
-    mrFet12 = [];
-elseif isstruct(trPc_spk)
-    mrFet12 = trPc_spk;
-    mrFet12.iSite = iSite;
-elseif isempty(viSpk2)
-    mrFet12 = squeeze_(trPc_spk(:,1,viSpk1),2);
-else
-    mrFet12 = [squeeze_(trPc_spk(:,1,viSpk1),2), squeeze_(trPc_spk(:,2,viSpk2),2)];
-end
-        
-if isempty(viDrift_spk)
-    viDrift12 = [];
-else
-    viDrift12 = viDrift_spk(viSpk12);
-end    
-end %func
-
-
-%--------------------------------------------------------------------------
-function [vrRho1, miKnn1, viSpk1] = rho_knn_ram_(iSite, S_fet)
+function [vrRho1, viSpk1, miKnn1] = rho_knn_ram_(iSite, S_fet)
 % S_fet contains {type_fet, dimm_fet, nLoads, vcFile_prm, mlPc, mlDrift, viLim_drift}
     
 [mlDrift, viLim_drift, vcFile_prm] = ...
@@ -1994,8 +1693,8 @@ function [vrRho1, miKnn1, viSpk1] = rho_knn_ram_(iSite, S_fet)
 nDrift = size(mlDrift,1);
 knn = get_set_(S_fet, 'knn', 30);
 
-[mrFet1, viSpk1] = load_fet2pc_site_(S_fet, 1, iSite);
-[mrFet12, viSpk12] = load_fet2pc_site_(S_fet, 2, iSite); mrFet12 = [mrFet1, mrFet12]; viSpk12 = int64([viSpk1; viSpk12]);
+[mrFet1, viSpk1] = load_fet_site_(S_fet, 1, iSite);
+[mrFet12, viSpk12] = load_fet_site_(S_fet, 2, iSite); mrFet12 = [mrFet1, mrFet12]; viSpk12 = int64([viSpk1; viSpk12]);
 
 cvii1_drift = vi2cell_(discretize(viSpk1, viLim_drift), nDrift);
 viDrift12 = discretize(viSpk12, viLim_drift);
@@ -2016,7 +1715,7 @@ for iDrift = 1:nDrift
     end
     miKnn1(:,vii1_) = miKnn_;
 end    
-if nargout==1
+if nargout<3
     save_miKnn_site_(vcFile_prm, iSite, miKnn1);
 end
 end %func
@@ -2072,8 +1771,8 @@ function [vrRho1, miKnn1] = rho_knn_disk_aux_(iSite, viSpk1, viSpk2, vii1, vii2,
 % [vii1_, vii2_] = deal(cviiSpk1_drift{iDrift}, cviiSpk2_drift{iDrift});
 if isempty(vii1), [vrRho1, miKnn1] = deal([]); return; end    
 knn = get_set_(S_fet, 'knn', 30);
-mrFet1_ = load_fet2pc_site_(S_fet, 1, iSite, viSpk1(vii1));    
-mrFet2_ = load_fet2pc_site_(S_fet, 2, iSite, viSpk2(vii2));    
+mrFet1_ = load_fet_site_(S_fet, 1, iSite, viSpk1(vii1));    
+mrFet2_ = load_fet_site_(S_fet, 2, iSite, viSpk2(vii2));    
 [vrRho1, ~, miKnn1] = cuda_knn_([mrFet1_, mrFet2_], mrFet1_, S_fet);
 vrRho1 = gather_(1./vrRho1);
 
@@ -2094,8 +1793,8 @@ SINGLE_INF = 3.402E+38;
 [mlDrift, viLim_drift, vcFile_prm] = ...
     struct_get_(S_fet, 'mlDrift', 'viLim_drift', 'vcFile_prm');
 nDrift = size(mlDrift,1);
-[mrFet1, viSpk1] = load_fet2pc_site_(S_fet, 1, iSite);
-[mrFet12, viSpk12] = load_fet2pc_site_(S_fet, 2, iSite); mrFet12 = [mrFet1, mrFet12]; viSpk12 = int64([viSpk1; viSpk12]);
+[mrFet1, viSpk1] = load_fet_site_(S_fet, 1, iSite);
+[mrFet12, viSpk12] = load_fet_site_(S_fet, 2, iSite); mrFet12 = [mrFet1, mrFet12]; viSpk12 = int64([viSpk1; viSpk12]);
 
 cvii1_drift = vi2cell_(discretize(viSpk1, viLim_drift), nDrift);
 viDrift12 = discretize(viSpk12, viLim_drift);
@@ -2176,28 +1875,6 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function [vrDelta1, viNneigh1] = delta_knn_ram1_(iSite, viSpk1, viSpk2, vrRho, S_fet)
-% S_fet contains {type_fet, dimm_fet, nLoads, vcFile_prm, mlPc, mlDrift, viLim_drift}
-    
-[mlDrift, viLim_drift, vcFile_prm] = ...
-    struct_get_(S_fet, 'mlDrift', 'viLim_drift', 'vcFile_prm');
-nDrift = size(mlDrift,1);
-cviiSpk1_drift = vi2cell_(discretize(viSpk1, viLim_drift), nDrift);
-cviiSpk2_drift = vi2cell_(discretize(viSpk2, viLim_drift), nDrift);
-[vrRho1, vrRho2] = deal(vrRho(viSpk1), vrRho(viSpk2));
-n1 = numel(viSpk1);
-vrDelta1 = zeros(n1, 1, 'single');
-viNneigh1 = zeros(n1, 1, 'int64');
-for iDrift = 1:nDrift   
-    viiSpk1 = cviiSpk1_drift{iDrift};
-    [vrDelta1(viiSpk1), viNneigh1(viiSpk1)] = ...
-        delta_knn_disk_aux_(iSite, viSpk1, viSpk2, ...
-            cviiSpk1_drift{iDrift}, cviiSpk2_drift{iDrift}, vrRho1, vrRho2, S_fet);
-end    
-end %func
-
-
-%--------------------------------------------------------------------------
 function [vrDelta1, viNneigh1] = delta_knn_disk_(iSite, viSpk1, viSpk2, vrRho, S_fet)
 % S_fet contains {type_fet, dimm_fet, nLoads, vcFile_prm, mlPc, mlDrift, viLim_drift}
     
@@ -2245,8 +1922,8 @@ function [vrDelta1, viNneigh1] = delta_knn_disk_aux_(iSite, viSpk1, viSpk2, vii1
 % [vii1_, vii2_] = deal(cviiSpk1_drift{iDrift}, cviiSpk2_drift{iDrift});
 if isempty(vii1), [vrDelta1, viNneigh1] = deal([]); return; end    
 
-mrFet1_ = load_fet2pc_site_(S_fet, 1, iSite, viSpk1(vii1));    
-mrFet2_ = load_fet2pc_site_(S_fet, 2, iSite, viSpk2(vii2));    
+mrFet1_ = load_fet_site_(S_fet, 1, iSite, viSpk1(vii1));    
+mrFet2_ = load_fet_site_(S_fet, 2, iSite, viSpk2(vii2));    
 vrRho12 = [vrRho1(vii1); vrRho2(vii2)];
 [vrDelta1, viNneigh1] = cuda_delta_knn_([mrFet1_, mrFet2_], vrRho12, [], numel(vii1), S_fet);
 vrDelta1 = gather_(vrDelta1);
@@ -2260,7 +1937,7 @@ end %func
 %--------------------------------------------------------------------------
 % load specific site and drift
 % todo: speed up by using cache
-function [out1, viSpk] = load_fet2pc_site_(S_fet, iFet, iSite, viSpk)
+function [out1, viSpk] = load_fet_site_(S_fet, iFet, iSite, viSpk)
 % usage
 % ----
 % [out1, viSpk] = load_fet2pc_site_(S_fet, iFet, iSite) % returns all spk
@@ -2335,39 +2012,6 @@ end %func
    
     
 %--------------------------------------------------------------------------
-function [vrRho1, miKnn1, fGpu] = rho_knn_(mrFet12, viSpk12, viDrift12, n1, P)
-% mrFet12: matrix or struct
-
-[fGpu, mlDrift] = struct_get_(P, 'fGpu', 'mlDrift');
-if isempty(mrFet12)
-    [vrRho1, miKnn1] = deal([]);
-    return;
-end
-
-nT_drift = size(mlDrift,1);
-viDrift_spk1 = viDrift12(1:n1);
-knn = get_set_(P, 'knn', 30);
-cvi1 = vi2cell_(viDrift_spk1, nT_drift);
-vrRho1 = zeros(n1, 1, 'single');
-miKnn1 = zeros(knn, n1, 'int64');
-for iDrift = 1:nT_drift
-    vi1 = cvi1{iDrift};
-    if isempty(vi1), continue; end    
-    vi2 = find(mlDrift(viDrift12, iDrift));
-    [vrRho_, fGpu, miKnn_] = cuda_knn_(mrFet12(:,vi2), mrFet12(:,vi1), P);
-    vrRho1(vi1) = gather_(1./vrRho_);
-    
-    miKnn_ = vi2(gather_(miKnn_));    
-    n2 = size(miKnn_,1);
-    if n2 < knn       
-        miKnn_ = [miKnn_; repmat(miKnn_(end,:), [knn-n2, 1])];
-    end
-    miKnn1(:,vi1) = viSpk12(miKnn_);
-end
-end %func
-
-
-%--------------------------------------------------------------------------
 function [vrKnn, fGpu, miKnn] = cuda_knn_(mrFet2, mrFet1, P)
 % it computes the index of KNN
 
@@ -2422,46 +2066,6 @@ for i1 = 1:nStep_knn:n1
     [mrKnn1, miKnn(:,vi1_)] = pdist2(mrFet2_T, mrFet1(:,vi1_)', 'euclidean', 'Smallest', knn);
     vrKnn(vi1_) = mrKnn1(end,:);
 end %for
-end %func
-
-
-%--------------------------------------------------------------------------
-function [vrDelta1, viNneigh1, fGpu] = delta_knn_(mrFet12, viSpk12, vrRho12, viDrift12, n1, P)
-if isempty(mrFet12)
-    [vrDelta1, viNneigh1] = deal([]);
-    return;
-end
-mlDrift = P.mlDrift;
-% fGpu = isGpu_(mrFet12); 
-knn = get_set_(P, 'knn', 30);
-SINGLE_INF = 3.402E+38;
-fGpu = P.fGpu;
-nT_drift = size(mlDrift,1);
-vrRho12 = vrRho12(:);
-[viDrift_spk1, vrRho1] = deal(viDrift12(1:n1)', vrRho12(1:n1)');
-[vrDelta1, viNneigh1] = deal([]);
-for iDrift = 1:nT_drift
-    vi1_ = find(viDrift_spk1==iDrift);
-    if isempty(vi1_), continue; end
-    vi2_ = find(mlDrift(viDrift12, iDrift));
-    [vrDelta1_, viNneigh1_, fGpu] = cuda_delta_knn_(mrFet12, vrRho12, vi2_, vi1_, P);
-    if isempty(vrDelta1)
-        vrDelta1 = zeros([1, n1], 'like', vrDelta1_);
-        viNneigh1 = zeros([1, n1], 'like', viNneigh1_);
-    elseif ~isGpu_(vrDelta1) && fGpu
-        vrDelta1_ = gather_(vrDelta1_);
-        viNneigh1_ = gather_(viNneigh1_);
-    end
-    vrDelta1(vi1_) = vrDelta1_;
-    viNneigh1(vi1_) = viNneigh1_;
-end
-
-vrDelta1 = gather_(vrDelta1) .* vrRho1;
-viNneigh1 = gather_(viNneigh1);
-viNan = find(isnan(vrDelta1) | isinf(vrDelta1));
-viNneigh1(viNan) = viNan;
-vrDelta1(viNan) = sqrt(SINGLE_INF);
-viNneigh1 = viSpk12(viNneigh1);
 end %func
 
 
