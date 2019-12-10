@@ -431,7 +431,7 @@ end %func
 %--------------------------------------------------------------------------
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_()
-vcVer = 'v5.2.5';
+vcVer = 'v5.2.6';
 vcDate = '12/9/2019';
 vcHash = file2hash_();
 
@@ -880,7 +880,8 @@ if ~fParfor
         cS_clu{iClu} = wave_similarity_clu_pre_(cviSpk_clu{iClu}, S_pre);
     end
 end
-[ctrPc_clu, cviSite_clu, viClu_remove] = merge_clu_pre_(cS_clu, S0, P);
+[ctrPc_clu, cviSite_clu, viClu_remove] = merge_clu_pre_load_(cS_clu, S0, P);
+% [ctrPc_clu, cviSite_clu, viClu_remove] = merge_clu_pre_(cS_clu, S0, P);
 fprintf('\n\ttook %0.1fs\n', toc(t_template));
 
 % merge the templates: todo, faster code
@@ -904,49 +905,6 @@ end %func
 
 
 %--------------------------------------------------------------------------
-% multiply triangular weighing factor
-function [ctrPc_clu, cviSite_clu, viClu_remove] = merge_clu_pre_(cS_pre3, S0, P)
-[ctrPc_clu, cviSite_clu] = deal(cell(size(cS_pre3)));
-
-% P.fLargeRecording = 0; % debug
-
-trPc_spk = load_fet_(S0, P, 1);
-if isempty(trPc_spk)
-    [ctrPc_clu, cviSite_clu] = merge_clu_pre_load_(cS_pre3, S0, P);
-else
-    switch get_set_(P, 'mode_merge_mean', 2)
-        case 1, mean_ = @(y,x)mean(y(:,:,x),3);
-        case 2
-            nSites_fet = min(S0.dimm_fet(2), P.nPc_spk);
-            mean_ = @(y,x)mean(y(:,1:nSites_fet,x),3);
-        case 3, mean_ = @(y,x)median(y(:,:,x),3);
-    end
-
-    for iClu = 1:numel(cS_pre3)
-        S_pre3 = cS_pre3{iClu};
-        cviSite_clu{iClu} = [S_pre3.viSite1(:); S_pre3.viSite2(:)];
-        trPc_clu1 = cellfun_(@(x)mean_(trPc_spk,x), S_pre3.cviSpk1);
-        ctrPc_clu{iClu} = cat(3,trPc_clu1{:}); % faster than pre-allocating
-    end
-    trPc_spk = []; % clear from memory
-
-    % Second peak average
-    trPc2_spk = load_fet_(S0, P, 2);
-    if ~isempty(trPc2_spk)
-        for iClu = 1:numel(cS_pre3)
-            S_pre3 = cS_pre3{iClu};
-            trPc_clu2 = cellfun_(@(x)mean_(trPc2_spk,x), S_pre3.cviSpk2);
-            trPc_clu2 = cat(3,trPc_clu2{:});
-            ctrPc_clu{iClu} = cat(3, ctrPc_clu{iClu}, trPc_clu2);
-        end
-    end
-end
-% remove low-snr peaks
-viClu_remove = find_low_snr_clu_(S0, P, ctrPc_clu, cviSite_clu);
-end %func
-
-
-%--------------------------------------------------------------------------
 function viClu_remove = find_low_snr_clu_(S0, P, ctrPc_clu, cviSite_clu)
 [nRemoved, nTotal] = deal(0);
 for iClu = 1:numel(ctrPc_clu)
@@ -966,25 +924,25 @@ end %func
 
 %--------------------------------------------------------------------------
 % long recording version
-function [ctrPc_clu, cviSite_clu] = merge_clu_pre_load_(cS_pre3, S0, P)
-[ctrPc_clu, cviSite_clu] = deal(cell(size(cS_pre3)));
+function [ctrPc_clu, cviSite_clu, viClu_remove] = merge_clu_pre_load_(cS_pre, S0, P)
+cviSite_clu = cell(size(cS_pre));
 
 % P.fLargeRecording=0; % debug
-[cviFet_clu, ccviSpk_clu] = deal(cell(size(cS_pre3)));
-for iClu = 1:numel(cS_pre3)
-    S_pre3 = cS_pre3{iClu};
-    cviSite_clu{iClu} = [S_pre3.viSite1(:); S_pre3.viSite2(:)];    
-    n1 = numel(S_pre3.viSite1);
-    n2 = numel(S_pre3.viSite2);
-    cviFet_clu{iClu} = [repmat(1,n1,1); repmat(2,n2,1)];
+[cviFet_clu, ccviSpk_clu] = deal(cell(size(cS_pre)));
+for iClu = 1:numel(cS_pre)
+    S_pre = cS_pre{iClu};
+    cviSite_clu{iClu} = [S_pre.viSite1(:); S_pre.viSite2(:)];    
+    n1 = numel(S_pre.viSite1);
+    n2 = numel(S_pre.viSite2);
+    cviFet_clu{iClu} = [ones(n1,1); repmat(2,n2,1)];
     if n2>0
-        ccviSpk_clu{iClu} = [cS_pre3{iClu}.cviSpk1, cS_pre3{iClu}.cviSpk2];
+        ccviSpk_clu{iClu} = [cS_pre{iClu}.cviSpk1, cS_pre{iClu}.cviSpk2];
     else
-        ccviSpk_clu{iClu} = cS_pre3{iClu}.cviSpk1;
+        ccviSpk_clu{iClu} = cS_pre{iClu}.cviSpk1;
     end
 end
 ctrPc_clu = mean_fet_site_load_(cviSite_clu, cviFet_clu, ccviSpk_clu, S0, P);
-% viClu_remove = find_low_snr_clu_(S0, P, ctrPc_clu, cviSite_clu);
+viClu_remove = find_low_snr_clu_(S0, P, ctrPc_clu, cviSite_clu);
 end %func
 
 
@@ -995,28 +953,24 @@ viSite_all = cell2mat_(cviSite_clu);
 viFet_all = cell2mat_(cviFet_clu);
 cviSpk_all = [ccviSpk_clu{:}];
 ctrPc_all = cell(size(cviSpk_all));
-switch get_set_(P, 'mode_merge_mean', 2)
-    case 1, mean_ = @(y,x)mean(y(:,:,x),3);
-    case 2
-        nSites_fet = min(S0.dimm_fet(2), P.nPc_spk);
-        mean_ = @(y,x)mean(y(:,1:nSites_fet,x),3);
-    case 3, mean_ = @(y,x)median(y(:,:,x),3);
-end
 
 % read the whole site and trim
+S0.vcFile_prm = P.vcFile_prm;
 [cviSpk_site, cviSpk2_site] = calc_cviSpk_site_(S0, P);
 nSites = size(P.miSites, 2);
 for iSite = 1:nSites
     vi_all1 = find(viSite_all == iSite & viFet_all == 1);
-    [trPc_site1, trPc_site2] = load_fet_drift_(S0, iSite);
-    
+    trPc_ = load_fet_site_(S0, 1, iSite);    
     [~,cviSpk_all1] = cellfun_(@(x)ismember(x,cviSpk_site{iSite}), cviSpk_all(vi_all1));
-    ctrPc_all(vi_all1) = cellfun_(@(x)mean_(trPc_site1,x), cviSpk_all1);
-    if ~isempty(trPc_site2)
+    ctrPc_all(vi_all1) = cellfun_(@(x)mean(trPc_(:,:,x),3), cviSpk_all1);
+
+    trPc_ = load_fet_site_(S0, 2, iSite); 
+    if ~isempty(trPc_)
         vi_all2 = find(viSite_all == iSite & viFet_all == 2);
         [~,cviSpk_all2] = cellfun_(@(x)ismember(x,cviSpk2_site{iSite}), cviSpk_all(vi_all2));
-        ctrPc_all(vi_all2) = cellfun_(@(x)mean_(trPc_site2,x), cviSpk_all2);
+        ctrPc_all(vi_all2) = cellfun_(@(x)mean(trPc_(:,:,x),3), cviSpk_all2);
     end
+    trPc_ = [];
 end
 
 % repackage to clu index
@@ -1357,11 +1311,7 @@ S_fet = struct_merge_(S_fet, ...
     struct_copy_(S0, ...
         'type_fet', 'dimm_fet', 'nLoads', 'ccviSpk_site_load', 'ccviSpk_site2_load'));
 
-if get_set_(P, 'fLargeRecording', 0)
-    [vrRho, vrDelta, miKnn, viNneigh, memory_sort] = sort_disk_(S0, P, S_fet);
-else
-    [vrRho, vrDelta, miKnn, viNneigh, memory_sort] = sort_ram_(S0, P, S_fet);
-end
+[vrRho, vrDelta, miKnn, viNneigh, memory_sort] = sort_ram_(S0, P, S_fet);
 
 % output
 vrRho = vrRho / max(vrRho) / 10;     % divide by 10 to be compatible with previous version displays
@@ -1385,41 +1335,6 @@ if nFeatures > nC_max
     vi_ = find(mlPc(:));
     mlPc(vi_(nC_max+1:end)) = false;
 end
-end %func
-
-
-%--------------------------------------------------------------------------
-function [vrRho, vrDelta, miKnn, viNneigh, memory_sort] = sort_disk_(S0, P, S_fet)
-
-[cviSpk_site, cviSpk2_site] = calc_cviSpk_site_(S0, P);
-% viDrift_spk = get_viDrift_spk_(S_drift);
-[viSite_spk] = struct_get_(S0, 'viSite_spk');
-nSpk = numel(viSite_spk);
-nSites = size(P.miSites,2);
-fParfor = get_set_(P, 'fParfor', true) && nSites>1;
-nPcPerChan = get_set_(P, 'nPcPerChan', 0);
-miKnn = [];
-
-% Calculate Rho
-[vrRho, vrDelta] = deal(zeros(nSpk, 1, 'single'));
-viNneigh = zeros(nSpk, 1, 'int64');
-
-fprintf('Calculating Rho (sort_disk_)\n\t'); t1=tic;
-for iSite = 1:nSites         
-    [viSpk1, viSpk2] = deal(cviSpk_site{iSite}, cviSpk2_site{iSite});
-    if isempty(viSpk1), continue; end
-    vrRho(viSpk1) = rho_knn_disk_(iSite, viSpk1, viSpk2, S_fet);    
-end
-fprintf('\n\ttook %0.1fs (fGpu=%d, fParfor=%d)\n', toc(t1), S_fet.fGpu, fParfor);
-
-fprintf('Calculating Delta (sort_disk_)\n\t'); t1=tic;
-for iSite = 1:nSites 
-    [viSpk1, viSpk2] = deal(cviSpk_site{iSite}, cviSpk2_site{iSite});
-    if isempty(viSpk1), continue; end
-    [vrDelta(viSpk1), viNneigh(viSpk1)] = delta_knn_disk_(iSite, viSpk1, viSpk2, vrRho, S_fet);
-end
-fprintf('\n\ttook %0.1fs (fGpu=%d, fParfor=%d)\n', toc(t1), S_fet.fGpu, fParfor);
-memory_sort = memory_matlab_();
 end %func
 
 
@@ -1598,11 +1513,12 @@ nSites = size(P.miSites,2);
 miKnn = [];
 fParfor = get_set_(P, 'fParfor', true) && nSites>1;
 fGpu = get_(P, 'fGpu');
+fLargeRecording = get_set_(P, 'fLargeRecording', 0);
 
 % Calculate Rho
 [cvrRho, cvrDelta, cviNneigh, cviSpk_site] = deal(cell(nSites,1));
 fprintf('Calculating Rho (sort_ram_)\n\t'); t1=tic;
-if fParfor
+if fParfor && ~fLargeRecording
     try
         parfor iSite = 1:nSites
             try
@@ -1616,8 +1532,12 @@ if fParfor
 end
 vrRho = zeros(nSpk, 1, 'single');
 for iSite = 1:nSites
-    if isempty(cvrRho{iSite}) && isempty(cviSpk_site{iSite})
-        [cvrRho{iSite}, cviSpk_site{iSite}] = rho_knn_ram_(iSite, S_fet);  
+    if (isempty(cvrRho{iSite}) && isempty(cviSpk_site{iSite})) || fLargeRecording
+        if fParfor || fLargeRecording
+            [cvrRho{iSite}, cviSpk_site{iSite}] = rho_knn_disk_(iSite, S_fet);
+        else
+            [cvrRho{iSite}, cviSpk_site{iSite}] = rho_knn_ram_(iSite, S_fet);  
+        end
     end
     viSpk1 = cviSpk_site{iSite};
     if isempty(viSpk1), continue; end
@@ -1629,7 +1549,7 @@ fprintf('\n\ttook %0.1fs (fGpu=%d, fParfor=%d)\n', toc(t1), fGpu, fParfor);
 
 % Calculate Delta
 fprintf('Calculating Delta (sort_ram_)\n\t'); t2=tic;
-if fParfor
+if fParfor && ~fLargeRecording
     try
         parfor iSite = 1:nSites
             try
@@ -1644,8 +1564,12 @@ end %for
 vrDelta = zeros(nSpk, 1, 'single');
 viNneigh = zeros(nSpk, 1, 'int64');
 for iSite = 1:nSites
-    if isempty(cvrDelta{iSite}) && isempty(cviNneigh{iSite})
-        [cvrDelta{iSite}, cviNneigh{iSite}] = delta_knn_ram_(iSite, vrRho, S_fet);  
+    if (isempty(cvrDelta{iSite}) && isempty(cviNneigh{iSite})) || fLargeRecording
+        if fParfor || fLargeRecording
+            [cvrDelta{iSite}, cviNneigh{iSite}] = delta_knn_disk_(iSite, vrRho, S_fet);  
+        else
+            [cvrDelta{iSite}, cviNneigh{iSite}] = delta_knn_ram_(iSite, vrRho, S_fet);  
+        end
     end
     viSpk1 = cviSpk_site{iSite};
     if isempty(viSpk1), continue; end
@@ -1692,6 +1616,7 @@ nDrift = size(mlDrift,1);
 knn = get_set_(S_fet, 'knn', 30);
 
 [mrFet1, viSpk1] = load_fet_site_(S_fet, 1, iSite);
+if isempty(viSpk1), [vrRho1, miKnn1] = deal([]); return; end
 [mrFet12, viSpk12] = load_fet_site_(S_fet, 2, iSite); mrFet12 = [mrFet1, mrFet12]; viSpk12 = int64([viSpk1; viSpk12]);
 
 cvii1_drift = vi2cell_(discretize(viSpk1, viLim_drift), nDrift);
@@ -1720,67 +1645,175 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function vrRho1 = rho_knn_disk_(iSite, viSpk1, viSpk2, S_fet)
+function [vrRho1, viSpk1] = rho_knn_disk_(iSite, S_fet)
 % S_fet contains {type_fet, dimm_fet, nLoads, vcFile_prm, mlPc, mlDrift, viLim_drift}
     
 [mlDrift, viLim_drift, vcFile_prm] = ...
     struct_get_(S_fet, 'mlDrift', 'viLim_drift', 'vcFile_prm');
-n1 = numel(viSpk1);
 nDrift = size(mlDrift,1);
-knn = get_set_(S_fet, 'knn', 30);
-[cvrRho_drift1, cmiKnn_drift1] = deal(cell(1, nDrift));
-cviiSpk1_drift = vi2cell_(discretize(viSpk1, viLim_drift), nDrift);
-cviiSpk2_drift = vi2cell_(discretize(viSpk2, viLim_drift), nDrift);
+vcFile_prm_ = strrep(vcFile_prm, '.prm', '');
 
-fParfor = get_set_(S_fet, 'fParfor', 0);
-if fParfor
-    try
-        for iDrift = 1:nDrift    
-            [cvrRho_drift1{iDrift}, cmiKnn_drift1{iDrift}] = ...
-                rho_knn_disk_aux_(iSite, viSpk1, viSpk2, ...
-                    cviiSpk1_drift{iDrift}, cviiSpk2_drift{iDrift}, S_fet);
-        end
-    catch
-        fParfor = 0;
-    end
+% save mrFet1, index by drift
+[mrFet1, viSpk1] = load_fet_site_(S_fet, 1, iSite);
+if isempty(viSpk1), vrRho1 = []; return; end
+cvii1_drift = vi2cell_(discretize(viSpk1, viLim_drift), nDrift);
+vcFile_fet1 = sprintf('%s_fet1_drift_site_%d.irc', vcFile_prm_, iSite);
+save_fet_drift_(vcFile_fet1, mrFet1, cvii1_drift);
+dimm_fet = size(mrFet1);
+mrFet1 = [];
+
+% Save mrFet2, index by drift
+[mrFet2, viSpk2] = load_fet_site_(S_fet, 2, iSite);
+if ~isempty(viSpk2)
+    cvii2_drift = vi2cell_(discretize(viSpk2, viLim_drift), nDrift);
+    vcFile_fet2 = sprintf('%s_fet2_drift_site_%d.irc', vcFile_prm_, iSite);
+    save_fet_drift_(vcFile_fet2, mrFet2, cvii2_drift);
+    mrFet2 = [];
+else
+    vcFile_fet2 = '';
+    cvii2_drift = cell(size(cvii1_drift));
 end
-if ~fParfor
+S_fet = struct_add_(S_fet, cvii1_drift, cvii2_drift, vcFile_fet1, vcFile_fet2, viSpk1, viSpk2, dimm_fet);
+
+[cvrRho1, cmiKnn1] = deal(cell(nDrift,1));
+try
+    parfor iDrift = 1:nDrift     %debug for
+        [cvrRho1{iDrift}, cmiKnn1{iDrift}] = rho_knn_disk_aux_(S_fet, iDrift);
+    end   
+catch
     for iDrift = 1:nDrift    
-        [cvrRho_drift1{iDrift}, cmiKnn_drift1{iDrift}] = ...
-            rho_knn_disk_aux_(iSite, viSpk1, viSpk2, ...
-                cviiSpk1_drift{iDrift}, cviiSpk2_drift{iDrift}, S_fet);
-    end    
+        [cvrRho1{iDrift}, cmiKnn1{iDrift}] = rho_knn_disk_aux_(S_fet, iDrift);
+    end  
 end
 
-% Combine miKnn1 and save
-vrRho1 = zeros(n1, 1, 'single');
-miKnn1 = zeros(knn, n1, 'int64');
+% collect
+vrRho1 = zeros(numel(viSpk1), 1, 'single');
 for iDrift = 1:nDrift
-    vii1_ = cviiSpk1_drift{iDrift};
-    [vrRho1(vii1_), miKnn1(:,vii1_)] = ...
-        deal(cvrRho_drift1{iDrift}, cmiKnn_drift1{iDrift});    
+    vrRho1(cvii1_drift{iDrift}) = cvrRho1{iDrift};
 end
-save_miKnn_site_(vcFile_prm, iSite, miKnn1);
+save_miKnn_site_(vcFile_prm, iSite, cmiKnn1);
 end %func
 
 
 %--------------------------------------------------------------------------
-function [vrRho1, miKnn1] = rho_knn_disk_aux_(iSite, viSpk1, viSpk2, vii1, vii2, S_fet)
-% [vii1_, vii2_] = deal(cviiSpk1_drift{iDrift}, cviiSpk2_drift{iDrift});
-if isempty(vii1), [vrRho1, miKnn1] = deal([]); return; end    
-knn = get_set_(S_fet, 'knn', 30);
-mrFet1_ = load_fet_site_(S_fet, 1, iSite, viSpk1(vii1));    
-mrFet2_ = load_fet_site_(S_fet, 2, iSite, viSpk2(vii2));    
-[vrRho1, ~, miKnn1] = cuda_knn_([mrFet1_, mrFet2_], mrFet1_, S_fet);
-vrRho1 = gather_(1./vrRho1);
+function [vrRho1, miKnn1] = rho_knn_disk_aux_(S_fet, iDrift)
 
-% save miKnn
-viSpk12_ = int64([viSpk1(vii1); viSpk2(vii2)]);
-miKnn1 = viSpk12_(gather_(miKnn1));    
+[vcFile_fet1, vcFile_fet2, cvii1_drift, cvii2_drift, viSpk1, viSpk2] = ...
+    struct_get_(S_fet, 'vcFile_fet1', 'vcFile_fet2', 'cvii1_drift', 'cvii2_drift', 'viSpk1', 'viSpk2');
+[type_fet, dimm_fet, knn] = struct_get_(S_fet, 'type_fet', 'dimm_fet', 'knn');
+if isempty(cvii1_drift{iDrift}), [vrRho1, miKnn1] = deal([]); return; end
+vnSpk1_load = cellfun(@numel, cvii1_drift); vnOffset_fet1_drift = cumsum([0; vnSpk1_load]);
+vnSpk2_load = cellfun(@numel, cvii2_drift); vnOffset_fet2_drift = cumsum([0; vnSpk2_load]);
+
+% load fetaures
+mrFet1 = load_bin_(vcFile_fet1, type_fet, dimm_fet, vnOffset_fet1_drift(iDrift), vnSpk1_load(iDrift));
+
+viDrift2 = find(S_fet.mlDrift(:,iDrift));
+mrFet1b = load_bin_(vcFile_fet1, type_fet, dimm_fet, vnOffset_fet1_drift(viDrift2), vnSpk1_load(viDrift2));
+mrFet12 = load_bin_(vcFile_fet2, type_fet, dimm_fet, vnOffset_fet2_drift(viDrift2), vnSpk2_load(viDrift2));
+mrFet12 = [mrFet1b, mrFet12]; mrFet1b = [];
+
+[vrRho1, ~, miKnn1] = cuda_knn_(mrFet12, mrFet1, S_fet);
+vrRho1 = gather_(1./vrRho1);
+vii1 = cell2mat_(cvii1_drift(viDrift2)); 
+vii2 = cell2mat_(cvii2_drift(viDrift2));
+viSpk12 = int64([viSpk1(vii1); viSpk2(vii2)]);
+miKnn1 = viSpk12(gather_(miKnn1));    
 n2 = size(miKnn1,1);
 if n2 < knn       
     miKnn1 = [miKnn1; repmat(miKnn1(end,:), [knn-n2, 1])];
 end
+end %func
+
+
+%--------------------------------------------------------------------------
+function save_fet_drift_(vcFile_fet1, mrFet1, cvii1_drift)
+fid_w = fopen(vcFile_fet1, 'w');
+for iFile = 1:numel(cvii1_drift)
+    write_bin_(fid_w, mrFet1(:, cvii1_drift{iFile}));
+end
+fclose(fid_w);
+end %func
+
+
+%--------------------------------------------------------------------------
+function [vrDelta1, viNneigh1] = delta_knn_disk_(iSite, vrRho, S_fet)
+% S_fet contains {type_fet, dimm_fet, nLoads, vcFile_prm, mlPc, mlDrift, viLim_drift}
+SINGLE_INF = 3.402E+38;
+[mlDrift, viLim_drift, vcFile_prm] = ...
+    struct_get_(S_fet, 'mlDrift', 'viLim_drift', 'vcFile_prm');
+nDrift = size(mlDrift,1);
+vcFile_prm_ = strrep(vcFile_prm, '.prm', '');
+
+% save mrFet1, index by drift
+[dimm_fet, viSpk1, vcFile_fet1] = dimm_fet_site_(S_fet, 1, iSite);
+if isempty(viSpk1), [vrDelta1, viNneigh1] = deal([]); return; end
+cvii1_drift = vi2cell_(discretize(viSpk1, viLim_drift), nDrift);
+
+% Save mrFet2, index by drift
+[~, viSpk2, vcFile_fet2] = dimm_fet_site_(S_fet, 2, iSite);
+if ~isempty(viSpk2)
+    cvii2_drift = vi2cell_(discretize(viSpk2, viLim_drift), nDrift);
+else
+    vcFile_fet2 = '';
+    cvii2_drift = cell(size(cvii1_drift));
+end
+S_fet = struct_add_(S_fet, cvii1_drift, cvii2_drift, vcFile_fet1, vcFile_fet2, viSpk1, viSpk2, dimm_fet);
+[vrRho1, vrRho2] = deal(vrRho(viSpk1), vrRho(viSpk2));
+[cvrDelta1, cviNneigh1] = deal(cell(nDrift,1));
+try
+    parfor iDrift = 1:nDrift     %debug for
+        [cvrDelta1{iDrift}, cviNneigh1{iDrift}] = delta_knn_disk_aux_(S_fet, vrRho1, vrRho2, iDrift);
+    end   
+catch
+    for iDrift = 1:nDrift    
+        [cvrDelta1{iDrift}, cviNneigh1{iDrift}] = delta_knn_disk_aux_(S_fet, vrRho1, vrRho2, iDrift);
+    end  
+end
+% delete files
+delete_(vcFile_fet1);
+delete_(vcFile_fet2);
+
+% collect
+vrDelta1 = zeros(numel(viSpk1), 1, 'single');
+viNneigh1 = zeros(numel(viSpk1), 1, 'int64');
+for iDrift = 1:nDrift
+    vrDelta1(cvii1_drift{iDrift}) = cvrDelta1{iDrift};
+    viNneigh1(cvii1_drift{iDrift}) = cviNneigh1{iDrift};
+end
+vrDelta1 = vrDelta1 .* vrRho1;
+viNan = find(isnan(vrDelta1) | isinf(vrDelta1));
+viNneigh1(viNan) = viNan;
+vrDelta1(viNan) = sqrt(SINGLE_INF);
+end %func
+
+
+%--------------------------------------------------------------------------
+function [vrDelta1, viNneigh1] = delta_knn_disk_aux_(S_fet, vrRho1, vrRho2, iDrift)
+
+[vcFile_fet1, vcFile_fet2, cvii1_drift, cvii2_drift, viSpk1, viSpk2] = ...
+    struct_get_(S_fet, 'vcFile_fet1', 'vcFile_fet2', 'cvii1_drift', 'cvii2_drift', 'viSpk1', 'viSpk2');
+[type_fet, dimm_fet, knn] = struct_get_(S_fet, 'type_fet', 'dimm_fet', 'knn');
+if isempty(cvii1_drift{iDrift}), [vrRho1, miKnn1] = deal([]); return; end
+vnSpk1_load = cellfun(@numel, cvii1_drift); vnOffset_fet1_drift = cumsum([0; vnSpk1_load]);
+vnSpk2_load = cellfun(@numel, cvii2_drift); vnOffset_fet2_drift = cumsum([0; vnSpk2_load]);
+
+% load fetaures
+mrFet1_ = load_bin_(vcFile_fet1, type_fet, dimm_fet, vnOffset_fet1_drift(iDrift), vnSpk1_load(iDrift));
+vrRho1_ = vrRho1(cvii1_drift{iDrift});
+
+viDrift2 = find(S_fet.mlDrift(:,iDrift));
+mrFet1b = load_bin_(vcFile_fet1, type_fet, dimm_fet, vnOffset_fet1_drift(viDrift2), vnSpk1_load(viDrift2));
+mrFet12_ = load_bin_(vcFile_fet2, type_fet, dimm_fet, vnOffset_fet2_drift(viDrift2), vnSpk2_load(viDrift2));
+mrFet12_ = [mrFet1b, mrFet12_]; mrFet1b = [];
+vii1 = cell2mat_(cvii1_drift(viDrift2)); 
+vii2 = cell2mat_(cvii2_drift(viDrift2));
+vrRho12_ = [vrRho1(vii1); vrRho2(vii2)];
+
+[vrDelta1, viNneigh1] = cuda_delta_knn_(mrFet12_, mrFet1_, vrRho12_, vrRho1_, S_fet);
+vrDelta1 = gather_(vrDelta1);
+viSpk12 = int64([viSpk1(vii1); viSpk2(vii2)]);
+viNneigh1 = viSpk12(gather_(viNneigh1));    
 end %func
 
 
@@ -1792,6 +1825,7 @@ SINGLE_INF = 3.402E+38;
     struct_get_(S_fet, 'mlDrift', 'viLim_drift', 'vcFile_prm');
 nDrift = size(mlDrift,1);
 [mrFet1, viSpk1] = load_fet_site_(S_fet, 1, iSite);
+if isempty(viSpk1), [vrDelta1, viNneigh1] = deal([]); return; end
 [mrFet12, viSpk12] = load_fet_site_(S_fet, 2, iSite); mrFet12 = [mrFet1, mrFet12]; viSpk12 = int64([viSpk1; viSpk12]);
 
 cvii1_drift = vi2cell_(discretize(viSpk1, viLim_drift), nDrift);
@@ -1803,7 +1837,7 @@ for iDrift = 1:nDrift
     vii1_ = cvii1_drift{iDrift};
     if isempty(vii1_), continue; end
     vii12_ = find(mlDrift(viDrift12, iDrift));        
-    [vrDelta_, viNneigh_] = cuda_delta_knn2_(mrFet12(:,vii12_), mrFet1(:,vii1_), vrRho12(vii12_), vrRho1(vii1_), S_fet);
+    [vrDelta_, viNneigh_] = cuda_delta_knn_(mrFet12(:,vii12_), mrFet1(:,vii1_), vrRho12(vii12_), vrRho1(vii1_), S_fet);
     vrDelta1(vii1_) = gather_(vrDelta_);
     
     viSpk12_ = viSpk12(vii12_);
@@ -1818,7 +1852,7 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function [vrDelta1, viNneigh1, fGpu] = cuda_delta_knn2_(mrFet2, mrFet1, vrRho2, vrRho1, P)
+function [vrDelta1, viNneigh1, fGpu] = cuda_delta_knn_(mrFet2, mrFet1, vrRho2, vrRho1, P)
 
 persistent CK
 CHUNK = get_set_(P, 'CHUNK', 16);
@@ -1849,14 +1883,14 @@ if fGpu
     end
 end
 if ~fGpu
-    [vrDelta1, viNneigh1] = delta_knn_cpu2_(mrFet2, mrFet1, vrRho2, vrRho1);    
+    [vrDelta1, viNneigh1] = delta_knn_cpu_(mrFet2, mrFet1, vrRho2, vrRho1);    
 end
 end %func
 
 
 %--------------------------------------------------------------------------
 % 9/20/2018 JJJ: Memory-optimized knn for computing delta (dpclus)
-function [vrDelta1, viNneigh1] = delta_knn_cpu2_(mrFet2, mrFet1, vrRho2, vrRho1)
+function [vrDelta1, viNneigh1] = delta_knn_cpu_(mrFet2, mrFet1, vrRho2, vrRho1)
 nStep_knn = 1000;
 n1 = numel(vrRho1);
 vrDelta1 = zeros([n1, 1], 'single');
@@ -1873,62 +1907,30 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function [vrDelta1, viNneigh1] = delta_knn_disk_(iSite, viSpk1, viSpk2, vrRho, S_fet)
-% S_fet contains {type_fet, dimm_fet, nLoads, vcFile_prm, mlPc, mlDrift, viLim_drift}
-    
-[mlDrift, viLim_drift, vcFile_prm] = ...
-    struct_get_(S_fet, 'mlDrift', 'viLim_drift', 'vcFile_prm');
-n1 = numel(viSpk1);
-nDrift = size(mlDrift,1);
-[cvrDelta_drift1, cviNneigh_drift1] = deal(cell(1, nDrift));
-cviiSpk1_drift = vi2cell_(discretize(viSpk1, viLim_drift), nDrift);
-cviiSpk2_drift = vi2cell_(discretize(viSpk2, viLim_drift), nDrift);
-[vrRho1, vrRho2] = deal(vrRho(viSpk1), vrRho(viSpk2));
-fParfor = get_set_(S_fet, 'fParfor', 0);
-if fParfor
-    try
-        for iDrift = 1:nDrift    
-            [cvrDelta_drift1{iDrift}, cviNneigh_drift1{iDrift}] = ...
-                delta_knn_disk_aux_(iSite, viSpk1, viSpk2, ...
-                    cviiSpk1_drift{iDrift}, cviiSpk2_drift{iDrift}, vrRho1, vrRho2, S_fet);
-        end
-    catch
-        fParfor = 0;
-    end
+% load specific site and drift
+% todo: speed up by using cache
+function [dimm_fet1, viSpk1, vcFile_fet1] = dimm_fet_site_(S_fet, iFet, iSite)
+% usage
+% ----
+% [out1, viSpk] = load_fet2pc_site_(S_fet, iFet, iSite) % returns all spk
+% [out1] = load_fet2pc_site_(S_fet, iFet, iSite, viSpk) % returns subset
+
+[dimm_fet1, nLoads, mlPc, vcFile_prm] = struct_get_(S_fet, 'dimm_fet', 'nLoads', 'mlPc', 'vcFile_prm');
+vcFile_prm_ = strrep(vcFile_prm, '.prm', '');
+switch iFet
+    case 1
+        cviSpk_load = cellfun_(@(x)x{iSite}, S_fet.ccviSpk_site_load);
+        vcFile_fet1 = sprintf('%s_fet1_drift_site_%d.irc', vcFile_prm_, iSite);
+    case 2
+        cviSpk_load = cellfun_(@(x)x{iSite}, S_fet.ccviSpk_site2_load);
+        vcFile_fet1 = sprintf('%s_fet2_drift_site_%d.irc', vcFile_prm_, iSite);
 end
-if ~fParfor
-    for iDrift = 1:nDrift    
-        [cvrDelta_drift1{iDrift}, cviNneigh_drift1{iDrift}] = ...
-            delta_knn_disk_aux_(iSite, viSpk1, viSpk2, ...
-                cviiSpk1_drift{iDrift}, cviiSpk2_drift{iDrift}, vrRho1, vrRho2, S_fet);
-    end    
+viSpk1 = cell2mat_(arrayfun_(@(iLoad)cviSpk_load{iLoad}, (1:nLoads)'));
+if ~isempty(mlPc)
+    dimm_fet1 = [sum(mlPc(:)), numel(viSpk1)];
+else
+    dimm_fet1 = [dimm_fet1(1), dimm_fet1(2), numel(viSpk1)];
 end
-
-% Combine miKnn1 and save
-vrDelta1 = zeros(n1, 1, 'single');
-viNneigh1 = zeros(n1, 1, 'int64');
-for iDrift = 1:nDrift
-    vii1_ = cviiSpk1_drift{iDrift};
-    [vrDelta1(vii1_), viNneigh1(vii1_)] = ...
-        deal(cvrDelta_drift1{iDrift}, cviNneigh_drift1{iDrift});    
-end
-end %func
-
-
-%--------------------------------------------------------------------------
-function [vrDelta1, viNneigh1] = delta_knn_disk_aux_(iSite, viSpk1, viSpk2, vii1, vii2, vrRho1, vrRho2, S_fet)
-% [vii1_, vii2_] = deal(cviiSpk1_drift{iDrift}, cviiSpk2_drift{iDrift});
-if isempty(vii1), [vrDelta1, viNneigh1] = deal([]); return; end    
-
-mrFet1_ = load_fet_site_(S_fet, 1, iSite, viSpk1(vii1));    
-mrFet2_ = load_fet_site_(S_fet, 2, iSite, viSpk2(vii2));    
-vrRho12 = [vrRho1(vii1); vrRho2(vii2)];
-[vrDelta1, viNneigh1] = cuda_delta_knn_([mrFet1_, mrFet2_], vrRho12, [], numel(vii1), S_fet);
-vrDelta1 = gather_(vrDelta1);
-
-% save miKnn
-viSpk12_ = int64([viSpk1(vii1); viSpk2(vii2)]);
-viNneigh1 = viSpk12_(gather_(viNneigh1));    
 end %func
 
 
@@ -2063,73 +2065,6 @@ for i1 = 1:nStep_knn:n1
     [mrKnn1, miKnn(:,vi1_)] = pdist2(mrFet2_T, mrFet1(:,vi1_)', 'euclidean', 'Smallest', knn);
     vrKnn(vi1_) = mrKnn1(end,:);
 end %for
-end %func
-
-
-%--------------------------------------------------------------------------
-function [vrDelta1, viNneigh1, fGpu] = cuda_delta_knn_(mrFet, vrRho, vi2, vi1, P)
-
-persistent CK
-CHUNK = get_set_(P, 'CHUNK', 16);
-nC_max = get_set_(P, 'nC_max', 60);
-nThreads = get_set_(P, 'nThreads', 128);
-if isempty(vi2) && numel(vi1)==1
-    vi2 = 1:size(mrFet,2);
-    vi1 = 1:vi1;
-end
-[n2, n1, nC] = deal(numel(vi2), numel(vi1), size(mrFet,1));
-fGpu = P.fGpu && nC <= nC_max;
-
-if fGpu    
-    for iRetry = 1:2
-        try
-            [gmrFet2, gmrFet1, gvrRho2, gvrRho1] = gpuArray_deal_(mrFet(:,vi2), mrFet(:,vi1), vrRho(vi2), vrRho(vi1));
-            if isempty(CK)
-                CK = parallel.gpu.CUDAKernel('cuda_delta_knn.ptx','cuda_delta_knn.cu'); % auto-compile if ptx doesn't exist
-                CK.ThreadBlockSize = [nThreads, 1];          
-                CK.SharedMemorySize = 4 * CHUNK * (nC_max + nThreads*2 + 1); % @TODO: update the size
-            end
-            CK.GridSize = [ceil(n1 / CHUNK / CHUNK), CHUNK]; %MaxGridSize: [2.1475e+09 65535 65535]    
-            vrDelta1 = zeros([n1, 1], 'single', 'gpuArray'); 
-            viNneigh1 = zeros([n1, 1], 'uint32', 'gpuArray'); 
-            vnConst = int32([n2, n1, nC]);
-            [vrDelta1, viNneigh1] = feval(CK, vrDelta1, viNneigh1, gmrFet2, gmrFet1, gvrRho2, gvrRho1, vnConst);
-            viNneigh1 = uint32(vi2(viNneigh1));
-            return;
-        catch % use CPU, fail-safe
-            CK = [];
-            fGpu = 0;
-        end
-    end
-end
-if ~fGpu
-    [vrDelta1, viNneigh1] = delta_knn_cpu_(mrFet, vrRho, vi2, vi1);    
-end
-end %func
-
-
-%--------------------------------------------------------------------------
-% 9/20/2018 JJJ: Memory-optimized knn for computing delta (dpclus)
-function [vrDelta1, viNneigh1] = delta_knn_cpu_(mrFet, vrRho, vi2, vi1)
-nStep_knn = 1000;
-n1 = numel(vi1);
-vrDelta1 = zeros([n1, 1], 'single');
-viNneigh1 = zeros([n1, 1], 'uint32');
-[mrFet2, mrFet1] = deal(mrFet(:,vi2), mrFet(:,vi1));
-[vrRho2, vrRho1] = deal(vrRho(vi2), vrRho(vi1));
-fh_dist_ = @(y)bsxfun(@plus, sum(y.^2), bsxfun(@minus, sum(mrFet2.^2)', 2*mrFet2'*y));
-%fh_dist_ = @(y)pdist2(y', mrFet2', 'cosine')';
-for i1 = 1:nStep_knn:n1
-    vi1_ = i1:min(i1+nStep_knn-1, n1);
-    mrD_ = fh_dist_(mrFet1(:,vi1_));
-    mrD_(bsxfun(@le, vrRho2, vrRho1(vi1_)')) = inf;
-%     if true
-%         mrD_(vi2(:) > vi1(:)') = inf;
-%     end
-    [vrDelta1(vi1_), viNneigh1(vi1_)] = min(mrD_);
-end
-vrDelta1 = sqrt(abs(vrDelta1));
-viNneigh1 = uint32(vi2(viNneigh1));
 end %func
 
 
@@ -3507,7 +3442,7 @@ end
 
 %--------------------------------------------------------------------------
 % 2018/6/1: Added support for .prm format
-function mnWav = load_bin_(vcFile, vcDataType, dimm, header)
+function mnWav = load_bin_(vcFile, vcDataType, dimm, header, vnLoad)
 % mnWav = load_bin_(vcFile, dimm, vcDataType)
 % mnWav = load_bin_(fid, dimm, vcDataType)
 % mnWav = load_bin_(vcFile_prm)
@@ -3517,6 +3452,7 @@ function mnWav = load_bin_(vcFile, vcDataType, dimm, header)
 if nargin<2, vcDataType = []; end
 if nargin<3, dimm = []; end
 if nargin<4, header = 0; end
+if nargin<5, vnLoad = []; end
 if isempty(vcDataType), vcDataType = 'int16'; end
 
 mnWav = [];
@@ -3536,7 +3472,9 @@ if ischar(vcFile)
 %     end
 %     if ~exist_file_(vcFile, 1), return; end
     fid = fopen_(vcFile, 'r');
-    if header>0, fseek(fid, header, 'bof'); end
+    if numel(header) == 1
+        if header>0, fseek(fid, header, 'bof'); end
+    end
     if isempty(fid) || fid<0, return; end      
     if numel(dimm) < 2
         nBytes_file = filesize_(vcFile) - header;
@@ -3552,7 +3490,29 @@ else % fid directly passed
     if isempty(dimm), dimm = inf; end
 end
 try
-    mnWav = fread_(fid, dimm, vcDataType);
+    if isempty(vnLoad)
+        mnWav = fread_(fid, dimm, vcDataType);
+    else % combine multiple skips
+        viOffset = header;
+        assert(numel(vnLoad) == numel(viOffset), 'load_bin_: vnLoad size does not match viOffset');
+        dimm_wav = dimm; dimm_wav(end) = sum(vnLoad);
+        mnWav = zeros(dimm_wav, vcDataType);     
+        byte_per_sample1 = prod(dimm_wav(1:end-1)) * bytesPerSample_(vcDataType);
+        iOffset1 = 0;
+        for iLoad = 1:numel(vnLoad)
+            vi1 = (1:vnLoad(iLoad)) + iOffset1;
+            fseek(fid, byte_per_sample1 * viOffset(iLoad), 'bof');
+            dimm_wav(end) = vnLoad(iLoad);
+            switch numel(dimm_wav)
+                case 1, mnWav(vi1) = fread_(fid, dimm_wav, vcDataType);
+                case 2, mnWav(:,vi1) = fread_(fid, dimm_wav, vcDataType);
+                case 3, mnWav(:,:,vi1) = fread_(fid, dimm_wav, vcDataType);
+                case 4, mnWav(:,:,:,vi1) = fread_(fid, dimm_wav, vcDataType);
+                otherwise, error('load_bin_: unsupported dimensions');
+            end
+            iOffset1 = vi1(end);
+        end
+    end
     if ischar(vcFile)
         fclose(fid);
     end
@@ -3847,13 +3807,54 @@ end %func
 
 
 %--------------------------------------------------------------------------
+function dimm_mr = write_bin_(vcFile, mr, fVerbose)
+if nargin<3, fVerbose = []; end
+
+t1=tic;
+dimm_mr = size(mr);
+if isempty(mr), return; end
+if isstruct(mr)
+    save(vcFile, '-struct', 'mr', '-v7.3'); % save to matlab file
+else
+    if ischar(vcFile)
+        fid_w = fopen(vcFile, 'W'); 
+    else
+        fid_w = vcFile;
+    end
+    if iscell(mr)
+        cmr = mr;
+        ndimm_end = 0;
+        for iCell = 1:numel(cmr)
+            mr1 = cmr{iCell};
+            fwrite(fid_w, mr1, class(mr1));
+            dimm1 = size(mr1);
+            ndimm_end = ndimm_end + dimm1(end);
+        end
+        dimm_mr = size(cmr{1});
+        dimm_mr(end) = ndimm_end;
+    else
+        fwrite(fid_w, mr, class(mr));
+    end
+    if ischar(vcFile)
+        fclose(fid_w); 
+    else
+        fVerbose = 0;
+    end
+end
+if fVerbose
+    fprintf('Writing to %s took %0.1fs\n', vcFile, toc(t1));
+end
+end %func
+
+
+%--------------------------------------------------------------------------
 % Call from irc.m
 function compile_cuda_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
 function frewind_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
 function disperr_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
 function struct_save_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
 function edit_prm_file_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
-function write_bin_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
+% function write_bin_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
 function delete_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
 function plot_FigWavCor_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
 function close_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
@@ -3931,15 +3932,7 @@ function [out1, out2] = shift_range_(varargin), fn=dbstack(); [out1, out2] = irc
 function [out1, out2] = wav_car_(varargin), fn=dbstack(); [out1, out2] = irc('call', fn(1).name, varargin); end
 function [out1, out2] = get_fig_(varargin), fn=dbstack(); [out1, out2] = irc('call', fn(1).name, varargin); end
 
-% function [out1, out2, out3] = S_clu_peak_merge_(varargin), fn=dbstack(); [out1, out2, out3] = irc('call', fn(1).name, varargin); end
 function [out1, out2, out3] = fopen_mda_(varargin), fn=dbstack(); [out1, out2, out3] = irc('call', fn(1).name, varargin); end
 function [out1, out2, out3] = fopen_nsx_(varargin), fn=dbstack(); [out1, out2, out3] = irc('call', fn(1).name, varargin); end
 function [out1, out2, out3] = plan_load_(varargin), fn=dbstack(); [out1, out2, out3] = irc('call', fn(1).name, varargin); end
 function [out1, out2, out3] = detect_spikes_(varargin), fn=dbstack(); [out1, out2, out3] = irc('call', fn(1).name, varargin); end
-% function [out1, out2, out3] = cuda_delta_knn_(varargin), fn=dbstack(); [out1, out2, out3] = irc('call', fn(1).name, varargin); end
-% function [out1, out2, out3] = cuda_knn_(varargin), fn=dbstack(); [out1, out2, out3] = irc('call', fn(1).name, varargin); end
-% function [out1, out2, out3] = unique_count_(varargin), fn=dbstack(); [out1, out2, out3] = irc('call', fn(1).name, varargin); end
-% function [out1, out2, out3] = rho_drift_knn_(varargin), fn=dbstack(); [out1, out2, out3] = irc('call', fn(1).name, varargin); end
-% function [out1, out2, out3] = delta_drift_knn_(varargin), fn=dbstack(); [out1, out2, out3] = irc('call', fn(1).name, varargin); end
-
-
