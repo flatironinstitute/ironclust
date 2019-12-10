@@ -431,8 +431,8 @@ end %func
 %--------------------------------------------------------------------------
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_()
-vcVer = 'v5.2.7';
-vcDate = '12/9/2019';
+vcVer = 'v5.2.8';
+vcDate = '12/10/2019';
 vcHash = file2hash_();
 
 if nargout==0
@@ -1517,7 +1517,7 @@ fLargeRecording = get_set_(P, 'fLargeRecording', 0);
 
 % Calculate Rho
 [cvrRho, cvrDelta, cviNneigh, cviSpk_site] = deal(cell(nSites,1));
-fprintf('Calculating Rho (sort_ram_)\n\t'); t1=tic;
+fprintf('Calculating Rho\n\t'); t1=tic;
 if fParfor && ~fLargeRecording
     try
         parfor iSite = 1:nSites
@@ -1533,10 +1533,12 @@ end
 vrRho = zeros(nSpk, 1, 'single');
 for iSite = 1:nSites
     if (isempty(cvrRho{iSite}) && isempty(cviSpk_site{iSite})) || fLargeRecording
-        if fParfor || fLargeRecording
+        if fLargeRecording
             [cvrRho{iSite}, cviSpk_site{iSite}] = rho_knn_disk_(iSite, S_fet);
+            fprintf('D');
         else
             [cvrRho{iSite}, cviSpk_site{iSite}] = rho_knn_ram_(iSite, S_fet);  
+            fprintf('R');
         end
     end
     viSpk1 = cviSpk_site{iSite};
@@ -1548,7 +1550,7 @@ fprintf('\n\ttook %0.1fs (fGpu=%d, fParfor=%d)\n', toc(t1), fGpu, fParfor);
 
 
 % Calculate Delta
-fprintf('Calculating Delta (sort_ram_)\n\t'); t2=tic;
+fprintf('Calculating Delta\n\t'); t2=tic;
 if fParfor && ~fLargeRecording
     try
         parfor iSite = 1:nSites
@@ -1565,10 +1567,12 @@ vrDelta = zeros(nSpk, 1, 'single');
 viNneigh = zeros(nSpk, 1, 'int64');
 for iSite = 1:nSites
     if (isempty(cvrDelta{iSite}) && isempty(cviNneigh{iSite})) || fLargeRecording
-        if fParfor || fLargeRecording
+        if fLargeRecording
             [cvrDelta{iSite}, cviNneigh{iSite}] = delta_knn_disk_(iSite, vrRho, S_fet);  
+            fprintf('D');
         else
             [cvrDelta{iSite}, cviNneigh{iSite}] = delta_knn_ram_(iSite, vrRho, S_fet);  
+            fprintf('R');
         end
     end
     viSpk1 = cviSpk_site{iSite};
@@ -1617,20 +1621,32 @@ knn = get_set_(S_fet, 'knn', 30);
 
 [mrFet1, viSpk1] = load_fet_site_(S_fet, 1, iSite);
 if isempty(viSpk1), [vrRho1, miKnn1] = deal([]); return; end
-[mrFet12, viSpk12] = load_fet_site_(S_fet, 2, iSite); mrFet12 = [mrFet1, mrFet12]; viSpk12 = int64([viSpk1; viSpk12]);
-
 cvii1_drift = vi2cell_(discretize(viSpk1, viLim_drift), nDrift);
-viDrift12 = discretize(viSpk12, viLim_drift);
+cmrFet1_drift = cellfun_(@(x)mrFet1(:,x), cvii1_drift); mrFet1 = [];
+
+[mrFet2, viSpk2] = load_fet_site_(S_fet, 2, iSite); 
+if ~isempty(viSpk2)
+    cvii2_drift = vi2cell_(discretize(viSpk2, viLim_drift), nDrift);
+    cmrFet2_drift = cellfun_(@(x)mrFet2(:,x), cvii2_drift); mrFet2 = [];
+else
+    cvii2_drift = cell(size(cvii1_drift));
+end
+
 vrRho1 = zeros(numel(viSpk1), 1, 'single');
 miKnn1 = zeros(knn, numel(viSpk1), 'int64');
 for iDrift = 1:nDrift    
     vii1_ = cvii1_drift{iDrift};
-    if isempty(vii1_), continue; end
-    vii12_ = find(mlDrift(viDrift12, iDrift));    
-    [vrRho_, ~, miKnn_] = cuda_knn_(mrFet12(:,vii12_), mrFet1(:,vii1_), S_fet);
+    if isempty(vii1_), continue; end    
+    viDrift12_ = find(mlDrift(:, iDrift));    
+    vii1b = cell2mat_(cvii1_drift(viDrift12_)); 
+    vii2b = cell2mat_(cvii2_drift(viDrift12_));
+    
+    mrFet12_ = [cmrFet1_drift{viDrift12_}, cmrFet2_drift{viDrift12_}];
+    [vrRho_, ~, miKnn_] = cuda_knn_(mrFet12_, cmrFet1_drift{iDrift}, S_fet);
     vrRho1(vii1_) = gather_(1./vrRho_);
+    
     % save miKnn
-    viSpk12_ = viSpk12(vii12_);
+    viSpk12_ = int64([viSpk1(vii1b); viSpk2(vii2b)]);    
     miKnn_ = viSpk12_(gather_(miKnn_));    
     n2 = size(miKnn_,1);
     if n2 < knn       
@@ -1824,23 +1840,38 @@ SINGLE_INF = 3.402E+38;
 [mlDrift, viLim_drift, vcFile_prm] = ...
     struct_get_(S_fet, 'mlDrift', 'viLim_drift', 'vcFile_prm');
 nDrift = size(mlDrift,1);
+
 [mrFet1, viSpk1] = load_fet_site_(S_fet, 1, iSite);
-if isempty(viSpk1), [vrDelta1, viNneigh1] = deal([]); return; end
-[mrFet12, viSpk12] = load_fet_site_(S_fet, 2, iSite); mrFet12 = [mrFet1, mrFet12]; viSpk12 = int64([viSpk1; viSpk12]);
+if isempty(viSpk1), [vrRho1, miKnn1] = deal([]); return; end
+cvii1_drift = vi2cell_(discretize(viSpk1, viLim_drift), nDrift);
+cmrFet1_drift = cellfun_(@(x)mrFet1(:,x), cvii1_drift); mrFet1 = [];
+
+[mrFet2, viSpk2] = load_fet_site_(S_fet, 2, iSite); 
+if ~isempty(viSpk2)
+    cvii2_drift = vi2cell_(discretize(viSpk2, viLim_drift), nDrift);
+    cmrFet2_drift = cellfun_(@(x)mrFet2(:,x), cvii2_drift); mrFet2 = [];
+else
+    cvii2_drift = cell(size(cvii1_drift));
+end
 
 cvii1_drift = vi2cell_(discretize(viSpk1, viLim_drift), nDrift);
-viDrift12 = discretize(viSpk12, viLim_drift);
 vrDelta1 = zeros(numel(viSpk1), 1, 'single');
 viNneigh1 = zeros(numel(viSpk1), 1, 'int64');
-[vrRho1, vrRho12] = deal(vrRho(viSpk1), vrRho(viSpk12));
+[vrRho1, vrRho2] = deal(vrRho(viSpk1), vrRho(viSpk2));
 for iDrift = 1:nDrift    
     vii1_ = cvii1_drift{iDrift};
     if isempty(vii1_), continue; end
-    vii12_ = find(mlDrift(viDrift12, iDrift));        
-    [vrDelta_, viNneigh_] = cuda_delta_knn_(mrFet12(:,vii12_), mrFet1(:,vii1_), vrRho12(vii12_), vrRho1(vii1_), S_fet);
+    viDrift12_ = find(mlDrift(:, iDrift));
+    vii1b = cell2mat_(cvii1_drift(viDrift12_)); 
+    vii2b = cell2mat_(cvii2_drift(viDrift12_));       
+    
+    mrFet12_ = [cmrFet1_drift{viDrift12_}, cmrFet2_drift{viDrift12_}];
+    vrRho12_ = [vrRho1(vii1b); vrRho2(vii2b)];
+    [vrDelta_, viNneigh_] = cuda_delta_knn_(mrFet12_, cmrFet1_drift{iDrift}, ...
+        vrRho12_, vrRho1(vii1_), S_fet);
     vrDelta1(vii1_) = gather_(vrDelta_);
     
-    viSpk12_ = viSpk12(vii12_);
+    viSpk12_ = int64([viSpk1(vii1b); viSpk2(vii2b)]);    
     viNneigh1(vii1_) = viSpk12_(gather_(viNneigh_));    
 end    
 
@@ -3400,9 +3431,15 @@ if isempty(vcFile_out)
 end
 csFiles = setdiff(csFiles, vcFile_out);
 fprintf('Joining %d files\n', numel(csFiles)); t1=tic;
-fid_w = fopen(vcFile_out, 'w');
+fid_w = vcFile_out;
 for iFile = 1:numel(csFiles)
-    fid_w = writemda_fid(fid_w, readmda_(csFiles{iFile}));
+    [~,~,vcExt1] = fileparts(csFiles{iFile});
+    switch lower(vcExt1)
+        case '.mda', mr_ = readmda_(csFiles{iFile});
+%         case '.bin', mr_ = load_spikeglx_(csFiles{iFile});
+        otherwise, error('join_mda_: unsupported format');
+    end
+    fid_w = writemda_fid(fid_w, mr_); mr_ = [];
     fprintf('\tAppended %d/%d: %s\n', iFile, numel(csFiles), csFiles{iFile});
 end
 writemda_fid(fid_w, 'close');

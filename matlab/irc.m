@@ -29042,7 +29042,7 @@ catch
 end
 S_xml = makeStruct_(sRateHz, nChans, uV_per_bit, nBits, vcDataType, ...
     viSite2chan1, viSite2chan2, viSite2chan3, viSite2chan4, viSite2Chan, viShank_site, ...
-    vcFile_dat, vcFile_xml);
+    vcFile_dat, vcFile_xml, cviSite2chan);
 end %func
         
         
