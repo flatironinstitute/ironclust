@@ -431,7 +431,7 @@ end %func
 %--------------------------------------------------------------------------
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_()
-vcVer = 'v5.2.6';
+vcVer = 'v5.2.7';
 vcDate = '12/9/2019';
 vcHash = file2hash_();
 
@@ -1985,6 +1985,7 @@ for iLoad = 1:numel(csFiles_fet)
     else
         viSpk1 = (1:vnSpk_load(iLoad)) + iOffset_spk;
     end
+    if isempty(viSpk1), continue; end
     dimm_fet1 = [dimm_fet(1), dimm_fet(2), vnSpk_load(iLoad)];
     trPc_load1 = load_bin_(csFiles_fet{iLoad}, type_fet, dimm_fet1, vnBytes_offset_load(iLoad));    
     if ~isempty(mlPc)
@@ -3501,6 +3502,7 @@ try
         iOffset1 = 0;
         for iLoad = 1:numel(vnLoad)
             vi1 = (1:vnLoad(iLoad)) + iOffset1;
+            if isempty(vi1), continue; end
             fseek(fid, byte_per_sample1 * viOffset(iLoad), 'bof');
             dimm_wav(end) = vnLoad(iLoad);
             switch numel(dimm_wav)
