@@ -1,6 +1,6 @@
 function p_ironclust(temp_path, raw_fname, geom_fname, prm_fname, vcFile_gt_mda, firings_out_fname, arg_fname)
 % cmdstr2 = sprintf("p_ironclust('$(tempdir)','$timeseries$','$geom$','$firings_out$','$(argfile)');");
-
+t1=tic;
 if exist(temp_path, 'dir') ~= 7
     mkdir(temp_path);
 end
@@ -29,7 +29,7 @@ if exist_file_(vcFile_gt_mda)
 end
 
 fprintf('Clustering result wrote to %s\n', firings_out_fname);
-
+fprintf('#SF-SORTER-RUNTIME#%0.3f#\n', toc(t1)); % internal time keeping
 end %func
 
 
