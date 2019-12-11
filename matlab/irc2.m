@@ -431,7 +431,7 @@ end %func
 %--------------------------------------------------------------------------
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_()
-vcVer = 'v5.2.10';
+vcVer = 'v5.2.11';
 vcDate = '12/11/2019';
 vcHash = file2hash_();
 
@@ -2528,7 +2528,22 @@ end %func
 function [cviSpk_site, nSites] = vi2cell_(viSite_spk, nSites)
 if nargin<2, nSites = []; end
 if isempty(nSites), nSites = max(viSite_spk); end
-cviSpk_site = arrayfun(@(x)find(viSite_spk==x), 1:nSites, 'UniformOutput', 0)';
+
+% based on unique() function, which sorts. faster than arrayfun.
+cviSpk_site = cell(nSites, 1);
+[vr, vi] = sort(viSite_spk);
+vi_change = [1; find(diff(vr(:))>0)+1; numel(viSite_spk)+1];
+vi_site = vr(vi_change(1:end-1));
+nSteps = numel(vi_change)-1;
+for iStep = 1:nSteps
+    cviSpk_site{vi_site(iStep)} = vi(vi_change(iStep):vi_change(iStep+1)-1);
+end
+
+% check equal condition
+if false
+    cviSpk_site0 = arrayfun(@(x)find(viSite_spk==x), 1:nSites, 'UniformOutput', 0)';
+    assert(all(cellfun(@(x,y)all(x==y), cviSpk_site0, cviSpk_site)), 'vi2cell_: must equal');
+end
 end %func
 
 
