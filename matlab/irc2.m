@@ -431,7 +431,7 @@ end %func
 %--------------------------------------------------------------------------
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_()
-vcVer = 'v5.2.12';
+vcVer = 'v5.2.13';
 vcDate = '12/11/2019';
 vcHash = file2hash_();
 
@@ -926,12 +926,16 @@ for iDrift = viDrift_uniq
     vi1 = find(viDrift_clu1==iDrift);
     [trPc_clu11, viSite_clu11] = deal(trPc_clu1(:,:,vi1), viSite_clu1(vi1));
     viDrift11 = find(mlDrift(:,iDrift));
-    viSite_uniq11 = unique(viSite_clu11(:)');
-    for iClu2 = (iClu1+1):nClu % or make it symmetric?
-        [viSite_clu2, viDrift_clu2, trPc_clu2] = ...
-            deal(cviSite_clu{iClu2}, cviDrift_clu{iClu2}, ctrPc_clu{iClu2});
-        vi2 = find(ismember(viDrift_clu2, viDrift11) & ismember(viSite_clu2, viSite_uniq11));
+    viSite_uniq11 = unique(viSite_clu11(:)');    
+    for iClu2 = (iClu1+1):nClu % or make it symmetric?     
+        viSite_clu2 = cviSite_clu{iClu2};
+        vl2_site = ismember(viSite_clu2, viSite_uniq11);
+        if ~any(vl2_site), continue; end
+        vl2_drift = ismember(cviDrift_clu{iClu2}, viDrift11);
+        %if ~any(vl2_drift), continue; end
+        vi2 = find(vl2_drift & vl2_site);
         if isempty(vi2), continue; end
+        trPc_clu2 = ctrPc_clu{iClu2};
         [viSite_clu22, trPc_clu22] = deal(viSite_clu2(vi2), trPc_clu2(:,:,vi2));
         for iSite = viSite_uniq11            
             trPc_clu22_ = trPc_clu22(:,:,viSite_clu22==iSite);
@@ -989,9 +993,11 @@ for iDrift = 1:nDrift
     vii1 = cvii1_drift{iDrift};
     if isempty(vii1), continue; end
     [vrRho11, viClu11, miKnn11] = deal(vrRho1(vii1), viClu1(vii1), miKnn1(:,vii1));
-    for iClu = 1:nClu
-        vi_ = find(viClu11==iClu);
-        if isempty(vi_), continue; end
+    [cviSpk_clu_, ~, viClu_uniq] = vi2cell_(viClu11, nClu);
+    for iClu = viClu_uniq
+%         vi_ = find(viClu11==iClu);
+%         if isempty(vi_), continue; end
+        vi_ = cviSpk_clu_{iClu};
         miKnn11_ = miKnn11(:,vi_);
         viSpk11_ = unique(miKnn11_(vrRho(miKnn11_) >= vrRho11(vi_)'));        
         vii1_ = find_ismember_(viSpk11_, viSpk1);
@@ -1207,9 +1213,21 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function mrWav1 = normalize_tr_(mrPc, mrPv)
-mrWav = reshape(pc2wav_(mrPv,mrPc), [], size(mrPc,3));
-mrWav1 = bsxfun(@rdivide, mrWav, sqrt(sum(mrWav.^2)));
+function mrWav1 = normalize_tr_(trPc, mrPv)
+[nPc, ~, nSpk] = size(trPc);
+mrWav1 = reshape(mrPv * reshape(trPc, nPc, []), [], nSpk);
+mrWav1 = bsxfun(@rdivide, mrWav1, sqrt(sum(mrWav1.^2)));
+end %func
+
+
+%--------------------------------------------------------------------------
+function out = pc2wav_(mrPv, mrPc)
+switch ndims(mrPc)
+    case 2, out = mrPv * mrPc;
+    case 3        
+        [nPc, nSites, nWav] = size(mrPc);
+        out = reshape(mrPv * reshape(mrPc, nPc,[]), [], nSites, nWav);
+end
 end %func
 
 
@@ -1458,17 +1476,6 @@ switch 1
             mrCorr12(iShift1,:) = zscore_(a_(:))' * b_ / numel(vi1);
         end
         vrCorr12 = max(mrCorr12)' / size(mrWav1,2);
-end
-end %func
-
-
-%--------------------------------------------------------------------------
-function out = pc2wav_(mrPv, mrPc)
-switch ndims(mrPc)
-    case 2, out = mrPv * mrPc;
-    case 3        
-        [nPc, nSites, nWav] = size(mrPc);
-        out = reshape(mrPv * reshape(mrPc, nPc,[]), [], nSites, nWav);
 end
 end %func
 
@@ -1748,8 +1755,8 @@ nSpk = numel(S0.viSite_spk);
 nSites = size(P.miSites,2);
 miKnn = [];
 fParfor = get_set_(P, 'fParfor', true) && nSites>1;
-fGpu = get_(P, 'fGpu');
 fLargeRecording = get_set_(P, 'fLargeRecording', 0);
+fGpu = get_(P, 'fGpu');
 
 % Calculate Rho
 [cvrRho, cvrDelta, cviNneigh, cviSpk_site] = deal(cell(nSites,1));
@@ -1843,6 +1850,70 @@ for iSite = 1:nSites1
     mlPc(1:nPc1, iSite) = true;
 end
 % mlPc(1,:) = true;
+end %func
+
+
+%--------------------------------------------------------------------------
+function [vrRho1, viSpk1, miKnn1] = rho_knn_ram1_(iSite, S_fet)
+% S_fet contains {type_fet, dimm_fet, nLoads, vcFile_prm, mlPc, mlDrift, viLim_drift}
+    
+[mlDrift, viLim_drift, vcFile_prm] = ...
+    struct_get_(S_fet, 'mlDrift', 'viLim_drift', 'vcFile_prm');
+nDrift = size(mlDrift,1);
+knn = get_set_(S_fet, 'knn', 30);
+fGpu = get_set_(S_fet, 'fGpu', 1);
+
+[mrFet1, viSpk1] = load_fet_site_(S_fet, 1, iSite);
+if isempty(viSpk1), [vrRho1, miKnn1] = deal([]); return; end
+cvii1_drift = vi2cell_(discretize(viSpk1, viLim_drift), nDrift);
+cmrFet1_drift = cellfun_(@(x)mrFet1(:,x), cvii1_drift); mrFet1 = [];
+
+[mrFet2, viSpk2] = load_fet_site_(S_fet, 2, iSite); 
+if ~isempty(viSpk2)
+    cvii2_drift = vi2cell_(discretize(viSpk2, viLim_drift), nDrift);
+    cmrFet2_drift = cellfun_(@(x)mrFet2(:,x), cvii2_drift); mrFet2 = [];
+    nFet = 2;
+else
+    cvii2_drift = cell(size(cvii1_drift));
+    cmrFet2_drift = cell(size(cmrFet1_drift));
+    nFet = 1;
+end
+
+vrRho1 = zeros(numel(viSpk1), 1, 'single');
+miKnn1 = zeros(knn, numel(viSpk1), 'int64');
+for iDrift_a = 1:nDrift    
+    vii1 = cvii1_drift{iDrift_a};
+    if isempty(vii1), continue; end    
+    gmrFet1_a = gpuArray_(cmrFet1_drift{iDrift_a}, fGpu);
+    viDrift_b = find(mlDrift(:, iDrift_a));        
+    [cc_vrRho_b, cc_miKnn_b] = deal(cell(numel(viDrift_b), nFet));
+    for iiDrift_b = 1:numel(viDrift_b)
+        iDrift_b = viDrift_b(iiDrift_b);
+        cmrFet_b = {cmrFet1_drift{iDrift_b} , cmrFet2_drift{iDrift_b}};
+        cviSpk_b = {viSpk1(cvii1_drift{iDrift_b}), viSpk2(cvii2_drift{iDrift_b})};        
+        for iFet = 1:nFet
+            [vrRho_, ~, miKnn_] = cuda_knn_(cmrFet_b{iFet}, gmrFet1_a, S_fet);
+            cc_vrRho_b{iiDrift_b, iFet} = gather_(1 ./ vrRho_);
+            viSpk_ = int64(cviSpk_b{iFet});
+            cc_miKnn_b{iiDrift_b, iFet} = miKnn_format_(viSpk_(gather_(miKnn_)), knn);
+        end        
+    end
+    mrRho_b = cat(2, cc_vrRho_b{:});
+    miKnn1(:,vii1) = cat(2, cc_miKnn_b{:});
+    vrRho1(vii1)
+end    
+if nargout<3
+    save_miKnn_site_(vcFile_prm, iSite, miKnn1);
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+function miKnn = miKnn_format_(miKnn, knn)
+n = size(miKnn,1);
+if n < knn       
+    miKnn = [miKnn; repmat(miKnn(end,:), [knn-n, 1])];
+end
 end %func
 
 
@@ -2527,7 +2598,7 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function [cviSpk_site, nSites] = vi2cell_(viSite_spk, nSites)
+function [cviSpk_site, nSites, vi_site] = vi2cell_(viSite_spk, nSites)
 if nargin<2, nSites = []; end
 if isempty(nSites), nSites = max(viSite_spk); end
 
@@ -2536,10 +2607,15 @@ cviSpk_site = cell(nSites, 1);
 [vr, vi] = sort(viSite_spk);
 vi_change = [1; find(diff(vr(:))>0)+1; numel(viSite_spk)+1];
 vi_site = vr(vi_change(1:end-1));
-nSteps = numel(vi_change)-1;
-for iStep = 1:nSteps
+vl_remove = vi_site < 1;
+if any(vl_remove)
+    vi_site(vl_remove) = [];
+    vi_change(find(vl_remove)) = [];
+end
+for iStep = 1:numel(vi_site)
     cviSpk_site{vi_site(iStep)} = vi(vi_change(iStep):vi_change(iStep+1)-1);
 end
+vi_site = vi_site(:)';
 
 % check equal condition
 if false
