@@ -431,7 +431,7 @@ end %func
 %--------------------------------------------------------------------------
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_()
-vcVer = 'v5.2.11';
+vcVer = 'v5.2.12';
 vcDate = '12/11/2019';
 vcHash = file2hash_();
 
@@ -881,11 +881,13 @@ if ~fParfor
 end
 
 [ctrPc_clu, cviSite_clu, cviDrift_clu] = wave_similarity_site_parse_(c_cc1_site, c_cc2_site, S_auto);
-switch 1 % remove low-snr waveforms to reduce false positives
+switch 3 % remove low-snr waveforms to reduce false positives
     case 1
         [viClu_remove, ctrPc_clu, cviSite_clu, cviDrift_clu] = find_low_snr_clu_(S0, P, ctrPc_clu, cviSite_clu, cviDrift_clu);
     case 2
         viClu_remove = find_low_snr_clu_(S0, P, ctrPc_clu, cviSite_clu, cviDrift_clu);
+    case 3
+        viClu_remove = [];
 end
 
 % merge the templates: todo, faster code
