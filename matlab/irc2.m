@@ -431,8 +431,8 @@ end %func
 %--------------------------------------------------------------------------
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_()
-vcVer = 'v5.2.9';
-vcDate = '12/10/2019';
+vcVer = 'v5.2.10';
+vcDate = '12/11/2019';
 vcHash = file2hash_();
 
 if nargout==0
@@ -1898,7 +1898,7 @@ end %func
 %--------------------------------------------------------------------------
 function [vrRho1, viSpk1] = rho_knn_disk_(iSite, S_fet)
 % S_fet contains {type_fet, dimm_fet, nLoads, vcFile_prm, mlPc, mlDrift, viLim_drift}
-    
+
 [mlDrift, viLim_drift, vcFile_prm] = ...
     struct_get_(S_fet, 'mlDrift', 'viLim_drift', 'vcFile_prm');
 nDrift = size(mlDrift,1);
@@ -1924,7 +1924,10 @@ else
     vcFile_fet2 = '';
     cvii2_drift = cell(size(cvii1_drift));
 end
-S_fet = struct_add_(S_fet, cvii1_drift, cvii2_drift, vcFile_fet1, vcFile_fet2, viSpk1, viSpk2, dimm_fet);
+vnSpk1_load = cellfun(@numel, cvii1_drift); vnOffset_fet1_drift = cumsum([0; vnSpk1_load]);
+vnSpk2_load = cellfun(@numel, cvii2_drift); vnOffset_fet2_drift = cumsum([0; vnSpk2_load]);
+S_fet = struct_add_(S_fet, cvii1_drift, cvii2_drift, vcFile_fet1, vcFile_fet2, ...
+    viSpk1, viSpk2, dimm_fet, vnSpk1_load, vnSpk2_load, vnOffset_fet1_drift, vnOffset_fet2_drift);
 
 [cvrRho1, cmiKnn1] = deal(cell(nDrift,1));
 fParfor = get_set_(S_fet, 'fParfor', 0);
@@ -1957,10 +1960,10 @@ function [vrRho1, miKnn1] = rho_knn_disk_aux_(S_fet, iDrift)
 
 [vcFile_fet1, vcFile_fet2, cvii1_drift, cvii2_drift, viSpk1, viSpk2] = ...
     struct_get_(S_fet, 'vcFile_fet1', 'vcFile_fet2', 'cvii1_drift', 'cvii2_drift', 'viSpk1', 'viSpk2');
+[vnSpk1_load, vnSpk2_load, vnOffset_fet1_drift, vnOffset_fet2_drift] = ...
+    struct_get_(S_fet, 'vnSpk1_load', 'vnSpk2_load', 'vnOffset_fet1_drift', 'vnOffset_fet2_drift');
 [type_fet, dimm_fet, knn] = struct_get_(S_fet, 'type_fet', 'dimm_fet', 'knn');
 if isempty(cvii1_drift{iDrift}), [vrRho1, miKnn1] = deal([]); return; end
-vnSpk1_load = cellfun(@numel, cvii1_drift); vnOffset_fet1_drift = cumsum([0; vnSpk1_load]);
-vnSpk2_load = cellfun(@numel, cvii2_drift); vnOffset_fet2_drift = cumsum([0; vnSpk2_load]);
 
 % load fetaures
 mrFet1 = load_bin_(vcFile_fet1, type_fet, dimm_fet, vnOffset_fet1_drift(iDrift), vnSpk1_load(iDrift));
@@ -2013,7 +2016,11 @@ else
     vcFile_fet2 = '';
     cvii2_drift = cell(size(cvii1_drift));
 end
-S_fet = struct_add_(S_fet, cvii1_drift, cvii2_drift, vcFile_fet1, vcFile_fet2, viSpk1, viSpk2, dimm_fet);
+
+vnSpk1_load = cellfun(@numel, cvii1_drift); vnOffset_fet1_drift = cumsum([0; vnSpk1_load]);
+vnSpk2_load = cellfun(@numel, cvii2_drift); vnOffset_fet2_drift = cumsum([0; vnSpk2_load]);
+S_fet = struct_add_(S_fet, cvii1_drift, cvii2_drift, vcFile_fet1, vcFile_fet2, ...
+    viSpk1, viSpk2, dimm_fet, vnSpk1_load, vnSpk2_load, vnOffset_fet1_drift, vnOffset_fet2_drift);
 [vrRho1, vrRho2] = deal(vrRho(viSpk1), vrRho(viSpk2));
 [cvrDelta1, cviNneigh1] = deal(cell(nDrift,1));
 fParfor = get_set_(S_fet, 'fParfor', 0);
@@ -2054,10 +2061,10 @@ function [vrDelta1, viNneigh1] = delta_knn_disk_aux_(S_fet, vrRho1, vrRho2, iDri
 
 [vcFile_fet1, vcFile_fet2, cvii1_drift, cvii2_drift, viSpk1, viSpk2] = ...
     struct_get_(S_fet, 'vcFile_fet1', 'vcFile_fet2', 'cvii1_drift', 'cvii2_drift', 'viSpk1', 'viSpk2');
+[vnSpk1_load, vnSpk2_load, vnOffset_fet1_drift, vnOffset_fet2_drift] = ...
+    struct_get_(S_fet, 'vnSpk1_load', 'vnSpk2_load', 'vnOffset_fet1_drift', 'vnOffset_fet2_drift');
 [type_fet, dimm_fet, knn] = struct_get_(S_fet, 'type_fet', 'dimm_fet', 'knn');
 if isempty(cvii1_drift{iDrift}), [vrRho1, miKnn1] = deal([]); return; end
-vnSpk1_load = cellfun(@numel, cvii1_drift); vnOffset_fet1_drift = cumsum([0; vnSpk1_load]);
-vnSpk2_load = cellfun(@numel, cvii2_drift); vnOffset_fet2_drift = cumsum([0; vnSpk2_load]);
 
 % load fetaures
 mrFet1_ = load_bin_(vcFile_fet1, type_fet, dimm_fet, vnOffset_fet1_drift(iDrift), vnSpk1_load(iDrift));
