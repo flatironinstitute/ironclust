@@ -13,7 +13,7 @@ function run_irc(vcDir_in, vcDir_out, vcFile_template)
 if nargin<2, vcDir_out = ''; end
 if nargin<3, vcFile_template = ''; end
 version = 2; % default version
-
+t_run_irc = tic;
 if ~isdeployed()
     source_path = fileparts(mfilename('fullpath'));
     addpath(genpath(fullfile(source_path)));
@@ -76,7 +76,7 @@ if ~exist_file_(firings_out_fname) || fForceRerun
             fprintf('Clustering result wrote to %s\n', firings_out_fname);
     end %switch    
 end
-
+fprintf('#SF-SORTER-RUNTIME#%0.3f#\n', toc(t_run_irc)); % internal time keeping
 % Exit
 exit_deployed_();
 end %func
