@@ -431,7 +431,7 @@ end %func
 %--------------------------------------------------------------------------
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_()
-vcVer = 'v5.2.13';
+vcVer = 'v5.2.14';
 vcDate = '12/11/2019';
 vcHash = file2hash_();
 
@@ -1992,7 +1992,7 @@ if ~isempty(viSpk2)
     cvii2_drift = vi2cell_(discretize(viSpk2, viLim_drift), nDrift);
     vcFile_fet2 = sprintf('%s_fet2_drift_site_%d.irc', vcFile_prm_, iSite);
     save_fet_drift_(vcFile_fet2, mrFet2, cvii2_drift);
-    mrFet2 = [];
+    mrFet2 = [];    
 else
     vcFile_fet2 = '';
     cvii2_drift = cell(size(cvii1_drift));
@@ -2000,7 +2000,8 @@ end
 vnSpk1_load = cellfun(@numel, cvii1_drift); vnOffset_fet1_drift = cumsum([0; vnSpk1_load]);
 vnSpk2_load = cellfun(@numel, cvii2_drift); vnOffset_fet2_drift = cumsum([0; vnSpk2_load]);
 S_fet = struct_add_(S_fet, cvii1_drift, cvii2_drift, vcFile_fet1, vcFile_fet2, ...
-    viSpk1, viSpk2, dimm_fet, vnSpk1_load, vnSpk2_load, vnOffset_fet1_drift, vnOffset_fet2_drift);
+    viSpk1, viSpk2, dimm_fet, vnSpk1_load, vnSpk2_load, ...
+    vnOffset_fet1_drift, vnOffset_fet2_drift);
 
 [cvrRho1, cmiKnn1] = deal(cell(nDrift,1));
 fParfor = get_set_(S_fet, 'fParfor', 0);
@@ -2037,14 +2038,22 @@ function [vrRho1, miKnn1] = rho_knn_disk_aux_(S_fet, iDrift)
     struct_get_(S_fet, 'vnSpk1_load', 'vnSpk2_load', 'vnOffset_fet1_drift', 'vnOffset_fet2_drift');
 [type_fet, dimm_fet, knn] = struct_get_(S_fet, 'type_fet', 'dimm_fet', 'knn');
 if isempty(cvii1_drift{iDrift}), [vrRho1, miKnn1] = deal([]); return; end
-
-% load fetaures
-mrFet1 = load_bin_(vcFile_fet1, type_fet, dimm_fet, vnOffset_fet1_drift(iDrift), vnSpk1_load(iDrift));
-
 viDrift2 = find(S_fet.mlDrift(:,iDrift));
-mrFet1b = load_bin_(vcFile_fet1, type_fet, dimm_fet, vnOffset_fet1_drift(viDrift2), vnSpk1_load(viDrift2));
-mrFet12 = load_bin_(vcFile_fet2, type_fet, dimm_fet, vnOffset_fet2_drift(viDrift2), vnSpk2_load(viDrift2));
-mrFet12 = [mrFet1b, mrFet12]; mrFet1b = [];
+if true
+    % load fetaures
+    mrFet1 = load_bin_(vcFile_fet1, type_fet, dimm_fet, vnOffset_fet1_drift(iDrift), vnSpk1_load(iDrift));
+    mrFet1b = load_bin_(vcFile_fet1, type_fet, dimm_fet, vnOffset_fet1_drift(viDrift2), vnSpk1_load(viDrift2));
+    mrFet12 = load_bin_(vcFile_fet2, type_fet, dimm_fet, vnOffset_fet2_drift(viDrift2), vnSpk2_load(viDrift2));
+    mrFet12 = [mrFet1b, mrFet12]; mrFet1b = [];
+else
+    cell2mr_ = @(x)reshape(cat(1, x{:}), dimm_fet(1), []);
+    mrFet1 = reshape(S_fet.c_mmf1{iDrift}.Data, dimm_fet(1), []);
+    mrFet12 = cell2mr_(cellfun_(@(x)x.Data, S_fet.c_mmf1(viDrift2))); 
+    if ~isempty(S_fet.c_mmf2)
+        mrFet2b = cell2mr_(cellfun_(@(x)x.Data, S_fet.c_mmf2(viDrift2))); 
+        mrFet12 = [mrFet12, mrFet2b]; mrFet2b = [];
+    end
+end
 
 [vrRho1, ~, miKnn1] = cuda_knn_(mrFet12, mrFet1, S_fet);
 vrRho1 = gather_(1./vrRho1);
@@ -2060,12 +2069,21 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function save_fet_drift_(vcFile_fet1, mrFet1, cvii1_drift)
+function c_mmf = save_fet_drift_(vcFile_fet1, mrFet1, cvii1_drift)
 fid_w = fopen(vcFile_fet1, 'w');
 for iFile = 1:numel(cvii1_drift)
     write_bin_(fid_w, mrFet1(:, cvii1_drift{iFile}));
 end
 fclose(fid_w);
+if nargout==0, return; end
+
+dimm1 = size(mrFet1);
+nDrift = numel(cvii1_drift);
+vn_drift = cellfun(@numel, cvii1_drift);
+viOffset_drift = cumsum([0; vn_drift(:)]);
+c_mmf = arrayfun_(@(i)memmapfile(...
+    vcFile_fet1, 'Format', class(mrFet1), 'Offset', viOffset_drift(i), ...
+    'Repeat', vn_drift(i) * prod(dimm1(1:end-1))), 1:nDrift);
 end %func
 
 
@@ -2344,7 +2362,11 @@ for iLoad = 1:numel(csFiles_fet)
     end
     if isempty(viSpk1), continue; end
     dimm_fet1 = [dimm_fet(1), dimm_fet(2), vnSpk_load(iLoad)];
-    trPc_load1 = load_bin_(csFiles_fet{iLoad}, type_fet, dimm_fet1, vnBytes_offset_load(iLoad));    
+    fid1=fopen(csFiles_fet{iLoad},'r'); 
+    fseek(fid1, vnBytes_offset_load(iLoad), 'bof'); 
+    trPc_load1 = fread_(fid1, dimm_fet1, type_fet);
+    fclose(fid1);
+    
     if ~isempty(mlPc)
         if fLoad_all
             mrFet1(:,viSpk1) = fet2pc_(tr2mr_(trPc_load1));            
@@ -3880,27 +3902,25 @@ try
         viOffset = header;
         assert(numel(vnLoad) == numel(viOffset), 'load_bin_: vnLoad size does not match viOffset');
         dimm_wav = dimm; dimm_wav(end) = sum(vnLoad);
-        mnWav = zeros(dimm_wav, vcDataType);     
+        mnWav = zeros(dimm_wav, vcDataType);  
         byte_per_sample1 = prod(dimm_wav(1:end-1)) * bytesPerSample_(vcDataType);
-        iOffset1 = 0;
+        iT_offset1 = 0;
         for iLoad = 1:numel(vnLoad)
-            vi1 = (1:vnLoad(iLoad)) + iOffset1;
+            vi1 = (1:vnLoad(iLoad)) + iT_offset1;
             if isempty(vi1), continue; end
             fseek(fid, byte_per_sample1 * viOffset(iLoad), 'bof');
             dimm_wav(end) = vnLoad(iLoad);
             switch numel(dimm_wav)
-                case 1, mnWav(vi1) = fread_(fid, dimm_wav, vcDataType);
-                case 2, mnWav(:,vi1) = fread_(fid, dimm_wav, vcDataType);
+                case 1, mnWav(vi1) = fread(fid, dimm_wav, vcDataType);
+                case 2, mnWav(:,vi1) = fread(fid, dimm_wav, vcDataType);
                 case 3, mnWav(:,:,vi1) = fread_(fid, dimm_wav, vcDataType);
                 case 4, mnWav(:,:,:,vi1) = fread_(fid, dimm_wav, vcDataType);
                 otherwise, error('load_bin_: unsupported dimensions');
             end
-            iOffset1 = vi1(end);
+            iT_offset1 = vi1(end);
         end
     end
-    if ischar(vcFile)
-        fclose(fid);
-    end
+    if ischar(vcFile), fclose(fid); end
 catch
     disp(lasterr());
 end
@@ -4017,7 +4037,8 @@ else
     end
 end
 mlDrift = mi2ml_drift_(miSort_drift); %gpuArray_(mi2ml_drift_(miSort_drift), P.fGpu);
-S_drift = makeStruct_(miSort_drift, nTime_drift, viDrift_spk, mlDrift, viLim_drift);
+S_drift = makeStruct_(miSort_drift, nTime_drift, viDrift_spk, mlDrift, ...
+    viLim_drift, mrCount_drift);
 fprintf('\n\ttook %0.1fs\n', toc(t1));
 end %func
 
