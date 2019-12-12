@@ -432,7 +432,7 @@ end %func
 %--------------------------------------------------------------------------
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_()
-vcVer = 'v5.2.14';
+vcVer = 'v5.2.15';
 vcDate = '12/12/2019';
 vcHash = file2hash_();
 
@@ -4172,6 +4172,46 @@ end %func
 % 9/3/2019 JJJ: run_mode can be an array (sequential merge)
 % 9/17/2018 JJJ: merge peaks based on their waveforms
 function [viMap, S_clu, nClu_post] = S_clu_peak_merge1_(S_clu, P, viSite_spk) 
+
+miKnn = get_(S_clu, 'miKnn'); % to load from disk
+knn_merge_thresh = get_set_(P, 'knn_merge_thresh', 1);
+nClu = numel(setdiff(unique(S_clu.viClu), 0));
+if ~isempty(miKnn)
+    miKnn_clu = miKnn(:,S_clu.icl);
+else
+    miKnn_clu = load_miKnn_spk_(P, viSite_spk, S_clu.icl); 
+end
+
+% find exact knn of the peaks using feature matrix
+[mnKnn_lower_clu, mnKnn_upper_clu] = deal(zeros(nClu));
+for iClu1 = 1:nClu
+    viSpk1 = miKnn_clu(:,iClu1);     
+    if iClu1 > 1
+        mnKnn_lower_clu(1:iClu1-1,iClu1) = sum(ismember(miKnn_clu(:,1:iClu1-1), viSpk1))';
+    end
+    if iClu1 < nClu
+        mnKnn_upper_clu(iClu1+1:end,iClu1) = sum(ismember(miKnn_clu(:,iClu1+1:end), viSpk1))';
+    end
+end   
+mnKnn_lower_clu = mnKnn_lower_clu + mnKnn_lower_clu';
+mnKnn_upper_clu = mnKnn_upper_clu + mnKnn_upper_clu';
+mnKnn_clu = min(mnKnn_lower_clu, mnKnn_upper_clu);
+
+[viMap, viUniq_] = ml2map_(mnKnn_clu >= knn_merge_thresh);
+nClu_post = numel(viUniq_);
+viMap = viMap(:);
+S_clu.viClu = map_index_(viMap, S_clu.viClu, 0);
+S_clu = S_clu_prune_icl_(S_clu);
+
+fprintf('S_clu_peak_merge_: %d->%d cluster centers (knn_merge_thresh=%d)\n', ...
+    nClu, nClu_post, knn_merge_thresh);
+end %func
+
+
+%--------------------------------------------------------------------------
+% 9/3/2019 JJJ: run_mode can be an array (sequential merge)
+% 9/17/2018 JJJ: merge peaks based on their waveforms
+function [viMap, S_clu, nClu_post] = S_clu_peak_merge1__(S_clu, P, viSite_spk) 
 
 NUM_KNN_MERGE = 4;
 miKnn = get_(S_clu, 'miKnn'); % to load from disk
