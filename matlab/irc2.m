@@ -20,14 +20,15 @@ persistent vcFile_prm_
 fDetect = read_cfg_('fForceRerun');
 
 if iscell(vcDir_in) && iscell(vcDir_out)    
-    [csDir_in, csDir_out, csFile_arg] = deal(vcDir_in, vcDir_out, vcFile_arg);
+    [csDir_in, csDir_out, csFile_arg, fParfor] = deal(vcDir_in, vcDir_out, vcFile_arg, vcArg3);
+    if isempty(fParfor), fParfor = false; end
     parfor iFile = 1:numel(csDir_in)
         try
             if exist_file_(fullfile(csDir_out{iFile}, 'firings.mda')) && ~fDetect
                 continue;
             end
             fprintf('irc2 batch-processing %s (%d/%d)\n', csDir_in{iFile}, iFile, numel(csDir_in));
-            irc2(csDir_in{iFile}, csDir_out{iFile}, csFile_arg{iFile});
+            irc2(csDir_in{iFile}, csDir_out{iFile}, csFile_arg{iFile}, fParfor);
         catch
             disp(lasterr());
         end
@@ -104,9 +105,9 @@ switch lower(vcCmd)
 end
 
 fprintf('Running irc2.m (%s)\n', version_());
-
 if isempty(P)
-    P = makeParam_(vcDir_in, vcDir_out, vcFile_arg);
+    fParfor = vcArg3;
+    P = makeParam_(vcDir_in, vcDir_out, vcFile_arg, fParfor);    
 end
 vcFile_prm_ = P.vcFile_prm;
 vcFile_mat = strrep(P.vcFile_prm, '.prm', '_irc.mat');
@@ -431,8 +432,8 @@ end %func
 %--------------------------------------------------------------------------
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_()
-vcVer = 'v5.2.13';
-vcDate = '12/11/2019';
+vcVer = 'v5.2.14';
+vcDate = '12/12/2019';
 vcHash = file2hash_();
 
 if nargout==0
@@ -3222,9 +3223,10 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function P = makeParam_(vcDir_in, vcDir_out, vcFile_arg)
+function P = makeParam_(vcDir_in, vcDir_out, vcFile_arg, fParfor)
 if nargin<2, vcDir_out = ''; end
 if nargin<3, vcFile_arg = ''; end
+if nargin<4, fParfor = ''; end
 
 [vcDir_, vcFile_, vcExt_] = fileparts(vcDir_in);
 if strcmpi(vcExt_, '.mda')
@@ -3299,6 +3301,9 @@ elseif exist_file_(vcFile_arg)
     end
 end
 P = struct_merge_(P, S_arg);
+if ~isempty(fParfor)
+    P.fParfor = fParfor; % override fParfor
+end
 
 % derived fields
 P = fill_param_(P);

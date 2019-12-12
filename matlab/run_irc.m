@@ -42,7 +42,8 @@ fForceRerun = irc('call', 'read_cfg', {'fForceRerun'});
 if ~exist_file_(firings_out_fname) || fForceRerun    
     switch version
         case 2
-            irc2(vcDir_in, vcDir_out, vcFile_template);
+            fParfor = 0;
+            irc2(vcDir_in, vcDir_out, vcFile_template, fParfor);
             
         case 1            
             geom_fname = fullfile(vcDir_in, 'geom.csv');  
