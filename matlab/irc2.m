@@ -1705,13 +1705,13 @@ if fParfor && ~fLargeRecording
 end
 vrRho = zeros(nSpk, 1, 'single');
 for iSite = 1:nSites
-    if (isempty(cvrRho{iSite}) && isempty(cviSpk_site{iSite})) || fLargeRecording
-        if fLargeRecording || fParfor
-            [cvrRho{iSite}, cviSpk_site{iSite}] = rho_knn_disk_(iSite, S_fet);
-            fprintf('D');
-        else
+    if (isempty(cvrRho{iSite}) && isempty(cviSpk_site{iSite}))
+        try
             [cvrRho{iSite}, cviSpk_site{iSite}] = rho_knn_ram_(iSite, S_fet);             
             fprintf('R');
+        catch % ran out of RAM, use DISK caching (slower)
+            [cvrRho{iSite}, cviSpk_site{iSite}] = rho_knn_disk_(iSite, S_fet);
+            fprintf('D');
         end
     end
     viSpk1 = cviSpk_site{iSite};
@@ -1739,13 +1739,13 @@ end %for
 vrDelta = zeros(nSpk, 1, 'single');
 viNneigh = zeros(nSpk, 1, 'int64');
 for iSite = 1:nSites
-    if (isempty(cvrDelta{iSite}) && isempty(cviNneigh{iSite})) || fLargeRecording
-        if fLargeRecording || fParfor
+    if (isempty(cvrDelta{iSite}) && isempty(cviNneigh{iSite}))
+        try
+            [cvrDelta{iSite}, cviNneigh{iSite}] = delta_knn_ram_(iSite, vrRho, S_fet);              
+            fprintf('R');
+        catch
             [cvrDelta{iSite}, cviNneigh{iSite}] = delta_knn_disk_(iSite, vrRho, S_fet);  
             fprintf('D');
-        else
-            [cvrDelta{iSite}, cviNneigh{iSite}] = delta_knn_ram_(iSite, vrRho, S_fet);  
-            fprintf('R');
         end
     end
     viSpk1 = cviSpk_site{iSite};
