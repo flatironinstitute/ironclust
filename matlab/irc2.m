@@ -432,7 +432,7 @@ end %func
 %--------------------------------------------------------------------------
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_()
-vcVer = 'v5.2.15';
+vcVer = 'v5.3.1';
 vcDate = '12/12/2019';
 vcHash = file2hash_();
 
@@ -4001,7 +4001,7 @@ nTime_drift = get_set_(P, 'nTime_drift', nTime_clu * 4);
 viDrift_spk = []; %ones(1, numel(S0.viSite_spk), 'int64');
 if nTime_clu == 1 || nTime_drift == 1 % no drift correlation analysis
     viLim_drift = [1, numel(S0.viSite_spk)];
-    [miSort_drift, nTime_drift] = deal(1, 1);    
+    [miSort_drift, nTime_drift, mrCount_drift] = deal(1, 1, []);    
 else
     nAmp_drift = get_set_(P, 'nQuantile_drift', 10);
     %nPos_drift = get_set_(P, 'nPos_drift', 100);
