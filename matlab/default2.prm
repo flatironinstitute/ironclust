@@ -33,5 +33,5 @@ min_snr_clu = [];           % Automatically remove clusters below this SNR thres
 spkRefrac_merge_ms = .25;   % Remove spikes violating this refractory period in msec when merged
 post_merge_mode = 1;            
 
-fLargeRecording = 0;        % Turn it on to save memory use at the cost of slower processing. this gets turned on when memory error occurs
+fLargeRecording = 1;        % Turn it on to save memory use at the cost of slower processing. this gets turned on when memory error occurs
 knn_merge_mode = 1;         % 1 for old and 2 for new fraction-based method

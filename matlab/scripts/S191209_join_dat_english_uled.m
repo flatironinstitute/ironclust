@@ -86,6 +86,4 @@ irc2 D:\Globus\DanEnglish\PV_ChR2_Chronic\shank1
 irc2 D:\Globus\DanEnglish\PV_ChR2_Chronic\shank2
 irc2 D:\Globus\DanEnglish\PV_ChR2_Chronic\shank3
 irc2 D:\Globus\DanEnglish\PV_ChR2_Chronic\shank4
-irc2 D:\Globus\recordings\kf19_nt27\irc2\raw_geom.prm
-
-
+irc2 D:\Globus\recordings\kf19_nt27

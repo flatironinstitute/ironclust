@@ -147,6 +147,20 @@ end %func
 
 
 %--------------------------------------------------------------------------
+% 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
+function [vcVer, vcDate, vcHash] = version_()
+vcVer = 'v5.3.3';
+vcDate = '12/12/2019';
+vcHash = file2hash_();
+
+if nargout==0
+    fprintf('%s (%s) installed, MD5: %s\n', vcVer, vcDate, vcHash);
+    return;
+end
+end %func
+
+
+%--------------------------------------------------------------------------
 function save_clu_(S_clu, P)
 if isempty(S_clu), return; end
 
@@ -426,20 +440,6 @@ for iArg_out = 1:nargout
         varargout{iArg_out} = [];
     end
 end %for
-end %func
-
-
-%--------------------------------------------------------------------------
-% 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
-function [vcVer, vcDate, vcHash] = version_()
-vcVer = 'v5.3.2';
-vcDate = '12/12/2019';
-vcHash = file2hash_();
-
-if nargout==0
-    fprintf('%s (%s) installed, MD5: %s\n', vcVer, vcDate, vcHash);
-    return;
-end
 end %func
 
 
@@ -1686,17 +1686,20 @@ nSites = size(P.miSites,2);
 miKnn = [];
 fParfor = get_set_(P, 'fParfor', true) && nSites>1;
 fLargeRecording = get_set_(P, 'fLargeRecording', 0);
-fGpu = get_(P, 'fGpu');
+S_fet.fGpu = get_(P, 'fGpu') && ~fLargeRecording;
 
 % Calculate Rho
 [cvrRho, cvrDelta, cviNneigh, cviSpk_site] = deal(cell(nSites,1));
 fprintf('Calculating Rho\n\t'); t1=tic;
-if fParfor && ~fLargeRecording
+if fParfor 
     try
         parfor iSite = 1:nSites
             try
                 [cvrRho{iSite}, cviSpk_site{iSite}] = rho_knn_ram_(iSite, S_fet);  
+                fprintf('R');
             catch
+                [cvrRho{iSite}, cviSpk_site{iSite}] = rho_knn_disk_(iSite, S_fet);  
+                fprintf('D');
             end
         end %for
     catch
@@ -1708,10 +1711,10 @@ for iSite = 1:nSites
     if (isempty(cvrRho{iSite}) && isempty(cviSpk_site{iSite}))
         try
             [cvrRho{iSite}, cviSpk_site{iSite}] = rho_knn_ram_(iSite, S_fet);             
-            fprintf('R');
+            fprintf('r');
         catch % ran out of RAM, use DISK caching (slower)
             [cvrRho{iSite}, cviSpk_site{iSite}] = rho_knn_disk_(iSite, S_fet);
-            fprintf('D');
+            fprintf('d');
         end
     end
     viSpk1 = cviSpk_site{iSite};
@@ -1719,17 +1722,20 @@ for iSite = 1:nSites
     vrRho(viSpk1) = cvrRho{iSite};
 end %for
 cvrRho = [];
-fprintf('\n\ttook %0.1fs (fGpu=%d, fParfor=%d)\n', toc(t1), fGpu, fParfor);
+fprintf('\n\ttook %0.1fs (fGpu=%d, fParfor=%d)\n', toc(t1), S_fet.fGpu, fParfor);
 
 
 % Calculate Delta
 fprintf('Calculating Delta\n\t'); t2=tic;
-if fParfor && ~fLargeRecording
+if fParfor 
     try
         parfor iSite = 1:nSites
             try
                 [cvrDelta{iSite}, cviNneigh{iSite}] = delta_knn_ram_(iSite, vrRho, S_fet); 
+                fprintf('R');
             catch
+                [cvrDelta{iSite}, cviNneigh{iSite}] = delta_knn_disk_(iSite, vrRho, S_fet); 
+                fprintf('D');
             end
         end
     catch
@@ -1742,17 +1748,17 @@ for iSite = 1:nSites
     if (isempty(cvrDelta{iSite}) && isempty(cviNneigh{iSite}))
         try
             [cvrDelta{iSite}, cviNneigh{iSite}] = delta_knn_ram_(iSite, vrRho, S_fet);              
-            fprintf('R');
+            fprintf('r');
         catch
             [cvrDelta{iSite}, cviNneigh{iSite}] = delta_knn_disk_(iSite, vrRho, S_fet);  
-            fprintf('D');
+            fprintf('d');
         end
     end
     viSpk1 = cviSpk_site{iSite};
     if isempty(viSpk1), continue; end
     [vrDelta(viSpk1), viNneigh(viSpk1)] = deal(cvrDelta{iSite}, cviNneigh{iSite});
 end
-fprintf('\n\ttook %0.1fs (fGpu=%d, fParfor=%d)\n', toc(t2), fGpu, fParfor);
+fprintf('\n\ttook %0.1fs (fGpu=%d, fParfor=%d)\n', toc(t2), S_fet.fGpu, fParfor);
 memory_sort = memory_matlab_();
 end %func
 
