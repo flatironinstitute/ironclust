@@ -611,6 +611,7 @@ try
     csDesc{end+1} = sprintf('    Filter range (Hz):      [%0.1f, %0.1f]', P.freqLim);
     csDesc{end+1} = sprintf('    Common ref:             %s', P.vcCommonRef);
     csDesc{end+1} = sprintf('    FFT threshold:          %d', get_set_(P, 'fft_thresh', 0));
+    csDesc{end+1} = sprintf('    blank threshold:        %d', get_set_(P, 'blank_thresh', 0));    
     csDesc{end+1} = sprintf('Events');
     csDesc{end+1} = sprintf('    #Spikes:                %d', nSpk);
     csDesc{end+1} = sprintf('    Feature extracted:      %s', P.vcFet);    
@@ -3508,9 +3509,9 @@ end
 mask_out_artifacts = get_set_(S_txt, 'mask_out_artifacts', []);
 if strcmpi(mask_out_artifacts, 'true')
     P.blank_thresh = 10; 
-else
-    P.blank_thresh = []; 
-end    
+elseif strcmpi(mask_out_artifacts, 'false')
+    P.blank_thresh = 0;
+end
 
 % set adjacency radius
 P.maxDist_site_um = get_set_(S_txt, 'adjacency_radius', 50);
