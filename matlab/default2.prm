@@ -12,9 +12,12 @@ vcCommonRef = 'mean';       % common reference mode {'none', 'mean', 'median', '
 nChans_min_car = 16;        % disable common ref subtraction if the number of channels is less than this number
 qqFactor = 4;               % Detection threshold (estimated SD from the median to exclude spiking activity)
 nPc_spk = 9;                % Number of components per spike per channel to compress the spike waveform
-spkLim_ms = [-.25, .75];      % Time range to extract spikes in milliseconds
+spkLim_ms = [-.25, .75];    % Time range to extract spikes in milliseconds
 fInterp_fet = 1;            % Set to `1` to interpolate the waveform by 2x
 spkRefrac_ms = .25;         % reject spikes occcuring closer than this
+fft_thresh = 10;            % Reject outlier frequency peaks (unit in MAD)
+blank_thresh = 10;          % reject motion artifacts (unit in MAD)
+blank_period_ms = 5;        % (miliseconds) Duration of blanking when the common mean exceeds a threhold (blank_thresh)
 
 % [Cluster stage: apply drift-detection and KNN-graph density-peak clustering]
 nPcPerChan = 0;             % #PC/chan. Set to `0` to use a variable # as a function of distance from the center
