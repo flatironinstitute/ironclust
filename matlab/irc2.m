@@ -1686,8 +1686,8 @@ nSites = size(P.miSites,2);
 miKnn = [];
 fLargeRecording = get_set_(P, 'fLargeRecording', 0);
 [fParfor, fGpu] = get_(P, 'fParfor', 'fGpu');
-fParfor = fParfor && nSites>1 && ~fLargeRecording;
-S_fet.fGpu = fGpu; % && ~fLargeRecording;
+fParfor = fParfor && nSites>1;
+S_fet.fGpu = fGpu && ~fLargeRecording;
 
 % Calculate Rho
 [cvrRho, cvrDelta, cviNneigh, cviSpk_site] = deal(cell(nSites,1));
@@ -1697,10 +1697,10 @@ if fParfor
         parfor iSite = 1:nSites
             try
                 [cvrRho{iSite}, cviSpk_site{iSite}] = rho_knn_ram_(iSite, S_fet);  
-                fprintf('R');
+                fprintf('G');
             catch
-                [cvrRho{iSite}, cviSpk_site{iSite}] = rho_knn_disk_(iSite, S_fet);  
-                fprintf('D');
+                [cvrRho{iSite}, cviSpk_site{iSite}] = rho_knn_ram_(iSite, S_fet, 0);  
+                fprintf('C');
             end
         end %for
     catch
@@ -1712,10 +1712,10 @@ for iSite = 1:nSites
     if (isempty(cvrRho{iSite}) && isempty(cviSpk_site{iSite}))
         try
             [cvrRho{iSite}, cviSpk_site{iSite}] = rho_knn_ram_(iSite, S_fet);             
-            fprintf('r');
+            fprintf('G');
         catch
-            [cvrRho{iSite}, cviSpk_site{iSite}] = rho_knn_disk_(iSite, S_fet);
-            fprintf('d');
+            [cvrRho{iSite}, cviSpk_site{iSite}] = rho_knn_ram_(iSite, S_fet, 0);
+            fprintf('C');
         end
     end
     viSpk1 = cviSpk_site{iSite};
@@ -1733,10 +1733,10 @@ if fParfor
         parfor iSite = 1:nSites
             try
                 [cvrDelta{iSite}, cviNneigh{iSite}] = delta_knn_ram_(iSite, vrRho, S_fet); 
-                fprintf('R');
+                fprintf('G');
             catch
-                [cvrDelta{iSite}, cviNneigh{iSite}] = delta_knn_disk_(iSite, vrRho, S_fet); 
-                fprintf('D');
+                [cvrDelta{iSite}, cviNneigh{iSite}] = delta_knn_ram_(iSite, vrRho, S_fet, 0); 
+                fprintf('C');
             end
         end
     catch
@@ -1749,10 +1749,10 @@ for iSite = 1:nSites
     if (isempty(cvrDelta{iSite}) && isempty(cviNneigh{iSite}))
         try
             [cvrDelta{iSite}, cviNneigh{iSite}] = delta_knn_ram_(iSite, vrRho, S_fet);              
-            fprintf('r');
+            fprintf('G');
         catch
-            [cvrDelta{iSite}, cviNneigh{iSite}] = delta_knn_disk_(iSite, vrRho, S_fet);  
-            fprintf('d');
+            [cvrDelta{iSite}, cviNneigh{iSite}] = delta_knn_ram_(iSite, vrRho, S_fet, 0);  
+            fprintf('C');
         end
     end
     viSpk1 = cviSpk_site{iSite};
@@ -1860,13 +1860,15 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function [vrRho1, viSpk1, miKnn1] = rho_knn_ram_(iSite, S_fet)
+function [vrRho1, viSpk1, miKnn1] = rho_knn_ram_(iSite, S_fet, fGpu)
 % S_fet contains {type_fet, dimm_fet, nLoads, vcFile_prm, mlPc, mlDrift, viLim_drift}
-    
+if nargin<3, fGpu=[]; end
+
 [mlDrift, viLim_drift, vcFile_prm] = ...
     struct_get_(S_fet, 'mlDrift', 'viLim_drift', 'vcFile_prm');
 nDrift = size(mlDrift,1);
-[knn, fGpu] = get_(S_fet, 'knn', 'fGpu');
+[knn] = get_(S_fet, 'knn');
+if ~isempty(fGpu), S_fet.fGpu=fGpu; end
 
 [mrFet1, viSpk1] = load_fet_site_(S_fet, 1, iSite);
 if isempty(viSpk1), [vrRho1, miKnn1] = deal([]); return; end
@@ -2119,8 +2121,11 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function [vrDelta1, viNneigh1] = delta_knn_ram_(iSite, vrRho, S_fet)
+function [vrDelta1, viNneigh1] = delta_knn_ram_(iSite, vrRho, S_fet, fGpu)
 % S_fet contains {type_fet, dimm_fet, nLoads, vcFile_prm, mlPc, mlDrift, viLim_drift}
+if nargin<4, fGpu=[]; end
+if ~isempty(fGpu), S_fet.fGpu=fGpu; end
+
 SINGLE_INF = 3.402E+38;
 [mlDrift, viLim_drift, vcFile_prm] = ...
     struct_get_(S_fet, 'mlDrift', 'viLim_drift', 'vcFile_prm');

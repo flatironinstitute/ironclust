@@ -81,9 +81,7 @@ end
 arrayfun(@(x)writemda_fid(x, 'close'), v_fid_shank);
 
 %% run ironclust
-
-irc2 D:\Globus\DanEnglish\PV_ChR2_Chronic\shank1
-irc2 D:\Globus\DanEnglish\PV_ChR2_Chronic\shank2
-irc2 D:\Globus\DanEnglish\PV_ChR2_Chronic\shank3
-irc2 D:\Globus\DanEnglish\PV_ChR2_Chronic\shank4
+parfor i=1:4 
+    irc2(sprintf('D:\\Globus\\DanEnglish\\PV_ChR2_Chronic\\shank%d',i));
+end
 irc2 D:\Globus\recordings\kf19_nt27

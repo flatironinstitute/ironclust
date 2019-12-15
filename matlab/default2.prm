@@ -1,6 +1,7 @@
 % [Execution parameters]
 fGpu = 1;                   % Enable GPU if available
 fParfor = 1;                % Enable multi-processing if available
+fLargeRecording = 1;        % Turn it on to save memory use at the cost of slower processing. this gets turned on when memory error occurs
 MAX_BYTES_LOAD = .5e9;
 
 % [Detect stage: filter and detect spikes]
@@ -26,7 +27,6 @@ batch_sec_drift = 300;      % Total ave. duration of time batch group in sec
 knn = 30;                   % k nearest neighbors
 CHUNK = 16;                 % GPU memory chunk size
 nThreads = 128;             % GPU threads
-fLargeRecording = 0;        % Turn it on to save memory use at the cost of slower processing. this gets turned on when memory error occurs
 
 % [Auto-merge stage: automatically merge similar clusters based on KNN-graph and waveform similarity]
 maxWavCor = .99;            % Automated merge thresohld based on waveform correlation

@@ -2772,12 +2772,12 @@ try % spatial mask
             nFetPerChan = get_(P, 'nPcPerChan', 2);
             nSites_fet = size(mrFet12_,1) / nFetPerChan;
         %     nSites_fet = 1 + P.maxSite*2 - P.nSites_ref;    
-            if get_set_(P, 'fSpatialMask_clu', 1) && nSites_fet >= get_set_(P, 'nChans_min_car', 8)
-        %         nFetPerChan = size(mrFet12_,1) / nSites_fet;
-                vrSpatialMask = spatialMask_(P, iSite, nSites_fet, P.maxDist_site_um);
-                vrSpatialMask = repmat(vrSpatialMask(:), [nFetPerChan, 1]);
-                mrFet12_ = bsxfun(@times, mrFet12_, vrSpatialMask(:));
-            end
+%             if get_set_(P, 'fSpatialMask_clu', 1) && nSites_fet >= get_set_(P, 'nChans_min_car', 8)
+%         %         nFetPerChan = size(mrFet12_,1) / nSites_fet;
+%                 vrSpatialMask = spatialMask_(P, iSite, nSites_fet, P.maxDist_site_um);
+%                 vrSpatialMask = repmat(vrSpatialMask(:), [nFetPerChan, 1]);
+%                 mrFet12_ = bsxfun(@times, mrFet12_, vrSpatialMask(:));
+%             end
     end
 catch
     disperr_('Spatial mask error');
@@ -5259,12 +5259,12 @@ if isempty(vnSamples_file)
     if isempty(csFile_merge), csFile_merge = {P.vcFile}; end
     vnSamples_file = zeros(size(csFile_merge));
     for iFile = 1:numel(csFile_merge)        
-        nBytes_file1 = filesize_(P.vcFile) - get_set_(P, 'header_offset', 0);
+        nBytes_file1 = filesize_(csFile_merge{iFile}) - get_set_(P, 'header_offset', 0);
         vnSamples_file(iFile) = nBytes_file1 / bytesPerSample_(P.vcDataType) / P.nChans;
     end
 end
 nSamples = sum(vnSamples_file);
-t_dur = vnSamples_file / P.sRateHz;
+t_dur = nSamples / P.sRateHz;
 end %func
 
 
@@ -5329,7 +5329,7 @@ if isfield(S0, 'S_clu')
     csDesc{end+1} = sprintf('    K-nearest neighbor(knn) %d', P.knn);
     csDesc{end+1} = sprintf('    nTime_clu               %d', P.nTime_clu);
     csDesc{end+1} = sprintf('    nTime_drift             %d', P.nTime_drift);
-    csDesc{end+1} = sprintf('    fSpatialMask_clu        %d', P.fSpatialMask_clu);
+%     csDesc{end+1} = sprintf('    fSpatialMask_clu        %d', P.fSpatialMask_clu);
     csDesc{end+1} = sprintf('Auto-merge:');   
     csDesc{end+1} = sprintf('    delta_cut               %0.3f', get_set_(P, 'delta_cut', 1));
     csDesc{end+1} = sprintf('    maxWavCor               %0.3f', P.maxWavCor);
@@ -6200,7 +6200,7 @@ function S_fig = plot_tnWav_clu_(S_fig, P)
 S0 = get(0, 'UserData'); 
 S_clu = S0.S_clu;
 if ~isfield(P, 'LineWidth'), P.LineWidth=1; end
-trWav_clu = ifeq_(P.fWav_raw_show, S_clu.trWav_raw_clu, S_clu.trWav_clu);
+trWav_clu = ifeq_(P.fWav_raw_show, S_clu.trWav_raw_clu, S_clu.trWav_spk_clu);
 [nSamples, nSites, nClu] = size(trWav_clu);
 nChans_show = size(P.miSites, 1);
 miSites_clu = P.miSites(:, S_clu.viSite_clu);
@@ -10036,7 +10036,6 @@ catch
     [nSamples, nSites_spk] = deal(size(S0.mrPv_global,1), size(S0.trPc_spk,2));
 end
 nSites = numel(P.viSite2Chan);
-fDrift_merge = get_set_(P, 'fDrift_merge', 1);
 
 % Prepare cluster loop
 if isempty(viClu_update)   
@@ -10051,12 +10050,6 @@ if isempty(viClu_update)
     else
         [trWav_raw_clu, tmrWav_raw_clu] = deal([]);
     end
-    if fDrift_merge
-        [tmrWav_spk_lo_clu, tmrWav_spk_hi_clu] = deal(tmrWav_spk_clu);
-        [tmrWav_raw_lo_clu, tmrWav_raw_hi_clu] = deal(tmrWav_raw_clu);
-    else
-        [tmrWav_raw_lo_clu, tmrWav_raw_hi_clu, tmrWav_spk_lo_clu, tmrWav_spk_hi_clu] = deal([]);
-    end
 else
     vlClu_update = false(nClu, 1);
     vlClu_update(viClu_update) = 1;
@@ -10064,8 +10057,6 @@ else
     vlClu_update((1:nClu) > nClu_pre) = 1;
     [tmrWav_spk_clu, trWav_spk_clu, mrPos_clu] = struct_get_(S_clu, 'tmrWav_spk_clu', 'trWav_spk_clu', 'mrPos_clu');
     [tmrWav_raw_clu, trWav_raw_clu] = struct_get_(S_clu, 'tmrWav_raw_clu', 'trWav_raw_clu');
-    [tmrWav_spk_lo_clu, tmrWav_spk_hi_clu, tmrWav_raw_lo_clu, tmrWav_raw_hi_clu] ...
-        = struct_get_(S_clu, 'tmrWav_spk_lo_clu', 'tmrWav_spk_hi_clu', 'tmrWav_raw_lo_clu', 'tmrWav_raw_hi_clu');
 end
 
 % Compute spkwav
@@ -10073,14 +10064,7 @@ tnWav_ = get_spkwav_(P, 0);
 % if isempty(tnWav_), return; end
 for iClu=1:nClu       
     if vlClu_update(iClu)
-        if ~isempty(tmrWav_spk_lo_clu)
-            [mrWav_clu1, viSite_clu1, mrWav_lo_clu1, mrWav_hi_clu1] = clu_wav_(S_clu, tnWav_, iClu, S0);
-            if isempty(mrWav_lo_clu1) || isempty(mrWav_hi_clu1), continue; end
-            tmrWav_spk_lo_clu(:,viSite_clu1,iClu) = bit2uV_(mrWav_lo_clu1, P);
-            tmrWav_spk_hi_clu(:,viSite_clu1,iClu) = bit2uV_(mrWav_hi_clu1, P);
-        else
-            [mrWav_clu1, viSite_clu1] = clu_wav_(S_clu, tnWav_, iClu, S0);
-        end
+        [mrWav_clu1, viSite_clu1] = clu_wav_(S_clu, tnWav_, iClu, S0);
         if isempty(mrWav_clu1), continue; end
         [tmrWav_spk_clu(:,viSite_clu1,iClu), trWav_spk_clu(:,:,iClu)] = deal(bit2uV_(mrWav_clu1, P));
         try
@@ -10098,14 +10082,7 @@ if ~isempty(tmrWav_raw_clu)
     tnWav_ = get_spkwav_(P, 1);
     for iClu=1:nClu       
         if vlClu_update(iClu)
-            if ~isempty(tmrWav_raw_lo_clu)
-                [mrWav_clu1, viSite_clu1, mrWav_lo_clu1, mrWav_hi_clu1] = clu_wav_(S_clu, tnWav_, iClu, S0);
-                if isempty(mrWav_lo_clu1) || isempty(mrWav_hi_clu1), continue; end                            
-                tmrWav_raw_lo_clu(:,viSite_clu1,iClu) = mrWav_lo_clu1 * P.uV_per_bit;
-                tmrWav_raw_hi_clu(:,viSite_clu1,iClu) = mrWav_hi_clu1 * P.uV_per_bit;
-            else
-                [mrWav_clu1, viSite_clu1] = clu_wav_(S_clu, tnWav_, iClu, S0);                                
-            end
+            [mrWav_clu1, viSite_clu1] = clu_wav_(S_clu, tnWav_, iClu, S0);   
             if isempty(mrWav_clu1), continue; end       
             [tmrWav_raw_clu(:,viSite_clu1,iClu), trWav_raw_clu(:,:,iClu)] = deal(mrWav_clu1 * P.uV_per_bit);
             if fVerbose, fprintf('.'); end
@@ -10121,24 +10098,22 @@ vrVmin_clu = abs(vrVmin_clu(:));
 viSite_min_clu = viSite_min_clu(:);
 
 S_clu = struct_add_(S_clu, vrVmin_clu, viSite_min_clu, mrPos_clu, tmrWav_clu, ...
-    trWav_spk_clu, tmrWav_spk_clu, tmrWav_spk_lo_clu, tmrWav_spk_hi_clu);
+    trWav_spk_clu, tmrWav_spk_clu);
 if ~isempty(tmrWav_raw_clu), S_clu = struct_add_(S_clu, trWav_raw_clu, tmrWav_raw_clu); end
-if ~isempty(tmrWav_raw_lo_clu), S_clu = struct_add_(S_clu, tmrWav_raw_lo_clu, tmrWav_raw_hi_clu); end
 if fVerbose, fprintf('\n\ttook %0.1fs\n', toc(t1)); end
 end %func
 
 
 %--------------------------------------------------------------------------
 % 10/22/17 JJJ
-function [mrWav_clu1, viSite_clu1, mrWav_lo_clu1, mrWav_hi_clu1] = clu_wav_(S_clu, tnWav_, iClu, S0)
+function [mrWav_clu1, viSite_clu1] = clu_wav_(S_clu, tnWav_, iClu, S0)
 if nargin<4, S0 = get(0, 'UserData'); end
 fUseCenterSpk = 0; % set to zero to use all spikes
 nSamples_max = 1000;
 fMedian = strcmpi(get_set_(S0.P, 'vcCluWavMode'), 'median');
 fh1 = ifeq_(fMedian, @median, @mean);
 
-fDrift_merge = get_set_(S0.P, 'fDrift_merge', 0);
-[mrWav_clu1, viSite_clu1, mrWav_lo_clu1, mrWav_hi_clu1] = deal([]);
+[mrWav_clu1, viSite_clu1] = deal([]);
 iSite_clu1 = S_clu.viSite_clu(iClu);
 viSite_clu1 = S0.P.miSites(:,iSite_clu1);
 viSpk_clu1 = S_clu.cviSpk_clu{iClu};% 
@@ -10154,34 +10129,10 @@ else
     get_wav_ = @(x)single(tnWav_(:,:,x));
 end
 if isempty(viSpk_clu1), return; end  
-if ~fDrift_merge
-    viSpk_clu2 = spk_select_mid_(viSpk_clu1, S0.viTime_spk, S0.P); 
-    mrWav_clu1 = fh1(get_wav_(viSpk_clu2), 3);
-    mrWav_clu1 = meanSubt_(mrWav_clu1); %122717 JJJ
-    return;
-end
 
-% use either time or position based partition
-vcMode_wav_merge = 'space';
-switch vcMode_wav_merge
-    case 'time', vrPosY_spk1 = S0.viTime_spk(viSpk_clu1); % todo: search for correlated time bins for non-monotonic drift
-    case 'space', vrPosY_spk1 = S0.mrPos_spk(viSpk_clu1,2);  %position based quantile
-end
-
-try
-    vrYLim = quantile(vrPosY_spk1, [0, 1/3, 2/3, 1]); %[0,1,2,3]/3);
-    [viSpk_clu_, viSite_clu_] = spk_select_pos_(viSpk_clu1, vrPosY_spk1, vrYLim(2:3), nSamples_max, viSite_spk1);
-    mrWav_clu1 = nanmean_int16_(get_wav_(viSpk_clu_), 3, fUseCenterSpk, iSite_clu1, viSite_clu_, S0.P); % * S0.P.uV_per_bit;
-catch
-    disp('error');
-end
-if nargout > 2
-    [viSpk_clu_, viSite_clu_] = spk_select_pos_(viSpk_clu1, vrPosY_spk1, vrYLim(1:2), nSamples_max, viSite_spk1); 
-    mrWav_lo_clu1 = nanmean_int16_(get_wav_(viSpk_clu_), 3, fUseCenterSpk, iSite_clu1, viSite_clu_, S0.P);
-
-    [viSpk_clu_, viSite_clu_] = spk_select_pos_(viSpk_clu1, vrPosY_spk1, vrYLim(3:4), nSamples_max, viSite_spk1);
-    mrWav_hi_clu1 = nanmean_int16_(get_wav_(viSpk_clu_), 3, fUseCenterSpk, iSite_clu1, viSite_clu_, S0.P);
-end
+% viSpk_clu2 = spk_select_mid_(viSpk_clu1, S0.viTime_spk, S0.P); 
+mrWav_clu1 = fh1(get_wav_(viSpk_clu1), 3);
+mrWav_clu1 = meanSubt_(mrWav_clu1); %122717 JJJ
 end %func
 
 
@@ -16469,7 +16420,6 @@ function mrWavCor = S_clu_wavcor_(S_clu, P, viClu_update)
 % symmetric matrix and common basis comparison only
 
 nInterp_merge = get_set_(P, 'nInterp_merge', 1); % set to 1 to disable
-fDrift_merge = get_set_(P, 'fDrift_merge', 0);
 P.fGpu = 0;
 
 if nargin<3, viClu_update = []; end
@@ -16482,15 +16432,7 @@ if fWavRaw_merge
 else
     tmrWav_clu = S_clu.tmrWav_spk_clu;
 end
-if fDrift_merge
-    if fWavRaw_merge % only works on raw
-        ctmrWav_clu = {tmrWav_clu, S_clu.tmrWav_raw_lo_clu, S_clu.tmrWav_raw_hi_clu};
-    else
-        ctmrWav_clu = {tmrWav_clu, S_clu.tmrWav_spk_lo_clu, S_clu.tmrWav_spk_hi_clu};
-    end
-else
-    ctmrWav_clu = {tmrWav_clu};
-end
+ctmrWav_clu = {tmrWav_clu};
 if nInterp_merge>1
     ctmrWav_clu = cellfun(@(x)interpft_(x, nInterp_merge), ctmrWav_clu, 'UniformOutput', 0);
 end
