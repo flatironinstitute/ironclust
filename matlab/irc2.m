@@ -149,8 +149,8 @@ end %func
 %--------------------------------------------------------------------------
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_()
-vcVer = 'v5.3.3';
-vcDate = '12/12/2019';
+vcVer = 'v5.3.4';
+vcDate = '12/16/2019';
 vcHash = file2hash_();
 
 if nargout==0
@@ -632,8 +632,10 @@ if isfield(S0, 'S_clu')
     csDesc{end+1} = sprintf('    min. spk/clu:           %d', P.min_count);
     csDesc{end+1} = sprintf('    Cluster method:         %s', P.vcCluster);
     csDesc{end+1} = sprintf('    knn:                    %d', P.knn);
-    csDesc{end+1} = sprintf('    nTime_clu:              %d', P.nTime_clu);
-    csDesc{end+1} = sprintf('    nTime_drift:            %d', P.nTime_drift);
+    csDesc{end+1} = sprintf('    step_sec_drift:         %0.1fs', P.step_sec_drift);
+    csDesc{end+1} = sprintf('    batch_sec_drift:        %0.1fs', P.batch_sec_drift);
+%     csDesc{end+1} = sprintf('    nTime_drift:            %d', P.nTime_drift);
+%     csDesc{end+1} = sprintf('    nTime_batch:            %d', P.nTime_batch);
     csDesc{end+1} = sprintf('Auto-merge');   
     csDesc{end+1} = sprintf('    delta_cut:              %0.3f', get_set_(P, 'delta_cut', 1));
     csDesc{end+1} = sprintf('    maxWavCor:              %0.3f', P.maxWavCor);
@@ -1521,14 +1523,14 @@ function S_clu = sort_(S0, P)
 % drift processing
 fprintf('Clustering\n'); 
 runtime_sort = tic;
-[mlPc, nFeatures] = get_mlPc_(S0, P);    
-S_drift = calc_drift_(S0, P);
-[viLim_drift, mlDrift] = get_(S_drift, 'viLim_drift', 'mlDrift');
-S_fet = struct_add_(P, mlDrift, mlPc, viLim_drift);
-S_fet = struct_merge_(S_fet, struct_copy_(S0, ...
-    'type_fet', 'dimm_fet', 'ccviSpk_site_load', 'ccviSpk_site2_load'));
 
-[vrRho, vrDelta, miKnn, viNneigh, memory_sort] = sort_ram_(S0, P, S_fet);
+S_drift = calc_drift_(S0, P);
+if get_(P, 'nTime_drift') <= get_set_(P, 'nTime_max_drift', 2^8)
+    [vrRho, vrDelta, miKnn, viNneigh, memory_sort, nFeatures] = sort_ram_(S0, P, S_drift);
+else
+    [vrRho, vrDelta, viNneigh, memory_sort, nFeatures] = sort_long_(S0, P, S_drift);
+    miKnn = [];
+end
 
 % output
 vrRho = vrRho / max(vrRho) / 10;     % divide by 10 to be compatible with previous version displays
@@ -1678,7 +1680,108 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function [vrRho, vrDelta, miKnn, viNneigh, memory_sort] = sort_ram_(S0, P, S_fet)
+function [vrRho, vrDelta, viNneigh, memory_sort, nFeatures] = sort_long_(S0, P, S_drift)
+
+viSite_spk = get_(S0, 'viSite_spk');
+t_fun = tic;
+[mlPc, nFeatures] = get_mlPc_(S0, P);    
+[viLim_drift, mlDrift] = get_(S_drift, 'viLim_drift', 'mlDrift');
+S_fet = struct_add_(P, mlDrift, mlPc, viLim_drift);
+S_fet = struct_merge_(S_fet, struct_copy_(S0, ...
+    'type_fet', 'dimm_fet', 'ccviSpk_site_load', 'ccviSpk_site2_load'));
+%viDrift_spk = get_viDrift_spk_(S_drift);
+nSpk = numel(viSite_spk);
+nSites = size(P.miSites,2);
+fLargeRecording = get_set_(P, 'fLargeRecording', 0);
+[fParfor, fGpu] = get_(P, 'fParfor', 'fGpu');
+fParfor = fParfor && nSites>1;
+S_fet.fGpu = fGpu && ~fLargeRecording;
+lim2range_ = @(lim)lim(1):lim(2);
+% return schedules
+[miSpk_lim_out, miSpk_lim_in, miDrift_lim_out, miDrift_lim_in] = ...
+    plan_sort_paged_(S_drift, P);
+nPages = size(miSpk_lim_out,1);
+[vrRho, vrDelta] = deal(zeros(nSpk, 1, 'single'));
+viNneigh = zeros(nSpk, 1, 'int64');
+% clear _miKnn_site_#.irc and append to these files
+for iPage = 1:nPages    
+    [viSpk_out1, viSpk_in1] = ...
+        deal(lim2range_(miSpk_lim_out(iPage,:)), lim2range_(miSpk_lim_in(iPage,:)));
+    [viDrift_out1, viDrift_in1] = ...
+        deal(lim2range_(miDrift_lim_out(iPage,:)), lim2range_(miDrift_lim_in(iPage,:)));
+%     fprintf('%d: %d-%d-%d-%d\n', iPage, viSpk_out1(1), viSpk_in1(1), viSpk_in1(end), viSpk_out1(end));
+    [viSite_in1, viSite_out1] = deal(viSite_spk(viSpk_in1), viSite_spk(viSpk_out1));
+    viLim_drift1 = S_drift.viLim_drift(viDrift_out1(1):viDrift_out1(end)+1);
+    mlDrift1 = S_drift.mlDrift(viDrift_out1, viDrift_in1);
+%     assert(size(mlDrift1,1)==2^8, 'page size error');
+    S_sort1 = makeStruct_(viSpk_out1, viSpk_in1, viSite_out1, viSite_in1, viLim_drift1, mlDrift1, nSites);
+    [vrRho(viSpk1), vrDelta(viSpk1), viNneigh(viSpk1)] = sort_paged_(S_sort1, P);
+end %for
+fprintf('sort_paged_: took %0.1fs (fGpu=%d, fParfor=%d)\n', toc(t_fun), S_fet.fGpu, fParfor);
+memory_sort = memory_matlab_();
+end %func
+
+
+%--------------------------------------------------------------------------
+function [vrRho1, vrDelta1, viNneigh1] = sort_paged_(S_sort1, P)
+error('sort_paged_: not implemented yet');
+% S_sort1 = makeStruct_(viSpk_out1, viSpk_in1, viSite_out1, viSite_in1, viLim_drift1, mlDrift1);
+[viSpk2, viSpk1, viSite2, viSite1, nSites] = ...
+    get_(S_sort1, 'viSpk_out1', 'viSpk_in1', 'viSite_out1', 'viSite_in1', 'nSites');
+cviiSpk1_site = vi2cell_(viSite1, nSites);
+cviiSpk2_site = vi2cell_(viSite2, nSites);
+
+% rho
+for iSite = 1:nSites
+    viSpk1_ = viSpk1(cviiSpk1_site{iSite});
+    viSpk1_ = viSpk1(cviiSpk1_site{iSite});
+    cvrRho1{iSite} = rho_paged_site_(S_sort1, P, iSite);
+end %for
+
+% delta
+for iSite = 1:nSites
+    cvrRho1{iSite} = delta_paged_site_(S_sort1, P, iSite);
+end %for
+
+end %func
+
+
+%--------------------------------------------------------------------------
+function [miSpk_lim_out, miSpk_lim_in, miDrift_lim_out, miDrift_lim_in] = plan_sort_paged_(S_drift, P)
+n = P.nTime_drift;
+width = get_set_(P, 'nTime_max_drift', 2^8);
+viLim_drift = S_drift.viLim_drift;
+
+assert(n > width, 'use sort_ram_ if otherwise');
+[quarter_, half_] = deal(width/4, width/2);
+nPages = floor(n / half_);
+ib_prev = 0;
+[miSpk_lim_out, miSpk_lim_in] = deal(zeros(nPages, 2, 'int64'));
+[miDrift_lim_out, miDrift_lim_in] = deal(zeros(nPages, 2, 'int32'));
+for iPage = 1:nPages
+    iB_ = min((iPage-1) * half_ + width, n);
+    iA_ = max(1, iB_ - width+1);
+    ia_ = ifeq_(iPage==1, 1, min(iA_+quarter_, n));
+    ia_ = max(ib_prev+1, ia_);
+    ib_ = ifeq_(iPage==nPages, n, max(iB_-quarter_, 1));
+%     fprintf('%d: %d-%d-%d-%d\n', iPage, iA_, ia_, ib_, iB_);
+    ib_prev = ib_;
+    miDrift_lim_out(iPage, :) = [iA_, iB_];
+    miDrift_lim_in(iPage, :) = [ia_, ib_];
+    miSpk_lim_in(iPage,:) = [viLim_drift(ia_), viLim_drift(ib_+1)-1];
+    miSpk_lim_out(iPage,:) = [viLim_drift(iA_), viLim_drift(iB_+1)-1];
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+function [vrRho, vrDelta, miKnn, viNneigh, memory_sort, nFeatures] = sort_ram_(S0, P, S_drift)
+
+[mlPc, nFeatures] = get_mlPc_(S0, P);    
+[viLim_drift, mlDrift] = get_(S_drift, 'viLim_drift', 'mlDrift');
+S_fet = struct_add_(P, mlDrift, mlPc, viLim_drift);
+S_fet = struct_merge_(S_fet, struct_copy_(S0, ...
+    'type_fet', 'dimm_fet', 'ccviSpk_site_load', 'ccviSpk_site2_load'));
 
 %viDrift_spk = get_viDrift_spk_(S_drift);
 nSpk = numel(S0.viSite_spk);
@@ -2856,13 +2959,13 @@ if isempty(mrWav_T)
     mrWav_T = load_bin_(S_cache.vcFile_wav1, P.vcDataType, S_cache.dimm_wav1);
     delete_(S_cache.vcFile_wav1); % delete file 
 end
-mrWav2 = filter_transpose_(mrWav_T, P);
-S_detect = get_spikes_(mrWav2, P, S_cache);
+[mrWav_filt, vrWav_mean_filt] = filter_transpose_(mrWav_T, P);
+S_detect = get_spikes_(mrWav_filt, vrWav_mean_filt, P, S_cache);
 end %func
 
 
 %--------------------------------------------------------------------------
-function S_detect = get_spikes_(mrWav2, P, S_cache)
+function S_detect = get_spikes_(mrWav_filt, vrWav_mean_filt, P, S_cache)
 [vrThresh_site, nlim_wav1, mrPv_global, vrD_global] = ...
     struct_get_(S_cache, 'vrThresh_site', 'nlim_wav1', 'mrPv_global', 'vrD_global');
 
@@ -2870,21 +2973,25 @@ if isempty(nlim_wav1)
     [nPad_pre, nPad_post] = deal(0);
 else
     nPad_pre = nlim_wav1(1)-1;
-    nPad_post = size(mrWav2,1) - nlim_wav1(2);
+    nPad_post = size(mrWav_filt,1) - nlim_wav1(2);
 end
 
 % common mode rejection
-if get_(P, 'blank_thresh') > 0
-    vrWav2_ref = mr2ref_(mrWav2, P.vcCommonRef, P.viSiteZero); %vrWav_mean1(:);    
-    vlKeep_ref = car_reject_(vrWav2_ref(:), P); vrWav2_ref = [];
+nSites = size(P.miSites,2);
+blank_thresh = get_set_(P, 'blank_thresh', 0);
+if blank_thresh > 0 && nSites >= get_(P, 'nChans_min_car')
+    if isempty(vrWav_mean_filt)
+        vrWav_mean_filt = mean_excl_(mrWav_filt, P);
+    end
+    vlKeep_ref = car_reject_(vrWav_mean_filt(:), P); vrWav_mean_filt = [];
     fprintf('\tRejecting %0.3f %% of time due to motion\n', (1-mean(vlKeep_ref))*100 );
 else
     vlKeep_ref = [];
 end
 
 % detect spikes or use the one passed from the input (importing)
-if isempty(vrThresh_site), [vrThresh_site, fGpu] = mr2thresh_(mrWav2, P); end
-[viTime_spk, vrAmp_spk, viSite_spk] = detect_spikes_(mrWav2, vrThresh_site, vlKeep_ref, P);
+if isempty(vrThresh_site), [vrThresh_site, fGpu] = mr2thresh_(mrWav_filt, P); end
+[viTime_spk, vrAmp_spk, viSite_spk] = detect_spikes_(mrWav_filt, vrThresh_site, vlKeep_ref, P);
 [viTime_spk, vrAmp_spk, viSite_spk] = multifun_(@(x)gather_(x), viTime_spk, vrAmp_spk, viSite_spk);    
 
 % reject spikes within the overlap region
@@ -2894,7 +3001,7 @@ if ~isempty(nlim_wav1)
 end%if
 
 % extract spike waveforms
-trWav_spk = get_spkwav_(mrWav2, viSite_spk, viTime_spk, P);
+trWav_spk = get_spkwav_(mrWav_filt, viSite_spk, viTime_spk, P);
 mrVp_spk = [];
 
 % extract spike feaures
@@ -2906,7 +3013,7 @@ trPc_spk = gather_(project_pc_(trWav_spk, mrPv_global, P));
 if get_set_(P, 'sort_mode', 1) == 1 && size(trWav_spk,2) > 1
     viSite2_spk = find_site_spk23_(trWav_spk, viSite_spk, P);
     trWav_spk = []; %clear memory
-    trWav2_spk = mn2tn_wav_spk2_(mrWav2, viSite2_spk, viTime_spk, P);
+    trWav2_spk = mn2tn_wav_spk2_(mrWav_filt, viSite2_spk, viTime_spk, P);
     trPc2_spk = gather_(project_pc_(trWav2_spk, mrPv_global, P));
 else
     [viSite2_spk, trPc2_spk] = deal([]);
@@ -3086,35 +3193,62 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function [mrWav2, vrWav_mean2] = filter_transpose_(mnWav_T, P)
+function [mrWav_filt, vrWav_filt_mean] = filter_transpose_(mnWav_T, P)
 %-----
 % Filter
-fprintf('\tFiltering spikes...'); t_filter = tic;
-if get_set_(P, 'fSmooth_spatial', 0)
-    mnWav_T = spatial_smooth_(mnWav_T, P);
+fprintf('\tFiltering spikes...'); f_fun = tic;
+% if get_set_(P, 'fSmooth_spatial', 0)
+%     mnWav_T = spatial_smooth_(mnWav_T, P);
+% end
+mrWav_filt = fft_filter_transpose(single(mnWav_T), P);
+
+nChans = size(mrWav_filt, 2);
+if nChans < get_set_(P, 'nChans_min_car', 8)
+    P.vcCommonRef = 'none';
 end
-vcDataType_filter = get_set_(P, 'vcDataType_filter', 'single');
-switch 2
-    case 3
-        mrWav2 = filt_car_(single(mnWav_T'), P);
-        fCar=0;
-    case 2
-        mrWav2 = fft_filter_transpose(single(mnWav_T), P);
-        fCar=1;
-    case 1
-        mrWav2 = fft_filter(single(mnWav_T'), P);
-        fCar=1;
+switch get_(P, 'vcCommonRef')
+    case 'mean'
+        vrWav_filt_mean = mean_excl_(mrWav_filt, P);                
+    case 'median'
+        vrWav_filt_mean = median_excl_(mrWav_filt, P);
+    otherwise
+        vrWav_filt_mean = [];
 end
-if fCar
-    %global subtraction before 
-    nChans = size(mrWav2, 2);
-    if nChans >= get_set_(P, 'nChans_min_car', 8) %&& ndims(mnWav2) >= 3
-        [mrWav2, vrWav_mean2] = wav_car_(mrWav2, P); 
-    else
-      vrWav_mean2 = [];
-    end
-    fprintf(' took %0.1fs\n', toc(t_filter));
+if ~isempty(vrWav_filt_mean)
+    mrWav_filt = mrWav_filt - vrWav_filt_mean(:);
 end
+fprintf(' took %0.1fs\n', toc(f_fun));
+end %func
+
+
+%--------------------------------------------------------------------------
+function vnWav1_mean = mean_excl_(mnWav1, P)
+% calculate mean after excluding viSiteZero
+viSiteZero = get_(P, 'viSiteZero');
+if isempty(viSiteZero)
+    vnWav1_mean = (mean(mnWav1,2));
+else
+    nSites_all = size(mnWav1, 2);
+    nSites_excl = numel(viSiteZero);
+    nSites = nSites_all - nSites_excl;
+    vnWav1_mean = ((sum(mnWav1,2) - sum(mnWav1(:,nSites_excl),2)) / nSites);
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+function vnWav1_med = median_excl_(mnWav1, P)
+% calculate mean after excluding viSiteZero
+viSiteZero = get_(P, 'viSiteZero');
+fGpu = isGpu_(mnWav1);
+if fGpu, mnWav1 = gather_(mnWav1); end
+if isempty(viSiteZero)
+    vnWav1_med = median(mnWav1,2);
+else
+    viSites = setdiff(1:size(mnWav1,2), viSiteZero);
+    vnWav1_med = median(mnWav1(:,viSites),2);
+end
+vnWav1_med = gpuArray_(vnWav1_med, fGpu);
 end %func
 
 
@@ -3595,19 +3729,14 @@ else
     P.sRateHz_lfp = get_set_(P, 'sRateHz_lfp', 2500);
     P.nSkip_lfp = round(P.sRateHz / P.sRateHz_lfp);
 end
-if isempty(get_(P, 'nTime_clu'))
-    try
-        batch_sec_drift = get_set_(P, 'batch_sec_drift', 300);
-        P.nTime_clu = max(round(recording_duration_(P) / batch_sec_drift), 1);
-%         P.nTime_clu = min(P.nTime_clu, get_set_(P, 'nBatch_max_drift', 32));
-        fprintf('\tnTime_clu = %d (batch_sec_drift = %0.1f s)\n', P.nTime_clu, batch_sec_drift);
-    catch
-        P.nTime_clu = 1;
-    end
+step_sec_drift = get_set_(P, 'step_sec_drift', 20);
+batch_sec_drift = get_set_(P, 'batch_sec_drift', 300);
+if isempty(get_(P, 'nTime_batch'))
+    P.nTime_batch = max(round(batch_sec_drift / step_sec_drift), 1);
+    fprintf('\tnTime_batch = %d (batch_sec_drift = %0.1f s)\n', P.nTime_batch, batch_sec_drift);
 end
 if isempty(get_(P, 'nTime_drift'))
     try
-        step_sec_drift = get_set_(P, 'step_sec_drift', 10);
         P.nTime_drift = max(round(recording_duration_(P) / step_sec_drift), 1);
         fprintf('\tnTime_drift = %d (step_sec_drift = %0.1f s)\n', P.nTime_drift, step_sec_drift);
     catch
@@ -3630,7 +3759,8 @@ P.vcFilter = get_filter_(P);
 if isempty(get_(P, 'vcFilter_show'))
     P.vcFilter_show = P.vcFilter;
 end
-P.nC_max = read_cfg_('nC_max'); % override nC_max (gpu parameter)
+S_cfg = read_cfg_();
+[P.nC_max, P.nTime_max_drift] = get_(S_cfg, 'nC_max', 'nTime_max_drift'); % override nC_max (gpu parameter)
 end %func
 
 
@@ -4038,29 +4168,26 @@ if nargin<2, P = []; end
 if isempty(P), P = S0.P; end
 
 fprintf('Calculating drift similarity...'); t1 = tic;
-nTime_clu = get_set_(P, 'nTime_clu', 4);
-nTime_drift = get_set_(P, 'nTime_drift', nTime_clu * 4);
+[nTime_batch, nTime_drift] = get_(P, 'nTime_batch', 'nTime_drift');
+if isempty(nTime_batch)
+    nTime_batch = round(get_(P, 'batch_sec_drift') / get_(P, 'step_sec_drift'));    
+end
+if isempty(get_(P, 'nTime_max_drift'))
+    P.nTime_max_drift = read_cfg_('nTime_max_drift');
+end
 viDrift_spk = []; %ones(1, numel(S0.viSite_spk), 'int64');
-if nTime_clu == 1 || nTime_drift == 1 % no drift correlation analysis
+if isempty(nTime_batch) || isempty(nTime_drift) || nTime_batch >= nTime_drift
     viLim_drift = [1, numel(S0.viSite_spk)];
     [miSort_drift, nTime_drift, mrCount_drift] = deal(1, 1, []);    
 else
     nAmp_drift = get_set_(P, 'nQuantile_drift', 10);
-    %nPos_drift = get_set_(P, 'nPos_drift', 100);
     nPos_drift = numel(P.viSite2Chan); % use number of sites
-%     viSite_unique = unique(S0.viSite_spk);
-%     nSites = numel(viSite_unique);
     nSpikes = numel(S0.viSite_spk);
     viLim_drift = int64([0, ceil((1:nTime_drift)/nTime_drift*nSpikes)])+1;
 
     % collect stats
-    if isfield(S0, 'mrPos_spk')
-        mrPos_spk = S0.mrPos_spk;
-        vrAmp_spk = single(S0.vrAmp_spk(:));
-    else
-        [mrPos_spk, vrAmp_spk] = spk_pos_(S0);
-        vrAmp_spk = single(vrAmp_spk(:));                
-    end
+    mrPos_spk = S0.mrPos_spk;
+    vrAmp_spk = single(S0.vrAmp_spk(:));
     vrAmp_quantile = quantile_vr_(vrAmp_spk, (0:nAmp_drift)/nAmp_drift);
     vrPos_spk = single(mrPos_spk(:,2));
     mrCount_drift = zeros(nAmp_drift*nPos_drift, nTime_drift, 'single');
@@ -4071,16 +4198,21 @@ else
         mn_ = histcounts2(vrAmp_spk(viSpk1), vrPos_spk(viSpk1), vrAmp_quantile, vrPos_quantile);
         mrCount_drift(:,iDrift) = mn_(:);
     end
-    
     mrDist_drift = squareform(pdist(mrCount_drift'));
+    if nTime_drift > P.nTime_max_drift
+        quarter_ = P.nTime_max_drift/4;
+        mlMask = abs((1:nTime_drift) - (1:nTime_drift)') <= quarter_;
+        mlMask(1:quarter_*2+1,1:quarter_) = true;
+        mlMask(end-quarter_*2:end,end-quarter_+1:end) = true;
+        mrDist_drift(~mlMask) = nan;
+    end
     [mrSort_drift, miSort_drift] = sort(mrDist_drift, 'ascend');
-    nSort_drift = ceil(nTime_drift / P.nTime_clu);
-    miSort_drift = miSort_drift(1:nSort_drift,:);
-
+    miSort_drift = miSort_drift(1:nTime_batch,:);
+    
     if read_cfg_('fPlot_drift')
         figure; imagesc(mrDist_drift); set(gcf,'Name', P.vcFile_prm);
         figure; imagesc(mrSort_drift); set(gcf,'Name', P.vcFile_prm);
-        hold on; plot([0, size(mrSort_drift,1)], repmat(nSort_drift,1,2), 'r-');
+        hold on; plot([0, size(mrSort_drift,1)], repmat(nTime_batch,1,2), 'r-');
     end
 end
 mlDrift = mi2ml_drift_(miSort_drift); %gpuArray_(mi2ml_drift_(miSort_drift), P.fGpu);
@@ -4390,7 +4522,7 @@ function [out1, out2] = mr2thresh_(varargin), fn=dbstack(); [out1, out2] = irc('
 function [out1, out2] = filt_car_(varargin), fn=dbstack(); [out1, out2] = irc('call', fn(1).name, varargin); end
 function [out1, out2] = findNearSites_(varargin), fn=dbstack(); [out1, out2] = irc('call', fn(1).name, varargin); end
 function [out1, out2] = shift_range_(varargin), fn=dbstack(); [out1, out2] = irc('call', fn(1).name, varargin); end
-function [out1, out2] = wav_car_(varargin), fn=dbstack(); [out1, out2] = irc('call', fn(1).name, varargin); end
+% function [out1, out2] = wav_car_(varargin), fn=dbstack(); [out1, out2] = irc('call', fn(1).name, varargin); end
 function [out1, out2] = get_fig_(varargin), fn=dbstack(); [out1, out2] = irc('call', fn(1).name, varargin); end
 
 function [out1, out2, out3] = fopen_mda_(varargin), fn=dbstack(); [out1, out2, out3] = irc('call', fn(1).name, varargin); end
