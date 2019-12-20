@@ -152,7 +152,7 @@ end %func
 %--------------------------------------------------------------------------
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_()
-vcVer = 'v5.3.9';
+vcVer = 'v5.3.10';
 vcDate = '12/20/2019';
 vcHash = file2hash_();
 
@@ -1774,8 +1774,12 @@ lim2range_page_ = @(miLim)miLim(iPage,1):miLim(iPage,end);
     deal(lim2range_page_(miSpk_lim_out), lim2range_page_(miSpk_lim_in), lim2range_page_(miDrift_lim_out));
 viLim_drift1 = S_drift.viLim_drift(viDrift_out1(1):viDrift_out1(end)+1);
 mlDrift1 = S_drift.mlDrift(viDrift_out1, viDrift_out1);
-[viSite_in1, viSite2_in1, viSite_out1, viSite2_out1] = ...
-    deal(viSite_spk(viSpk_in1), viSite2_spk(viSpk_in1), viSite_spk(viSpk_out1), viSite2_spk(viSpk_out1));
+[viSite_in1, viSite_out1] = deal(viSite_spk(viSpk_in1), viSite_spk(viSpk_out1));
+if ~isempty(viSite2_spk)
+    [viSite2_in1, viSite2_out1] = deal(viSite2_spk(viSpk_in1), viSite2_spk(viSpk_out1));
+else
+    [viSite2_in1, viSite2_out1] = deal([]);
+end
 S_sort1 = struct_add_(S_sort, viSpk_out1, viSpk_in1, mlDrift1, ...
     viSite_in1, viSite2_in1, viSite_out1, viSite2_out1, viLim_drift1);
 end %func
@@ -1969,6 +1973,8 @@ if ~isempty(mrFet2_out)
     mrFet_out = [mrFet_out, mrFet2_out];    
     viSpk_out = [viSpk_out(:); viSpk2_out(:)];
     viiSpk_out = [viiSpk_out1(:); viiSpk2_out1(:)];
+else
+    viiSpk_out = viiSpk_out1(:);
 end
 if fDebug
     equal_ = @(a,b)all(a(:)==b(:));
@@ -2879,6 +2885,8 @@ if isempty(nSites), nSites = max(viSite_spk); end
 cviSpk_site = cell(nSites, 1);
 [vr, vi] = sort(viSite_spk);
 vi_change = [1; find(diff(vr(:))>0)+1; numel(viSite_spk)+1];
+if isempty(viSite_spk), vi_site=[]; return; end
+
 vi_site = vr(vi_change(1:end-1));
 vl_remove = vi_site < 1;
 if any(vl_remove)
@@ -4281,7 +4289,7 @@ if isempty(get_(P, 'nTime_max_drift'))
 end
 viDrift_spk = []; %ones(1, numel(S0.viSite_spk), 'int64');
 if isempty(nTime_batch) || isempty(nTime_drift) || nTime_batch >= nTime_drift
-    viLim_drift = [1, numel(S0.viSite_spk)];
+    viLim_drift = [1, numel(S0.viSite_spk)+1];
     [miSort_drift, nTime_drift, mrCount_drift] = deal(1, 1, []);    
 else
     nAmp_drift = get_set_(P, 'nQuantile_drift', 10);
