@@ -79,7 +79,8 @@ switch lower(vcCmd)
         P = file2struct_(vcFile_prm);        
         switch lower(vcCmd)
             case {'detect-sort', 'spikesort', 'spikesort-verify'}, clear_(); fDetect = 1; fSort = 1;
-            case {'sort', 'sort-verify'}, clear_('sort'); fDetect = 0; fSort = 1;          
+            case {'sort', 'sort-verify'}, clear_('sort'); fDetect = 0; fSort = 1;   
+            case {'auto', 'auto-verify'}, clear_('sort'); fDetect = 0; fSort = 0;
             case 'describe', describe_(vcFile_prm); return;
             case {'verify', 'validate'}, validate_(P, fPlot_gt); return;
             case 'manual', manual_(P); return;
@@ -152,7 +153,7 @@ end %func
 %--------------------------------------------------------------------------
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_()
-vcVer = 'v5.3.12';
+vcVer = 'v5.3.13';
 vcDate = '12/20/2019';
 vcHash = file2hash_();
 
@@ -957,6 +958,25 @@ for iDrift = viDrift_uniq
     end
 end
 end %func
+
+
+%--------------------------------------------------------------------------
+function tr = shift_trWav_(tr, viShift)
+% ctr = cell(numel(viShift), 1);
+dimm_tr = size(tr);
+if ndims(tr)==2, dimm_tr = [dimm_tr, 1]; end
+n = dimm_tr(1);
+vi0 = 1:n;
+nShift = numel(viShift);
+qr = zeros([dimm_tr, nShift], 'like', tr);
+for iShift = 1:nShift
+    iShift_ = viShift(iShift);
+    vi_ = min(max(vi0 + iShift_, 1), n);
+    qr(:,:,:,iShift) = tr(vi_,:,:);
+end %for
+% tr = cat(3, ctr{:});
+qr = reshape(qr, [dimm_tr(1), dimm_tr(2), dimm_tr(3)*nShift]);
+end % func
 
 
 %--------------------------------------------------------------------------
@@ -4663,7 +4683,7 @@ function out1 = find_site_spk23_(varargin), fn=dbstack(); out1 = irc('call', fn(
 function out1 = mn2tn_wav_spk2_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = matchFileExt_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = delete_clu_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
-function out1 = shift_trWav_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
+% function out1 = shift_trWav_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = struct_copyas_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = set_bool_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = ifeq_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
