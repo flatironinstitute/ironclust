@@ -8,6 +8,7 @@
 function varargout = irc2(vcDir_in, vcDir_out, vcFile_arg, vcArg3)
 % irc2(vcDir_in, vcDir_out, vcFile_arg)
 % irc2(vcCmd, vcArg1, vcArg2)
+fDebug = 1;
 
 if nargin<1, vcDir_in = ''; end
 if nargin<2, vcDir_out = ''; end
@@ -122,8 +123,10 @@ end
 
 if isempty(struct_get_(S0, 'S_clu')) || fSort
     S0.S_clu = sort_(S0, P);
+    if fDebug
+        save_clu_(S0.S_clu, P);
+    end
 end
-% set(0, 'UserData', S0);
 try
     S0 = auto_(S0, P);
     fAuto_pass = true;
@@ -149,7 +152,7 @@ end %func
 %--------------------------------------------------------------------------
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_()
-vcVer = 'v5.3.7';
+vcVer = 'v5.3.8';
 vcDate = '12/20/2019';
 vcHash = file2hash_();
 
@@ -4396,6 +4399,20 @@ end %func
 
 
 %--------------------------------------------------------------------------
+function [viClu_new, icl_new] = dpclus_remove_count_(viClu, icl, min_count)
+nClu = numel(icl);
+viMap = zeros(nClu,1);
+vnSpk_clu = cellfun(@numel, vi2cell_(viClu, nClu));
+% vnSpk_clu = arrayfun(@(x)sum(viClu==x), 1:nClu);
+vlClu_keep = vnSpk_clu >= min_count;
+viMap(vlClu_keep) = 1:sum(vlClu_keep);
+
+viClu_new = map_index_(viMap, viClu);
+icl_new = icl(vlClu_keep);
+end %func
+
+
+%--------------------------------------------------------------------------
 % 9/3/2019 JJJ: run_mode can be an array (sequential merge)
 % 9/17/2018 JJJ: merge peaks based on their waveforms
 function [viMap, S_clu, nClu_post] = S_clu_peak_merge2_(S_clu, P, viSite_spk) 
@@ -4663,7 +4680,7 @@ function out1 = S_clu_prune_icl_(varargin), fn=dbstack(); out1 = irc('call', fn(
 
 function [out1, out2] = ml2map_(varargin), fn=dbstack(); [out1, out2] = irc('call', fn(1).name, varargin); end
 function [out1, out2] = assignCluster_(varargin), fn=dbstack(); [out1, out2] = irc('call', fn(1).name, varargin); end
-function [out1, out2] = dpclus_remove_count_(varargin), fn=dbstack(); [out1, out2] = irc('call', fn(1).name, varargin); end
+% function [out1, out2] = dpclus_remove_count_(varargin), fn=dbstack(); [out1, out2] = irc('call', fn(1).name, varargin); end
 function [out1, out2] = readmda_(varargin), fn=dbstack(); [out1, out2] = irc('call', fn(1).name, varargin); end
 function [out1, out2] = mr2thresh_(varargin), fn=dbstack(); [out1, out2] = irc('call', fn(1).name, varargin); end
 function [out1, out2] = filt_car_(varargin), fn=dbstack(); [out1, out2] = irc('call', fn(1).name, varargin); end

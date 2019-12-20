@@ -9887,6 +9887,7 @@ end %func
 function [viClu_new, icl_new] = dpclus_remove_count_(viClu, icl, min_count)
 nClu = numel(icl);
 viMap = zeros(nClu,1);
+% vnSpk_clu = cellfun(@numel, vi2cell_(viClu, nClu));
 vnSpk_clu = arrayfun(@(x)sum(viClu==x), 1:nClu);
 vlClu_keep = vnSpk_clu >= min_count;
 viMap(vlClu_keep) = 1:sum(vlClu_keep);
