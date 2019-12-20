@@ -7,7 +7,7 @@
 //
 
 .version 6.3
-.target sm_35
+.target sm_52
 .address_size 64
 
 	// .globl	_Z15jrc3_cuda_deltaPfPjPKfPKiS4_S4_f

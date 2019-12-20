@@ -7,7 +7,7 @@
 //
 
 .version 6.3
-.target sm_35
+.target sm_52
 .address_size 64
 
 	// .globl	_Z8cuda_knnPfPKfS1_PKi
