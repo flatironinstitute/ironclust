@@ -152,7 +152,7 @@ end %func
 %--------------------------------------------------------------------------
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_()
-vcVer = 'v5.3.11';
+vcVer = 'v5.3.12';
 vcDate = '12/20/2019';
 vcHash = file2hash_();
 
@@ -2148,10 +2148,10 @@ S_fet = struct_merge_(S_fet, struct_copy_(S0, ...
 nSpk = numel(S0.viSite_spk);
 nSites = size(P.miSites,2);
 miKnn = [];
-fLargeRecording = get_set_(P, 'fLargeRecording', 0);
+% fLargeRecording = get_set_(P, 'fLargeRecording', 0);
 [fParfor, fGpu] = get_(P, 'fParfor', 'fGpu');
 fParfor = fParfor && nSites>1;
-S_fet.fGpu = fGpu && ~fLargeRecording;
+% S_fet.fGpu = fGpu && ~fLargeRecording;
 
 % Calculate Rho
 [cvrRho, cvrDelta, cviNneigh, cviSpk_site] = deal(cell(nSites,1));
