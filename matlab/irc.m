@@ -30400,7 +30400,7 @@ catch
     ;
 end
 S_score = struct_add_(S_score, S_overlap, S_score_clu, S_score_ksort, S_burst);
-if 0 % flip the gt and clu
+if read_cfg_('fPlot_gt') == 6 % flip the gt and clu
     vl = S_clu.viClu>0;
     S_score.S_score_gt_clu = ...
         clusterVerify(S_clu.viClu(vl), S0.viTime_spk(vl), S_gt.viClu, S_gt.viTime, nSamples_jitter);

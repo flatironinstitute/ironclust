@@ -30,4 +30,3 @@ knn = 30;                   % k nearest neighbors
 maxWavCor = .99;            % Automated merge thresohld based on waveform correlation
 min_snr_clu = [];           % Automatically remove clusters below this SNR threshold, set to `[]` to disable
 spkRefrac_merge_ms = .25;   % Remove spikes violating this refractory period in msec when merged
-post_merge_mode = 1;            

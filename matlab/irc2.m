@@ -153,7 +153,7 @@ end %func
 %--------------------------------------------------------------------------
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_()
-vcVer = 'v5.3.14';
+vcVer = 'v5.3.15';
 vcDate = '12/23/2019';
 vcHash = file2hash_();
 
@@ -699,23 +699,18 @@ S0.S_clu = struct_copy_(S0.S_clu, ...
 S0.S_clu = postCluster_(S0.S_clu, P, S0.viSite_spk); % peak merging
 
 maxWavCor = get_set_(P, 'maxWavCor', .99);
-viClu_delete = [];
+% viClu_delete = [];
 if maxWavCor<1
-    post_merge_mode = get_set_(P, 'post_merge_mode', 1);    
-    switch post_merge_mode 
-        case 1, [mrDist_clu, viClu_delete] = wave_similarity_site_(S0, P);
-        case 2, [mrDist_clu, viClu_delete] = wave_similarity_clu_(S0, P);
-        case 3, mrDist_clu = calc_dist_ccg(S0, P);
-    end
-    S0.S_clu = templateMatch_post_(S0.S_clu, P, mrDist_clu);
+    [mrDist_clu, viClu_delete] = wave_similarity_site_(S0, P);
+    S0.S_clu = ml_merge_clu_(S0.S_clu, mrDist_clu >= maxWavCor, viClu_delete);
 end
 % delete low snr clu
-if ~isempty(viClu_delete)
-    nClu_pre = S0.S_clu.nClu;
-    S0.S_clu = delete_clu_(S0.S_clu, viClu_delete);
-    fprintf('calc_clu_wav_: %d->%d clusters, %d removed below SNR=%0.1f\n', ...
-        nClu_pre, S0.S_clu.nClu, nClu_pre-S0.S_clu.nClu, P.min_snr_clu);
-end
+% if ~isempty(viClu_delete)
+%     nClu_pre = S0.S_clu.nClu;
+%     S0.S_clu = delete_clu_(S0.S_clu, viClu_delete);
+%     fprintf('calc_clu_wav_: %d->%d clusters, %d removed below SNR=%0.1f\n', ...
+%         nClu_pre, S0.S_clu.nClu, nClu_pre-S0.S_clu.nClu, P.min_snr_clu);
+% end
 % compute SNR per cluster and remove small SNR
 S0.S_clu = S_clu_refresh_(S0.S_clu, 1, S0.viSite_spk);
 S0.S_clu = S_clu_sort_(S0.S_clu, 'viSite_clu');
@@ -724,6 +719,28 @@ S0.S_clu = S_clu_refrac_(S0.S_clu, P, [], S0.viTime_spk); % refractory violation
 S0.S_clu.runtime_automerge = toc(runtime_automerge);
 fprintf('\n\tauto-merging took %0.1fs (fGpu=%d, fParfor=%d)\n', ...
     S0.S_clu.runtime_automerge, P.fGpu, P.fParfor);
+end %func
+
+
+%--------------------------------------------------------------------------
+% 4/12/2019 JJJ: Template merging cluster
+% no membership reassignment, no core calculation
+function S_clu = ml_merge_clu_(S_clu, mlWavCor_clu, viClu_delete)
+if nargin<3, viClu_delete=[]; end
+fprintf('Merging templates\n'); t_fun=tic;
+if ~isempty(viClu_delete)
+    mlWavCor_clu(viClu_delete,:) = false;
+    mlWavCor_clu(:,viClu_delete) = false;
+    S_clu.viClu(ismember(S_clu.viClu, viClu_delete)) = 0;
+    fprintf('\tdeleted %d clusters below SNR\n', numel(viClu_delete));
+end
+nClu_pre = size(mlWavCor_clu,1);
+[viMap_clu, viMap_new] = ml2map_(mlWavCor_clu);
+vlPos = S_clu.viClu > 0;
+S_clu.viClu(vlPos) = viMap_clu(S_clu.viClu(vlPos)); %translate cluster number
+% S_clu = S_clu_refresh_(S_clu);
+nClu_post = numel(viMap_new);
+fprintf('\tMerged %d waveforms (%d->%d), took %0.1fs\n', nClu_pre-nClu_post, nClu_pre, nClu_post, toc(t_fun));
 end %func
 
 
@@ -857,7 +874,7 @@ end %func
 function [mrDist_clu, viClu_remove] = wave_similarity_site_(S0, P)
 S_clu = S0.S_clu;
 
-fprintf('Automated merging based on waveform similarity...\n'); t_template=tic;
+fprintf('\tAutomated merging based on waveform similarity...\n'); t_template=tic;
 [viClu, vrRho] = struct_get_(S_clu, 'viClu', 'rho');
 [ccviSpk_site_load, ccviSpk_site2_load, type_fet, dimm_fet, mrPv] = ...
     get_(S0, 'ccviSpk_site_load', 'ccviSpk_site2_load', 'type_fet', 'dimm_fet', 'mrPv_global');
@@ -890,7 +907,7 @@ if ~fParfor
 end
 
 [ctrPc_clu, cviSite_clu, cviDrift_clu] = wave_similarity_site_parse_(c_cc1_site, c_cc2_site, S_auto);
-switch 3 % remove low-snr waveforms to reduce false positives
+switch 1 % remove low-snr waveforms to reduce false positives
     case 1
         [viClu_remove, ctrPc_clu, cviSite_clu, cviDrift_clu] = find_low_snr_clu_(S0, P, ctrPc_clu, cviSite_clu, cviDrift_clu);
     case 2
@@ -1149,7 +1166,7 @@ for iClu = 1:numel(ctrPc_clu)
     end
 end %for
 viClu_remove = find(cellfun(@isempty, ctrPc_clu));
-fprintf('merge: removed %d/%d templates below SNR=%0.3f\n', nRemoved, nTotal, P.min_snr_clu);    
+fprintf('merge: removed %d/%d templates below SNR=%0.3f\n', nRemoved, nTotal, P.qqFactor);    
 end %func
 
 
@@ -3222,7 +3239,7 @@ end
 % common mode rejection
 nSites = size(P.miSites,2);
 blank_thresh = get_set_(P, 'blank_thresh', 0);
-if blank_thresh > 0 && nSites >= get_(P, 'nChans_min_car')
+if blank_thresh > 0 %% && nSites >= get_(P, 'nChans_min_car')
     if isempty(vrWav_mean_filt)
         vrWav_mean_filt = mean_excl_(mrWav_filt, P);
     end
@@ -4507,7 +4524,7 @@ end %func
 
 %--------------------------------------------------------------------------
 function S_clu = postCluster_(S_clu, P, viSite_spk)
-
+t_fun = tic;
 if isempty(S_clu), return; end
 if isfield(S_clu, 'viClu')
     S_clu = rmfield(S_clu, 'viClu');
@@ -4523,18 +4540,117 @@ S_clu.viClu = [];
 if isempty(P.min_count), P.min_count = 0; end
 if ~isfield(S_clu, 'viClu'), S_clu.viClu = []; end
 
-fprintf('assigning clusters, nClu:%d\n', numel(S_clu.icl)); t1=tic;
+nClu_pre = numel(S_clu.icl);
+switch 2
+    case 1
+        [S_clu.viClu, S_clu.icl] = assignCluster_(S_clu.viClu, S_clu.ordrho, S_clu.nneigh, S_clu.icl);
+        [S_clu.viClu, S_clu.icl] = dpclus_remove_count_(S_clu.viClu, S_clu.icl, P.min_count);
+        nClu1 = numel(S_clu.icl);
+        [~, S_clu, ~] = S_clu_peak_merge_(S_clu, P, viSite_spk);  % knn overlap merging
+    case 2
+        [S_clu.viClu, S_clu.icl] = assignCluster_knn_(S_clu, viSite_spk, P);
+        nClu1 = numel(S_clu.icl);
+        [S_clu.viClu, S_clu.icl] = dpclus_remove_count_(S_clu.viClu, S_clu.icl, P.min_count);
+end %switch
+S_clu = S_clu_refresh_(S_clu);
+fprintf('\tpostCluster_: Pre-merged %d->%d->%d clusters, took %0.1fs\n', ...
+    nClu_pre, nClu1, S_clu.nClu, toc(t_fun));
+end %func
 
-[S_clu.viClu, S_clu.icl] = assignCluster_(S_clu.viClu, S_clu.ordrho, S_clu.nneigh, S_clu.icl);
-[S_clu.viClu, S_clu.icl] = dpclus_remove_count_(S_clu.viClu, S_clu.icl, P.min_count);
-switch get_set_(P, 'knn_merge_mode', 1)
-    case 1, [~, S_clu, nClu_pre] = S_clu_peak_merge1_(S_clu, P, viSite_spk);  % knn overlap merging
-    case 2, [~, S_clu, nClu_pre] = S_clu_peak_merge2_(S_clu, P, viSite_spk);  % knn overlap merging
+
+%--------------------------------------------------------------------------
+function [viClu_spk, viSpk_peak] = assignCluster_knn_(S_clu, viSite_spk, P)
+[viClu_spk, ordrho_spk, viSpk_nneigh, viSpk_peak, vrRho] = ...
+    get_(S_clu, 'viClu', 'ordrho', 'nneigh', 'icl', 'rho');
+
+nSpk = numel(ordrho_spk);
+if isempty(viClu_spk)
+    viClu_spk = zeros([nSpk, 1], 'int32');
+    if false
+        viSpk_peak(vrDelta(viSpk_peak) > 1e10) = []; % remove super high 
+    end
+    [vrRho_peak, ix_] = sort(vrRho(viSpk_peak), 'descend'); viSpk_peak = viSpk_peak(ix_);
+    miKnn_peak = load_miKnn_spk_(P, viSite_spk, viSpk_peak);    
+    
+    % check for knn overlap
+    switch 2
+        case 1
+            ml_peak = false(numel(viSpk_peak));
+            for iPeak = 1:numel(viSpk_peak)  
+                ml_peak(iPeak,iPeak) = true;
+                viPeak1 = find(any(ismember(miKnn_peak(:,1:iPeak-1), miKnn_peak(:,iPeak))));
+                if ~isempty(viPeak1)
+                    ml_peak(viPeak1,iPeak) = true;
+                end
+            end
+            [viClu_spk(viSpk_peak), viiPeak] = ml2map_(ml_peak);
+            [viSpk_peak, vrRho_peak] = deal(viSpk_peak(viiPeak), vrRho_peak(viiPeak));
+        case 2
+            cvi_peak = cell(numel(viSpk_peak), 1);
+            for iPeak = 1:numel(viSpk_peak)  
+                cvi_peak{iPeak} = iPeak; % include self
+                viPeak1 = find(any(ismember(miKnn_peak(:,1:iPeak-1), miKnn_peak(:,iPeak))));
+                if ~isempty(viPeak1)
+                    cvi_peak{iPeak} = union(cvi_peak{iPeak}, viPeak1);
+                end
+            end
+            [viClu_spk(viSpk_peak), viiPeak] = cell2map_(cvi_peak);
+            [viSpk_peak, vrRho_peak] = deal(viSpk_peak(viiPeak), vrRho_peak(viiPeak));
+    end %switch
 end
 
-S_clu = S_clu_refresh_(S_clu);
-fprintf('\n\ttook %0.1fs. Pre-merged %d clusters: %d->%d\n', ...
-    toc(t1), nClu_pre - S_clu.nClu, nClu_pre, S_clu.nClu);
+if numel(viSpk_peak) == 0 || numel(viSpk_peak) == 1
+    viClu_spk = ones([nSpk, 1], 'int32');
+    viSpk_peak = ordrho_spk(1);
+else
+    % remove icl that is too close    
+    nneigh1 = viSpk_nneigh(ordrho_spk);
+    for i=1:10
+        vi = find(viClu_spk(ordrho_spk)<=0);
+        if isempty(vi), break; end
+        vi=vi(:)';        
+        for ii = vi
+            viClu_spk(ordrho_spk(ii)) = viClu_spk(nneigh1(ii));        
+        end
+        n1 = sum(viClu_spk<=0);
+        if n1==0, break; end
+        fprintf('i:%d, n0=%d, ', i, n1);
+    end
+    if false
+        viClu_spk(viClu_spk <= 0) = 1; %background
+    end
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+function [cl, icl] = assignCluster_(cl, ordrho, nneigh, icl)
+ND = numel(ordrho);
+nClu = numel(icl);
+
+if isempty(cl)
+    cl = zeros([ND, 1], 'int32');
+    cl(icl) = 1:nClu;
+end
+
+if numel(icl) == 0 || numel(icl) == 1
+    cl = ones([ND, 1], 'int32');
+    icl = ordrho(1);
+else
+    nneigh1 = nneigh(ordrho);
+    for i=1:10
+        vi = find(cl(ordrho)<=0);
+        if isempty(vi), break; end
+        vi=vi(:)';        
+        for ii = vi
+            cl(ordrho(ii)) = cl(nneigh1(ii));        
+        end
+        n1 = sum(cl<=0);
+        if n1==0, break; end
+        fprintf('i:%d, n0=%d, ', i, n1);
+    end
+    cl(cl<=0) = 1; %background
+end
 end %func
 
 
@@ -4545,68 +4661,24 @@ viMap = zeros(nClu,1);
 vnSpk_clu = cellfun(@numel, vi2cell_(viClu, nClu));
 % vnSpk_clu = arrayfun(@(x)sum(viClu==x), 1:nClu);
 vlClu_keep = vnSpk_clu >= min_count;
-viMap(vlClu_keep) = 1:sum(vlClu_keep);
-
-viClu_new = map_index_(viMap, viClu);
-icl_new = icl(vlClu_keep);
+if all(vlClu_keep)
+    viClu_new = viClu;
+    icl_new = icl;
+else
+    viMap(vlClu_keep) = 1:sum(vlClu_keep);
+    viClu_new = map_index_(viMap, viClu);
+    icl_new = icl(vlClu_keep);
+end
 end %func
 
 
 %--------------------------------------------------------------------------
 % 9/3/2019 JJJ: run_mode can be an array (sequential merge)
 % 9/17/2018 JJJ: merge peaks based on their waveforms
-function [viMap, S_clu, nClu_post] = S_clu_peak_merge2_(S_clu, P, viSite_spk) 
-t1=tic;
-miKnn = get_(S_clu, 'miKnn');
-[vrRho_spk, viClu] = get_(S_clu, 'rho', 'viClu');
-CORE_QUANTILE = .99;
-knn_merge_thresh = get_set_(P, 'knn_merge_thresh', 1);
-[cviSpk_clu, nClu] = vi2cell_(viClu);
-cviSpk_core_clu = cell(nClu,1);
-for iClu = 1:nClu    
-    viSpk1 = int64(cviSpk_clu{iClu});
-    vrRho1 = vrRho_spk(viSpk1);
-    cviSpk_core_clu{iClu} = viSpk1(vrRho1 >= quantile_vr_(vrRho1, CORE_QUANTILE));    
-end
-if isempty(miKnn)
-    cmiKnn_core_clu = load_miKnn_spk_(P, viSite_spk, cviSpk_core_clu);
-end
-mnKnn_clu = zeros(nClu);
-for iClu1 = 1:nClu
-    if ~isempty(miKnn)
-        viSpk1 = miKnn(:,cviSpk_core_clu{iClu1});
-    else
-        viSpk1 = cmiKnn_core_clu{iClu1};
-    end
-    viSpk1 = viSpk1(:);
-    for iClu2 = 1:nClu
-        if iClu1 == iClu2, continue; end
-        if ~isempty(miKnn)
-            viSpk2 = miKnn(:,cviSpk_core_clu{iClu2});
-        else
-            viSpk2 = cmiKnn_core_clu{iClu2};
-        end
-        mnKnn_clu(iClu2, iClu1) = sum(ismember(viSpk2(:), viSpk1));
-    end
-end   
-[viMap, viUniq_] = ml2map_(mnKnn_clu >= knn_merge_thresh);
-nClu_post = numel(viUniq_);
-viMap = viMap(:);
-S_clu.viClu = map_index_(viMap, S_clu.viClu, 0);
-S_clu = S_clu_prune_icl_(S_clu);
-
-fprintf('S_clu_peak_merge_: %d->%d cluster centers (knn_merge_thresh=%d, took %0.1fs)\n', ...
-    nClu, nClu_post, knn_merge_thresh, toc(t1));
-end %func
-
-
-%--------------------------------------------------------------------------
-% 9/3/2019 JJJ: run_mode can be an array (sequential merge)
-% 9/17/2018 JJJ: merge peaks based on their waveforms
-function [viMap, S_clu, nClu_post] = S_clu_peak_merge1_(S_clu, P, viSite_spk) 
-
+function [viMap, S_clu, nClu_post] = S_clu_peak_merge_(S_clu, P, viSite_spk) 
+t_fun=tic;
 miKnn = get_(S_clu, 'miKnn'); % to load from disk
-knn_merge_thresh = get_set_(P, 'knn_merge_thresh', 1);
+% knn_merge_thresh = get_set_(P, 'knn_merge_thresh', 1);
 nClu = numel(setdiff(unique(S_clu.viClu), 0));
 if ~isempty(miKnn)
     miKnn_clu = miKnn(:,S_clu.icl);
@@ -4615,28 +4687,77 @@ else
 end
 
 % find exact knn of the peaks using feature matrix
-[mnKnn_lower_clu, mnKnn_upper_clu] = deal(zeros(nClu));
+miKnn_clu = sort(miKnn_clu); %for speedup
+mlConn = false(nClu);
 for iClu1 = 1:nClu
-    viSpk1 = miKnn_clu(:,iClu1);     
-    if iClu1 > 1
-        mnKnn_lower_clu(1:iClu1-1,iClu1) = sum(ismember(miKnn_clu(:,1:iClu1-1), viSpk1))';
-    end
-    if iClu1 < nClu
-        mnKnn_upper_clu(iClu1+1:end,iClu1) = sum(ismember(miKnn_clu(:,iClu1+1:end), viSpk1))';
-    end
-end   
-mnKnn_lower_clu = mnKnn_lower_clu + mnKnn_lower_clu';
-mnKnn_upper_clu = mnKnn_upper_clu + mnKnn_upper_clu';
-mnKnn_clu = min(mnKnn_lower_clu, mnKnn_upper_clu);
-
-[viMap, viUniq_] = ml2map_(mnKnn_clu >= knn_merge_thresh);
+    mlConn(:, iClu1) = any(ismember(miKnn_clu, miKnn_clu(:,iClu1)));
+end
+[viMap, viUniq_] = ml2map_(mlConn);
 nClu_post = numel(viUniq_);
 viMap = viMap(:);
 S_clu.viClu = map_index_(viMap, S_clu.viClu, 0);
 S_clu = S_clu_prune_icl_(S_clu);
 
-fprintf('S_clu_peak_merge_: %d->%d cluster centers (knn_merge_thresh=%d)\n', ...
-    nClu, nClu_post, knn_merge_thresh);
+fprintf('S_clu_peak_merge_: %d->%d cluster centers, took %0.1fs\n', nClu, nClu_post, toc(t_fun));
+end %func
+
+
+%--------------------------------------------------------------------------
+% 190816 JJJ: Faster implementation
+function [viMapClu_new, viUniq_, viMapClu] = cell2map_(cvi_clu)
+nClu = numel(cvi_clu);
+% viClu_update = find(cellfun(@(x)numel(x)>1, cvi_clu))';
+for iRepeat = 1:2
+    for iClu = 1:numel(cvi_clu)
+        viClu1 = cvi_clu{iClu};
+        cvi_clu(viClu1) = cellfun_(@(x)union(x, viClu1), cvi_clu(viClu1));
+    end    
+end
+
+viMapClu = 1:nClu;
+for iClu = 1:nClu
+    iClu1 = min(cvi_clu{iClu});
+    if ~isempty(iClu1), viMapClu(iClu) = iClu1; end
+end
+
+% Compact the map so the index doesn't have a gap
+viUniq_ = unique(viMapClu);
+viMap_(viUniq_) = 1:numel(viUniq_);
+viMapClu_new = viMap_(viMapClu);
+end %func
+
+
+%--------------------------------------------------------------------------
+% 190816 JJJ: Faster implementation
+function [viMapClu_new, viUniq_, viMapClu] = ml2map_(mlClu)
+nClu = size(mlClu,1);
+% mlClu = set_diag_(mlClu | mlClu', true(nClu,1));
+% set diagonal to true
+
+viClu = find(any(mlClu,1) | any(mlClu,2)');
+for iClu = viClu
+    vi1_ = find(mlClu(:,iClu) | mlClu(iClu,:)');
+    mlClu(vi1_,vi1_) = true;
+end    
+
+viMapClu = 1:nClu;
+for iClu = 1:nClu
+    iClu1 = find(mlClu(:,iClu), 1, 'first');
+    if ~isempty(iClu1), viMapClu(iClu) = iClu1; end
+end
+
+% Compact the map so the index doesn't have a gap
+viUniq_ = unique(viMapClu);
+viMap_(viUniq_) = 1:numel(viUniq_);
+viMapClu_new = viMap_(viMapClu);
+end %func
+
+
+%--------------------------------------------------------------------------
+% 10/12/17 JJJ: Works for non-square matrix and constant. Tested
+function mr = set_diag_(mr, vr)
+n = min(min(size(mr)), numel(vr));
+mr(sub2ind(size(mr), 1:n, 1:n)) = vr(1:n);
 end %func
 
 
@@ -4785,7 +4906,7 @@ function out1 = get_filter_(varargin), fn=dbstack(); out1 = irc('call', fn(1).na
 function out1 = gt2mda_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = exist_dir_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = meanSubt_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
-function out1 = templateMatch_post_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
+% function out1 = templateMatch_post_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = memory_matlab_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = recording_duration_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = squeeze_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
@@ -4818,8 +4939,8 @@ function out1 = S_clu_quality_(varargin), fn=dbstack(); out1 = irc('call', fn(1)
 function out1 = map_index_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = S_clu_prune_icl_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 
-function [out1, out2] = ml2map_(varargin), fn=dbstack(); [out1, out2] = irc('call', fn(1).name, varargin); end
-function [out1, out2] = assignCluster_(varargin), fn=dbstack(); [out1, out2] = irc('call', fn(1).name, varargin); end
+% function [out1, out2] = ml2map_(varargin), fn=dbstack(); [out1, out2] = irc('call', fn(1).name, varargin); end
+% function [out1, out2] = assignCluster_(varargin), fn=dbstack(); [out1, out2] = irc('call', fn(1).name, varargin); end
 % function [out1, out2] = dpclus_remove_count_(varargin), fn=dbstack(); [out1, out2] = irc('call', fn(1).name, varargin); end
 function [out1, out2] = readmda_(varargin), fn=dbstack(); [out1, out2] = irc('call', fn(1).name, varargin); end
 function [out1, out2] = mr2thresh_(varargin), fn=dbstack(); [out1, out2] = irc('call', fn(1).name, varargin); end
