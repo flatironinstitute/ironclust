@@ -9,7 +9,7 @@
 #define NC (45) //3pca x 16 channels max
 #define SINGLE_INF (3.402E+38) // equipvalent to NAN. consider -1 value
 #define SWAP(x, y, T) do { T SWAP = x; x = y; y = SWAP; } while (0)
-#define CHUNK (16) // 4
+#define CHUNK (32) // 4
 #define NM (256) // number of drift
 
 /** Main entry point.
@@ -24,19 +24,18 @@
  * M: drift connection matrix (nD x nD, logical)
  * const: [nB, nA, nC, nT, nM, int32], nT: # threads
  */
-__global__ void cuda_min_drift(float *D, int *I, float const *B, float const *A, unsigned char const *MB, unsigned char const *MA, char const *M, const int *vnConst){
+__global__ void cuda_min_delta_drift(float *D, int *I, float const *B, float const *A, unsigned char const *MB, unsigned char const *MA, char const *M, const float *R_B, const float *R_A, const int *vnConst){
     
     int nB = vnConst[0];
     int nA = vnConst[1];
     int nC = vnConst[2];
-    //int nT = vnConst[3]; // not used for now
-    int nM = vnConst[4]; // nD <= ND
+    int nM = vnConst[3]; // nD <= ND
 
     int tx = threadIdx.x;
     int nT = blockDim.x; // must be less than NTHREADS
 
     // shared memory
-    __shared__ float sA[NC][CHUNK];
+    __shared__ float sA[NC][CHUNK], sR_A[CHUNK];
     __shared__ int sI[CHUNK];
     __shared__ char sM[NM][CHUNK]; // logical
     // thread memory
@@ -48,6 +47,7 @@ __global__ void cuda_min_drift(float *D, int *I, float const *B, float const *A,
         int iA_ = tx; // loop over CHUNK
         int iA = (blockIdx.x + blockIdx.y * gridDim.x) * CHUNK + tx;
         iA = iA % nA;
+        sR_A[iA_] = R_A[iA]; // copy R_A->sR_A
         for (int iC=0; iC<nC; ++iC){
             sA[iC][iA_] = A[iC + iA*nC]; // copy A->sA 
         }
@@ -71,9 +71,10 @@ __global__ void cuda_min_drift(float *D, int *I, float const *B, float const *A,
         float dist_[CHUNK];  // #programa unroll?   
         
         int mb_ = (int)MB[iB];
+        float rb_ = R_B[iB];
         int n_inf_ = 0;
         for (int iA_=0; iA_<CHUNK; ++iA_){            
-            if (sM[mb_][iA_]==0){
+            if (sM[mb_][iA_]==0 || rb_ <= sR_A[iA_]){
                 dist_[iA_] = SINGLE_INF;
                 n_inf_++;
             }else{
@@ -91,7 +92,7 @@ __global__ void cuda_min_drift(float *D, int *I, float const *B, float const *A,
         }         
         for (int iA_=0; iA_<CHUNK; ++iA_){
             float d_ = dist_[iA_];
-            if (dist_[iA_] < tD[iA_] && d_ > 0.0f){
+            if (dist_[iA_] < tD[iA_]){
                 tD[iA_] = d_;
                 tI[iA_] = iB;
             }

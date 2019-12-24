@@ -17,7 +17,7 @@ spkLim_ms = [-.25, .75];    % Time range to extract spikes in milliseconds
 fInterp_fet = 1;            % Set to `1` to interpolate the waveform by 2x
 spkRefrac_ms = .25;         % reject spikes occcuring closer than this
 fft_thresh = 10;            % Reject outlier frequency peaks (unit in MAD)
-blank_thresh = 20;          % reject motion artifacts (unit in MAD)
+blank_thresh = 100;         % reject motion artifacts (unit in MAD)
 blank_period_ms = 5;        % (miliseconds) Duration of blanking when the common mean exceeds a threhold (blank_thresh)
 
 % [Cluster stage: apply drift-detection and KNN-graph density-peak clustering]
