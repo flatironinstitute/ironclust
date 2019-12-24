@@ -8,7 +8,7 @@
 function varargout = irc2(vcDir_in, vcDir_out, vcFile_arg, vcArg3)
 % irc2(vcDir_in, vcDir_out, vcFile_arg)
 % irc2(vcCmd, vcArg1, vcArg2)
-fDebug = 1;
+fDebug = 0;
 
 if nargin<1, vcDir_in = ''; end
 if nargin<2, vcDir_out = ''; end
@@ -153,7 +153,7 @@ end %func
 %--------------------------------------------------------------------------
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_()
-vcVer = 'v5.3.15';
+vcVer = 'v5.3.16';
 vcDate = '12/23/2019';
 vcHash = file2hash_();
 
@@ -228,10 +228,10 @@ function trPc_spk = load_fet_(S0, P, iFet)
 if nargin<3, iFet = 1; end
 
 % return empty if trPc_spk should be loaded partially
-if get_set_(P, 'fLargeRecording', 0)
-    trPc_spk=[]; 
-    return; 
-end
+% if get_set_(P, 'fLargeRecording', 0)
+%     trPc_spk=[]; 
+%     return; 
+% end
 
 vcFile_prm_ = strrep(P.vcFile_prm, '.prm', '');
 fprintf('Loading feature %d...', iFet); t1=tic;
@@ -594,6 +594,7 @@ catch
     nFeatures = P.nSites_fet * P.nPcPerChan;
     nPcPerChan = P.nPcPerChan;
 end
+fLargeRecording = get_(P, 'nTime_drift') > get_set_(P, 'nTime_max_drift', 2^8);
 
 csDesc = {};
 try
@@ -660,7 +661,7 @@ try
     csDesc{end+1} = sprintf('    irc2 version:           %s', get_(P, 'vcVersion'));
     csDesc{end+1} = sprintf('    fGpu (GPU use):         %d', P.fGpu);
     csDesc{end+1} = sprintf('    fParfor (parfor use):   %d', P.fParfor);
-    csDesc{end+1} = sprintf('    fLargeRecording:        %d', get_set_(P, 'fLargeRecording', 0));    
+    csDesc{end+1} = sprintf('    fLargeRecording:        %d', fLargeRecording); 
     csDesc{end+1} = sprintf('    Parameter file:         %s', P.vcFile_prm);
 catch
     ;
@@ -1175,7 +1176,6 @@ end %func
 function [ctrPc_clu, cviSite_clu, viClu_remove] = merge_clu_pre_load_(cS_pre, S0, P)
 cviSite_clu = cell(size(cS_pre));
 
-% P.fLargeRecording=0; % debug
 [cviFet_clu, ccviSpk_clu] = deal(cell(size(cS_pre)));
 for iClu = 1:numel(cS_pre)
     S_pre = cS_pre{iClu};
@@ -1566,14 +1566,15 @@ fprintf('Clustering\n');
 runtime_sort = tic;
 
 S_drift = calc_drift_(S0, P);
-fLargeRecording = get_(P, 'nTime_drift') > get_set_(P, 'nTime_max_drift', 2^8);
-fLargeRecording = fLargeRecording || get_set_(P, 'fLargeRecording', 0);
-if ~fLargeRecording
-    [vrRho, vrDelta, miKnn, viNneigh, memory_sort, nFeatures] = sort_ram_(S0, P, S_drift);
-else
-    [vrRho, vrDelta, viNneigh, memory_sort, nFeatures] = sort_page_(S0, P, S_drift);
-    miKnn = [];
+if false
+    fLargeRecording = get_(P, 'nTime_drift') > get_set_(P, 'nTime_max_drift', 2^8);
+    if get_set_(P, 'fGpu', 1)
+        P.fParfor = get_set_(P, 'fParfor', 1) && ~fLargeRecording; % disable parfor
+    end
 end
+[vrRho, vrDelta, viNneigh, memory_sort, nFeatures] = sort_page_(S0, P, S_drift);
+miKnn = [];
+% end
 
 % output
 vrRho = vrRho / max(vrRho) / 10;     % divide by 10 to be compatible with previous version displays
@@ -2036,31 +2037,29 @@ nDrift_max = get_set_(P, 'nTime_max_drift', 2^8);
 
 if fGpu   
     assert(nDrift_max <= 2^8, 'cuda_delta_drift_: nDrift_max <= 2^8 (uint8 max)');
-    for iRetry = 1:2
-        try
-            [gmrFet1, gmrFet2, gviDrift1, gviDrift2, gmlDrift, gvrRho1, gvrRho2] = ...
-                gpuArray_deal_(mrFet1, mrFet2, uint8(viDrift1-1), uint8(viDrift2-1), int8(mlDrift), vrRho1, vrRho2);
+    try
+        [gmrFet1, gmrFet2, gviDrift1, gviDrift2, gmlDrift, gvrRho1, gvrRho2] = ...
+            gpuArray_deal_(mrFet1, mrFet2, uint8(viDrift1-1), uint8(viDrift2-1), int8(mlDrift), vrRho1, vrRho2);
 %             if isempty(CK)
-                CK = parallel.gpu.CUDAKernel('cuda_min_delta_drift.ptx','cuda_min_delta_drift.cu'); % auto-compile if ptx doesn't exist
-                CK.ThreadBlockSize = [nThreads, 1];          
-                CK.SharedMemorySize = 4 * CHUNK * (nC_max + 2) + CHUNK * nDrift_max; % @TODO: update the size
+            CK = parallel.gpu.CUDAKernel('cuda_min_delta_drift.ptx','cuda_min_delta_drift.cu'); % auto-compile if ptx doesn't exist
+            CK.ThreadBlockSize = [nThreads, 1];          
+            CK.SharedMemorySize = 4 * CHUNK * (nC_max + 2) + CHUNK * nDrift_max; % @TODO: update the size
 %             end
-            CK.GridSize = [ceil(n1 / CHUNK / CHUNK), CHUNK]; %MaxGridSize: [2.1475e+09 65535 65535]    
-            mrMin = zeros([nThreads, n1], 'single', 'gpuArray');
-            miMin = zeros([nThreads, n1], 'int32', 'gpuArray'); 
-            vnConst = int32([n2, n1, nC, nDrift]);                        
-            [mrMin, miMin] = feval(CK, mrMin, miMin, gmrFet2, gmrFet1, gviDrift2, gviDrift1, gmlDrift, gvrRho2, gvrRho1, vnConst);            
-            [vrDelta, viNneigh] = min(mrMin);
-            vrDelta = gather(vrDelta');
-            viNneigh = gather(miMin(viNneigh + (0:n1-1)*nThreads)');
-            return;
-        catch % use CPU, fail-safe
-            CK = [];
-            fGpu = 0; % using CPU
-            if ispc()
-                disp(lasterr());
-                fprintf(2, 'GPU failed, re-trying using CPU. Disable TDR from Nsight Monitor (run as administrator)\n');
-            end
+        CK.GridSize = [ceil(n1 / CHUNK / CHUNK), CHUNK]; %MaxGridSize: [2.1475e+09 65535 65535]    
+        mrMin = zeros([nThreads, n1], 'single', 'gpuArray');
+        miMin = zeros([nThreads, n1], 'int32', 'gpuArray'); 
+        vnConst = int32([n2, n1, nC, nDrift]);                        
+        [mrMin, miMin] = feval(CK, mrMin, miMin, gmrFet2, gmrFet1, gviDrift2, gviDrift1, gmlDrift, gvrRho2, gvrRho1, vnConst);            
+        [vrDelta, viNneigh] = min(mrMin);
+        vrDelta = gather(vrDelta');
+        viNneigh = gather(miMin(viNneigh + (0:n1-1)*nThreads)');
+        return;
+    catch % use CPU, fail-safe
+        CK = [];
+        fGpu = 0; % using CPU
+        if ispc()
+            disp(lasterr());
+            fprintf(2, 'GPU failed, re-trying using CPU. Disable TDR from Nsight Monitor (run as administrator)\n');
         end
     end
 end
@@ -2146,31 +2145,35 @@ knn = min(knn, n2);
 nDrift_max = get_set_(P, 'nTime_max_drift', 2^8);
 
 if fGpu    
-    assert(nDrift_max <= 2^8, 'cuda_delta_drift_: nDrift_max <= 2^8 (uint8 max)');
-    for iRetry = 1:2
-        try
-            [gmrFet1, gmrFet2, gviDrift1, gviDrift2, gmlDrift] = ...
-                gpuArray_deal_(mrFet1, mrFet2, uint8(viDrift1-1), uint8(viDrift2-1), int8(mlDrift));
-            mrMin = zeros([nThreads, n1], 'single', 'gpuArray');
-            miMin = zeros([nThreads, n1], 'int32', 'gpuArray'); 
-            CK = parallel.gpu.CUDAKernel('cuda_min_drift.ptx','cuda_min_drift.cu'); % auto-compile if ptx doesn't exist
-            CK.ThreadBlockSize = [nThreads, 1];          
-            CK.SharedMemorySize = 4 * CHUNK * (nC_max + 1) + CHUNK * nDrift_max; % @TODO: update the size
-            CK.GridSize = [ceil(n1 / CHUNK / CHUNK), CHUNK]; %MaxGridSize: [2.1475e+09 65535 65535]    
-            vnConst = int32([n2, n1, nC, knn, nDrift]);
-            [mrMin, miMin] = feval(CK, mrMin, miMin, gmrFet2, gmrFet1, gviDrift2, gviDrift1, gmlDrift, vnConst);            
-            [mrMin, miKnn] = mink(mrMin, knn);
-            vrKnn = gather(mrMin(end,:)');
-            miKnn = gather(miMin(miKnn + (0:n1-1)*nThreads));               
-%             [vrKnn, miKnn] = gather_(mrMin(knn,:)', miKnn);
-%             [mrMin, miKnn] = sort(mrMin);
-            return;
-        catch % use CPU, fail-safe
-            CK = [];
-            fGpu = 0; % using CPU
-            if ispc()
-                fprintf(2, 'GPU failed, re-trying using CPU. Disable TDR from Nsight Monitor\n');
-            end
+    assert(nDrift_max <= 2^8, 'cuda_knn_drift_: nDrift_max <= 2^8 (uint8 max)');
+    try
+        [gmrFet1, gmrFet2, gviDrift1, gviDrift2, gmlDrift] = ...
+            gpuArray_deal_(mrFet1, mrFet2, uint8(viDrift1-1), uint8(viDrift2-1), int8(mlDrift));
+        mrMin = zeros([nThreads, n1], 'single', 'gpuArray');
+        miMin = zeros([nThreads, n1], 'int32', 'gpuArray'); 
+        CK = parallel.gpu.CUDAKernel('cuda_min_drift.ptx','cuda_min_drift.cu'); % auto-compile if ptx doesn't exist
+        CK.ThreadBlockSize = [nThreads, 1];          
+        CK.SharedMemorySize = 4 * CHUNK * (nC_max + 1) + CHUNK * nDrift_max; % @TODO: update the size
+        CK.GridSize = [ceil(n1 / CHUNK / CHUNK), CHUNK]; %MaxGridSize: [2.1475e+09 65535 65535]    
+        vnConst = int32([n2, n1, nC, knn, nDrift]);
+        [mrMin, miMin] = feval(CK, mrMin, miMin, gmrFet2, gmrFet1, gviDrift2, gviDrift1, gmlDrift, vnConst);
+        miMin = gather(miMin);
+%         [gmrFet1, gmrFet2] = deal([]);
+%         try
+%             [mrMin, miKnn] = mink(mrMin, knn);
+%             vrKnn = gather(mrMin(end,:)');
+%             miKnn = miMin(gather(miKnn) + (0:n1-1)*nThreads);
+%         catch  
+            [mrMin, miKnn] = mink(gather(mrMin), knn);
+            vrKnn = mrMin(end,:)';
+            miKnn = miMin(miKnn + (0:n1-1)*nThreads);
+%         end
+        return;
+    catch % use CPU, fail-safe
+        CK = [];
+        fGpu = 0; % using CPU
+        if ispc()
+            fprintf(2, 'GPU failed, re-trying using CPU. Disable TDR from Nsight Monitor\n');
         end
     end
 end
@@ -2297,10 +2300,8 @@ S_fet = struct_merge_(S_fet, struct_copy_(S0, ...
 nSpk = numel(S0.viSite_spk);
 nSites = size(P.miSites,2);
 miKnn = [];
-% fLargeRecording = get_set_(P, 'fLargeRecording', 0);
 [fParfor, fGpu] = get_(P, 'fParfor', 'fGpu');
 fParfor = fParfor && nSites>1;
-% S_fet.fGpu = fGpu && ~fLargeRecording;
 
 % Calculate Rho
 [cvrRho, cvrDelta, cviNneigh, cviSpk_site] = deal(cell(nSites,1));
