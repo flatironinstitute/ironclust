@@ -1566,7 +1566,7 @@ fprintf('Clustering\n');
 runtime_sort = tic;
 
 S_drift = calc_drift_(S0, P);
-if false
+if true
     fLargeRecording = get_(P, 'nTime_drift') > get_set_(P, 'nTime_max_drift', 2^8);
     if get_set_(P, 'fGpu', 1)
         P.fParfor = get_set_(P, 'fParfor', 1) && ~fLargeRecording; % disable parfor
