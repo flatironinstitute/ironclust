@@ -1964,7 +1964,7 @@ if isempty(S_site.viiSpk_in1), return; end
 csVar = import_struct_(prepare_page_site_(S_page, S_site, iSite));
 
 % call cuda_knn_drift_
-if true
+if false
     [vrRho_in, miKnn_in] = cuda_knn_drift_(mrFet_in, mrFet_out, viDrift_in, viDrift_out, mlDrift1, P);
 else 
     % todo: do not create mrFet_in    
@@ -2076,15 +2076,18 @@ for iRetry = 1:2
         CK.GridSize = [ceil(nA / CHUNK / CHUNK), CHUNK]; %MaxGridSize: [2.1475e+09 65535 65535]    
         gvnConst = gpuArray(int32([nC, nF, nBB, iA0-1, nA])); % c indexing sarts with zero
         [mrMin, miMin] = feval(CK, mrMin, miMin, gmrF, gviBB1, gvnBB1, gvnConst);
-%         [vrKnn, miKnn] = sort(gather(mrMin));
-%         vrKnn = gather(vrKnn(end,:)');
-%         miKnn = gather(miMin(int32(miKnn(1:knn,:)) + int32((0:nA-1)*nThreads)));
-        
-        [mrMin, miKnn] = mink(gather(mrMin), knn);
-        vrKnn = mrMin(end,:)';
-        miMin = gather(miMin);
-        miKnn = miMin(miKnn + (0:nA-1)*nThreads);
-%         assert(knn <= size(miKnn,1), 'search_min_drift_');
+        if false
+            miMin = gather(miMin);
+            [mrMin, miKnn] = mink(gather(mrMin), knn);  
+            vrKnn = mrMin(end,:)';            
+            miKnn = miMin(int32(miKnn) + int32(0:nA-1)*nThreads);
+        else
+            miMin = gather(miMin);
+            [mrMin, miKnn] = sort(gather(mrMin));
+            vrKnn = mrMin(knn,:)';
+%             miKnn = int32(miKnn(1:knn,:));
+            miKnn = miMin(miKnn(1:knn,:) + (0:nA-1)*nThreads);
+        end
     catch % use CPU, fail-safe
         CK = [];
         if ispc() && iRetry > 1
