@@ -7,7 +7,7 @@
 //
 
 .version 6.3
-.target sm_52
+.target sm_35
 .address_size 64
 
 	// .globl	_Z16cuda_delta_driftPfPjPKfS2_PKhS4_PKcS2_S2_PKi

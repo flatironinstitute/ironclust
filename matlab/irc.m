@@ -2602,35 +2602,38 @@ end %func
 
 %--------------------------------------------------------------------------
 % 2018/6/29 JJJ
-function vrRho1 = calc_rho_parfor_(mrFet12, viiSpk12_ord, n1, dn_max, knn)
-tic
-vrRho1 = zeros(1, n1, 'like', mrFet12);
-nWorkers = 4;
-cvrRho1 = cell(nWorkers, 1);
-cvi1 = vi2cell_(1:n1, nWorkers);
-parfor (iWorker=1:nWorkers, nWorkers)
-    vi1 = cvi1{iWorker};
-    mlRemove1 = abs(bsxfun(@minus, viiSpk12_ord, viiSpk12_ord(vi1)')) > dn_max;    
-    mrDist1 = eucl2_dist_(mrFet12, mrFet12(:,vi1));
-    mrDist1(mlRemove1) = nan;
-    mrDist1 = sort(mrDist1);
-    cvrRho1{iWorker} = 1./ sqrt(mrDist1(knn,:)');
-end
-vrRho1 = cell2mat(cvrRho1);
-toc
-end %func
+% function cvi1 = vi2cell_(vi, nCell)
+% cvi1 = cell(nCell, 1);
+% nPerCell = ceil(numel(vi) / nCell);
+% viEdge = [1, (1:nCell-1)*nPerCell, numel(vi)];
+% 
+% for iCell = 1:nCell
+%     cvi1{iCell} = vi(viEdge(iCell):(viEdge(iCell+1)-1));
+% end
+% end %func
 
 
 %--------------------------------------------------------------------------
-% 2018/6/29 JJJ
-function cvi1 = vi2cell_(vi, nCell)
-cvi1 = cell(nCell, 1);
-nPerCell = ceil(numel(vi) / nCell);
-viEdge = [1, (1:nCell-1)*nPerCell, numel(vi)];
+function [cviSpk_site, nSites, vi_site] = vi2cell_(viSite_spk, nSites)
+if nargin<2, nSites = []; end
+if isempty(nSites), nSites = max(viSite_spk); end
 
-for iCell = 1:nCell
-    cvi1{iCell} = vi(viEdge(iCell):(viEdge(iCell+1)-1));
+% based on unique() function, which sorts. faster than arrayfun.
+cviSpk_site = cell(nSites, 1);
+[vr, vi] = sort(viSite_spk);
+vi_change = [1; find(diff(vr(:))>0)+1; numel(viSite_spk)+1];
+if isempty(viSite_spk), vi_site=[]; return; end
+
+vi_site = vr(vi_change(1:end-1));
+vl_remove = vi_site < 1;
+if any(vl_remove)
+    vi_site(vl_remove) = [];
+    vi_change(find(vl_remove)) = [];
 end
+for iStep = 1:numel(vi_site)
+    cviSpk_site{vi_site(iStep)} = vi(vi_change(iStep):vi_change(iStep+1)-1);
+end
+vi_site = vi_site(:)';
 end %func
 
 
@@ -2992,7 +2995,7 @@ viMap = 1:max(viClu_keep);
 nClu_keep = numel(viClu_keep);
 viMap(viClu_keep) = 1:nClu_keep;
 S_gt.viClu = viMap(S_gt.viClu); % compact, no-gap
-S_gt.cviSpk_clu = arrayfun(@(iClu)int32(find(S_gt.viClu == iClu)), 1:nClu_keep, 'UniformOutput', 0);
+S_gt.cviSpk_clu = vi2cell_(int32(S_gt.viClu), nClu_keep); 
 end %func
 
 
@@ -3176,7 +3179,7 @@ if fProcessRaw
 else
     [trWav_raw_clu, trWav_raw_sem_clu] = deal([]);
 end
-cviSpk_clu = arrayfun(@(iClu)int32(find(viClu == iClu)), 1:nClu, 'UniformOutput', 0);
+cviSpk_clu = vi2cell_(int32(viClu), nClu);
 mean_ = @(tr, vi)mean(single(tr(:,:,vi)), 3) * uV_per_bit; 
 sem_ = @(tr, vi)std(single(tr(:,:,vi)), [], 3) * uV_per_bit / sqrt(numel(vi)); 
 for iClu=1:nClu
@@ -3232,7 +3235,7 @@ if ~isempty(snr_thresh)
     nClu_keep = numel(viClu_keep);
     viMap(viClu_keep) = 1:nClu_keep;
     S_gt.viClu = viMap(S_gt.viClu); % compact, no-gap
-    S_gt.cviSpk_clu = arrayfun(@(iClu)int32(find(S_gt.viClu == iClu)), 1:nClu_keep, 'UniformOutput', 0);
+    S_gt.cviSpk_clu = vi2cell_(int32(S_gt.viClu), nClu_keep);
 else
     viClu_keep = 1:max(S_gt.viClu);    
 end
@@ -3710,23 +3713,23 @@ end % func
 
 
 %--------------------------------------------------------------------------
-function S_clu = post_merge_wav_(S_clu, fMerge, P)
+function [S_clu, nClu_merge] = post_merge_wav_(S_clu, fMerge, P)
 fRemove_duplicate = get_set_(P, 'fRemove_duplicate', 1);
+nClu_pre = S_clu.nClu;
 S_clu = rmfield_(S_clu, 'trWav_raw_clu', 'tmrWav_raw_clu', 'mrWavCor');
 if ~get_set_(P, 'fSave_spkwav', 1), return; end
 
 mrDist_site = pdist(P.mrSiteXY); 
-dist_merge = min(mrDist_site(mrDist_site>0));
+merge_thresh = min(mrDist_site(mrDist_site>0));
 % dist_merge = get_set_(P, 'maxDist_site_merge_um', 35);
 
 if fMerge
     maxWavCor = get_set_(P, 'maxWavCor', 1);
     if maxWavCor < 1 && maxWavCor > 0
-    %    for merge_factor = [.1, 1]
-        for merge_factor = [1]
-            S_clu = post_merge_wav4_(S_clu, merge_factor*dist_merge, P);
-        end
+        S_clu = post_merge_wav4_(S_clu, merge_thresh, P);
     end %if
+    nClu_merge = S_clu.nClu - nClu_pre;
+    if nClu_merge==0, return; end % do not change anythign if no merge occured
 end
 
 % Old format compatibility
@@ -3744,6 +3747,7 @@ if fRemove_duplicate && dimm1(2) >= get_set_(P, 'nChans_min_car', 8) && ndims(di
         fprintf('%d duplicate units removed\n', sum(~vlKeep_clu));
     end    
 end
+nClu_merge = S_clu.nClu - nClu_pre;
 end %func
 
 
@@ -3758,150 +3762,6 @@ vrThresh_site = get0_('vrThresh_site');
 mrMin_clu = double(mrMin_clu) ./ double(vrThresh_site(:));
 mrMin_clu(vrThresh_site==0,:) = nan;
 [~,viSite_min] = min(mrMin_clu);
-end %func
-
-
-%--------------------------------------------------------------------------
-% 9/3/2018 JJJ: pca based waveform merging
-function S_clu = post_merge_wav5_(S_clu, dist_merge_um, P)
-% use centroid based method
-% fRemove_duplicate = 1;
-% global trFet_spk
-% S_clu = rmfield_(S_clu, 'trWav_raw_clu', 'tmrWav_raw_clu', 'mrWavCor');
-% compute waveforms for cluster centers
-% Compute spkwav
-MAX_SAMPLE = 4000;        
-FRAC_NEAR = 1/2; % 1/2 is better than 1/4
-% NUM_PCA = 2;
-WAV_COR = P.maxWavCor;
-% WAV_COR = 1;
-
-tnWav_spk = get_spkwav_(P, 0); % use raw waveform
-% nCl = numel(S_clu.icl);
-viSite_spk = get0_('viSite_spk');
-mrPos_spk = get0_('mrPos_spk');
-% assert no empty clusters
-nClu = max(S_clu.viClu);
-cviSpk_clu = arrayfun(@(x)find(S_clu.viClu==x), 1:nClu, 'UniformOutput', 0);
-cviSpk_sub_clu = cellfun(@(x)subsample_vr_(x,MAX_SAMPLE), cviSpk_clu, 'UniformOutput', 0);
-cviSite_sub_clu = cellfun(@(x)viSite_spk(x), cviSpk_sub_clu, 'UniformOutput', 0);
-cmrPos_sub_clu = cellfun(@(x)mrPos_spk(x,:), cviSpk_sub_clu, 'UniformOutput', 0);
-cvrPos_sub_clu = cellfun(@(x)sum(x'.^2), cmrPos_sub_clu, 'UniformOutput', 0);
-ctrWav_sub_clu = cellfun(@(vi_)single(tnWav_spk(:,:,vi_)), cviSpk_sub_clu, 'UniformOutput', 0);
-
-% determine cluster centers
-mrPos_clu = cell2mat(cellfun(@(x)median(mrPos_spk(x,:))', cviSpk_sub_clu, 'UniformOutput', 0))';
-mrDist_clu = squareform(pdist(mrPos_clu));
-
-t1=tic;
-mlWavCor_clu = set_diag_(false(nClu), true(nClu,1));
-miSites = P.miSites;
-norm_ = @(x)(x-mean(x))/std(x,1);
-corr_ = @(x,y)mean(norm_(x).*norm_(y));
-frac_shift_merge = get_set_(P, 'frac_shift_merge', .1);
-nShift = round(frac_shift_merge * size(tnWav_spk,1));
-viShift = -nShift:nShift;
-for iClu1 = 1:nClu
-    viClu2 = find(mrDist_clu(1:iClu1-1,iClu1) <= dist_merge_um); %<= P.maxDist_site_um);    
-    if isempty(viClu2), continue; end
-    
-    [viSpk1, viSite_spk1, trWav_spk1] = ...
-        deal(cviSpk_sub_clu{iClu1}, cviSite_sub_clu{iClu1}, ctrWav_sub_clu{iClu1});
-    [mrPos1_T, vrPos1] = deal(cmrPos_sub_clu{iClu1}', cvrPos_sub_clu{iClu1});
-    vlWavCor1 = mlWavCor_clu(:,iClu1);
-    
-    for iClu2_ = 1:numel(viClu2)            
-        iClu2 = viClu2(iClu2_);
-        vlWavCor2 = mlWavCor_clu(:,iClu2) | mlWavCor_clu(iClu2,:)';
-        vlWavCor2 = any(mlWavCor_clu(:,vlWavCor2),2);
-        vlWavCor1 = any(mlWavCor_clu(:,vlWavCor1),2);
-        if any(vlWavCor2 & vlWavCor1)
-            vlWavCor1(vlWavCor2) = true;
-%             vlWavCor1(iClu2) = true; 
-            continue;
-        end              
-        
-        [viSpk2, viSite_spk2, trWav_spk2] = ...
-            deal(cviSpk_sub_clu{iClu2}, cviSite_sub_clu{iClu2}, ctrWav_sub_clu{iClu2});
-        [mrPos2, vrPos2] = deal(cmrPos_sub_clu{iClu2}, cvrPos_sub_clu{iClu2});
-        mrDist21 = bsxfun(@plus, vrPos1, bsxfun(@minus, vrPos2', 2*mrPos2*mrPos1_T)); %faster
-        [viSpk1_, viiSpk1_] = sortby_(viSpk1, min(mrDist21,[],1), 'ascend');
-        [viSpk2_, viiSpk2_] = sortby_(viSpk2, min(mrDist21,[],2), 'ascend');
-        [viSpk1_, viiSpk1_] = deal(viSpk1_(1:end*FRAC_NEAR), viiSpk1_(1:end*FRAC_NEAR));
-        [viSpk2_, viiSpk2_] = deal(viSpk2_(1:end*FRAC_NEAR), viiSpk2_(1:end*FRAC_NEAR));
-        [viSite_spk1_, viSite_spk2_] = deal(viSite_spk1(viiSpk1_), viSite_spk2(viiSpk2_));
-        [iSite1_, iSite2_] = deal(mode(viSite_spk1_), mode(viSite_spk2_));
-        [viSite1_, viSite2_] = deal(miSites(:,iSite1_), miSites(:,iSite2_));
-                
-        if iSite1_ ~= iSite2_
-            [~, viSite12_, viSite21_] = intersect(viSite1_, viSite2_); % don't repeat
-            trSpk1_ = trWav_spk1(:,viSite12_,viiSpk1_(viSite_spk1_==iSite1_));
-            trSpk2_ = trWav_spk2(:,viSite21_,viiSpk2_(viSite_spk2_==iSite2_));
-        else
-            trSpk1_ = trWav_spk1(:,:,viiSpk1_(viSite_spk1_==iSite1_));
-            trSpk2_ = trWav_spk2(:,:,viiSpk2_(viSite_spk2_==iSite2_));           
-        end
-%         mr1_ = tr_pv_(trSpk1_, NUM_PCA);
-%         mr2_ = tr_pv_(trSpk2_, NUM_PCA);
-%         mr1_ = pca(reshape(trSpk1_, size(trSpk1_,1), [])', 'NumComponents', NUM_PCA);
-%         mr2_ = pca(reshape(trSpk2_, size(trSpk2_,1), [])', 'NumComponents', NUM_PCA);
-%         wavcor12_ = mr1_(:)' * mr2_(:) / NUM_PCA;
-
-% %         [mrSpk1_, mrSpk2_] = deal(gpuArray_(tnSpk1_, P.fGpu), gpuArray_(tnSpk2_, P.fGpu));
-        [mrSpk1_, mrSpk2_] = deal(mean(trSpk1_,3), mean(trSpk2_,3));
-        wavcor12_ = corr_(mrSpk1_(:), mrSpk2_(:));
-        vlWavCor1(iClu2) = wavcor12_ >= WAV_COR; 
-    end %for
-    mlWavCor_clu(:,iClu1) = vlWavCor1;
-    fprintf('.');
-end 
-% fprintf('\n\t%0.1fs\n', toc(t1));
-
-% Generate a map and merge clusters by translating index
-viMap_clu = int32(ml2map_(mlWavCor_clu));
-vlPos = S_clu.viClu > 0;
-S_clu.viClu(vlPos) = viMap_clu(S_clu.viClu(vlPos)); %translate cluster number
-S_clu = S_clu_refresh_(S_clu);
-nClu_post = numel(unique(viMap_clu));
-nClu_pre = nClu;
-fprintf('\nMerged %d waveforms (%d->%d), took %0.1fs\n', nClu-nClu_post, nClu, nClu_post, toc(t1));
-
-end %func
-
-
-%--------------------------------------------------------------------------
-function [mrPv1, vrD1] = tr_pv_(tr, nPc)
-mr = reshape(tr, size(tr,1), []);
-mr = bsxfun(@minus, mr, mean(mr));
-mrCov = mr*mr';
-
-% tr_ = reshape(mr, size(tr));
-% mrCov = zeros(size(tr,1));
-% for i=1:size(tr,3)
-%     mr_ = tr_(:,:,i);
-%     mrCov = mrCov + mr_*mr_';
-% end
-% mrCov = mrCov / size(tr,3);
-
-% mr = mean(tr,3);
-% mr = bsxfun(@minus, mr, mean(mr));
-% mrCov = mr*mr';
-
-[mrPv1, vrD1] = eig(mrCov); 
-vrD1 = flipud(diag(vrD1));
-mrPv1 = fliplr(mrPv1);
-
-if nargin<2, nPc = size(mrPv1,2); end
-    
-% mr = reshape(mr, [], size(tr,3));
-% mrCov = mr * mr';
-if nargin>=2
-    mrPv1 = mrPv1(:,1:nPc); 
-    vrD1 = vrD1(1:nPc);
-end
-
-vlFlip = abs(min(mrPv1)) < abs(max(mrPv1));
-mrPv1(:,vlFlip) = -mrPv1(:,vlFlip);
 end %func
 
 
@@ -6869,7 +6729,7 @@ if nargin<2, fRemoveEmpty=1; end
 nClu = double(max(S_clu.viClu));
 S_clu.nClu = nClu;
 if nargin<3, viSite_spk = get0_('viSite_spk'); end
-S_clu.cviSpk_clu = arrayfun(@(iClu)find(S_clu.viClu==iClu), 1:nClu, 'UniformOutput', 0);
+S_clu.cviSpk_clu = vi2cell_(S_clu.viClu, nClu);
 S_clu.vnSpk_clu = cellfun(@numel, S_clu.cviSpk_clu); 
 if ~isempty(viSite_spk)
     S_clu.viSite_clu = double(arrayfun(@(iClu)mode(viSite_spk(S_clu.cviSpk_clu{iClu})), 1:nClu));
@@ -6887,7 +6747,7 @@ S_clu.viClu(vlPos) = viMap_clu(S_clu.viClu(vlPos)); %translate cluster number
 % S_clu = S_clu_refresh_(S_clu, 0); % computational efficiency
 % S_clu = S_clu_count_(S_clu);
 % S_clu.nClu = numel(unique(viMap_clu));
-S_clu.cviSpk_clu = arrayfun(@(iClu)find(S_clu.viClu==iClu), 1:S_clu.nClu, 'UniformOutput', 0);
+S_clu.cviSpk_clu = vi2cell_(S_clu.viClu);
 S_clu.vnSpk_clu = cellfun(@numel, S_clu.cviSpk_clu);
 viSite_spk = get0_('viSite_spk');
 S_clu.viSite_clu = double(arrayfun(@(iClu)mode(viSite_spk(S_clu.cviSpk_clu{iClu})), 1:S_clu.nClu));
@@ -9887,8 +9747,8 @@ end %func
 function [viClu_new, icl_new] = dpclus_remove_count_(viClu, icl, min_count)
 nClu = numel(icl);
 viMap = zeros(nClu,1);
-% vnSpk_clu = cellfun(@numel, vi2cell_(viClu, nClu));
-vnSpk_clu = arrayfun(@(x)sum(viClu==x), 1:nClu);
+vnSpk_clu = cellfun(@numel, vi2cell_(viClu, nClu));
+% vnSpk_clu = arrayfun(@(x)sum(viClu==x), 1:nClu);
 vlClu_keep = vnSpk_clu >= min_count;
 viMap(vlClu_keep) = 1:sum(vlClu_keep);
 
@@ -17935,20 +17795,24 @@ if isnan(maxWavCor), msgbox_('Invalid criteria.'); return; end
 % Auto delete
 hFig_wait = figure_wait_(1);
 nClu_prev = S_clu.nClu;
-S_clu = post_merge_wav_(S_clu, 1, setfield(P, 'maxWavCor', maxWavCor));
-% [S_clu, S0] = S_clu_commit_(S_clu, 'post_merge_');
-S_clu.mrWavCor = set_diag_(S_clu.mrWavCor, S_clu_self_corr_(S_clu, [], S0));
-S_clu = S_clu_position_(S_clu);
-S_clu.csNote_clu = cell(S_clu.nClu, 1);  %reset note
-S_clu = S_clu_quality_(S_clu, P);
-set0_(S_clu);
-S0 = gui_update_();
-figure_wait_(0, hFig_wait);
+[S_clu, nClu_merge] = post_merge_wav_(S_clu, 1, setfield(P, 'maxWavCor', maxWavCor));
+if nClu_merge>0
+    S_clu.mrWavCor = set_diag_(S_clu.mrWavCor, S_clu_self_corr_(S_clu, [], S0));
+    S_clu = S_clu_position_(S_clu);
+    S_clu.csNote_clu = cell(S_clu.nClu, 1);  %reset note
+    S_clu = S_clu_quality_(S_clu, P);
+    set0_(S_clu);
+    S0 = gui_update_();    
 
-assert_(S_clu_valid_(S_clu), 'Cluster number is inconsistent after deleting');
-nClu_merge = nClu_prev - S_clu.nClu;
-msgbox_(sprintf('Merged %d clusters >%0.2f maxWavCor.', nClu_merge, maxWavCor));
-save_log_(sprintf('merge-auto <%0.2f maxWavCor', maxWavCor), S0);
+    assert_(S_clu_valid_(S_clu), 'Cluster number is inconsistent after deleting');
+    nClu_merge1 = nClu_prev - S_clu.nClu;
+    assert(nClu_merge1==nClu_merge, 'merge_auto_');
+    msgbox_(sprintf('Merged %d clusters >%0.2f maxWavCor.', nClu_merge, maxWavCor));
+    save_log_(sprintf('merge-auto <%0.2f maxWavCor', maxWavCor), S0);
+else
+    msgbox_('No clusters are merged, adjust the correlation threshold');
+end
+figure_wait_(0, hFig_wait);
 end %func
 
 
@@ -27046,12 +26910,7 @@ end
 
 % cluster
 P.vcCluster = 'xcov';
-% S_clu = S_clu_from_fet_(mrFet_spk, P.knn);
-% S_clu = postCluster_(S_clu, P);
-% S_clu = post_merge_wav_(S_clu, 1, P);
-
 S0 = sort_(P);
-
 end %func
 
 
@@ -30322,9 +30181,7 @@ else
         fprintf('Wrote to cache: %s\n', vcFile_gt1);
     end
 end
-if ~isfield(S_gt, 'cviSpk_clu')
-    S_gt.cviSpk_clu = arrayfun(@(iClu)int32(find(S_gt.viClu == iClu)), 1:max(S_gt.viClu), 'UniformOutput', 0);
-end
+if ~isfield(S_gt, 'cviSpk_clu'), S_gt.cviSpk_clu = vi2cell_(int32(S_gt.viClu)); end
 % S_gt = S_gt_snr_thresh_(S_gt, P.snr_thresh_gt); % trim by SNR threshold
 S_score = struct_(...
     'vrVmin_gt', S_gt.vrVmin_clu, 'vnSite_gt', S_gt.vnSite_clu, ... 
