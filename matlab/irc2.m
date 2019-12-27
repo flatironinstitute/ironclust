@@ -153,8 +153,8 @@ end %func
 %--------------------------------------------------------------------------
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_()
-vcVer = 'v5.3.16';
-vcDate = '12/23/2019';
+vcVer = 'v5.3.17';
+vcDate = '12/26/2019';
 vcHash = file2hash_();
 
 if nargout==0
@@ -4589,11 +4589,8 @@ if isempty(viClu_spk)
         case 2
             cvi_peak = cell(numel(viSpk_peak), 1);
             for iPeak = 1:numel(viSpk_peak)  
-                cvi_peak{iPeak} = iPeak; % include self
                 viPeak1 = find(any(ismember(miKnn_peak(:,1:iPeak-1), miKnn_peak(:,iPeak))));
-                if ~isempty(viPeak1)
-                    cvi_peak{iPeak} = union(cvi_peak{iPeak}, viPeak1);
-                end
+                cvi_peak{iPeak} = [viPeak1(:); iPeak];
             end
             [viClu_spk(viSpk_peak), viiPeak] = cell2map_(cvi_peak);
             [viSpk_peak, vrRho_peak] = deal(viSpk_peak(viiPeak), vrRho_peak(viiPeak));
@@ -4706,15 +4703,36 @@ end %func
 %--------------------------------------------------------------------------
 % 190816 JJJ: Faster implementation
 function [viMapClu_new, viUniq_, viMapClu] = cell2map_(cvi_clu)
-nClu = numel(cvi_clu);
-% viClu_update = find(cellfun(@(x)numel(x)>1, cvi_clu))';
-for iRepeat = 1:2
-    for iClu = 1:numel(cvi_clu)
-        viClu1 = cvi_clu{iClu};
-        cvi_clu(viClu1) = cellfun_(@(x)union(x, viClu1), cvi_clu(viClu1));
-    end    
-end
+nRepeat = 10;
 
+t_fun = tic;
+switch 2
+    case 1
+        for iRepeat = 1:2
+            viClu_update = find(cellfun(@(x)numel(x)>1, cvi_clu));
+            for iClu = viClu_update(:)'
+                viClu1 = cvi_clu{iClu};
+                cvi_clu(viClu1) = cellfun_(@(x)union(x, viClu1), cvi_clu(viClu1));
+            end    
+        end
+    case 2
+        for iRepeat = 1:nRepeat
+            cvi_clu1 = cell(size(cvi_clu));
+            viClu_update = find(cellfun(@(x)numel(x)>1, cvi_clu));
+            for iClu = viClu_update(:)'
+                viClu1 = cvi_clu{iClu};
+                cvi_clu1(viClu1) = cellfun_(@(x)[x(:); viClu1(:)], cvi_clu(viClu1));
+            end    
+            cvi_clu1 = cellfun_(@(x)unique(x), cvi_clu1);
+            if all(cellfun(@numel, cvi_clu1) == cellfun(@numel, cvi_clu))
+                break;
+            else
+                cvi_clu = cvi_clu1;
+            end
+        end
+end %switch
+
+nClu = numel(cvi_clu);
 viMapClu = 1:nClu;
 for iClu = 1:nClu
     iClu1 = min(cvi_clu{iClu});
@@ -4725,6 +4743,7 @@ end
 viUniq_ = unique(viMapClu);
 viMap_(viUniq_) = 1:numel(viUniq_);
 viMapClu_new = viMap_(viMapClu);
+fprintf('cell2map_: nRepeat=%d, took %0.1fs\n', iRepeat, toc(t_fun));
 end %func
 
 
