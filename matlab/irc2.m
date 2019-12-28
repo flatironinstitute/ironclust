@@ -153,8 +153,8 @@ end %func
 %--------------------------------------------------------------------------
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_()
-vcVer = 'v5.3.18';
-vcDate = '12/26/2019';
+vcVer = 'v5.3.19';
+vcDate = '12/27/2019';
 vcHash = file2hash_();
 
 if nargout==0
@@ -884,6 +884,7 @@ nSites = size(P.miSites,2);
 S_auto = makeStruct_(nDrift, nClu, nSites, knn, vcFile_prm, nSpk_min, ...
     vrRho, viClu, viLim_drift, ccviSpk_site_load, ccviSpk_site2_load, type_fet, dimm_fet);
 
+t_fun = tic;
 fParfor = P.fParfor;
 c_cc1_site = cell(1, nSites);
 if fParfor
@@ -900,8 +901,13 @@ if ~fParfor
         c_cc1_site{iSite} = wave_similarity_site_template_(iSite, S_auto);
     end
 end
+t0 = toc(t_fun);
+fprintf(2, '\twave_similarity_site_template_: took %0.1fs\n', t0);
 
 [ctrPc_clu, cviSite_clu, cviDrift_clu] = wave_similarity_site_parse_(c_cc1_site, S_auto);
+t1 = toc(t_fun);
+fprintf(2, '\twave_similarity_site_parse_: took %0.1fs\n', t1-t0);
+
 switch 1 % remove low-snr waveforms to reduce false positives
     case 1
         [viClu_remove, ctrPc_clu, cviSite_clu, cviDrift_clu] = find_low_snr_clu_(S0, P, ctrPc_clu, cviSite_clu, cviDrift_clu);
@@ -910,6 +916,8 @@ switch 1 % remove low-snr waveforms to reduce false positives
     case 3
         viClu_remove = [];
 end
+t2 = toc(t_fun);
+fprintf(2, '\tfind_low_snr_clu_: took %0.1fs\n', t2-t1);
 
 % merge the templates: todo, faster code
 mrDist_clu = nan(S_clu.nClu, 'single');
@@ -928,33 +936,44 @@ if ~fParfor
         mrDist_clu(:, iClu1) = wav_similarity_site_post_(iClu1, S_post);
     end %for
 end
-% fprintf('\n\ttook %0.1fs\n', toc(t_template));
+t3 = toc(t_fun);
+fprintf(2, '\twav_similarity_site_post_: took %0.1fs\n', t3-t2);
 end %func
 
 
 %--------------------------------------------------------------------------
 function vrDist_clu1 = wav_similarity_site_post_(iClu1, S_post)
+
 [cviSite_clu, ctrPc_clu, nClu, viShift, mrPv, cviDrift_clu, mlDrift] = ...
     struct_get_(S_post, 'cviSite_clu', 'ctrPc_clu', 'nClu', 'viShift', 'mrPv', 'cviDrift_clu', 'mlDrift');
 vrDist_clu1 = zeros(nClu, 1, 'single');
+
 viSite_clu1 = cviSite_clu{iClu1};
 if isempty(viSite_clu1), return; end
+nSites = max(cell2mat_(cellfun_(@max, cviSite_clu)));
+% binary vector addressing is faster than ismember
+vlSites1 = false(nSites,1); vlSites1(viSite_clu1) = true;
+viClu2 = find(cellfun(@(x)any(vlSites1(x)), cviSite_clu));
+if isempty(viClu2), return; end
+
+norm_mr_ = @(mr)mr ./ sqrt(sum(mr.^2,1)); 
+tr2mr_pv_norm_ = @(tr,mr)norm_mr_(reshape(mr*reshape(tr,size(tr,1),[]),[],size(tr,3))); 
 
 viDrift_clu1 = cviDrift_clu{iClu1};
-trPc_clu1 = ctrPc_clu{iClu1};
 viDrift_uniq = unique(viDrift_clu1(:)');
-viClu2 = find(cellfun(@(x)any(ismember(x, viSite_clu1)), cviSite_clu));
-
+trPc_clu1 = ctrPc_clu{iClu1};
 for iDrift = viDrift_uniq
     vi1 = find(viDrift_clu1==iDrift);
     [trPc_clu11, viSite_clu11] = deal(trPc_clu1(:,:,vi1), viSite_clu1(vi1));
-    viDrift11 = find(mlDrift(:,iDrift));
-    viSite_uniq11 = unique(viSite_clu11(:)');    
+    vlDrift11 = mlDrift(:,iDrift);
+    vlSites11 = false(nSites,1); vlSites11(viSite_clu11) = true;
+    viSite_uniq11 = find(vlSites11)';    
     for iClu2 = viClu2
+        vl2_drift = vlDrift11(cviDrift_clu{iClu2});
+        if ~any(vl2_drift), continue; end
         viSite_clu2 = cviSite_clu{iClu2};
-        vl2_site = ismember(viSite_clu2, viSite_uniq11);
-        if ~any(vl2_site), continue; end
-        vl2_drift = ismember(cviDrift_clu{iClu2}, viDrift11);
+        vl2_site = vlSites11(viSite_clu2);
+        if ~any(vl2_site), continue; end        
         vi2 = find(vl2_drift & vl2_site);
         if isempty(vi2), continue; end
         trPc_clu2 = ctrPc_clu{iClu2};
@@ -963,10 +982,10 @@ for iDrift = viDrift_uniq
             trPc_clu22_ = trPc_clu22(:,:,viSite_clu22==iSite);
             if isempty(trPc_clu22_), continue; end
             trPc_clu11_ = trPc_clu11(:,:,viSite_clu11==iSite);
-            mr11_ = normalize_tr_(shift_trWav_(trPc_clu11_, viShift), mrPv);
-            mr22_ = normalize_tr_(trPc_clu22_, mrPv);
-            mrDist12 = mr22_' * mr11_;
-            vrDist_clu1(iClu2) = max(vrDist_clu1(iClu2), max(mrDist12(:)));
+            mr11_ = tr2mr_pv_norm_(shift_trWav_(trPc_clu11_, viShift), mrPv);
+            max12_ = tr2mr_pv_norm_(trPc_clu22_, mrPv)' * mr11_;
+            max12_ = max(max12_(:));
+            if vrDist_clu1(iClu2) < max12_, vrDist_clu1(iClu2) = max12_; end
         end
     end
 end
@@ -1024,6 +1043,7 @@ miKnn1 = miKnn1(1:min(NUM_KNN, size(miKnn1,1)), :);
 cc1_drift_clu = cell(nDrift, nClu);
 cvii1_drift = vi2cell_(discretize(viSpk1, viLim_drift), nDrift);
 [vrRho1, viClu1] = deal(vrRho(viSpk1), viClu(viSpk1));
+% vlSpk1 = false(numel(S_auto.vrRho), 1); vlSpk1(viSpk1) = true;
 for iDrift = 1:nDrift
     vii1 = cvii1_drift{iDrift};
     if isempty(vii1), continue; end
@@ -1037,52 +1057,6 @@ for iDrift = 1:nDrift
         if numel(vii1_) >= nSpk_min
             cc1_drift_clu{iDrift, iClu} = mean(trPc1(:,:,vii1_),3);
         end        
-    end
-end
-end %func
-
-
-%--------------------------------------------------------------------------
-function [cc1_drift_clu, cc2_drift_clu] = wave_similarity_site_template__(iSite1, S_auto)
-
-NUM_KNN = 10;
-miKnn1 = load_miKnn_site_(S_auto, iSite1);
-miKnn1 = miKnn1(1:min(NUM_KNN, size(miKnn1,1)), :);
-[viLim_drift, nDrift, viClu, nClu, vrRho, nSpk_min] = ...
-    get_(S_auto, 'viLim_drift', 'nDrift', 'viClu', 'nClu', 'vrRho', 'nSpk_min');
-[cc_drift_spk, cc1_drift_clu, cc2_drift_clu] = deal(cell(nDrift, nClu));
-[trPc1, viSpk1] = load_fet_site_(S_auto, 1, iSite1);
-cvii1_drift = vi2cell_(discretize(viSpk1, viLim_drift), nDrift);
-[vrRho1, viClu1] = deal(vrRho(viSpk1), viClu(viSpk1));
-for iDrift = 1:nDrift
-    vii1 = cvii1_drift{iDrift};
-    if isempty(vii1), continue; end
-    [vrRho11, viClu11, miKnn11] = deal(vrRho1(vii1), viClu1(vii1), miKnn1(:,vii1));
-    [cviSpk_clu_, ~, viClu_uniq] = vi2cell_(viClu11, nClu);
-    for iClu = viClu_uniq
-        vi_ = cviSpk_clu_{iClu};
-        miKnn11_ = miKnn11(:,vi_);
-        viSpk11_ = unique(miKnn11_(vrRho(miKnn11_) >= vrRho11(vi_)'));        
-        vii1_ = find_ismember_(viSpk11_, viSpk1);
-        if numel(vii1_) >= nSpk_min
-            cc1_drift_clu{iDrift, iClu} = mean(trPc1(:,:,vii1_),3);
-        end
-        cc_drift_spk{iDrift, iClu} = viSpk11_;
-    end
-end
-[miKnn1, trPc1, viSpk1] = deal([]); % clear memory
-
-[trPc2, viSpk2] = load_fet_site_(S_auto, 2, iSite1);
-if isempty(trPc2), return; end
-for iDrift = 1:nDrift
-    for iClu = 1:nClu
-        viSpk11_ = cc_drift_spk{iDrift, iClu};
-        if ~isempty(viSpk11_)
-            vii2_ = find_ismember_(viSpk11_, viSpk2);
-            if numel(vii2_) >= nSpk_min
-                cc2_drift_clu{iDrift, iClu} = mean(trPc2(:,:,vii2_),3);
-            end
-        end
     end
 end
 end %func
@@ -2005,9 +1979,13 @@ for iiAA = 1:numel(viAA)
     viiAA1 = find(viDrift_in == iAA1);
     limAA1 = viiAA1([1, end]) + in_offset;
     viiBB1 = find(ismember(viBB, find(mlDrift1(:,iAA1))));
-    [viBB1, vnBB1] = deal(viiBB(viiBB1), vnBB(viiBB1));    
-    [vrKnn_in(viiAA1), miKnn_in(:,viiAA1)] = ...
-        search_min_drift_(gmrFet_out, viBB1, vnBB1, limAA1, P);
+    [viBB1, vnBB1] = deal(viiBB(viiBB1), vnBB(viiBB1));  
+    
+    if true
+        [vrKnn_in(viiAA1), miKnn_in(:,viiAA1)] = search_min_drift_(gmrFet_out, viBB1, vnBB1, limAA1, P);    
+    else
+        [vrKnn_in(viiAA1), miKnn_in(:,viiAA1)] = knn_index_drift_(gmrFet_out, viBB1, vnBB1, limAA1, P);    
+    end
 %         disp(iiAA);
 %         fprintf('%s\n', sprintf('%d ', viBB1));
 %         fprintf('%s\n', sprintf('%d ', vnBB1));
@@ -2046,6 +2024,42 @@ for iRetry = 1:2
     catch % use CPU, fail-safe
         CK = [];
         if ispc()
+            fprintf(2, 'GPU failed, re-trying using CPU. Disable TDR from Nsight Monitor\n');
+        end
+        [vrKnn, miKnn] = deal([]);
+    end
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+function [vrKnn, miKnn] = knn_index_drift_(gmrF, viBB1, vnBB1, limAA1, P)
+persistent CK
+% fGpu = 0; % debug
+% fprintf(2, 'cuda_knn_drift_: cuda_min_drift.cu selected\n');
+[CHUNK, nC_max, nThreads, KNN_max] = deal(16, 45, 15*32, 30); % tied to cuda_knn_index.cu
+knn = get_set_(P, 'knn', 30);
+[nC, nF, nBB, iA0, nA] = deal(size(gmrF,1), size(gmrF,2), numel(viBB1), limAA1(1), diff(limAA1)+1);
+for iRetry = 1:2
+    try
+        vrKnn = zeros([nA, 1], 'single', 'gpuArray');
+        miKnn = zeros([knn, nA], 'int32', 'gpuArray'); 
+        gviBB1 = gpuArray(int32(viBB1)-1); % c indexing starts with 0
+        gvnBB1 = gpuArray(int32(vnBB1));
+        if isempty(CK)
+            CK = parallel.gpu.CUDAKernel('knn_index_drift.ptx','knn_index_drift.cu'); % auto-compile if ptx doesn't exist
+            CK.ThreadBlockSize = [nThreads, 1];          
+            CK.SharedMemorySize = 4 * CHUNK * (nC_max + 1 + 2*KNN_max); % @TODO: update the size
+        end
+        CK.GridSize = [ceil(nA / CHUNK / CHUNK), CHUNK]; %MaxGridSize: [2.1475e+09 65535 65535]    
+        gvnConst = gpuArray(int32([nC, nF, nBB, iA0-1, nA, knn])); % c indexing sarts with zero
+        [vrKnn, miKnn] = feval(CK, vrKnn, miKnn, gmrF, gviBB1, gvnBB1, gvnConst);        
+        vrKnn = gather(vrKnn);
+        miKnn = gather(miKnn);
+%         assert(all(miKnn(:)~=0));
+    catch % use CPU, fail-safe
+        CK = [];
+        if ispc() && iRetry > 1
             fprintf(2, 'GPU failed, re-trying using CPU. Disable TDR from Nsight Monitor\n');
         end
         [vrKnn, miKnn] = deal([]);

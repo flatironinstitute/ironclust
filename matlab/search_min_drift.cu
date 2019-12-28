@@ -59,31 +59,30 @@ __global__ void search_min_drift(float *D, int *I, float const *F, const int *IB
     }     
     
     // find minimum for each bin, stride of 2xnThread to save shared memory
-    for (int iBB=0; iBB<nBB; iBB++){        
-        // time block loop
-        int iB0 = IBB[iBB];
-        int nB0 = NBB[iBB];
-        for (int iB=tx+iB0; iB<nB0+iB0; iB+=nT){    
-            // Initialize distance vector
-            float dist_[CHUNK];  // #programa unroll?   
-            for (int iA_=0; iA_<CHUNK; ++iA_) dist_[iA_] = 0.0f;
+    int iB0 = IBB[tx % nBB];
+    int nB0 = NBB[tx % nBB];
+    int iT0 = tx / nBB;
+    int nT0 = nT / nBB;
+    for (int iB=iT0+iB0; iB<nB0+iB0; iB+=nT0){    
+        // Initialize distance vector
+        float dist_[CHUNK];  // #programa unroll?   
+        for (int iA_=0; iA_<CHUNK; ++iA_) dist_[iA_] = 0.0f;
 
-            for (int iC=0; iC<nC; ++iC){
-                float b_ = F[iC + iB*nC];
-                for (int iA_=0; iA_<CHUNK; ++iA_){
-                    float d_ = b_ - sA[iC][iA_];
-                    dist_[iA_] += (d_ * d_);
-                }            
-            }         
+        for (int iC=0; iC<nC; ++iC){
+            float b_ = F[iC + iB*nC];
             for (int iA_=0; iA_<CHUNK; ++iA_){
-                float d_ = dist_[iA_];
-                if (dist_[iA_] < tD[iA_] && d_ > 0.0f){
-                    tD[iA_] = d_;
-                    tI[iA_] = iB;
-                }
+                float d_ = b_ - sA[iC][iA_];
+                dist_[iA_] += (d_ * d_);
+            }            
+        }         
+        for (int iA_=0; iA_<CHUNK; ++iA_){
+            float d_ = dist_[iA_];
+            if (dist_[iA_] < tD[iA_] && d_ > 0.0f){
+                tD[iA_] = d_;
+                tI[iA_] = iB;
             }
-        } // while
-    }
+        }
+    } // while
     
     // write the output
     for (int iA_=0; iA_<CHUNK; ++iA_){ 
