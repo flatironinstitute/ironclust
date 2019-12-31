@@ -153,7 +153,7 @@ end %func
 %--------------------------------------------------------------------------
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_()
-vcVer = 'v5.4.0';
+vcVer = 'v5.4.1';
 vcDate = '12/31/2019';
 vcHash = file2hash_();
 
@@ -162,6 +162,7 @@ if nargout==0
     return;
 end
 end %func
+
 
 
 %--------------------------------------------------------------------------
@@ -1041,14 +1042,15 @@ function cc1_drift_clu = wave_similarity_site_pre_(iSite1, S_auto)
 NUM_KNN = 10;
 miKnn1 = load_miKnn_site_(S_auto, iSite1);
 miKnn1 = miKnn1(1:min(NUM_KNN, size(miKnn1,1)), :);
-[viLim_drift, nDrift, viClu, nClu, vrRho, nSpk_min] = ...
-    get_(S_auto, 'viLim_drift', 'nDrift', 'viClu', 'nClu', 'vrRho', 'nSpk_min');
+[viLim_drift, nDrift, viClu, nClu, nSpk_min] = ...
+    get_(S_auto, 'viLim_drift', 'nDrift', 'viClu', 'nClu', 'nSpk_min');
 
 [trPc1, viSpk1] = load_fet_site_(S_auto, 1, iSite1);
-
 cc1_drift_clu = cell(nDrift, nClu);
 cvii1_drift = vi2cell_(discretize(viSpk1, viLim_drift), nDrift);
-[vrRho1, viClu1] = deal(vrRho(viSpk1), viClu(viSpk1));
+[vrRho1, viClu1] = deal(S_auto.vrRho(viSpk1), viClu(viSpk1));
+vrRho = zeros(size(S_auto.vrRho), 'like', S_auto.vrRho);
+vrRho(viSpk1) = S_auto.vrRho(viSpk1);
 for iDrift = 1:nDrift
     vii1 = cvii1_drift{iDrift};
     if isempty(vii1), continue; end
@@ -1067,11 +1069,22 @@ end
 end %func
 
 
-
 %--------------------------------------------------------------------------
 function vii2 = find_sorted_(vi1, vi2)
 % find 1 in 2 and return index in 2
+% assume vi2 is sorted
 [vl1, vii1] = ismember(sort(vi1), vi2);
+vii2 = vii1(vl1);
+end %func
+
+
+%--------------------------------------------------------------------------
+function vii2 = find_sorted__(vi1, vi2)
+% find 1 in 2 and return index in 2
+% assume vi2 is sorted
+vi1 = sort(vi1);
+lim2 = [find(vi2>=vi1(1), 1, 'first'), find(vi2<=vi1(end), 1, 'last')];
+[vl1, vii1] = ismember(vi1, vi2(lim2(1):lim2(2)));
 vii2 = vii1(vl1);
 end %func
 
