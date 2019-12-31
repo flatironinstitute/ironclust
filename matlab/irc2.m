@@ -153,7 +153,7 @@ end %func
 %--------------------------------------------------------------------------
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_()
-vcVer = 'v5.4.1';
+vcVer = 'v5.4.2';
 vcDate = '12/31/2019';
 vcHash = file2hash_();
 
@@ -1038,6 +1038,41 @@ end %func
 
 %--------------------------------------------------------------------------
 function cc1_drift_clu = wave_similarity_site_pre_(iSite1, S_auto)
+
+NUM_KNN = 10;
+miKnn1 = load_miKnn_site_(S_auto, iSite1);
+miKnn1 = miKnn1(1:min(NUM_KNN, size(miKnn1,1)), :);
+[viLim_drift, nDrift, viClu, nClu, nSpk_min] = ...
+    get_(S_auto, 'viLim_drift', 'nDrift', 'viClu', 'nClu', 'nSpk_min');
+
+[trPc1, viSpk1] = load_fet_site_(S_auto, 1, iSite1);
+cc1_drift_clu = cell(nDrift, nClu);
+cvii1_drift = vi2cell_(discretize(viSpk1, viLim_drift), nDrift);
+[vrRho1, viClu1] = deal(S_auto.vrRho(viSpk1), viClu(viSpk1));
+vrRho = zeros(size(S_auto.vrRho), 'like', S_auto.vrRho);
+vrRho(viSpk1) = S_auto.vrRho(viSpk1);
+[~, miiKnn1] = ismember(miKnn1, viSpk1);
+for iDrift = 1:nDrift
+    vii1 = cvii1_drift{iDrift};
+    if isempty(vii1), continue; end
+    [vrRho11, viClu11, miKnn11, miiKnn11] = ...
+        deal(vrRho1(vii1), viClu1(vii1), miKnn1(:,vii1), miiKnn1(:,vii1));
+    [cviSpk_clu_, ~, viClu_uniq] = vi2cell_(viClu11, nClu);
+    for iClu = viClu_uniq
+        vi_ = cviSpk_clu_{iClu};
+        [miKnn11_, miiKnn11_] = deal(miKnn11(:,vi_), miiKnn11(:,vi_));
+        vii1_ = miiKnn11_(vrRho(miKnn11_) >= vrRho11(vi_)');  
+%         vii1_ = vii1_(vii1_>0);
+        if numel(vii1_) >= nSpk_min
+            cc1_drift_clu{iDrift, iClu} = mean(trPc1(:,:,vii1_),3);
+        end        
+    end
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+function cc1_drift_clu = wave_similarity_site_pre__(iSite1, S_auto)
 
 NUM_KNN = 10;
 miKnn1 = load_miKnn_site_(S_auto, iSite1);
@@ -1963,7 +1998,7 @@ if fGpu
         [vrRho_in, miKnn_in] = search_knn_drift_(vl_in, mrFet_out, viDrift_out, mlDrift1, P);
     catch
         fGpu=0; 
-        fprintf(2, 'rho_paged_site_: GPU failed, retrying using CPU\n');
+        fprintf(2, 'C');
     end
 end
 if ~fGpu
@@ -2011,7 +2046,7 @@ if fGpu
         [vrDelta_in, viNneigh_in] = search_delta_drift_(vl_in, mrFet_out, vrRho_out, viDrift_out, mlDrift1, P);
     catch
         fGpu = 0;
-        fprintf(2, 'delta_paged_site_: GPU failed, retrying using CPU\n');
+        fprintf(2, 'C');
     end
 end
 if ~fGpu
