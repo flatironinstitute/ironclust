@@ -153,8 +153,8 @@ end %func
 %--------------------------------------------------------------------------
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_()
-vcVer = 'v5.3.19';
-vcDate = '12/27/2019';
+vcVer = 'v5.4.0';
+vcDate = '12/31/2019';
 vcHash = file2hash_();
 
 if nargout==0
@@ -895,7 +895,7 @@ c_cc1_site = cell(1, nSites);
 if fParfor
     try
         parfor iSite = 1:nSites
-            c_cc1_site{iSite} = wave_similarity_site_template_(iSite, S_auto);
+            c_cc1_site{iSite} = wave_similarity_site_pre_(iSite, S_auto);
         end
     catch
         fParfor = 0;
@@ -903,11 +903,11 @@ if fParfor
 end
 if ~fParfor
     for iSite = 1:nSites
-        c_cc1_site{iSite} = wave_similarity_site_template_(iSite, S_auto);
+        c_cc1_site{iSite} = wave_similarity_site_pre_(iSite, S_auto);
     end
 end
 t0 = toc(t_fun);
-fprintf('\twave_similarity_site_template_: took %0.1fs\n', t0);
+fprintf('\twave_similarity_site_pre_: took %0.1fs\n', t0);
 
 [ctrPc_clu, cviSite_clu, cviDrift_clu] = wave_similarity_site_parse_(c_cc1_site, S_auto);
 t1 = toc(t_fun);
@@ -1036,7 +1036,7 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function cc1_drift_clu = wave_similarity_site_template_(iSite1, S_auto)
+function cc1_drift_clu = wave_similarity_site_pre_(iSite1, S_auto)
 
 NUM_KNN = 10;
 miKnn1 = load_miKnn_site_(S_auto, iSite1);
@@ -1045,10 +1045,10 @@ miKnn1 = miKnn1(1:min(NUM_KNN, size(miKnn1,1)), :);
     get_(S_auto, 'viLim_drift', 'nDrift', 'viClu', 'nClu', 'vrRho', 'nSpk_min');
 
 [trPc1, viSpk1] = load_fet_site_(S_auto, 1, iSite1);
+
 cc1_drift_clu = cell(nDrift, nClu);
 cvii1_drift = vi2cell_(discretize(viSpk1, viLim_drift), nDrift);
 [vrRho1, viClu1] = deal(vrRho(viSpk1), viClu(viSpk1));
-% vlSpk1 = false(numel(S_auto.vrRho), 1); vlSpk1(viSpk1) = true;
 for iDrift = 1:nDrift
     vii1 = cvii1_drift{iDrift};
     if isempty(vii1), continue; end
@@ -1057,8 +1057,8 @@ for iDrift = 1:nDrift
     for iClu = viClu_uniq
         vi_ = cviSpk_clu_{iClu};
         miKnn11_ = miKnn11(:,vi_);
-        viSpk11_ = miKnn11_(vrRho(miKnn11_) >= vrRho11(vi_)');        
-        vii1_ = find(ismember(viSpk1, viSpk11_));
+        viSpk11_ = miKnn11_(vrRho(miKnn11_) >= vrRho11(vi_)');  
+        vii1_ = find_sorted_(viSpk11_, viSpk1);
         if numel(vii1_) >= nSpk_min
             cc1_drift_clu{iDrift, iClu} = mean(trPc1(:,:,vii1_),3);
         end        
@@ -1067,10 +1067,12 @@ end
 end %func
 
 
+
 %--------------------------------------------------------------------------
-function [vi, vl] = find_ismember_(vi1, vi2)
-[vl, vi] = ismember(vi1, vi2);
-vi = vi(vl);
+function vii2 = find_sorted_(vi1, vi2)
+% find 1 in 2 and return index in 2
+[vl1, vii1] = ismember(sort(vi1), vi2);
+vii2 = vii1(vl1);
 end %func
 
 
@@ -1942,12 +1944,30 @@ if isempty(S_site.viiSpk_in1), return; end
 
 csVar = import_struct_(prepare_page_site_(S_page, S_site, iSite));
 
-% call cuda_knn_drift_
-if false
-    [vrRho_in, miKnn_in] = cuda_knn_drift_(mrFet_in, mrFet_out, viDrift_in, viDrift_out, mlDrift1, P);
-else 
-    % todo: do not create mrFet_in    
-    [vrRho_in, miKnn_in] = search_knn_drift_(vl_in, mrFet_out, viDrift_in, viDrift_out, mlDrift1, P);
+fGpu = get_set_(P, 'fGpu', 1);
+if fGpu
+    try
+        [vrRho_in, miKnn_in] = search_knn_drift_(vl_in, mrFet_out, viDrift_out, mlDrift1, P);
+    catch
+        fGpu=0; 
+        fprintf(2, 'rho_paged_site_: GPU failed, retrying using CPU\n');
+    end
+end
+if ~fGpu
+    knn = get_set_(P, 'knn', 30);
+    [n_in, nDrift, viDrift_in] = deal(sum(vl_in), size(mlDrift1,1), viDrift_out(vl_in));
+    cviiSpk_in_drift = vi2cell_(viDrift_in, nDrift);
+    cviiSpk_out_drift = vi2cell_(viDrift_out, nDrift);
+    vrRho_in = zeros(n_in,1,'single');
+    miKnn_in = zeros(knn, n_in, 'int64');
+    mrFet_in = mrFet_out(:,vl_in);
+    for iDrift = 1:nDrift
+        vii_in1 = cviiSpk_in_drift{iDrift};      
+        if isempty(vii_in1), continue; end
+        vii_out1 = cell2mat_(cviiSpk_out_drift(mlDrift1(:, iDrift)));
+        [vrRho_in(vii_in1), miKnn_] = knn_cpu_(mrFet_out(:,vii_out1), mrFet_in(:,vii_in1), knn);
+        miKnn_in(:,vii_in1) = vii_out1(miKnn_);
+    end
 end
 vrRho_in = 1 ./ vrRho_in;
 miKnn_in = int64(viSpk_out(miKnn_in));    
@@ -1962,34 +1982,160 @@ end %func
 
 
 %--------------------------------------------------------------------------
+function [vrDelta_in, viNneigh_in] = delta_paged_site_(S_page1, S_site1, vrRho_page1, iSite)
+
+[vrDelta_in, viNneigh_in] = deal([]);
+if isempty(S_site1.viiSpk_in1), return; end
+SINGLE_INF = 3.402E+38;
+
+csVar = import_struct_(prepare_page_site_(S_page1, S_site1, iSite));
+vrRho_out = vrRho_page1(viiSpk_out);  
+vrRho_in = vrRho_out(vl_in);
+
+fGpu = get_set_(P, 'fGpu', 1);
+if fGpu    
+    try
+        [vrDelta_in, viNneigh_in] = search_delta_drift_(vl_in, mrFet_out, vrRho_out, viDrift_out, mlDrift1, P);
+    catch
+        fGpu = 0;
+        fprintf(2, 'delta_paged_site_: GPU failed, retrying using CPU\n');
+    end
+end
+if ~fGpu
+    [n_in, nDrift, viDrift_in, vrRho_in] = ...
+        deal(sum(vl_in), size(mlDrift1,1), viDrift_out(vl_in), vrRho_out(vl_in));
+    mrFet_in = mrFet_out(:,vl_in);
+    cviiSpk_in_drift = vi2cell_(viDrift_in, nDrift);
+    cviiSpk_out_drift = vi2cell_(viDrift_out, nDrift);
+    vrDelta_in = zeros(n_in, 1,'single');
+    viNneigh_in = zeros(n_in, 1, 'int64');
+    for iDrift = 1:nDrift
+        vii_in1 = cviiSpk_in_drift{iDrift};        
+        if isempty(vii_in1), continue; end        
+        vii_out1 = cell2mat_(cviiSpk_out_drift(mlDrift1(:, iDrift)));
+        [vrDelta_in(vii_in1), viNneigh_] = ...
+            delta_cpu_(mrFet_out(:,vii_out1), mrFet_in(:,vii_in1), vrRho_out(vii_out1), vrRho_in(vii_in1));
+        viNneigh_in(vii_in1) = vii_out1(viNneigh_);
+    end
+end
+vrDelta_in = vrDelta_in .* vrRho_in;
+viNneigh_in= int64(viSpk_out(viNneigh_in));
+
+viNan = find(isnan(vrDelta_in) | isinf(vrDelta_in));
+viNneigh_in(viNan) = viNan;
+vrDelta_in(viNan) = sqrt(SINGLE_INF);
+end %func
+
+
+%--------------------------------------------------------------------------
 % uses search_min_drift.cu
-function [vrKnn_in, miKnn_in] = search_knn_drift_(vl_in, mrFet_out, viDrift_in, viDrift_out, mlDrift1, P)
+function [vrKnn_in, miKnn_in] = search_knn_drift_(vl_in, mrFet_out, viDrift_out, mlDrift1, P)
 
 knn = get_set_(P, 'knn', 30);
 n_in = sum(vl_in);
-% n_out = size(mrFet_out, 2);
-% knn = min(knn, n_out);
+[CHUNK, nC_max, nThreads] = deal(16, 45, 512); % tied to cuda_knn_index.cu
+[nC, nF] = deal(size(mrFet_out,1), size(mrFet_out,2));
 
+viDrift_in = viDrift_out(vl_in);
 vrKnn_in = zeros(n_in, 1, 'single');
 miKnn_in = zeros(knn, n_in, 'int32');
-
 gmrFet_out = gpuArray_(mrFet_out, P.fGpu);
 viAA = min(viDrift_in):max(viDrift_in);
 viiBB = [1, find(diff(viDrift_out(:)'))+1, numel(viDrift_out)+1];
 viBB = viDrift_out(viiBB(1:end-1));
 vnBB = diff(viiBB);
 in_offset = find(vl_in, 1, 'first') - 1;
+
+CK = parallel.gpu.CUDAKernel('search_min_drift.ptx','search_min_drift.cu'); % auto-compile if ptx doesn't exist
+CK.ThreadBlockSize = [nThreads, 1];          
+CK.SharedMemorySize = 4 * CHUNK * (nC_max + 1); % @TODO: update the size
+
+                
 for iiAA = 1:numel(viAA)
+    % determine index
     iAA1 = viAA(iiAA);
     viiAA1 = find(viDrift_in == iAA1);
     limAA1 = viiAA1([1, end]) + in_offset;
     viiBB1 = find(ismember(viBB, find(mlDrift1(:,iAA1))));
     [viBB1, vnBB1] = deal(viiBB(viiBB1), vnBB(viiBB1));  
+    [iA1, nA1, nBB1] = deal(limAA1(1), diff(limAA1)+1, numel(viBB1));
     
-    if true
-        [vrKnn_in(viiAA1), miKnn_in(:,viiAA1)] = search_min_drift_(gmrFet_out, viBB1, vnBB1, limAA1, P);    
+    % call cuda function
+    CK.GridSize = [ceil(nA1 / CHUNK / CHUNK), CHUNK]; %MaxGridSize: [2.1475e+09 65535 65535]    
+    gmrMin1 = zeros([nThreads, nA1], 'single', 'gpuArray');
+    gmiMin1 = zeros([nThreads, nA1], 'int32', 'gpuArray'); 
+    gviBB1 = gpuArray(int32(viBB1)-1); % c indexing starts with 0
+    gvnBB1 = gpuArray(int32(vnBB1));        
+    gvnConst = gpuArray(int32([nC, nF, nBB1, iA1-1, nA1])); % c indexing sarts with zero
+    [gmrMin1, gmiMin1] = feval(CK, gmrMin1, gmiMin1, gmrFet_out, gviBB1, gvnBB1, gvnConst);
+
+    % process output
+    gmiMin1 = gather(gmiMin1);
+    [gmrMin1, miKnn1] = sort(gather(gmrMin1));
+    vrKnn_in(viiAA1) = gmrMin1(knn,:)';
+    miKnn_in(:,viiAA1) = gmiMin1(miKnn1(1:knn,:) + (0:nA1-1)*nThreads);    
+%         disp(iiAA);
+%         fprintf('%s\n', sprintf('%d ', viBB1));
+%         fprintf('%s\n', sprintf('%d ', vnBB1));
+%         disp(limAA1');
+%         fprintf('\n');
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+% uses search_min_drift.cu
+function [vrDelta_in, viNneigh_in] = search_delta_drift_(vl_in, mrFet_out, vrRho_out, viDrift_out, mlDrift1, P)
+
+knn = get_set_(P, 'knn', 30);
+n_in = sum(vl_in);
+[CHUNK, nC_max, nThreads] = deal(16, 45, 512); % tied to cuda_knn_index.cu
+[nC, nF] = deal(size(mrFet_out,1), size(mrFet_out,2));
+
+viDrift_in = viDrift_out(vl_in);
+vrDelta_in = zeros(n_in, 1, 'single');
+viNneigh_in = zeros(n_in, 1, 'int32');
+gmrFet_out = gpuArray(mrFet_out);
+gvrRho_out = gpuArray(vrRho_out);
+viAA = min(viDrift_in):max(viDrift_in);
+viiBB = [1, find(diff(viDrift_out(:)'))+1, numel(viDrift_out)+1];
+viBB = viDrift_out(viiBB(1:end-1));
+vnBB = diff(viiBB);
+in_offset = find(vl_in, 1, 'first') - 1;
+
+CK = parallel.gpu.CUDAKernel('search_delta_drift.ptx','search_delta_drift.cu'); % auto-compile if ptx doesn't exist
+CK.ThreadBlockSize = [nThreads, 1];          
+CK.SharedMemorySize = 4 * CHUNK * (nC_max + 2); % @TODO: update the size
+
+                
+for iiAA = 1:numel(viAA)
+    % determine index
+    iAA1 = viAA(iiAA);
+    viiAA1 = find(viDrift_in == iAA1);
+    limAA1 = viiAA1([1, end]) + in_offset;
+    viiBB1 = find(ismember(viBB, find(mlDrift1(:,iAA1))));
+    [viBB1, vnBB1] = deal(viiBB(viiBB1), vnBB(viiBB1));  
+    [iA1, nA1, nBB1] = deal(limAA1(1), diff(limAA1)+1, numel(viBB1));
+    
+    % call cuda function
+    CK.GridSize = [ceil(nA1 / CHUNK / CHUNK), CHUNK]; %MaxGridSize: [2.1475e+09 65535 65535]    
+    gmrMin1 = zeros([nThreads, nA1], 'single', 'gpuArray');
+    gmiMin1 = zeros([nThreads, nA1], 'int32', 'gpuArray'); 
+    gviBB1 = gpuArray(int32(viBB1)-1); % c indexing starts with 0
+    gvnBB1 = gpuArray(int32(vnBB1));        
+    gvnConst = gpuArray(int32([nC, nF, nBB1, iA1-1, nA1])); % c indexing sarts with zero
+    [gmrMin1, gmiMin1] = feval(CK, gmrMin1, gmiMin1, gmrFet_out, gvrRho_out, gviBB1, gvnBB1, gvnConst);
+
+    % process output
+    if false
+        gmrMin1=gather(gmrMin1); gmiMin1=gather(gmiMin1);
+        [vrMin1, viMin1] = min(gmrMin1);
+        vrDelta_in(viiAA1) = vrMin1';
+        viNneigh_in(viiAA1) = gmiMin1(viMin1 + (0:nA1-1)*nThreads)';    
     else
-        [vrKnn_in(viiAA1), miKnn_in(:,viiAA1)] = knn_index_drift_(gmrFet_out, viBB1, vnBB1, limAA1, P);    
+        [vrMin1, viMin1] = min(gmrMin1);
+        vrDelta_in(viiAA1) = gather(vrMin1');
+        viNneigh_in(viiAA1) = gather(gmiMin1(viMin1 + (0:nA1-1)*nThreads)');    
     end
 %         disp(iiAA);
 %         fprintf('%s\n', sprintf('%d ', viBB1));
@@ -2001,146 +2147,6 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function [vrKnn, miKnn] = search_min_drift1_(gmrF, viBB1, vnBB1, limAA1, P)
-persistent CK
-% fGpu = 0; % debug
-% fprintf(2, 'cuda_knn_drift_: cuda_min_drift.cu selected\n');
-[CHUNK, nC_max, nThreads] = deal(4, 45, 512); % tied to cuda_knn_index.cu
-knn = get_set_(P, 'knn', 30);
-[nC, nBB, iA0, nA] = deal(size(gmrF,1), numel(viBB1), limAA1(1), diff(limAA1)+1);
-for iRetry = 1:2
-    try
-        vrKnn = zeros([nA, 1], 'single', 'gpuArray');
-        miKnn = zeros([knn, nA], 'int32', 'gpuArray'); 
-        gviBB1 = gpuArray(int32(viBB1)-1); % c indexing starts with 0
-        gvnBB1 = gpuArray(int32(vnBB1));
-        if isempty(CK)
-            CK = parallel.gpu.CUDAKernel('search_knn_drift.ptx','search_knn_drift.cu'); % auto-compile if ptx doesn't exist
-            CK.ThreadBlockSize = [nThreads, 1];          
-            CK.SharedMemorySize = 4 * CHUNK * nC_max + 4 * CHUNK * nThreads * 2; % @TODO: update the size
-        end
-        CK.GridSize = [ceil(nA / CHUNK / CHUNK), CHUNK]; %MaxGridSize: [2.1475e+09 65535 65535]    
-        gvnConst = gpuArray(int32([nC, knn, nBB, iA0-1, nA])); % c indexing sarts with zero
-        [vrKnn, miKnn] = feval(CK, vrKnn, miKnn, gmrF, gviBB1, gvnBB1, gvnConst);
-        [vrKnn, miKnn] = gather_(vrKnn, miKnn);
-        assert(knn <= size(miKnn,1), 'search_min_drift1_');
-        assert(min(miKnn(:)) >= 1, 'search_min_drift1_');
-        assert(max(miKnn(:)) <= size(gmrF,2), 'search_min_drift1_');
-    catch % use CPU, fail-safe
-        CK = [];
-        if ispc()
-            fprintf(2, 'GPU failed, re-trying using CPU. Disable TDR from Nsight Monitor\n');
-        end
-        [vrKnn, miKnn] = deal([]);
-    end
-end
-end %func
-
-
-%--------------------------------------------------------------------------
-function [vrKnn, miKnn] = knn_index_drift_(gmrF, viBB1, vnBB1, limAA1, P)
-persistent CK
-% fGpu = 0; % debug
-% fprintf(2, 'cuda_knn_drift_: cuda_min_drift.cu selected\n');
-[CHUNK, nC_max, nThreads, KNN_max] = deal(16, 45, 15*32, 30); % tied to cuda_knn_index.cu
-knn = get_set_(P, 'knn', 30);
-[nC, nF, nBB, iA0, nA] = deal(size(gmrF,1), size(gmrF,2), numel(viBB1), limAA1(1), diff(limAA1)+1);
-for iRetry = 1:2
-    try
-        vrKnn = zeros([nA, 1], 'single', 'gpuArray');
-        miKnn = zeros([knn, nA], 'int32', 'gpuArray'); 
-        gviBB1 = gpuArray(int32(viBB1)-1); % c indexing starts with 0
-        gvnBB1 = gpuArray(int32(vnBB1));
-        if isempty(CK)
-            CK = parallel.gpu.CUDAKernel('knn_index_drift.ptx','knn_index_drift.cu'); % auto-compile if ptx doesn't exist
-            CK.ThreadBlockSize = [nThreads, 1];          
-            CK.SharedMemorySize = 4 * CHUNK * (nC_max + 1 + 2*KNN_max); % @TODO: update the size
-        end
-        CK.GridSize = [ceil(nA / CHUNK / CHUNK), CHUNK]; %MaxGridSize: [2.1475e+09 65535 65535]    
-        gvnConst = gpuArray(int32([nC, nF, nBB, iA0-1, nA, knn])); % c indexing sarts with zero
-        [vrKnn, miKnn] = feval(CK, vrKnn, miKnn, gmrF, gviBB1, gvnBB1, gvnConst);        
-        vrKnn = gather(vrKnn);
-        miKnn = gather(miKnn);
-%         assert(all(miKnn(:)~=0));
-    catch % use CPU, fail-safe
-        CK = [];
-        if ispc() && iRetry > 1
-            fprintf(2, 'GPU failed, re-trying using CPU. Disable TDR from Nsight Monitor\n');
-        end
-        [vrKnn, miKnn] = deal([]);
-    end
-end
-end %func
-
-
-%--------------------------------------------------------------------------
-function [vrKnn, miKnn] = search_min_drift_(gmrF, viBB1, vnBB1, limAA1, P)
-persistent CK
-% fGpu = 0; % debug
-% fprintf(2, 'cuda_knn_drift_: cuda_min_drift.cu selected\n');
-[CHUNK, nC_max, nThreads] = deal(16, 45, 512); % tied to cuda_knn_index.cu
-knn = get_set_(P, 'knn', 30);
-[nC, nF, nBB, iA0, nA] = deal(size(gmrF,1), size(gmrF,2), numel(viBB1), limAA1(1), diff(limAA1)+1);
-for iRetry = 1:2
-    try
-        mrMin = zeros([nThreads, nA], 'single', 'gpuArray');
-        miMin = zeros([nThreads, nA], 'int32', 'gpuArray'); 
-        gviBB1 = gpuArray(int32(viBB1)-1); % c indexing starts with 0
-        gvnBB1 = gpuArray(int32(vnBB1));
-        if isempty(CK)
-            CK = parallel.gpu.CUDAKernel('search_min_drift.ptx','search_min_drift.cu'); % auto-compile if ptx doesn't exist
-            CK.ThreadBlockSize = [nThreads, 1];          
-            CK.SharedMemorySize = 4 * CHUNK * (nC_max + 1); % @TODO: update the size
-        end
-        CK.GridSize = [ceil(nA / CHUNK / CHUNK), CHUNK]; %MaxGridSize: [2.1475e+09 65535 65535]    
-        gvnConst = gpuArray(int32([nC, nF, nBB, iA0-1, nA])); % c indexing sarts with zero
-        [mrMin, miMin] = feval(CK, mrMin, miMin, gmrF, gviBB1, gvnBB1, gvnConst);
-        if false
-            miMin = gather(miMin);
-            [mrMin, miKnn] = mink(gather(mrMin), knn);  
-            vrKnn = mrMin(end,:)';            
-            miKnn = miMin(int32(miKnn) + int32(0:nA-1)*nThreads);
-        else
-            miMin = gather(miMin);
-            [mrMin, miKnn] = sort(gather(mrMin));
-            vrKnn = mrMin(knn,:)';
-%             miKnn = int32(miKnn(1:knn,:));
-            miKnn = miMin(miKnn(1:knn,:) + (0:nA-1)*nThreads);
-        end
-    catch % use CPU, fail-safe
-        CK = [];        
-        if ispc() && iRetry > 1            
-            fprintf(2, 'GPU failed, re-trying using CPU. Disable TDR from Nsight Monitor\n');
-            disp(lasterr());
-        end
-        [vrKnn, miKnn] = deal([]);
-    end
-end
-end %func
-
-
-%--------------------------------------------------------------------------
-function [vrDelta_in, viNneigh_in] = delta_paged_site_(S_page1, S_site1, vrRho_page1, iSite)
-
-[vrDelta_in, viNneigh_in] = deal([]);
-if isempty(S_site1.viiSpk_in1), return; end
-SINGLE_INF = 3.402E+38;
-
-csVar = import_struct_(prepare_page_site_(S_page1, S_site1, iSite));
-vrRho_in = vrRho_page1(viiSpk_in);
-vrRho_out = vrRho_page1(viiSpk_out);    
-
-[vrDelta_in, viNneigh_in] = cuda_delta_drift_(mrFet_in, mrFet_out, viDrift_in, viDrift_out, mlDrift1, vrRho_in, vrRho_out, P);
-vrDelta_in = vrDelta_in .* vrRho_in;
-viNneigh_in= int64(viSpk_out(viNneigh_in));
-
-viNan = find(isnan(vrDelta_in) | isinf(vrDelta_in));
-viNneigh_in(viNan) = viNan;
-vrDelta_in(viNan) = sqrt(SINGLE_INF);
-end %func
-
-
-%--------------------------------------------------------------------------
 function S_page_site = prepare_page_site_(S_page, S_site, iSite)
 % S_sort:     
 %    'P'    'mlDrift'    'mlPc'    'viLim_drift'    'nSites'    'fParfor'    'fGpu'    'vcFile_prm'    'type_fet'    'dimm_fet'    'ccviSpk_site_load'    'ccviSpk_site2_load'
@@ -2148,7 +2154,7 @@ function S_page_site = prepare_page_site_(S_page, S_site, iSite)
 % S_site : 
 %    'viiSpk_in1'    'viiSpk_out1'    'viiSpk2_in1'    'viiSpk2_out1'
 
-fDebug = 1;
+fDebug = 0;
 [viSpk_in1, viSpk_out1, viLim_drift1] = get_(S_page, 'viSpk_in1', 'viSpk_out1', 'viLim_drift1');
 [viiSpk_in1, viiSpk_out1, viiSpk2_in1, viiSpk2_out1] = ...
     get_(S_site, 'viiSpk_in1', 'viiSpk_out1', 'viiSpk2_in1', 'viiSpk2_out1');
@@ -2159,7 +2165,7 @@ fDebug = 1;
 [viSpk_in, viSpk_out] = deal(viSpk_in(:), viSpk_out(:));
 mrFet_out = load_fet_site_(S_page, 1, iSite, viSpk_out);
 vl_in = viSpk_out >= viSpk_in(1) & viSpk_out <= viSpk_in(end);
-mrFet_in = mrFet_out(:,vl_in);
+% mrFet_in = mrFet_out(:,vl_in);
 viiSpk_in = viiSpk_out1(vl_in);
 % if fDebug
 %     assert(all(viiSpk_in(:)==viiSpk_in1(:)), 'prepare_page_site_: must be the same'); 
@@ -2178,234 +2184,10 @@ if fDebug
     assert(equal_(mrFet_in, load_fet_site_(S_page, 1, iSite, viSpk_in)), 'prepare_paged_site_: must be the same');
     assert(size(mlDrift1,1) == size(mlDrift1,2), 'prepare_paged_site_: mlDrift1 must be square matrix');
 end
-viDrift_in = discretize(viSpk_in, viLim_drift1); % 0-base for GPU
+% viDrift_in = discretize(viSpk_in, viLim_drift1); % 0-base for GPU
 viDrift_out = discretize(viSpk_out, viLim_drift1); % 0-base for GPU
-S_page_site = makeStruct_(mrFet_in, mrFet_out, viDrift_in, viDrift_out, ...
+S_page_site = makeStruct_(mrFet_out, viDrift_out, ...
     mlDrift1, viSpk_in, viSpk_out, viiSpk_in, viiSpk_out, vl_in, P);
-end %func
-
-
-%--------------------------------------------------------------------------
-function [vrDelta, viNneigh] = cuda_delta_drift_(mrFet1, mrFet2, viDrift1, viDrift2, mlDrift, vrRho1, vrRho2, P)
-% persistent CK
- 
-[CHUNK, nC_max, nThreads] = deal(32, 45, 256); % tied to cuda_knn_index.cu
-[n2, n1, nC, nDrift] = deal(size(mrFet2,2), size(mrFet1,2), size(mrFet1,1), size(mlDrift,1));
-fGpu = P.fGpu && nC <= nC_max;
-nDrift_max = get_set_(P, 'nTime_max_drift', 2^8);
-
-if fGpu   
-    assert(nDrift_max <= 2^8, 'cuda_delta_drift_: nDrift_max <= 2^8 (uint8 max)');
-    try
-        [gmrFet1, gmrFet2, gviDrift1, gviDrift2, gmlDrift, gvrRho1, gvrRho2] = ...
-            gpuArray_deal_(mrFet1, mrFet2, uint8(viDrift1-1), uint8(viDrift2-1), int8(mlDrift), vrRho1, vrRho2);
-%             if isempty(CK)
-            CK = parallel.gpu.CUDAKernel('cuda_min_delta_drift.ptx','cuda_min_delta_drift.cu'); % auto-compile if ptx doesn't exist
-            CK.ThreadBlockSize = [nThreads, 1];          
-            CK.SharedMemorySize = 4 * CHUNK * (nC_max + 2) + CHUNK * nDrift_max; % @TODO: update the size
-%             end
-        CK.GridSize = [ceil(n1 / CHUNK / CHUNK), CHUNK]; %MaxGridSize: [2.1475e+09 65535 65535]    
-        mrMin = zeros([nThreads, n1], 'single', 'gpuArray');
-        miMin = zeros([nThreads, n1], 'int32', 'gpuArray'); 
-        vnConst = int32([n2, n1, nC, nDrift]);                        
-        [mrMin, miMin] = feval(CK, mrMin, miMin, gmrFet2, gmrFet1, gviDrift2, gviDrift1, gmlDrift, gvrRho2, gvrRho1, vnConst);            
-        [vrDelta, viNneigh] = min(mrMin);
-        vrDelta = gather(vrDelta');
-        viNneigh = gather(miMin(viNneigh + (0:n1-1)*nThreads)');
-        return;
-    catch % use CPU, fail-safe
-        CK = [];
-        fGpu = 0; % using CPU
-        if ispc()
-            disp(lasterr());
-            fprintf(2, 'GPU failed, re-trying using CPU. Disable TDR from Nsight Monitor (run as administrator)\n');
-        end
-    end
-end
-if ~fGpu    
-    cviiSpk1_drift = vi2cell_(viDrift1, nDrift);
-    cviiSpk2_drift = vi2cell_(viDrift2, nDrift);
-    vrDelta = zeros(n1,1,'single');
-    viNneigh = zeros(n1, 1, 'int64');
-    for iDrift = 1:nDrift
-        vii1 = cviiSpk1_drift{iDrift};        
-        if isempty(vii1), continue; end        
-        vii2 = cell2mat_(cviiSpk2_drift(mlDrift(:, iDrift)));
-        [vrDelta(vii1), viNneigh_] = delta_cpu_(mrFet2(:,vii2), mrFet1(:,vii1), vrRho2(vii2), vrRho1(vii1));
-        viNneigh(vii1) = vii2(viNneigh_);
-    end
-end
-end %func
-
-
-%--------------------------------------------------------------------------
-function [vrDelta, viNneigh] = cuda_delta_drift__(mrFet1, mrFet2, viDrift1, viDrift2, mlDrift, vrRho1, vrRho2, P)
-% persistent CK
- 
-[CHUNK, nC_max, nThreads] = deal(16, 45, 128); % tied to cuda_knn_index.cu
-[n2, n1, nC, nDrift] = deal(size(mrFet2,2), size(mrFet1,2), size(mrFet1,1), size(mlDrift,1));
-fGpu = P.fGpu && nC <= nC_max;
-nDrift_max = get_set_(P, 'nTime_max_drift', 2^8);
-
-if fGpu   
-    assert(nDrift_max <= 2^8, 'cuda_delta_drift_: nDrift_max <= 2^8 (uint8 max)');
-    for iRetry = 1:2
-        try
-            [gmrFet1, gmrFet2, gviDrift1, gviDrift2, gmlDrift, gvrRho1, gvrRho2] = ...
-                gpuArray_deal_(mrFet1, mrFet2, uint8(viDrift1-1), uint8(viDrift2-1), int8(mlDrift), vrRho1, vrRho2);
-%             if isempty(CK)
-                CK = parallel.gpu.CUDAKernel('cuda_delta_drift.ptx','cuda_delta_drift.cu'); % auto-compile if ptx doesn't exist
-                CK.ThreadBlockSize = [nThreads, 1];          
-                CK.SharedMemorySize = 4 * CHUNK * (nC_max + nThreads*2 + 1) + CHUNK * nDrift_max; % @TODO: update the size
-%             end
-            CK.GridSize = [ceil(n1 / CHUNK / CHUNK), CHUNK]; %MaxGridSize: [2.1475e+09 65535 65535]    
-            vrDelta = zeros([n1, 1], 'single', 'gpuArray');
-            vnConst = int32([n2, n1, nC, nDrift]);            
-            viNneigh = zeros([n1, 1], 'uint32', 'gpuArray'); 
-            [vrDelta, viNneigh] = feval(CK, vrDelta, viNneigh, gmrFet2, gmrFet1, gviDrift2, gviDrift1, gmlDrift, gvrRho2, gvrRho1, vnConst);
-            [vrDelta, viNneigh] = gather_(vrDelta, viNneigh);
-            return;
-        catch % use CPU, fail-safe
-            CK = [];
-            fGpu = 0; % using CPU
-            if ispc()
-                disp(lasterr());
-                fprintf(2, 'GPU failed, re-trying using CPU. Disable TDR from Nsight Monitor (run as administrator)\n');
-            end
-        end
-    end
-end
-if ~fGpu    
-    cviiSpk1_drift = vi2cell_(viDrift1, nDrift);
-    cviiSpk2_drift = vi2cell_(viDrift2, nDrift);
-    vrDelta = zeros(n1,1,'single');
-    viNneigh = zeros(n1, 1, 'int64');
-    for iDrift = 1:nDrift
-        vii1 = cviiSpk1_drift{iDrift};        
-        if isempty(vii1), continue; end        
-        vii2 = cell2mat_(cviiSpk2_drift(mlDrift(:, iDrift)));
-        [vrDelta(vii1), viNneigh_] = delta_cpu_(mrFet2(:,vii2), mrFet1(:,vii1), vrRho2(vii2), vrRho1(vii1));
-        viNneigh(vii1) = vii2(viNneigh_);
-    end
-end
-end %func
-
-
-%--------------------------------------------------------------------------
-function [vrKnn, miKnn] = cuda_knn_drift_(mrFet1, mrFet2, viDrift1, viDrift2, mlDrift, P)
-% persistent CK
-% fGpu = 0; % debug
-% fprintf(2, 'cuda_knn_drift_: cuda_min_drift.cu selected\n');
-[CHUNK, nC_max, nThreads] = deal(16, 45, 512); % tied to cuda_knn_index.cu
-knn = get_set_(P, 'knn', 30);
-[n2, n1, nC, nDrift] = deal(size(mrFet2,2), size(mrFet1,2), size(mrFet1,1), size(mlDrift,1));
-fGpu = P.fGpu && nC <= nC_max;
-knn = min(knn, n2);
-nDrift_max = get_set_(P, 'nTime_max_drift', 2^8);
-
-if fGpu    
-    assert(nDrift_max <= 2^8, 'cuda_knn_drift_: nDrift_max <= 2^8 (uint8 max)');
-    try
-        [gmrFet1, gmrFet2, gviDrift1, gviDrift2, gmlDrift] = ...
-            gpuArray_deal_(mrFet1, mrFet2, uint8(viDrift1-1), uint8(viDrift2-1), int8(mlDrift));
-        mrMin = zeros([nThreads, n1], 'single', 'gpuArray');
-        miMin = zeros([nThreads, n1], 'int32', 'gpuArray'); 
-%         if isempty(CK)
-            CK = parallel.gpu.CUDAKernel('cuda_min_drift.ptx','cuda_min_drift.cu'); % auto-compile if ptx doesn't exist
-            CK.ThreadBlockSize = [nThreads, 1];          
-            CK.SharedMemorySize = 4 * CHUNK * (nC_max + 1) + CHUNK * nDrift_max; % @TODO: update the size
-%         end
-        CK.GridSize = [ceil(n1 / CHUNK / CHUNK), CHUNK]; %MaxGridSize: [2.1475e+09 65535 65535]    
-        vnConst = int32([n2, n1, nC, knn, nDrift]);
-        [mrMin, miMin] = feval(CK, mrMin, miMin, gmrFet2, gmrFet1, gviDrift2, gviDrift1, gmlDrift, vnConst);
-        miMin = gather(miMin);
-%         [gmrFet1, gmrFet2] = deal([]);
-%         try
-%             [mrMin, miKnn] = mink(mrMin, knn);
-%             vrKnn = gather(mrMin(end,:)');
-%             miKnn = miMin(gather(miKnn) + (0:n1-1)*nThreads);
-%         catch  
-            [mrMin, miKnn] = mink(gather(mrMin), knn);
-            vrKnn = mrMin(end,:)';
-            miKnn = miMin(miKnn + (0:n1-1)*nThreads);
-%         end
-        return;
-    catch % use CPU, fail-safe
-%         CK = [];
-        fGpu = 0; % using CPU
-        if ispc()
-            fprintf(2, 'GPU failed, re-trying using CPU. Disable TDR from Nsight Monitor\n');
-        end
-    end
-end
-if ~fGpu    
-    cviiSpk1_drift = vi2cell_(viDrift1, nDrift);
-    cviiSpk2_drift = vi2cell_(viDrift2, nDrift);
-    vrKnn = zeros(n1,1,'single');
-    miKnn = zeros(knn, n1, 'int64');
-    for iDrift = 1:nDrift
-        vii1 = cviiSpk1_drift{iDrift};      
-        if isempty(vii1), continue; end
-        vii2 = cell2mat_(cviiSpk2_drift(mlDrift(:, iDrift)));
-        [vrKnn(vii1), miKnn_] = knn_cpu_(mrFet2(:,vii2), mrFet1(:,vii1), knn);
-        miKnn(:,vii1) = vii2(miKnn_);
-    end
-end
-end %func
-
-
-%--------------------------------------------------------------------------
-function [vrKnn, miKnn] = cuda_knn_drift__(mrFet1, mrFet2, viDrift1, viDrift2, mlDrift, P)
-% persistent CK
-% fGpu = 0; % debug
-
-knn = get_set_(P, 'knn', 30);
-[CHUNK, nC_max, nThreads] = deal(4, 45, 512); % tied to cuda_knn_index.cu
-[n2, n1, nC, nDrift] = deal(size(mrFet2,2), size(mrFet1,2), size(mrFet1,1), size(mlDrift,1));
-fGpu = P.fGpu && nC <= nC_max;
-knn = min(knn, n2);
-nDrift_max = get_set_(P, 'nTime_max_drift', 2^8);
-
-if fGpu    
-    assert(nDrift_max <= 2^8, 'cuda_delta_drift_: nDrift_max <= 2^8 (uint8 max)');
-    for iRetry = 1:2
-        try
-            [gmrFet1, gmrFet2, gviDrift1, gviDrift2, gmlDrift] = ...
-                gpuArray_deal_(mrFet1, mrFet2, uint8(viDrift1-1), uint8(viDrift2-1), int8(mlDrift));
-%             if isempty(CK)
-                CK = parallel.gpu.CUDAKernel('cuda_knn_drift.ptx','cuda_knn_drift.cu'); % auto-compile if ptx doesn't exist
-                CK.ThreadBlockSize = [nThreads, 1];          
-                CK.SharedMemorySize = 4 * CHUNK * (nC_max + nThreads*2) + CHUNK * nDrift_max; % @TODO: update the size
-%             end
-            CK.GridSize = [ceil(n1 / CHUNK / CHUNK), CHUNK]; %MaxGridSize: [2.1475e+09 65535 65535]    
-            vrKnn = zeros([n1, 1], 'single', 'gpuArray');
-            vnConst = int32([n2, n1, nC, knn, nDrift]);            
-            miKnn = zeros([knn, n1], 'int32', 'gpuArray'); 
-            [vrKnn, miKnn] = feval(CK, vrKnn, miKnn, gmrFet2, gmrFet1, gviDrift2, gviDrift1, gmlDrift, vnConst);
-            [vrKnn, miKnn] = gather_(vrKnn, miKnn);
-            return;
-        catch % use CPU, fail-safe
-            CK = [];
-            fGpu = 0; % using CPU
-            if ispc()
-                fprintf(2, 'GPU failed, re-trying using CPU. Disable TDR from Nsight Monitor\n');
-            end
-        end
-    end
-end
-if ~fGpu    
-    cviiSpk1_drift = vi2cell_(viDrift1, nDrift);
-    cviiSpk2_drift = vi2cell_(viDrift2, nDrift);
-    vrKnn = zeros(n1,1,'single');
-    miKnn = zeros(knn, n1, 'int64');
-    for iDrift = 1:nDrift
-        vii1 = cviiSpk1_drift{iDrift};      
-        if isempty(vii1), continue; end
-        vii2 = cell2mat_(cviiSpk2_drift(mlDrift(:, iDrift)));
-        [vrKnn(vii1), miKnn_] = knn_cpu_(mrFet2(:,vii2), mrFet1(:,vii1), knn);
-        miKnn(:,vii1) = vii2(miKnn_);
-    end
-end
 end %func
 
 
@@ -2417,9 +2199,6 @@ n = P.nTime_drift;
 width = get_set_(P, 'nTime_max_drift', 2^8);
 viLim_drift = S_drift.viLim_drift;
 
-if fDebug
-    assert(n > width, 'use sort_ram_ for short recordings (nTime_drift <= 2^8)');
-end
 [quarter_, half_] = deal(width/4, width/2);
 nPages = floor(n / half_);
 if nPages==0
@@ -2445,97 +2224,6 @@ else
         miSpk_lim_out(iPage,:) = [viLim_drift(iA_), viLim_drift(iB_+1)-1];
     end
 end
-end %func
-
-
-%--------------------------------------------------------------------------
-function [vrRho, vrDelta, miKnn, viNneigh, memory_sort, nFeatures] = sort_ram_(S0, P, S_drift)
-
-[mlPc, nFeatures] = get_mlPc_(S0, P);    
-[viLim_drift, mlDrift] = get_(S_drift, 'viLim_drift', 'mlDrift');
-S_fet = struct_add_(P, mlDrift, mlPc, viLim_drift);
-S_fet = struct_merge_(S_fet, struct_copy_(S0, ...
-    'type_fet', 'dimm_fet', 'ccviSpk_site_load', 'ccviSpk_site2_load'));
-
-%viDrift_spk = get_viDrift_spk_(S_drift);
-nSpk = numel(S0.viSite_spk);
-nSites = size(P.miSites,2);
-miKnn = [];
-[fParfor, fGpu] = get_(P, 'fParfor', 'fGpu');
-fParfor = fParfor && nSites>1;
-
-% Calculate Rho
-[cvrRho, cvrDelta, cviNneigh, cviSpk_site] = deal(cell(nSites,1));
-fprintf('Calculating Rho\n\t'); t1=tic;
-if fParfor 
-    try
-        parfor iSite = 1:nSites
-            try
-                [cvrRho{iSite}, cviSpk_site{iSite}] = rho_knn_ram_(iSite, S_fet);  
-                fprintf('G');
-            catch
-                [cvrRho{iSite}, cviSpk_site{iSite}] = rho_knn_ram_(iSite, S_fet, 0);  
-                fprintf('C');
-            end
-        end %for
-    catch
-        fprintf('sort_ram_: parfor failed for calculating Rho, retrying using a for loop\n');
-    end
-end
-vrRho = zeros(nSpk, 1, 'single');
-for iSite = 1:nSites
-    if (isempty(cvrRho{iSite}) && isempty(cviSpk_site{iSite}))
-        try
-            [cvrRho{iSite}, cviSpk_site{iSite}] = rho_knn_ram_(iSite, S_fet);             
-            fprintf('G');
-        catch
-            [cvrRho{iSite}, cviSpk_site{iSite}] = rho_knn_ram_(iSite, S_fet, 0);
-            fprintf('C');
-        end
-    end
-    viSpk1 = cviSpk_site{iSite};
-    if isempty(viSpk1), continue; end
-    vrRho(viSpk1) = cvrRho{iSite};
-end %for
-cvrRho = [];
-fprintf('\n\ttook %0.1fs (fGpu=%d, fParfor=%d)\n', toc(t1), S_fet.fGpu, fParfor);
-
-
-% Calculate Delta
-fprintf('Calculating Delta\n\t'); t2=tic;
-if fParfor 
-    try
-        parfor iSite = 1:nSites
-            try
-                [cvrDelta{iSite}, cviNneigh{iSite}] = delta_knn_ram_(iSite, vrRho, S_fet); 
-                fprintf('G');
-            catch
-                [cvrDelta{iSite}, cviNneigh{iSite}] = delta_knn_ram_(iSite, vrRho, S_fet, 0); 
-                fprintf('C');
-            end
-        end
-    catch
-        fprintf('sort_ram_: parfor failed for calculating Delta, retrying using a for loop\n');
-    end
-end %for
-vrDelta = zeros(nSpk, 1, 'single');
-viNneigh = zeros(nSpk, 1, 'int64');
-for iSite = 1:nSites
-    if (isempty(cvrDelta{iSite}) && isempty(cviNneigh{iSite}))
-        try
-            [cvrDelta{iSite}, cviNneigh{iSite}] = delta_knn_ram_(iSite, vrRho, S_fet);              
-            fprintf('G');
-        catch
-            [cvrDelta{iSite}, cviNneigh{iSite}] = delta_knn_ram_(iSite, vrRho, S_fet, 0);  
-            fprintf('C');
-        end
-    end
-    viSpk1 = cviSpk_site{iSite};
-    if isempty(viSpk1), continue; end
-    [vrDelta(viSpk1), viNneigh(viSpk1)] = deal(cvrDelta{iSite}, cviNneigh{iSite});
-end
-fprintf('\n\ttook %0.1fs (fGpu=%d, fParfor=%d)\n', toc(t2), S_fet.fGpu, fParfor);
-memory_sort = memory_matlab_();
 end %func
 
 
@@ -2577,59 +2265,6 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function [vrRho1, viSpk1, miKnn1] = rho_knn_ram_(iSite, S_fet, fGpu)
-% S_fet contains {type_fet, dimm_fet, nLoads, vcFile_prm, mlPc, mlDrift, viLim_drift}
-if nargin<3, fGpu=[]; end
-
-[mlDrift, viLim_drift, vcFile_prm] = ...
-    struct_get_(S_fet, 'mlDrift', 'viLim_drift', 'vcFile_prm');
-nDrift = size(mlDrift,1);
-[knn] = get_(S_fet, 'knn');
-if ~isempty(fGpu), S_fet.fGpu=fGpu; end
-
-[mrFet1, viSpk1] = load_fet_site_(S_fet, 1, iSite);
-if isempty(viSpk1), [vrRho1, miKnn1] = deal([]); return; end
-cvii1_drift = vi2cell_(discretize(viSpk1, viLim_drift), nDrift);
-cmrFet1_drift = cellfun_(@(x)gpuArray_(mrFet1(:,x), 0), cvii1_drift); mrFet1 = [];
-
-[mrFet2, viSpk2] = load_fet_site_(S_fet, 2, iSite); 
-if ~isempty(viSpk2)
-    cvii2_drift = vi2cell_(discretize(viSpk2, viLim_drift), nDrift);
-    cmrFet2_drift = cellfun_(@(x)gpuArray_(mrFet2(:,x), 0), cvii2_drift); mrFet2 = [];
-else
-    cvii2_drift = cell(size(cvii1_drift));
-    cmrFet2_drift = cell(size(cmrFet1_drift));
-end
-
-vrRho1 = zeros(numel(viSpk1), 1, 'single');
-miKnn1 = zeros(knn, numel(viSpk1), 'int64');
-for iDrift = 1:nDrift    
-    vii1_ = cvii1_drift{iDrift};
-    if isempty(vii1_), continue; end    
-    viDrift12_ = find(mlDrift(:, iDrift));    
-    vii1b = cat(1, cvii1_drift{viDrift12_}); 
-    vii2b = cat(1, cvii2_drift{viDrift12_});
-    
-    mrFet12_ = [cmrFet1_drift{viDrift12_}, cmrFet2_drift{viDrift12_}];
-    [vrRho_, ~, miKnn_] = cuda_knn_(mrFet12_, cmrFet1_drift{iDrift}, S_fet);
-    vrRho1(vii1_) = gather_(1./vrRho_);
-    
-    % save miKnn
-    viSpk12_ = int64([viSpk1(vii1b); viSpk2(vii2b)]);    
-    miKnn_ = viSpk12_(gather_(miKnn_));    
-    n2 = size(miKnn_,1);
-    if n2 < knn       
-        miKnn_ = [miKnn_; repmat(miKnn_(end,:), [knn-n2, 1])];
-    end
-    miKnn1(:,vii1_) = miKnn_;
-end    
-if nargout<3
-    save_miKnn_site_(vcFile_prm, iSite, miKnn1);
-end
-end %func
-
-
-%--------------------------------------------------------------------------
 function c_mmf = save_fet_drift_(vcFile_fet1, mrFet1, cvii1_drift)
 fid_w = fopen(vcFile_fet1, 'w');
 for iFile = 1:numel(cvii1_drift)
@@ -2645,94 +2280,6 @@ viOffset_drift = cumsum([0; vn_drift(:)]);
 c_mmf = arrayfun_(@(i)memmapfile(...
     vcFile_fet1, 'Format', class(mrFet1), 'Offset', viOffset_drift(i), ...
     'Repeat', vn_drift(i) * prod(dimm1(1:end-1))), 1:nDrift);
-end %func
-
-
-%--------------------------------------------------------------------------
-function [vrDelta1, viNneigh1] = delta_knn_ram_(iSite, vrRho, S_fet, fGpu)
-% S_fet contains {type_fet, dimm_fet, nLoads, vcFile_prm, mlPc, mlDrift, viLim_drift}
-if nargin<4, fGpu=[]; end
-if ~isempty(fGpu), S_fet.fGpu=fGpu; end
-
-SINGLE_INF = 3.402E+38;
-[mlDrift, viLim_drift, vcFile_prm] = ...
-    struct_get_(S_fet, 'mlDrift', 'viLim_drift', 'vcFile_prm');
-nDrift = size(mlDrift,1);
-
-[mrFet1, viSpk1] = load_fet_site_(S_fet, 1, iSite);
-if isempty(viSpk1), [vrRho1, miKnn1] = deal([]); return; end
-cvii1_drift = vi2cell_(discretize(viSpk1, viLim_drift), nDrift);
-cmrFet1_drift = cellfun_(@(x)mrFet1(:,x), cvii1_drift); mrFet1 = [];
-
-[mrFet2, viSpk2] = load_fet_site_(S_fet, 2, iSite); 
-if ~isempty(viSpk2)
-    cvii2_drift = vi2cell_(discretize(viSpk2, viLim_drift), nDrift);
-    cmrFet2_drift = cellfun_(@(x)mrFet2(:,x), cvii2_drift); mrFet2 = [];
-else
-    cvii2_drift = cell(size(cvii1_drift));
-    cmrFet2_drift = cell(size(cmrFet1_drift));
-end
-
-cvii1_drift = vi2cell_(discretize(viSpk1, viLim_drift), nDrift);
-vrDelta1 = zeros(numel(viSpk1), 1, 'single');
-viNneigh1 = zeros(numel(viSpk1), 1, 'int64');
-[vrRho1, vrRho2] = deal(vrRho(viSpk1), vrRho(viSpk2));
-for iDrift = 1:nDrift    
-    vii1_ = cvii1_drift{iDrift};
-    if isempty(vii1_), continue; end
-    viDrift12_ = find(mlDrift(:, iDrift));
-    vii1b = cat(1, cvii1_drift{viDrift12_}); 
-    vii2b = cat(1, cvii2_drift{viDrift12_});       
-    
-    mrFet12_ = [cmrFet1_drift{viDrift12_}, cmrFet2_drift{viDrift12_}];
-    vrRho12_ = [vrRho1(vii1b); vrRho2(vii2b)];
-    [vrDelta_, viNneigh_] = cuda_delta_knn_(mrFet12_, cmrFet1_drift{iDrift}, ...
-        vrRho12_, vrRho1(vii1_), S_fet);
-    vrDelta1(vii1_) = gather_(vrDelta_);
-    
-    viSpk12_ = int64([viSpk1(vii1b); viSpk2(vii2b)]);    
-    viNneigh1(vii1_) = viSpk12_(gather_(viNneigh_));    
-end    
-
-vrDelta1 = vrDelta1 .* vrRho1;
-viNan = find(isnan(vrDelta1) | isinf(vrDelta1));
-viNneigh1(viNan) = viNan;
-vrDelta1(viNan) = sqrt(SINGLE_INF);
-end %func
-
-
-%--------------------------------------------------------------------------
-function [vrDelta1, viNneigh1, fGpu] = cuda_delta_knn_(mrFet2, mrFet1, vrRho2, vrRho1, P)
-
-persistent CK
-[CHUNK, nC_max, nThreads] = get_(P, 'CHUNK', 'nC_max', 'nThreads');
-[n2, n1, nC] = deal(numel(vrRho2), numel(vrRho1), size(mrFet2,1));
-fGpu = P.fGpu && nC <= nC_max;
-
-if fGpu    
-    for iRetry = 1:2
-        try
-            [gmrFet2, gmrFet1, gvrRho2, gvrRho1] = gpuArray_deal_(mrFet2, mrFet1, vrRho2, vrRho1);
-            if isempty(CK)
-                CK = parallel.gpu.CUDAKernel('cuda_delta_knn.ptx','cuda_delta_knn.cu'); % auto-compile if ptx doesn't exist
-                CK.ThreadBlockSize = [nThreads, 1];          
-                CK.SharedMemorySize = 4 * CHUNK * (nC_max + nThreads*2 + 1); % @TODO: update the size
-            end
-            CK.GridSize = [ceil(n1 / CHUNK / CHUNK), CHUNK]; %MaxGridSize: [2.1475e+09 65535 65535]    
-            vrDelta1 = zeros([n1, 1], 'single', 'gpuArray'); 
-            viNneigh1 = zeros([n1, 1], 'uint32', 'gpuArray'); 
-            vnConst = int32([n2, n1, nC]);
-            [vrDelta1, viNneigh1] = feval(CK, vrDelta1, viNneigh1, gmrFet2, gmrFet1, gvrRho2, gvrRho1, vnConst);
-            return;
-        catch % use CPU, fail-safe
-            CK = [];
-            fGpu = 0;
-        end
-    end
-end
-if ~fGpu
-    [vrDelta1, viNneigh1] = delta_cpu_(mrFet2, mrFet1, vrRho2, vrRho1);    
-end
 end %func
 
 
@@ -2888,46 +2435,6 @@ flag = (limA(1) >= limB(1) && limA(1) <= limB(2)) || ...
        (limA(2) >= limB(1) && limA(2) <= limB(2)) || ...
        (limB(1) >= limA(1) && limB(1) <= limA(2)) || ...
        (limB(2) >= limA(1) && limB(2) <= limB(2));
-end %func
-   
-    
-%--------------------------------------------------------------------------
-function [mrKnn, fGpu, miKnn] = cuda_knn_full_(mrFet2, mrFet1, P)
-% it computes the index of KNN
-
-persistent CK
-
-knn = get_set_(P, 'knn', 30);
-[CHUNK, nC_max, nThreads] = deal(4, P.nC_max, 512); % tied to cuda_knn_index.cu
-[n2, n1, nC] = deal(size(mrFet2,2), size(mrFet1,2), size(mrFet1,1));
-fGpu = P.fGpu && nC <= nC_max;
-knn = min(knn, n2);
-
-if fGpu    
-    for iRetry = 1:2
-        try
-            gmrFet2 = gpuArray_(mrFet2, P.fGpu);
-            gmrFet1 = gpuArray_(mrFet1, P.fGpu);
-            if isempty(CK)
-                CK = parallel.gpu.CUDAKernel('cuda_knn_full.ptx','cuda_knn_full.cu'); % auto-compile if ptx doesn't exist
-                CK.ThreadBlockSize = [nThreads, 1];          
-                CK.SharedMemorySize = 4 * CHUNK * (nC_max + nThreads*2); % @TODO: update the size
-            end
-            CK.GridSize = [ceil(n1 / CHUNK / CHUNK), CHUNK]; %MaxGridSize: [2.1475e+09 65535 65535]    
-            mrKnn = zeros([knn, n1], 'single', 'gpuArray');
-            vnConst = int32([n2, n1, nC, knn]);            
-            miKnn = zeros([knn, n1], 'int32', 'gpuArray'); 
-            [mrKnn, miKnn] = feval(CK, mrKnn, miKnn, gmrFet2, gmrFet1, vnConst);
-            return;
-        catch % use CPU, fail-safe
-            CK = [];
-            fGpu = 0; % using CPU
-        end
-    end
-end
-if ~fGpu    
-    [mrKnn, miKnn] = knn_cpu_full_(mrFet2, mrFet1, knn);
-end
 end %func
 
 
