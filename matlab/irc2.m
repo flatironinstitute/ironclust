@@ -1867,7 +1867,7 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function vrRho_in1 = rho_page_()
+function vrRho_in1 = rho_page_(S_page1)
 
 [viSpk_in1, nSites, P, viSite_in1, viSite_out1, viSite2_in1, viSite2_out1] = ...
     get_(S_page1, 'viSpk_in1', 'nSites', 'P', 'viSite_in1', 'viSite_out1', 'viSite2_in1', 'viSite2_out1');
@@ -1894,7 +1894,7 @@ if fParfor
     catch
     end
 end
-S_page1
+
 vrRho_in1 = zeros(nSpk1, 1, 'single');
 for iSite = 1:nSites
     if isempty(cviiSpk_in1_site{iSite}), continue; end
