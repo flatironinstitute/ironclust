@@ -1862,12 +1862,12 @@ else
     [viSite2_in1, viSite2_out1] = deal([]);
 end
 S_sort1 = struct_add_(S_sort, viSpk_out1, viSpk_in1, mlDrift1, ...
-    viSite_in1, viSite2_in1, viSite_out1, viSite2_out1, viLim_drift1);
+    viSite_in1, viSite2_in1, viSite_out1, viSite2_out1, viLim_drift1, iPage);
 end %func
 
 
 %--------------------------------------------------------------------------
-function vrRho_in1 = rho_page_(S_page1)
+function vrRho_in1 = rho_page_()
 
 [viSpk_in1, nSites, P, viSite_in1, viSite_out1, viSite2_in1, viSite2_out1] = ...
     get_(S_page1, 'viSpk_in1', 'nSites', 'P', 'viSite_in1', 'viSite_out1', 'viSite2_in1', 'viSite2_out1');
@@ -1894,7 +1894,7 @@ if fParfor
     catch
     end
 end
-
+S_page1
 vrRho_in1 = zeros(nSpk1, 1, 'single');
 for iSite = 1:nSites
     if isempty(cviiSpk_in1_site{iSite}), continue; end
@@ -2022,7 +2022,9 @@ n2 = size(miKnn_in,1);
 if n2 < get_set_(P, 'knn', 30)       
     miKnn_in = [miKnn_in; repmat(miKnn_in(end,:), [knn-n2, 1])];
 end
-save_miKnn_site_(S_page.vcFile_prm, iSite, miKnn_in, 1);
+iPage = get_(S_page, 'iPage');
+fAppend = iPage > 1;
+save_miKnn_site_(S_page.vcFile_prm, iSite, miKnn_in, fAppend);
 end %func
 
 
@@ -2334,7 +2336,7 @@ function [vrDelta1, viNneigh1] = delta_cpu_(mrFet2, mrFet1, vrRho2, vrRho1)
 nStep_knn = 1000;
 n1 = numel(vrRho1);
 vrDelta1 = zeros([n1, 1], 'single');
-viNneigh1 = zeros([n1, 1], 'uint32');
+viNneigh1 = zeros([n1, 1], 'int32');
 fh_dist_ = @(y)bsxfun(@plus, sum(y.^2), bsxfun(@minus, sum(mrFet2.^2)', 2*mrFet2'*y));
 for i1 = 1:nStep_knn:n1
     vi1_ = i1:min(i1+nStep_knn-1, n1);
@@ -4142,6 +4144,7 @@ function S_drift = calc_drift_(S0, P)
 if nargin<2, P = []; end
 if isempty(P), P = S0.P; end
 
+fParfor = get_set_(P, 'fParfor', 0);
 fprintf('Calculating drift similarity...'); t1 = tic;
 [nTime_batch, nTime_drift] = get_(P, 'nTime_batch', 'nTime_drift');
 if isempty(nTime_batch)
@@ -4167,19 +4170,37 @@ else
     vrPos_spk = single(mrPos_spk(:,2));
     mrCount_drift = zeros(nAmp_drift*nPos_drift, nTime_drift, 'single');
     vrPos_quantile = quantile_vr_(vrPos_spk, (0:nPos_drift)/nPos_drift);
-        
-    for iDrift = 1:nTime_drift
-        viSpk1 = viLim_drift(iDrift):viLim_drift(iDrift+1)-1;
-        mn_ = histcounts2(vrAmp_spk(viSpk1), vrPos_spk(viSpk1), vrAmp_quantile, vrPos_quantile);
-        mrCount_drift(:,iDrift) = mn_(:);
+    
+    if fParfor
+        try
+            cvrAmp_spk_drift = arrayfun_(@(a,b)vrAmp_spk(a:b), viLim_drift(1:end-1), viLim_drift(2:end)-1);
+            cvrPos_spk_drift = arrayfun_(@(a,b)vrPos_spk(a:b), viLim_drift(1:end-1), viLim_drift(2:end)-1);
+            parfor iDrift = 1:nTime_drift
+                mn_ = histcounts2(cvrAmp_spk_drift{iDrift}, cvrPos_spk_drift{iDrift}, vrAmp_quantile, vrPos_quantile);
+                mrCount_drift(:,iDrift) = mn_(:);
+            end
+        catch
+            fParfor = 0;
+        end
     end
-    mrDist_drift = squareform(pdist(mrCount_drift'));
+    if ~fParfor
+        for iDrift = 1:nTime_drift
+            viSpk1 = viLim_drift(iDrift):viLim_drift(iDrift+1)-1;
+            mn_ = histcounts2(vrAmp_spk(viSpk1), vrPos_spk(viSpk1), vrAmp_quantile, vrPos_quantile);
+            mrCount_drift(:,iDrift) = mn_(:);
+        end
+    end
+%     
     if nTime_drift > P.nTime_max_drift
+        % large recording 
         quarter_ = P.nTime_max_drift/4;
         mlMask = abs((1:nTime_drift) - (1:nTime_drift)') <= quarter_;
         mlMask(1:quarter_*2+1,1:quarter_) = true;
         mlMask(end-quarter_*2:end,end-quarter_+1:end) = true;
-        mrDist_drift(~mlMask) = nan;
+        mrDist_drift = dist_mask_(mrCount_drift, mlMask);
+%         mrDist_drift(~mlMask) = nan;
+    else
+        mrDist_drift = squareform(pdist(mrCount_drift'));
     end
     [mrSort_drift, miSort_drift] = sort(mrDist_drift, 'ascend');
     miSort_drift = miSort_drift(1:nTime_batch,:);
@@ -4194,6 +4215,18 @@ mlDrift = mi2ml_drift_(miSort_drift); %gpuArray_(mi2ml_drift_(miSort_drift), P.f
 S_drift = makeStruct_(miSort_drift, nTime_drift, viDrift_spk, mlDrift, ...
     viLim_drift, mrCount_drift);
 fprintf('\n\ttook %0.1fs\n', toc(t1));
+end %func
+
+
+%--------------------------------------------------------------------------
+function mrD = dist_mask_(mrF, mlMask)
+% return euclidean distance for masked portions
+
+mrD = nan(size(mrF,2), 'like', mrF);
+for iCol=1:size(mrF,2)
+    viRow1 = find(mlMask(:,iCol));
+    mrD(viRow1,iCol) = sqrt(sum((mrF(:,iCol) -  mrF(:,viRow1)).^2, 1));
+end
 end %func
 
 
