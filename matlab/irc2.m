@@ -8,7 +8,7 @@
 function varargout = irc2(vcDir_in, vcDir_out, vcFile_arg, vcArg3)
 % irc2(vcDir_in, vcDir_out, vcFile_arg)
 % irc2(vcCmd, vcArg1, vcArg2)
-fDebug = 1;
+fDebug = 0;
 
 if nargin<1, vcDir_in = ''; end
 if nargin<2, vcDir_out = ''; end
@@ -153,8 +153,8 @@ end %func
 %--------------------------------------------------------------------------
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_()
-vcVer = 'v5.4.2';
-vcDate = '12/31/2019';
+vcVer = 'v5.4.3';
+vcDate = '01/01/2020';
 vcHash = file2hash_();
 
 if nargout==0
@@ -1812,11 +1812,8 @@ S_global = makeStruct_(S_drift, miSpk_lim_out, miSpk_lim_in, miDrift_lim_out, vi
 % clear _miKnn_site_#.irc and append to these files
 if ~fSkip_rho
     vcFile_miKnn = [strrep(vcFile_prm, '.prm', ''), '_knn_site_*.irc'];
-    delete(vcFile_miKnn);
-    assert(isempty(dir(vcFile_miKnn)), sprintf('sort_long_: %s must be deleted', vcFile_miKnn));
-end
-% if fDebug, nPages = 2; end
-if ~fSkip_rho
+    delete_(vcFile_miKnn);
+%     assert(isempty(dir(vcFile_miKnn)), sprintf('sort_long_: %s must be deleted', vcFile_miKnn));
     fprintf('sort_page_: calculating Rho...\n'); t_rho = tic;
     for iPage = 1:nPages  
         fprintf('Page %d:\n', iPage); t_ = tic;
