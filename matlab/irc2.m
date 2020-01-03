@@ -97,7 +97,7 @@ switch lower(vcCmd)
     case {'test-mcc', 'test_mcc', 'testmcc'}, test_mcc_(vcArg1); return;
     case {'test-static', 'test-drift', 'test-tetrode', 'test-tetrode2', 'test-tetrode3', ...
             'test-bionet', 'test-bionet1', 'test-monotrode', ...
-            'test-monotrode1', 'test-monotrode2', 'test-monotrode3'}
+            'test-monotrode1', 'test-monotrode2', 'test-monotrode3', 'test-boyden'}
         vcDir_in = get_test_data_(strsplit_get_(vcCmd,'-',2));
         [fDetect, fSort, fValidate] = deal(1, 1, 1);
     case 'export', irc('export', vcArg1); return;
@@ -3412,6 +3412,7 @@ switch vcMode
     case 'monotrode1', vcDir_in = 'groundtruth/waveclus_synth/quiroga_difficult1/C_Difficult1_noise01';
     case 'monotrode2', vcDir_in = 'groundtruth/waveclus_synth/quiroga_difficult1/C_Difficult1_noise02';
     case 'monotrode3', vcDir_in = 'groundtruth/waveclus_synth/sim2_2K10/simulation_94';
+    case 'boyden', vcDir_in = 'groundtruth/paired_recordings/boyden32c/915_10_1';
     error('unsupported test mode');
 end
 if ispc()
