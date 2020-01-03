@@ -153,8 +153,8 @@ end %func
 %--------------------------------------------------------------------------
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_()
-vcVer = 'v5.4.3';
-vcDate = '01/01/2020';
+vcVer = 'v5.4.4';
+vcDate = '01/02/2020';
 vcHash = file2hash_();
 
 if nargout==0
@@ -633,8 +633,8 @@ end
 if isfield(S0, 'S_clu')
     S_clu = S0.S_clu;
     csDesc{end+1} = sprintf('Cluster');    
-    csDesc{end+1} = sprintf('    #Clusters:              %d', S_clu.nClu);
-    csDesc{end+1} = sprintf('    #Unique events:         %d', sum(S_clu.viClu>0));
+    csDesc{end+1} = sprintf('    #Clusters:              %d', get_(S_clu, 'nClu'));
+    csDesc{end+1} = sprintf('    #Unique events:         %d', sum(get_(S_clu, 'viClu')>0));
     csDesc{end+1} = sprintf('    min. spk/clu:           %d', P.min_count);
     csDesc{end+1} = sprintf('    Cluster method:         %s', P.vcCluster);
     csDesc{end+1} = sprintf('    knn:                    %d', P.knn);
@@ -891,19 +891,22 @@ S_auto = makeStruct_(nDrift, nClu, nSites, knn, vcFile_prm, nSpk_min, ...
     vrRho, viClu, viLim_drift, ccviSpk_site_load, ccviSpk_site2_load, type_fet, dimm_fet);
 
 t_fun = tic;
-fParfor = P.fParfor;
+fLargeRecording = get_(P, 'nTime_drift') > get_set_(P, 'nTime_max_drift', 2^8);
+fParfor = get_set_(P, 'fParfor', 1);
 c_cc1_site = cell(1, nSites);
-if fParfor
+if fParfor && ~fLargeRecording 
     try
         parfor iSite = 1:nSites
-            c_cc1_site{iSite} = wave_similarity_site_pre_(iSite, S_auto);
+            try
+                c_cc1_site{iSite} = wave_similarity_site_pre_(iSite, S_auto);
+            catch                
+            end
         end
     catch
-        fParfor = 0;
     end
 end
-if ~fParfor
-    for iSite = 1:nSites
+for iSite = 1:nSites
+    if isempty(c_cc1_site{iSite})
         c_cc1_site{iSite} = wave_similarity_site_pre_(iSite, S_auto);
     end
 end
@@ -1002,7 +1005,7 @@ end %func
 function tr = shift_trWav_(tr, viShift)
 % ctr = cell(numel(viShift), 1);
 dimm_tr = size(tr);
-if ndims(tr)==2, dimm_tr = [dimm_tr, 1]; end
+if ismatrix(tr), dimm_tr = [dimm_tr, 1]; end
 n = dimm_tr(1);
 vi0 = 1:n;
 nShift = numel(viShift);
@@ -1039,7 +1042,7 @@ end %func
 %--------------------------------------------------------------------------
 function cc1_drift_clu = wave_similarity_site_pre_(iSite1, S_auto)
 
-NUM_KNN = 10;
+NUM_KNN = 8;
 miKnn1 = load_miKnn_site_(S_auto, iSite1);
 miKnn1 = miKnn1(1:min(NUM_KNN, size(miKnn1,1)), :);
 [viLim_drift, nDrift, viClu, nClu, nSpk_min] = ...
@@ -1063,39 +1066,6 @@ for iDrift = 1:nDrift
         [miKnn11_, miiKnn11_] = deal(miKnn11(:,vi_), miiKnn11(:,vi_));
         vii1_ = miiKnn11_(vrRho(miKnn11_) >= vrRho11(vi_)');  
 %         vii1_ = vii1_(vii1_>0);
-        if numel(vii1_) >= nSpk_min
-            cc1_drift_clu{iDrift, iClu} = mean(trPc1(:,:,vii1_),3);
-        end        
-    end
-end
-end %func
-
-
-%--------------------------------------------------------------------------
-function cc1_drift_clu = wave_similarity_site_pre__(iSite1, S_auto)
-
-NUM_KNN = 10;
-miKnn1 = load_miKnn_site_(S_auto, iSite1);
-miKnn1 = miKnn1(1:min(NUM_KNN, size(miKnn1,1)), :);
-[viLim_drift, nDrift, viClu, nClu, nSpk_min] = ...
-    get_(S_auto, 'viLim_drift', 'nDrift', 'viClu', 'nClu', 'nSpk_min');
-
-[trPc1, viSpk1] = load_fet_site_(S_auto, 1, iSite1);
-cc1_drift_clu = cell(nDrift, nClu);
-cvii1_drift = vi2cell_(discretize(viSpk1, viLim_drift), nDrift);
-[vrRho1, viClu1] = deal(S_auto.vrRho(viSpk1), viClu(viSpk1));
-vrRho = zeros(size(S_auto.vrRho), 'like', S_auto.vrRho);
-vrRho(viSpk1) = S_auto.vrRho(viSpk1);
-for iDrift = 1:nDrift
-    vii1 = cvii1_drift{iDrift};
-    if isempty(vii1), continue; end
-    [vrRho11, viClu11, miKnn11] = deal(vrRho1(vii1), viClu1(vii1), miKnn1(:,vii1));
-    [cviSpk_clu_, ~, viClu_uniq] = vi2cell_(viClu11, nClu);
-    for iClu = viClu_uniq
-        vi_ = cviSpk_clu_{iClu};
-        miKnn11_ = miKnn11(:,vi_);
-        viSpk11_ = miKnn11_(vrRho(miKnn11_) >= vrRho11(vi_)');  
-        vii1_ = find_sorted_(viSpk11_, viSpk1);
         if numel(vii1_) >= nSpk_min
             cc1_drift_clu{iDrift, iClu} = mean(trPc1(:,:,vii1_),3);
         end        
@@ -4301,7 +4271,8 @@ end %func
 %--------------------------------------------------------------------------
 function [viClu_spk, viSpk_peak] = assignCluster_knn_(S_clu, viSite_spk, P)
 
-nRepeat = 3;
+% NUM_KNN = 10;
+nRepeat = 10;
 [viClu_spk, ordrho_spk, viSpk_nneigh, viSpk_peak, vrRho] = ...
     get_(S_clu, 'viClu', 'ordrho', 'nneigh', 'icl', 'rho');
 
@@ -4313,7 +4284,8 @@ if isempty(viClu_spk)
     end
     [vrRho_peak, ix_] = sort(vrRho(viSpk_peak), 'descend'); viSpk_peak = viSpk_peak(ix_);
     miKnn_peak = load_miKnn_spk_(P, viSite_spk, viSpk_peak);    
-    
+%     miKnn_peak = miKnn_peak(1:min(NUM_KNN, size(miKnn_peak,1)), :);
+
     % check for knn overlap
     cvi_peak = cell(numel(viSpk_peak), 1);
     for iPeak = 1:numel(viSpk_peak)  
@@ -4338,7 +4310,7 @@ else
             viClu_spk(ordrho_spk(ii)) = viClu_spk(nneigh1(ii));        
         end
         n1 = sum(viClu_spk<=0);
-        fprintf('iRepeat:%d/%d, n0=%d\n', iRepeat, nRepeat, n1);
+        fprintf('nRepeat:%d, n0=%d\n', iRepeat, n1);
         if n1==0, break; end
     end
 end
