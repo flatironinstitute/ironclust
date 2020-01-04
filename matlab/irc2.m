@@ -2455,6 +2455,7 @@ for iLoad = 1:numel(csFiles_fet)
     if ~fLoad_all
         viSpk1 = [];
         viSpk_load1 = cviSpk_load{iLoad};
+        if isempty(viSpk_load1), continue; end
         if a_in_b_(viSpk_lim, viSpk_load1, 0)
             [vl_, vi_] = ismember(viSpk, cviSpk_load{iLoad});
             if any(vl_)
@@ -2467,7 +2468,7 @@ for iLoad = 1:numel(csFiles_fet)
     else
         viSpk1 = (1:vnSpk_load(iLoad)) + iOffset_spk;
     end
-    if isempty(viSpk1), continue; end
+    if isempty(viSpk1), continue; end    
     dimm_fet1 = [dimm_fet(1), dimm_fet(2), vnSpk_load(iLoad)];
     fid1=fopen(csFiles_fet{iLoad},'r'); 
     fseek(fid1, vnBytes_offset_load(iLoad), 'bof'); 
@@ -2500,7 +2501,7 @@ end %func
 %--------------------------------------------------------------------------
 function flag = a_in_b_(vrA, vrB, fSorted)
 if nargin<3, fSorted = []; end
-
+if isempty(vrA) || isempty(vrB), flag = false; return; end
 % assume sorrted
 if fSorted
     limA = [vrA(1), vrA(end)];
