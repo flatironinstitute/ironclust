@@ -153,8 +153,8 @@ end %func
 %--------------------------------------------------------------------------
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_()
-vcVer = 'v5.4.4';
-vcDate = '01/02/2020';
+vcVer = 'v5.4.5';
+vcDate = '01/03/2020';
 vcHash = file2hash_();
 
 if nargout==0
@@ -169,7 +169,15 @@ end %func
 function save_clu_(S_clu, P)
 if isempty(S_clu), return; end
 
+% save separately
+% rho: nSpk x 1: single
+% delta: nSpk x 1: single
+% nneigh: nSpk x 1: int64
+% ordrho: nSpk x 1: double
 vcFile_prm_ = strrep(P.vcFile_prm, '.prm', '');
+
+csVar = {'rho', 'delta', 'nneigh', 'ordrho'};
+[S_clu, S_clu.S_var] = struct_save_bin_(S_clu, [vcFile_prm_, '_clu.irc'], csVar);
 
 miKnn = get_(S_clu, 'miKnn');
 if ~isempty(miKnn)
@@ -469,6 +477,16 @@ if isempty(S0), S0 = get(0, 'UserData'); end
 
 vcFile_prm_ = strrep(S0.P.vcFile_prm, '.prm', '');
 
+% save separately
+% viTime_spk: nSpk x 1: int64
+% viSite_spk, viSite2_spk: nSpk x 1: int32
+% vrAmp_spk: nSpk x 1: single
+% vrPow_spk: nSpk x 1: single
+% mrPos_spk: nSpk x 2: single
+
+csVar_spk = {'viTime_spk', 'viSite_spk', 'viSite2_spk', 'vrAmp_spk', 'vrPow_spk', 'mrPos_spk'};
+[S0, S0.S_var] = struct_save_bin_(S0, [vcFile_prm_, '_spk.irc'], csVar_spk);
+
 trPc_spk = gather_(get_(S0, 'trPc_spk'));
 S0.trPc_spk = [];
 fSave_fet = get_set_(S0.P, 'fSave_fet', 0);
@@ -491,7 +509,41 @@ S0.S_clu = [];
 struct_save_(S0, [vcFile_prm_, '_irc.mat'], 1);
 
 if ~isempty(S_clu), save_clu_(S_clu, P); end
-end %
+end
+
+%--------------------------------------------------------------------------
+function [S0, S_var] = struct_save_bin_(S0, vcFile, csName_var)
+% save variables and clear field
+S_var = struct('vcFile', vcFile);
+S_var.csName_var = csName_var;
+S_var.cDimm_var = cell(size(csName_var));
+S_var.csType_var = cell(size(csName_var));
+
+fid_w = fopen(vcFile, 'w');
+for iVar = 1:numel(csName_var)
+    name_ = csName_var{iVar};
+    val_ = S0.(name_);
+    S_var.cDimm_var{iVar} = size(val_);
+    S_var.csType_var{iVar} = class(val_);
+    S0.(name_) = []; % clear variable
+    write_bin_(fid_w, val_);
+end
+fclose(fid_w);
+end %func
+
+
+%--------------------------------------------------------------------------
+function S = struct_load_bin_(S_var, S)
+% save variables and clear field
+if nargin<2, S = struct(); end
+import_struct_(S_var); % import all fields in this struct
+fid_r = fopen(vcFile, 'r');
+for iVar = 1:numel(csName_var)
+    S.(csName_var{iVar}) = ...
+        load_bin_(fid_r, csType_var{iVar}, cDimm_var{iVar});
+end
+fclose(fid_r);
+end %func
 
 
 %--------------------------------------------------------------------------
@@ -503,8 +555,17 @@ vcFile_clu_mat = strrep(vcFile_prm, '.prm', '_clu_irc.mat');
 vcFile_knn = strrep(vcFile_prm, '.prm', '_knn.irc');
 
 S0 = load(vcFile_mat);
-if isempty(get_(S0, 'S_clu')) && exist_file_(vcFile_clu_mat)
-    S0.S_clu = load(vcFile_clu_mat);
+if isfield(S0, 'S_var')
+    S0 = struct_load_bin_(S0.S_var, S0);
+end
+S0.S_clu = get_(S0, 'S_clu');
+if isempty(S0.S_clu)
+    if exist_file_(vcFile_clu_mat)
+        S0.S_clu = load(vcFile_clu_mat);
+    end
+    if isfield(S0.S_clu, 'S_var')
+        S0.S_clu = struct_load_bin_(S0.S_clu.S_var, S0.S_clu);
+    end
 end
 
 if isempty(get_(S0.S_clu, 'miKnn'))
