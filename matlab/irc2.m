@@ -3413,7 +3413,7 @@ switch vcMode
     case 'monotrode2', vcDir_in = 'groundtruth/waveclus_synth/quiroga_difficult1/C_Difficult1_noise02';
     case 'monotrode3', vcDir_in = 'groundtruth/waveclus_synth/sim2_2K10/simulation_94';
     case 'boyden', vcDir_in = 'groundtruth/paired_recordings/boyden32c/915_10_1';
-    error('unsupported test mode');
+    otherwise, error('unsupported test mode');
 end
 if ispc()
     vcDir_in = strrep(vcDir_in, '/', '\');    
