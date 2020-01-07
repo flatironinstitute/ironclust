@@ -86,3 +86,8 @@ irc2 sort D:\Globus\recordings\kf19_nt27\irc2\raw_geom.prm
 for i=1:4 
     irc2(sprintf('D:\\Globus\\DanEnglish\\PV_ChR2_Chronic\\shank%d',i));
 end
+
+%%
+for i=1:4 
+    irc2('auto', sprintf('D:\\Globus\\DanEnglish\\PV_ChR2_Chronic\\shank%d\\irc2\\raw_geom.prm',i));
+end

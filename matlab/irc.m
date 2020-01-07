@@ -23820,17 +23820,8 @@ if ~isempty(freq_min) && ~isempty(freq_max)
 end
 
 % vcCommonRef and whiten
-fWhiten = strcmpi(get_(S_txt, 'whiten'), 'True');
-vcCommonRef = get_set_(S_txt, 'common_ref_type', 'none');
-if fWhiten
-    if isempty(vcCommonRef) || strcmpi(vcCommonRef, 'none')
-        P.vcCommonRef = 'whiten';
-    else
-        P.vcCommonRef = ['whiten-', vcCommonRef];
-    end
-else
-    P.vcCommonRef = vcCommonRef;
-end
+P.fWhiten = strcmpi(get_(S_txt, 'whiten'), 'True');
+P.vcCommonRef = get_set_(S_txt, 'common_ref_type', 'none');
 
 % copy fields (don't copy empty fields)
 P = struct_copyas_(P, S_txt, ...

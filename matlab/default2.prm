@@ -8,22 +8,25 @@ vcFilter = 'bandpass';
 freqLim = [300, 8000];
 maxDist_site_spk_um = 100;  % Event extraction radius
 maxDist_site_um = 50;       % Event merge radius
-vcCommonRef = 'none';       % common reference mode {'none', 'mean', 'median', 'whiten', 'whiten-mean', 'whiten-median'}
-nChans_min_car = 16;        % disable common ref subtraction if the number of channels is less than this number
+vcCommonRef = 'trimmean';       % Common reference mode {'none', 'mean', 'median', 'trimmean'}    
+trimmean_pct = 20;          % Exclude a specified percentage of outlier channels when subtacting the mean
+fWhiten = 0;                % Whitening flag, set to 1 to enable spatial whitening
+nSites_whiten = 32;         % max number of sites to whiten, set to 0 to use all sites for whitening
+nChans_min_car = 32;        % Disable common ref subtraction if the number of channels is less than this number
 qqFactor = 4;               % Detection threshold (estimated SD from the median to exclude spiking activity)
 nPc_spk = 9;                % Number of components per spike per channel to compress the spike waveform
 spkLim_ms = [-.25, .75];    % Time range to extract spikes in milliseconds
 fInterp_fet = 1;            % Set to `1` to interpolate the waveform by 2x
 spkRefrac_ms = .25;         % reject spikes occcuring closer than this
-fft_thresh = 10;            % Reject outlier frequency peaks (unit in MAD)
-blank_thresh = 100;         % reject motion artifacts (unit in MAD)
+fft_thresh = 8;             % Reject outlier frequency peaks (unit in MAD)
+blank_thresh = 0;           % Reject motion artifacts (unit in MAD)
 blank_period_ms = 5;        % (miliseconds) Duration of blanking when the common mean exceeds a threhold (blank_thresh)
 
 % [Cluster stage: apply drift-detection and KNN-graph density-peak clustering]
 nPcPerChan = 0;             % #PC/chan. Set to `0` to use a variable # as a function of distance from the center
 step_sec_drift = 20;        % Ave. duration of time batch in sec
 batch_sec_drift = 300;      % Total ave. duration of time batch group in sec
-knn = 30;                   % k nearest neighbors
+knn = 30;                   % K-nearest neighbors
 
 % [Auto-merge stage: automatically merge similar clusters based on KNN-graph and waveform similarity]
 maxWavCor = .99;            % Automated merge thresohld based on waveform correlation

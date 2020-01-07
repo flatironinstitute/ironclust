@@ -97,9 +97,11 @@ switch lower(vcCmd)
     case {'test-mcc', 'test_mcc', 'testmcc'}, test_mcc_(vcArg1); return;
     case {'test-static', 'test-drift', 'test-tetrode', 'test-tetrode2', 'test-tetrode3', ...
             'test-bionet', 'test-bionet1', 'test-monotrode', ...
-            'test-monotrode1', 'test-monotrode2', 'test-monotrode3', 'test-boyden'}
+            'test-monotrode1', 'test-monotrode2', 'test-monotrode3', ...
+            'test-boyden', 'test-boyden2'}
         vcDir_in = get_test_data_(strsplit_get_(vcCmd,'-',2));
         [fDetect, fSort, fValidate] = deal(1, 1, 1);
+    case 'test-all', test_all_(); return;
     case 'export', irc('export', vcArg1); return;
     case {'export-phy', 'phy'}, irc2phy(vcArg1, vcArg2); return;
     case {'export-klusters', 'klusters', 'neurosuite'}, irc2klusters_v2(vcArg1, vcArg2); return;
@@ -149,8 +151,8 @@ end %func
 %--------------------------------------------------------------------------
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_()
-vcVer = 'v5.4.6';
-vcDate = '01/06/2020';
+vcVer = 'v5.4.7';
+vcDate = '01/07/2020';
 vcHash = file2hash_();
 
 if nargout==0
@@ -673,6 +675,7 @@ try
     csDesc{end+1} = sprintf('    Filter type:            %s', P.vcFilter);
     csDesc{end+1} = sprintf('    Filter range (Hz):      [%0.1f, %0.1f]', P.freqLim);
     csDesc{end+1} = sprintf('    Common ref:             %s', P.vcCommonRef);
+    csDesc{end+1} = sprintf('    Whiten:                 %d', get_set_(P, 'fWhiten', 0));
     csDesc{end+1} = sprintf('    FFT threshold:          %d', get_set_(P, 'fft_thresh', 0));
     csDesc{end+1} = sprintf('    blank threshold:        %d', get_set_(P, 'blank_thresh', 0));    
     csDesc{end+1} = sprintf('Events');
@@ -763,11 +766,12 @@ if (~fDebug) || (~isfield(S0.S_clu, 'viClu') && fDebug)
 end
 
 maxWavCor = get_set_(P, 'maxWavCor', .99);
-if maxWavCor<1
+nClu = get_(S0.S_clu, 'nClu');
+if maxWavCor<1 && nClu > 1
     try
         fprintf('Merging templates...\n'); t_merge=tic;
         nClu_pre = S0.S_clu.nClu;
-        [mrDist_clu, viClu_delete] = wave_similarity_site_(S0, P);
+        [mrDist_clu, viClu_delete] = wave_similarity_(S0, P);
         [S0.S_clu, nClu_post] = ml_merge_clu_(S0.S_clu, mrDist_clu >= maxWavCor, viClu_delete);    
         fprintf('\tMerged waveforms (%d->%d->%d), took %0.1fs\n', ...
             nClu_pre, nClu_pre-numel(viClu_delete), nClu_post, toc(t_merge));
@@ -959,8 +963,170 @@ end %func
 
 
 %--------------------------------------------------------------------------
+function [mrDist_clu, viClu_remove] = wave_similarity_(S0, P)
+switch 1
+    case 1, [mrDist_clu, viClu_remove] = wave_similarity1_(S0, P);
+    case 2, [mrDist_clu, viClu_remove] = wave_similarity2_(S0, P);
+end %switch
+end %func
+
+
+%--------------------------------------------------------------------------
 % keeps trPc in the main memory, not sent out to workers
-function [mrDist_clu, viClu_remove] = wave_similarity_site_(S0, P)
+function [mrDist_clu, viClu_remove] = wave_similarity2_(S0, P)
+S_clu = S0.S_clu;
+
+% fprintf('\tAutomated merging based on waveform similarity...\n'); t_template=tic;
+[viClu, vrRho] = struct_get_(S_clu, 'viClu', 'rho');
+[ccviSpk_site_load, ccviSpk_site2_load, type_fet, dimm_fet, mrPv, vrThresh_site] = ...
+    get_(S0, 'ccviSpk_site_load', 'ccviSpk_site2_load', 'type_fet', ...
+        'dimm_fet', 'mrPv_global', 'vrThresh_site');
+nShift_max = ceil(diff(P.spkLim) * P.frac_shift_merge / 2);
+viShift = -nShift_max:nShift_max;
+[nDrift, knn, nSpk_min, vcFile_prm] = get_(P, 'nTime_drift', 'knn', 'knn', 'vcFile_prm');
+nClu = S_clu.nClu;
+
+% try loading the entire miKnn to RAM
+nSites = size(P.miSites,2);
+[viLim_drift, mlDrift] = get_(S_clu.S_drift, 'viLim_drift', 'mlDrift');
+S_auto = makeStruct_(nDrift, nClu, nSites, knn, vcFile_prm, nSpk_min, ...
+    vrRho, viClu, viLim_drift, ccviSpk_site_load, ccviSpk_site2_load, ...
+    type_fet, dimm_fet, mrPv, vrThresh_site, viShift, mlDrift);
+
+
+t_fun = tic;
+mrDist_clu = nan(S_clu.nClu, 'single'); % 64 GB if 130839 units are found. sparse...
+for iSite = 1:nSites
+    mrDist_clu = wave_similarity_site_(iSite, S_auto, mrDist_clu);
+end
+
+viClu_remove = [];
+fprintf('\twave_similarity_: took %0.1fs\n', toc(t_fun));
+end %func
+
+
+%--------------------------------------------------------------------------
+function mrDist_clu = wave_similarity_site_(iSite1, S_auto, mrDist_clu)
+NUM_KNN = 10;
+fUseSecondSite = 1;
+
+% fprintf('\twave_similarity_site_pre_: Site%d... ', iSite1); t_fun=tic;
+miKnn1 = load_miKnn_site_(S_auto, iSite1);
+miKnn1 = miKnn1(1:min(NUM_KNN, size(miKnn1,1)), :);
+% [viLim_drift, nDrift, viClu, nClu, nSpk_min, vrThresh_site, mrPv, mlDrift] = ...
+%     get_(S_auto, 'viLim_drift', 'nDrift', 'viClu', 'nClu', 'nSpk_min', 'vrThresh_site', 'mrPv', 'mlDrift');
+import_struct_(S_auto);
+thresh1 = vrThresh_site(iSite1);
+[trPc1, viSpk1] = load_fet_site_(S_auto, 1, iSite1);
+cc1_drift_clu = cell(nDrift, nClu);
+cvii1_drift = vi2cell_(discretize(viSpk1, viLim_drift), nDrift);
+[vrRho1, viClu1] = deal(S_auto.vrRho(viSpk1), viClu(viSpk1));
+vrRho_1 = copy_mask_(S_auto.vrRho, viSpk1);
+[~, miiKnn1] = ismember(miKnn1, viSpk1);
+
+if fUseSecondSite
+    [trPc2, viSpk2] = load_fet_site_(S_auto, 2, iSite1);
+else
+    trPc2 = [];
+end
+fSecondSite = ~isempty(trPc2);
+if fSecondSite   
+    vrRho_2 = copy_mask_(S_auto.vrRho, viSpk2);
+    [~, miiKnn2] = ismember(miKnn1, viSpk2);
+end
+cc2_drift_clu = cell(nDrift, nClu);
+
+for iDrift = 1:nDrift
+    vii1 = cvii1_drift{iDrift};
+    if isempty(vii1), continue; end
+    [vrRho11, viClu11, miKnn11, miiKnn11] = ...
+        deal(vrRho1(vii1), viClu1(vii1), miKnn1(:,vii1), miiKnn1(:,vii1));
+    [cviiSpk_clu_, ~, viClu_uniq] = vi2cell_(viClu11, nClu);
+    if fSecondSite
+        miiKnn21 = miiKnn2(:,vii1);
+    end
+    for iClu = viClu_uniq
+        vii_ = cviiSpk_clu_{iClu};
+        [miKnn11_, miiKnn11_] = deal(miKnn11(:,vii_), miiKnn11(:,vii_));
+        vrRho11_T = vrRho11(vii_)';
+        vii1_ = miiKnn11_(vrRho_1(miKnn11_) >= vrRho11_T);  
+        cc1_drift_clu{iDrift, iClu} = mean_conditional_(trPc1, vii1_, nSpk_min, mrPv, thresh1);
+        if fSecondSite
+            miiKnn21_ = miiKnn21(:,vii_);
+            vii2_ = miiKnn21_(vrRho_2(miKnn11_) >= vrRho11_T);
+            cc2_drift_clu{iDrift, iClu} = mean_conditional_(trPc2, vii2_, nSpk_min, mrPv, thresh1);
+        end         
+    end
+end
+
+% distance calculation
+ml1_drift_clu = ~cellfun(@isempty, cc1_drift_clu);
+ml2_drift_clu = ~cellfun(@isempty, cc2_drift_clu);
+for iDrift = 1:nDrift   
+    viDrift1 = find(mlDrift(:,iDrift));
+    [cc1_clu2, cc2_clu2] = deal(cc1_drift_clu(viDrift1,:), cc2_drift_clu(viDrift1,:));
+    [ml1_clu2, ml2_clu2] = deal(ml1_drift_clu(viDrift1,:), ml2_drift_clu(viDrift1,:));
+    for iClu1 = 1:nClu-1        
+        viClu2 = iClu1+1:nClu;
+        mrPc1 = cc1_drift_clu{iDrift, iClu1};
+        if ~any(any(ml1_clu2(:,viClu2)) | any(ml2_clu2(:,viClu2))), continue; end
+        if ~isempty(mrPc1)
+            vrDist1 = clu_similarity_(mrPc1, mrPv, viShift, cc1_clu2(:,viClu2), cc2_clu2(:,viClu2));
+            mrDist_clu(viClu2,iClu1) = max(mrDist_clu(viClu2,iClu1), vrDist1);
+        end        
+        
+        if ~fSecondSite, continue; end
+        mrPc2 = cc2_drift_clu{iDrift, iClu1};
+        if ~isempty(mrPc2)
+            vrDist2 = clu_similarity_(mrPc2, mrPv, viShift, cc1_clu2(:,viClu2), cc2_clu2(:,viClu2));
+            mrDist_clu(viClu2,iClu1) = max(mrDist_clu(viClu2,iClu1), vrDist2);
+        end        
+    end
+end
+fprintf('.');
+end %func
+
+
+%--------------------------------------------------------------------------
+function vrDist_clu1 = clu_similarity_(mrPc1, mrPv, viShift, cc1_clu2, cc2_clu2)
+
+nClu2 = size(cc1_clu2,2);
+vrDist_clu1 = nan(nClu2, 1, 'single');
+
+norm_mr_ = @(mr)mr ./ sqrt(sum(mr.^2,1)); 
+tr2mr_pv_norm_ = @(tr,mr)norm_mr_(reshape(mr*reshape(tr,size(tr,1),[]),[],size(tr,3))); 
+  
+mrWav1 = tr2mr_pv_norm_(mrPc1, mrPv);
+
+% todo: shift waveform in time
+for iClu2 = 1:nClu2
+    flag1 = all(cellfun(@isempty, cc1_clu2(:,iClu2)));
+    flag2 = all(cellfun(@isempty, cc2_clu2(:,iClu2)));
+    if flag1 && flag2, continue; end
+    
+    if ~flag1
+        trPc12 = cat(3, cc1_clu2{:,iClu2});
+        max1 = tr2mr_pv_norm_(trPc12, mrPv)' * mrWav1;
+        max1 = max(max1(:));
+    else
+        max1 = nan;
+    end
+
+    if ~flag2
+        trPc22 = cat(3, cc2_clu2{:,iClu2});
+        max2 = tr2mr_pv_norm_(trPc22, mrPv)' * mrWav1;
+        max2 = max(max2(:));
+    else
+        max2 = nan;
+    end
+    vrDist_clu1(iClu2) = max(max1, max2);
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+% keeps trPc in the main memory, not sent out to workers
+function [mrDist_clu, viClu_remove] = wave_similarity1_(S0, P)
 S_clu = S0.S_clu;
 
 % fprintf('\tAutomated merging based on waveform similarity...\n'); t_template=tic;
@@ -1009,21 +1175,22 @@ fprintf('\twave_similarity_site_pre_: took %0.1fs\n', t0);
 t1 = toc(t_fun);
 fprintf('\twave_similarity_site_site2clu_: took %0.1fs\n', t1-t0);
 
-switch 3 % remove low-snr waveforms to reduce false positives
-    case 1
-        [viClu_remove, ctrPc_clu, cviSite_clu, cviDrift_clu] = find_low_snr_clu_(S0, P, ctrPc_clu, cviSite_clu, cviDrift_clu);
-    case 2
-        viClu_remove = find_low_snr_clu_(S0, P, ctrPc_clu, cviSite_clu, cviDrift_clu);
-    case 3
-        viClu_remove = [];
-end
-t2 = toc(t_fun);
-fprintf('\tfind_low_snr_clu_: took %0.1fs\n', t2-t1);
+viClu_remove = [];
+% switch 3 % remove low-snr waveforms to reduce false positives
+%     case 1
+%         [viClu_remove, ctrPc_clu, cviSite_clu, cviDrift_clu] = find_low_snr_clu_(S0, P, ctrPc_clu, cviSite_clu, cviDrift_clu);
+%     case 2
+%         viClu_remove = find_low_snr_clu_(S0, P, ctrPc_clu, cviSite_clu, cviDrift_clu);
+%     case 3
+%         viClu_remove = [];
+% end
+% t2 = toc(t_fun);
+% fprintf('\tfind_low_snr_clu_: took %0.1fs\n', t2-t1);
 
 % merge the templates: todo, faster code
 mrDist_clu = nan(S_clu.nClu, 'single'); % 64 GB if 130839 units are found
 S_post = makeStruct_(cviSite_clu, ctrPc_clu, nClu, viShift, mrPv, cviDrift_clu, mlDrift);
-if fParfor
+if fParfor && ~fLargeRecording 
     try
         parfor iClu1 = 1:(nClu-1)
             mrDist_clu(:, iClu1) = wav_similarity_site_post_(iClu1, S_post);
@@ -1037,8 +1204,8 @@ if ~fParfor
         mrDist_clu(:, iClu1) = wav_similarity_site_post_(iClu1, S_post);
     end %for
 end
-t3 = toc(t_fun);
-fprintf('\twav_similarity_site_post_: took %0.1fs\n', t3-t2);
+t2 = toc(t_fun);
+fprintf('\twav_similarity_site_post_: took %0.1fs\n', t2-t1);
 end %func
 
 
@@ -1059,6 +1226,7 @@ if isempty(viClu2), return; end
 
 norm_mr_ = @(mr)mr ./ sqrt(sum(mr.^2,1)); 
 tr2mr_pv_norm_ = @(tr,mr)norm_mr_(reshape(mr*reshape(tr,size(tr,1),[]),[],size(tr,3))); 
+pc2wav_pv_ = @(tr,mrPv)reshape(mrPv*reshape(tr,size(tr,1),[]), [size(mrPv,1), size(tr,2), size(tr,3)]); 
 
 viDrift_clu1 = cviDrift_clu{iClu1};
 viDrift_uniq = unique(viDrift_clu1(:)');
@@ -1083,7 +1251,8 @@ for iDrift = viDrift_uniq
             trPc_clu22_ = trPc_clu22(:,:,viSite_clu22==iSite);
             if isempty(trPc_clu22_), continue; end
             trPc_clu11_ = trPc_clu11(:,:,viSite_clu11==iSite);
-            mr11_ = tr2mr_pv_norm_(shift_trWav_(trPc_clu11_, viShift), mrPv);
+%             mr11_ = norm_mr_(shift_trWav_(pc2wav_pv_(trPc_clu11_, mrPv), viShift));
+            mr11_ = pc2wav_shift_(trPc_clu11_, mrPv, viShift);
             max12_ = tr2mr_pv_norm_(trPc_clu22_, mrPv)' * mr11_;
             max12_ = max(max12_(:));
             if vrDist_clu1(iClu2) < max12_, vrDist_clu1(iClu2) = max12_; end
@@ -1094,21 +1263,30 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function tr = shift_trWav_(tr, viShift)
+function mrWav = pc2wav_shift_(trPc, mrPv, viShift)
+[nPc, nSites, nSpk, nT] = deal(size(trPc,1), size(trPc,2), size(trPc,3), size(mrPv,1));
+trWav = reshape(mrPv*reshape(trPc, nPc,[]), [nT, nSites, nSpk]);
+mrWav = reshape(shift_trWav_(trWav, viShift), nT*nSites, []);
+mrWav = mrWav ./ sqrt(sum(mrWav.^2,1)); 
+end %func
+
+
+%--------------------------------------------------------------------------
+function trB = shift_trWav_(trA, viShift)
 % ctr = cell(numel(viShift), 1);
-dimm_tr = size(tr);
-if ismatrix(tr), dimm_tr = [dimm_tr, 1]; end
+dimm_tr = size(trA);
+if ismatrix(trA), dimm_tr = [dimm_tr, 1]; end
 n = dimm_tr(1);
 vi0 = 1:n;
 nShift = numel(viShift);
-qr = zeros([dimm_tr, nShift], 'like', tr);
+qr = zeros([dimm_tr, nShift], 'like', trA);
 for iShift = 1:nShift
     iShift_ = viShift(iShift);
     vi_ = min(max(vi0 + iShift_, 1), n);
-    qr(:,:,:,iShift) = tr(vi_,:,:);
+    qr(:,:,:,iShift) = trA(vi_,:,:);
 end %for
 % tr = cat(3, ctr{:});
-qr = reshape(qr, [dimm_tr(1), dimm_tr(2), dimm_tr(3)*nShift]);
+trB = reshape(qr, [dimm_tr(1), dimm_tr(2), dimm_tr(3)*nShift]);
 end % func
 
 
@@ -2114,7 +2292,7 @@ if fGpu
         [vrRho_in, miKnn_in] = search_knn_drift_(vl_in, mrFet_out, viDrift_out, mlDrift1, P);
     catch
         fGpu=0; 
-        fprintf(2, 'C');
+        fprintf(2, 'CPU');
     end
 end
 if ~fGpu
@@ -2164,7 +2342,7 @@ if fGpu
         [vrDelta_in, viNneigh_in] = search_delta_drift_(vl_in, mrFet_out, vrRho_out, viDrift_out, mlDrift1, P);
     catch
         fGpu = 0;
-        fprintf(2, 'C');
+        fprintf(2, 'CPU');
     end
 end
 if ~fGpu
@@ -3292,14 +3470,14 @@ end %func
 function [mrWav_filt, vrWav_filt_mean] = filter_transpose_(mnWav_T, P)
 %-----
 % Filter
-fprintf('\tFiltering spikes...'); f_fun = tic;
+fprintf('\tFiltering spikes (%s)...', get_(P, 'vcCommonRef')); t_fun = tic;
 % if get_set_(P, 'fSmooth_spatial', 0)
 %     mnWav_T = spatial_smooth_(mnWav_T, P);
 % end
 mrWav_filt = fft_filter_transpose(single(mnWav_T), P);
 
 nChans = size(mrWav_filt, 2);
-if nChans < get_set_(P, 'nChans_min_car', 8)
+if nChans < get_set_(P, 'nChans_min_car', 32)
     P.vcCommonRef = 'none';
 end
 switch get_(P, 'vcCommonRef')
@@ -3307,14 +3485,95 @@ switch get_(P, 'vcCommonRef')
         vrWav_filt_mean = mean_excl_(mrWav_filt, P);                
     case 'median'
         vrWav_filt_mean = median_excl_(mrWav_filt, P);
+    case {'trimmean', 'tmean'}
+        vrWav_filt_mean = trimmean_excl_(mrWav_filt, P);   
     otherwise
         vrWav_filt_mean = [];
 end
 if ~isempty(vrWav_filt_mean)
     mrWav_filt = mrWav_filt - vrWav_filt_mean(:);
 end
-fprintf(' took %0.1fs\n', toc(f_fun));
+if get_set_(P, 'fWhiten', 0)
+    fprintf('\tWhitening...');
+    mrWav_filt = spatial_whiten_(mrWav_filt, P);
+end
+fprintf(' took %0.1fs\n', toc(t_fun));
 end %func
+
+
+%--------------------------------------------------------------------------
+function mrB = spatial_whiten_(mrA, P)
+
+MAX_SAMPLE = [];
+
+nSites = size(mrA,2);
+nSites_whiten = min(get_set_(P, 'nSites_whiten', 32), nSites);
+if nSites <= nSites_whiten || nSites_whiten == 0
+    % whiten globally using all sites
+    mrB = mrA * whiten_matrix_(mrA, MAX_SAMPLE);
+else
+    % whiten locally, slower than the global method
+    miSites = findNearestSites_(P.mrSiteXY, nSites_whiten);
+    mrB = zeros(size(mrA), 'like', mrA);
+    for iSite = 1:nSites
+        mrA1 = mrA(:,miSites(:,iSite));
+        mrW1 = whiten_matrix_(mrA1, MAX_SAMPLE);
+        mrB(:,iSite) = mrA1 * mrW1(:,1);
+    end
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+function mrW = whiten_matrix_(mrA, nSamples)
+% https://www.mathworks.com/matlabcentral/fileexchange/34471-data-matrix-whitening?s_tid=answers_rc2-2_p5_MLT
+if nargin<2, nSamples=[]; end
+if ~isempty(nSamples)
+    mrA = subsample_row_(mrA, nSamples);
+end
+% mrA = mrA - mean(mrA,1); % subtract the channel mean
+[mrE1, vrD1] = svd((mrA' * mrA)/size(mrA,1));
+mrW = mrE1 * diag(1./sqrt(diag(vrD1) + eps)) * mrE1';    
+end %func
+
+
+%--------------------------------------------------------------------------
+function miSites = findNearestSites_(mrSiteXY, nSites_spk)
+
+nSites = size(mrSiteXY,1);
+miSites = zeros(nSites_spk, nSites);
+for iSite=1:nSites
+    vrSiteDist = pdist2_(mrSiteXY(iSite,:), mrSiteXY);
+    [vrSiteDist, viSrt] = sort(vrSiteDist, 'ascend');
+    miSites(:,iSite) = viSrt(1:nSites_spk);
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+function mr12 = pdist2_(mr1, mr2)
+% mr12 = pdist2_(mr1) % self distance
+% mr12 = pdist2_(mr1, mr2)
+% mr1: n1xd, mr2: n2xd, mr12: n1xn2
+
+% mr12 = sqrt(eucl2_dist_(mr1', mr2'));
+% 20% faster than pdist2 for 10000x10 x 100000x10 single
+if nargin==2
+    mr12 = sqrt(bsxfun(@plus, sum(mr2'.^2), bsxfun(@minus, sum(mr1'.^2)', 2*mr1*mr2')));
+else
+    vr1 = sum(mr1'.^2);
+    mr12 = sqrt(bsxfun(@plus, vr1, bsxfun(@minus, vr1', 2*mr1*mr1')));
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+function [mrA, viCol] = subsample_row_(mrA, nSamples)
+nRows = size(mrA,1);
+if nRows < nSamples, return; end
+viCol = round(linspace(1, nRows, nSamples));
+mrA = mrA(viCol,:);
+end %fun
 
 
 %--------------------------------------------------------------------------
@@ -3329,6 +3588,19 @@ else
     nSites = nSites_all - nSites_excl;
     vnWav1_mean = ((sum(mnWav1,2) - sum(mnWav1(:,nSites_excl),2)) / nSites);
 end
+end %func
+
+
+%--------------------------------------------------------------------------
+% trimmed mean
+function vnWav1_mean = trimmean_excl_(mnWav1, P)
+% calculate mean after excluding viSiteZero
+viSiteZero = get_(P, 'viSiteZero');
+if ~isempty(viSiteZero)
+    mnWav1(:,viSiteZero) = [];
+end
+trimmean_pct = get_set_(P, 'trimmean_pct', 25);
+vnWav1_mean = trimmean(mnWav1,trimmean_pct,2);
 end %func
 
 
@@ -3501,6 +3773,7 @@ switch vcMode
     case 'monotrode2', vcDir_in = 'groundtruth/waveclus_synth/quiroga_difficult1/C_Difficult1_noise02';
     case 'monotrode3', vcDir_in = 'groundtruth/waveclus_synth/sim2_2K10/simulation_94';
     case 'boyden', vcDir_in = 'groundtruth/paired_recordings/boyden32c/915_10_1';
+    case 'boyden2', vcDir_in = 'groundtruth/paired_recordings/boyden32c/509_1_1';
     otherwise, error('unsupported test mode');
 end
 if ispc()
