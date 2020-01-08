@@ -70,7 +70,7 @@ switch lower(vcCmd)
             vcFile_prm = vcFile_prm_;
             fprintf('irc2 (%s) opening %s\n', version_(), vcFile_prm);
         else
-            vcFile_prm = vcDir_out;
+            vcFile_prm = dir2prm_(vcDir_out);
             vcFile_prm_ = vcFile_prm;
         end
         if isempty(vcFile_prm), fprintf(2, 'provide .prm file.\n'); return; end
@@ -150,9 +150,27 @@ end %func
 
 
 %--------------------------------------------------------------------------
+% convert directory to prm file if directory path is given
+function vcFile_prm = dir2prm_(vcDir_in)
+[vcDir1, vcFile1, vcExt1] = fileparts(vcDir_in);
+if ~strcmpi(vcExt1, '.prm')
+    vcDir_out = fullfile(vcDir_in, 'irc2');
+    S_prm = dir(fullfile(vcDir_out, '*.prm'));
+    if numel(S_prm) == 1
+        vcFile_prm = fullfile(S_prm.folder, S_prm.name);
+    else
+        vcFile_prm = '';
+    end
+else
+    vcFile_prm = vcDir_in;
+end
+end %func
+
+
+%--------------------------------------------------------------------------
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_()
-vcVer = 'v5.4.11';
+vcVer = 'v5.4.12';
 vcDate = '01/08/2020';
 vcHash = file2hash_();
 
@@ -1763,7 +1781,7 @@ function vcFile_knn_site1 = save_miKnn_site_(vcFile_prm, iSite1, miKnn1, fAppend
 % save_miKnn_site_(vcFile_prm, iSite1, miKnn1)
 % save_miKnn_site_(fid, iSite1, miKnn1)
 if nargin<4, fAppend = false; end
-vcFile_knn_site1 = strrep(vcFile_prm, '.prm', sprintf('_knn_site_%d.irc', iSite1));
+vcFile_knn_site1 = strrep(vcFile_prm, '.prm', sprintf('_knn_%d.irc', iSite1));
 
 if fAppend
     fid1 = fopen(vcFile_knn_site1, 'a');
@@ -1780,7 +1798,7 @@ function [miKnn1, vl] = load_miKnn_site_(P, iSite1, viSite_spk, viSpk1)
 if nargin<3, viSite_spk = []; end
 if nargin<4, viSpk1 = []; end
 
-vcFile_knn_site1 = strrep(P.vcFile_prm, '.prm', sprintf('_knn_site_%d.irc', iSite1));
+vcFile_knn_site1 = strrep(P.vcFile_prm, '.prm', sprintf('_knn_%d.irc', iSite1));
 if iscell(viSite_spk)
     viSpk_site1 = viSite_spk{iSite1};
     dimm1 = [P.knn, numel(viSpk_site1)];
@@ -1882,7 +1900,7 @@ S_global = makeStruct_(S_drift, miSpk_lim_out, miSpk_lim_in, miDrift_lim_out, vi
 
 % clear _miKnn_site_#.irc and append to these files
 if ~fSkip_rho
-    vcFile_miKnn = [strrep(vcFile_prm, '.prm', ''), '_knn_site_*.irc'];
+    vcFile_miKnn = [strrep(vcFile_prm, '.prm', ''), '_knn_*.irc'];
     delete_(vcFile_miKnn);
 %     assert(isempty(dir(vcFile_miKnn)), sprintf('sort_long_: %s must be deleted', vcFile_miKnn));
     fprintf('sort_page_: calculating Rho...\n'); t_rho = tic;
@@ -2469,11 +2487,11 @@ switch iFet
     case 1
         vnSpk_load = cellfun(@(x)numel(x{iSite}), S_fet.ccviSpk_site_load);
         vnBytes_offset_load = cellfun(@(x)fh_sum(x, iSite), S_fet.ccviSpk_site_load) * bytes_per_spk;
-        csFiles_fet = arrayfun_(@(x)[vcFile_prm_, sprintf('_fet_site_%d.irc',x)], 1:nLoads);
+        csFiles_fet = arrayfun_(@(x)[vcFile_prm_, sprintf('_fet_%d.irc',x)], 1:nLoads);
         cviSpk_load = cellfun_(@(x)x{iSite}, S_fet.ccviSpk_site_load);
     case 2
         vnSpk_load = cellfun(@(x)numel(x{iSite}), S_fet.ccviSpk_site2_load);
-        csFiles_fet = arrayfun_(@(x)[vcFile_prm_, sprintf('_fet2_site_%d.irc',x)], 1:nLoads);
+        csFiles_fet = arrayfun_(@(x)[vcFile_prm_, sprintf('_fet2_%d.irc',x)], 1:nLoads);
         vnBytes_offset_load = cellfun(@(x)fh_sum(x, iSite), S_fet.ccviSpk_site2_load) * bytes_per_spk;
         cviSpk_load = cellfun_(@(x)x{iSite}, S_fet.ccviSpk_site2_load);
 end
@@ -2936,7 +2954,7 @@ end
 S_detect.type_fet = class(S_detect.trPc_spk);
 S_detect.dimm_fet = size(S_detect.trPc_spk);
 S_detect.cviSpk_site = save_paged_fet_site_(...
-    [vcFile_prm_, sprintf('_fet_site_%d.irc', iLoad)], ...
+    [vcFile_prm_, sprintf('_fet_%d.irc', iLoad)], ...
         S_detect.trPc_spk, S_detect.viSite_spk, nSites);
 S_detect.trPc_spk = [];
 if isempty(get_(S_detect, 'trPc2_spk'))
@@ -2947,7 +2965,7 @@ if fSave_fet
     write_bin_([vcFile_prm_, sprintf('_fet2_%d.irc', iLoad)], S_detect.trPc2_spk);    
 end
 S_detect.cviSpk2_site = save_paged_fet_site_(...
-    [vcFile_prm_, sprintf('_fet2_site_%d.irc', iLoad)], ...
+    [vcFile_prm_, sprintf('_fet2_%d.irc', iLoad)], ...
         S_detect.trPc2_spk, S_detect.viSite2_spk, nSites);
 S_detect.trPc2_spk = [];
 end %func
@@ -4478,7 +4496,7 @@ function [viClu_spk, viSpk_peak] = assignCluster_knn_(S_clu, viSite_spk, P)
 nRepeat = 10;
 [viClu_spk, ordrho_spk, viSpk_nneigh, viSpk_peak, vrRho] = ...
     get_(S_clu, 'viClu', 'ordrho', 'nneigh', 'icl', 'rho');
-
+fParfor = get_set_(P, 'fParfor', 1);
 nSpk = numel(ordrho_spk);
 if isempty(viClu_spk)
     viClu_spk = zeros([nSpk, 1], 'int32');
@@ -4489,11 +4507,23 @@ if isempty(viClu_spk)
     miKnn_peak = load_miKnn_spk_(P, viSite_spk, viSpk_peak);    
 %     miKnn_peak = miKnn_peak(1:min(NUM_KNN, size(miKnn_peak,1)), :);
 
-    % check for knn overlap
-    cvi_peak = cell(numel(viSpk_peak), 1);
-    for iPeak = 1:numel(viSpk_peak)  
-        viPeak1 = find(any(ismember(miKnn_peak(:,1:iPeak-1), miKnn_peak(:,iPeak))));
-        cvi_peak{iPeak} = [viPeak1(:); iPeak];
+    % check for knn overlap    
+    cvi_peak = cell(numel(viSpk_peak), 1);  
+    if fParfor
+        try
+            parfor iPeak = 1:numel(viSpk_peak)
+                viPeak1 = find(any(ismember(miKnn_peak(:,1:iPeak-1), miKnn_peak(:,iPeak))));        
+                cvi_peak{iPeak} = [viPeak1(:); iPeak];
+            end
+        catch
+            fParfor = 0;
+        end
+    end
+    if ~fParfor
+        for iPeak = 1:numel(viSpk_peak)
+            viPeak1 = find(any(ismember(miKnn_peak(:,1:iPeak-1), miKnn_peak(:,iPeak))));        
+            cvi_peak{iPeak} = [viPeak1(:); iPeak];
+        end
     end
     [viClu_spk(viSpk_peak), viiPeak] = cell2map_(cvi_peak);
     [viSpk_peak, vrRho_peak] = deal(viSpk_peak(viiPeak), vrRho_peak(viiPeak));
