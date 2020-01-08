@@ -44,6 +44,7 @@ end
 [fDetect, fSort] = deal(exist_file_(vcDir_in) || exist_dir_(vcDir_in)); % cmd mode
 [P, S0, fPlot_gt, fValidate] = deal([]); 
 switch lower(vcCmd)
+    case {'export-sf2', 'export-spikeforest2', 'export2spikeforest2'}, export_sf2_(); return;
     case 'compile-deploy', compile_cuda_(vcArg1, '1'); return
     case {'compile', 'install'}, compile_cuda_(vcArg1, '0'); return
     case 'readmda_header', varargout{1} = readmda_header_(vcArg1); return;
@@ -4764,6 +4765,15 @@ function ver_year = version_matlab_()
 vcVer_matlab = version('-release');
 ver_year = str2double(vcVer_matlab(1:end-1));
 if lower(vcVer_matlab(end)) == 'b', ver_year = ver_year + .5; end
+end %func
+
+
+%--------------------------------------------------------------------------
+% 01/08/2020 JJJ: compile, mcc, and copy to the container locatino
+function export_sf2_()
+irc2('compile');
+irc2('mcc');
+copyfile('run_irc', read_cfg_('spikeforest2_irc_path'));
 end %func
 
 
