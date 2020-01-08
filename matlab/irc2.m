@@ -151,8 +151,8 @@ end %func
 %--------------------------------------------------------------------------
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_()
-vcVer = 'v5.4.8';
-vcDate = '01/07/2020';
+vcVer = 'v5.4.9';
+vcDate = '01/08/2020';
 vcHash = file2hash_();
 
 if nargout==0
@@ -994,7 +994,7 @@ S_auto = makeStruct_(nDrift, nClu, nSites, knn, vcFile_prm, nSpk_min, ...
 % compute pairwise distance in parallel by sites
 [cmlDist_clu, cvlExist_clu] = deal(cell(nClu, 1));
 fParfor = get_set_(P, 'fParfor', 1);
-if fParfor % && ~isLargeRecording_(P)
+if fParfor %&& ~isLargeRecording_(P)
     try
         parfor iSite = 1:nSites
             try
@@ -1025,6 +1025,107 @@ end %func
 
 %--------------------------------------------------------------------------
 function [mlDist_clu, vlExist_clu] = wave_similarity_site_(iSite1, S_auto)
+
+NUM_KNN = 10;
+fUseSecondSite = 1;
+
+% fprintf('\twave_similarity_site_pre_: Site%d... ', iSite1); t_fun=tic;
+miKnn1 = load_miKnn_site_(S_auto, iSite1);
+miKnn1 = miKnn1(1:min(NUM_KNN, size(miKnn1,1)), :);
+% [viLim_drift, nDrift, viClu, nClu, nSpk_min, vrThresh_site, mrPv, mlDrift] = ...
+%     get_(S_auto, 'viLim_drift', 'nDrift', 'viClu', 'nClu', 'nSpk_min', 'vrThresh_site', 'mrPv', 'mlDrift');
+import_struct_(S_auto);
+thresh1 = vrThresh_site(iSite1);
+[trPc1, viSpk1] = load_fet_site_(S_auto, 1, iSite1);
+% cc1_drift_clu = cell(nDrift, nClu);
+cvii1_drift = vi2cell_(discretize(viSpk1, viLim_drift), nDrift);
+[vrRho1, viClu1] = deal(S_auto.vrRho(viSpk1), viClu(viSpk1));
+vrRho_1 = copy_mask_(S_auto.vrRho, viSpk1);
+[~, miiKnn1] = ismember(miKnn1, viSpk1);
+
+if fUseSecondSite
+    [trPc2, viSpk2] = load_fet_site_(S_auto, 2, iSite1);
+else
+    trPc2 = [];
+end
+fSecondSite = ~isempty(trPc2);
+if fSecondSite   
+    vrRho_2 = copy_mask_(S_auto.vrRho, viSpk2);
+    [~, miiKnn2] = ismember(miKnn1, viSpk2);
+end
+% cc2_drift_clu = cell(nDrift, nClu);
+cviClu_drift = cell(nDrift,1);
+ctrPc_drift = cell(nDrift,1);
+
+for iDrift = 1:nDrift    
+    vii1 = cvii1_drift{iDrift};
+    if isempty(vii1), continue; end
+    [vrRho11, viClu11, miKnn11, miiKnn11] = ...
+        deal(vrRho1(vii1), viClu1(vii1), miKnn1(:,vii1), miiKnn1(:,vii1));
+    [cviiSpk_clu_, ~, viClu_uniq] = vi2cell_(viClu11, nClu);
+    if fSecondSite, miiKnn21 = miiKnn2(:,vii1); end
+    [viClu_drift1, cmrPc_drift1] = deal([], {}); 
+    for iClu = viClu_uniq
+        vii_ = cviiSpk_clu_{iClu};
+        [miKnn11_, miiKnn11_] = deal(miKnn11(:,vii_), miiKnn11(:,vii_));
+        vrRho11_T = vrRho11(vii_)';
+        vii1_ = miiKnn11_(vrRho_1(miKnn11_) >= vrRho11_T);  
+        mrPc1 = mean_conditional_(trPc1, vii1_, nSpk_min, mrPv, thresh1);
+        if ~isempty(mrPc1)
+            viClu_drift1(end+1) = iClu;
+            cmrPc_drift1{end+1} = mrPc1;
+        end
+        if fSecondSite
+            miiKnn21_ = miiKnn21(:,vii_);
+            vii2_ = miiKnn21_(vrRho_2(miKnn11_) >= vrRho11_T);
+            mrPc2 = mean_conditional_(trPc2, vii2_, nSpk_min, mrPv, thresh1);
+            if ~isempty(mrPc2)
+                viClu_drift1(end+1) = iClu;
+                cmrPc_drift1{end+1} = mrPc2;
+            end
+        end         
+    end
+    cviClu_drift{iDrift} = viClu_drift1;
+    ctrPc_drift{iDrift} = cat(3, cmrPc_drift1{:});
+end
+[trPc1, trPc2, miKnn1, miiKnn1, miiKnn2] = deal([]); % clear memory
+vlExist_clu = false(1, nClu);
+vlExist_clu([cviClu_drift{:}]) = true;
+mlDist_clu = false(nClu);
+
+norm_mr_ = @(mr)mr ./ sqrt(sum(mr.^2,1)); 
+tr2mr_pv_norm_ = @(tr,mr)norm_mr_(reshape(mr*reshape(tr,size(tr,1),[]),[],size(tr,3))); 
+
+% distance calculation
+for iDrift = 1:nDrift
+    viDrift1 = find(mlDrift(:,iDrift));
+    viClu1 = cviClu_drift{iDrift};
+    if isempty(viClu1), continue; end
+    trPc_clu1 = cat(3, ctrPc_drift{iDrift});
+    if isempty(trPc_clu1), continue; end
+    viClu2 = [cviClu_drift{viDrift1}];
+    trPc_clu2  = cat(3, ctrPc_drift{viDrift1});
+    if isempty(trPc_clu2), continue; end
+    mrWav_clu2 = tr2mr_pv_norm_(trPc_clu2, mrPv);
+    for iiClu1 = 1:numel(viClu1)
+        iClu1 = viClu1(iiClu1);
+        mrWav11 = pc2wav_shift_(trPc_clu1(:,:,iiClu1), mrPv, viShift);
+        for iiClu2 = 1:numel(viClu2)
+            iClu2 = viClu2(iiClu2);         
+            if iClu2 > iClu1 % symmetric
+                dist12 = max(mrWav_clu2(:,iiClu2)' * mrWav11);
+                mlDist_clu(iClu2, iClu1) = mlDist_clu(iClu2, iClu1) | (dist12>=maxWavCor);
+            end
+        end
+    end
+end
+
+fprintf('.');
+end %func
+
+
+%--------------------------------------------------------------------------
+function [mlDist_clu, vlExist_clu] = wave_similarity_site2_(iSite1, S_auto)
 
 NUM_KNN = 10;
 fUseSecondSite = 1;
@@ -1083,30 +1184,42 @@ end
 mlDist_clu = false(nClu);
 ml1_drift_clu = ~cellfun(@isempty, cc1_drift_clu);
 ml2_drift_clu = ~cellfun(@isempty, cc2_drift_clu);
-vlExist_clu = any(ml1_drift_clu) | any(ml2_drift_clu);
-viClu_site1 = find(vlExist_clu);
-nClu1 = numel(viClu_site1);
+vlExist1_clu = any(ml1_drift_clu);
+vlExist2_clu = any(ml2_drift_clu);
+vlExist_clu = vlExist1_clu | vlExist2_clu;
+
+viClu1_site1 = find(vlExist1_clu);
+nClu1 = numel(viClu1_site1);
 for iiClu1 = 1:nClu1-1
-    iClu1 = viClu_site1(iiClu1);
+    iClu1 = viClu1_site1(iiClu1);
     cmrPc1 = cc1_drift_clu(:,iClu1);
     cmrWav1 = cellfun_(@(x)pc2wav_shift_(x, mrPv, viShift), cmrPc1);
+    viDrift1 = find(ml1_drift_clu(:,iClu1))';
+    mlDrift1 = mlDrift(:,viDrift1);
     for iiClu2 = iiClu1+1:nClu1
-        iClu2 = viClu_site1(iiClu2);
-        dist12 = clu_similarity_drift_(...
-            cmrWav1, ml1_drift_clu(:,iClu2), ml2_drift_clu(:,iClu2),...
-            cc1_drift_clu(:,iClu2), cc2_drift_clu(:,iClu2), mlDrift, mrPv);
+        iClu2 = viClu1_site1(iiClu2);
+        dist12 = clu_similarity_drift_(viDrift1, cmrWav1, ...
+            ml1_drift_clu(:,iClu2), ml2_drift_clu(:,iClu2),...
+            cc1_drift_clu(:,iClu2), cc2_drift_clu(:,iClu2), mlDrift1, mrPv);
         mlDist_clu(iClu2,iClu1) = mlDist_clu(iClu2,iClu1) | (dist12>=maxWavCor);
     end
-    if ~fSecondSite, continue; end
-    
-    cmrPc1 = cc2_drift_clu(:,iClu1);
-    cmrWav1 = cellfun_(@(x)pc2wav_shift_(x, mrPv, viShift), cmrPc1);
-    for iiClu2 = iiClu1+1:nClu1
-        iClu2 = viClu_site1(iiClu2);
-        dist12 = clu_similarity_drift_(...
-            cmrWav1, ml1_drift_clu(:,iClu2), ml2_drift_clu(:,iClu2),...
-            cc1_drift_clu(:,iClu2), cc2_drift_clu(:,iClu2), mlDrift, mrPv);
-        mlDist_clu(iClu2,iClu1) = mlDist_clu(iClu2,iClu1) | (dist12>=maxWavCor);
+end
+if fSecondSite
+    viClu2_site1 = find(vlExist2_clu);
+    nClu2 = numel(viClu2_site1);
+    for iiClu1 = 1:nClu2-1
+        iClu1 = viClu2_site1(iiClu1);
+        cmrPc1 = cc2_drift_clu(:,iClu1);
+        cmrWav1 = cellfun_(@(x)pc2wav_shift_(x, mrPv, viShift), cmrPc1);
+        viDrift1 = find(ml2_drift_clu(:,iClu1))';
+        mlDrift1 = mlDrift(:,viDrift1);
+        for iiClu2 = iiClu1+1:nClu2
+            iClu2 = viClu2_site1(iiClu2);
+            dist12 = clu_similarity_drift_(viDrift1, cmrWav1, ...
+                ml1_drift_clu(:,iClu2), ml2_drift_clu(:,iClu2),...
+                cc1_drift_clu(:,iClu2), cc2_drift_clu(:,iClu2), mlDrift1, mrPv);
+            mlDist_clu(iClu2,iClu1) = mlDist_clu(iClu2,iClu1) | (dist12>=maxWavCor);
+        end
     end
 end
 
@@ -1115,21 +1228,29 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function dist12 = clu_similarity_drift_(...
-    cmrWav1, vlPc2_1, vlPc2_2, cmrPc2_1, cmrPc2_2, mlDrift, mrPv)
+function dist12 = clu_similarity_drift_(viDrift1, cmrWav1, ...
+    vlPc2_1, vlPc2_2, cmrPc2_1, cmrPc2_2, mlDrift1, mrPv)
 
-viDrift1 = find(~cellfun(@isempty, cmrWav1))';
+% viDrift1 = find(~cellfun(@isempty, cmrWav1))';
 dist12 = 0;
 
 norm_mr_ = @(mr)mr ./ sqrt(sum(mr.^2,1)); 
 tr2mr_pv_norm_ = @(tr,mr)norm_mr_(reshape(mr*reshape(tr,size(tr,1),[]),[],size(tr,3))); 
-
-for iDrift1 = viDrift1
-    viDrift2 = find(mlDrift(:,iDrift1));
-    if ~any(vlPc2_1(viDrift2) | vlPc2_2(viDrift2)), continue; end
-    trPc2_1 = cat(3, cmrPc2_1{viDrift2});
-    trPc2_2 = cat(3, cmrPc2_2{viDrift2});
-%     if isempty(trPc2_1) && isempty(trPc2_2), continue; end
+nDrift1 = numel(viDrift1);
+for iiDrift1 = 1:nDrift1
+    iDrift1 = viDrift1(iiDrift1);
+    vlDrift2 = mlDrift1(:,iiDrift1);
+    if any(vlPc2_1(vlDrift2))
+        trPc2_1 = cat(3, cmrPc2_1{vlDrift2});
+    else
+        trPc2_1 = [];
+    end
+    if any(vlPc2_2(vlDrift2))
+        trPc2_2 = cat(3, cmrPc2_2{vlDrift2});
+    else
+        trPc2_2 = [];
+    end
+    if isempty(trPc2_1) && isempty(trPc2_2), continue; end
     mrWav1 = cmrWav1{iDrift1};
     if ~isempty(trPc2_1)
         max1 = tr2mr_pv_norm_(trPc2_1, mrPv)' * mrWav1;
