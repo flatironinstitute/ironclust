@@ -151,7 +151,7 @@ end %func
 %--------------------------------------------------------------------------
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_()
-vcVer = 'v5.4.7';
+vcVer = 'v5.4.8';
 vcDate = '01/07/2020';
 vcHash = file2hash_();
 
@@ -654,7 +654,6 @@ catch
     nFeatures = P.nSites_fet * P.nPcPerChan;
     nPcPerChan = P.nPcPerChan;
 end
-fLargeRecording = get_(P, 'nTime_drift') > get_set_(P, 'nTime_max_drift', 2^8);
 
 csDesc = {};
 try
@@ -713,6 +712,7 @@ try
     csDesc{end+1} = sprintf('    merge runtime (s):      %0.1fs', runtime_automerge);
     csDesc{end+1} = sprintf('    Total runtime (s):      %0.1fs', runtime_total);
     csDesc{end+1} = sprintf('    Runtime speed:          x%0.1f realtime', tDur / runtime_total);    
+    csDesc{end+1} = sprintf('    Processing speed:       %0.1f spikes/s', nSpk / runtime_total);    
 
     csDesc{end+1} = sprintf('memory usage (GiB):         %0.3f', max(memory_detect, memory_sort)/2^30);
     csDesc{end+1} = sprintf('    detect(GiB):            %0.3f', memory_detect/2^30);
@@ -722,7 +722,7 @@ try
     csDesc{end+1} = sprintf('    irc2 version:           %s', get_(P, 'vcVersion'));
     csDesc{end+1} = sprintf('    fGpu (GPU use):         %d', P.fGpu);
     csDesc{end+1} = sprintf('    fParfor (parfor use):   %d', P.fParfor);
-    csDesc{end+1} = sprintf('    fLargeRecording:        %d', fLargeRecording); 
+    csDesc{end+1} = sprintf('    fLargeRecording:        %d', isLargeRecording_(P)); 
     csDesc{end+1} = sprintf('    Parameter file:         %s', P.vcFile_prm);
 catch
     ;
@@ -730,6 +730,12 @@ end
 if nargout==0
     cellfun(@(x)disp(x), csDesc);
 end
+end %func
+
+
+%--------------------------------------------------------------------------
+function flag = isLargeRecording_(P)
+flag = get_(P, 'nTime_drift') > get_set_(P, 'nTime_max_drift', 2^8);
 end %func
 
 
@@ -769,12 +775,12 @@ maxWavCor = get_set_(P, 'maxWavCor', .99);
 nClu = get_(S0.S_clu, 'nClu');
 if maxWavCor<1 && nClu > 1
     try
-        fprintf('Merging templates...\n'); t_merge=tic;
+        fprintf('\tMerging templates...\n\t'); t_merge=tic;
         nClu_pre = S0.S_clu.nClu;
-        [mrDist_clu, viClu_delete] = wave_similarity_(S0, P);
-        [S0.S_clu, nClu_post] = ml_merge_clu_(S0.S_clu, mrDist_clu >= maxWavCor, viClu_delete);    
+        [mlDist_clu, viClu_delete] = wave_similarity_(S0, P);
+        [S0.S_clu, nClu_post] = ml_merge_clu_(S0.S_clu, mlDist_clu, viClu_delete);    
         fprintf('\tMerged waveforms (%d->%d->%d), took %0.1fs\n', ...
-            nClu_pre, nClu_pre-numel(viClu_delete), nClu_post, toc(t_merge));
+            nClu_pre, nClu_post+numel(viClu_delete), nClu_post, toc(t_merge));
     catch E
         fprintf(2, 'Merging templates failed\n');
         disp(E.stack);
@@ -790,7 +796,7 @@ S0.S_clu = S_clu_sort_(S0.S_clu, 'viSite_clu');
 S0.S_clu = S_clu_refrac_(S0.S_clu, P, [], S0.viTime_spk); % refractory violation removal
 
 S0.S_clu.runtime_automerge = toc(runtime_automerge);
-fprintf('\n\tauto-merging took %0.1fs (fGpu=%d, fParfor=%d)\n', ...
+fprintf('\tauto-merging took %0.1fs (fGpu=%d, fParfor=%d)\n', ...
     S0.S_clu.runtime_automerge, P.fGpu, P.fParfor);
 end %func
 
@@ -821,7 +827,7 @@ if ~isempty(viClu_delete)
     mlWavCor_clu(viClu_delete,:) = false;
     mlWavCor_clu(:,viClu_delete) = false;
     S_clu.viClu(ismember(S_clu.viClu, viClu_delete)) = 0;
-    fprintf('\tdeleted %d clusters below SNR\n', numel(viClu_delete));
+    fprintf('\tdeleted %d clusters with SNR below the detection threshold\n', numel(viClu_delete));
 end
 % nClu_pre = size(mlWavCor_clu,1);
 [S_clu.viClu, viMap_new] = map_using_ml_(S_clu.viClu, mlWavCor_clu);
@@ -963,19 +969,11 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function [mrDist_clu, viClu_remove] = wave_similarity_(S0, P)
-switch 1
-    case 1, [mrDist_clu, viClu_remove] = wave_similarity1_(S0, P);
-    case 2, [mrDist_clu, viClu_remove] = wave_similarity2_(S0, P);
-end %switch
-end %func
-
-
-%--------------------------------------------------------------------------
 % keeps trPc in the main memory, not sent out to workers
-function [mrDist_clu, viClu_remove] = wave_similarity2_(S0, P)
-S_clu = S0.S_clu;
+function [mlDist_clu, viClu_remove] = wave_similarity_(S0, P)
 
+S_clu = S0.S_clu;
+t_fun = tic;
 % fprintf('\tAutomated merging based on waveform similarity...\n'); t_template=tic;
 [viClu, vrRho] = struct_get_(S_clu, 'viClu', 'rho');
 [ccviSpk_site_load, ccviSpk_site2_load, type_fet, dimm_fet, mrPv, vrThresh_site] = ...
@@ -983,7 +981,7 @@ S_clu = S0.S_clu;
         'dimm_fet', 'mrPv_global', 'vrThresh_site');
 nShift_max = ceil(diff(P.spkLim) * P.frac_shift_merge / 2);
 viShift = -nShift_max:nShift_max;
-[nDrift, knn, nSpk_min, vcFile_prm] = get_(P, 'nTime_drift', 'knn', 'knn', 'vcFile_prm');
+[nDrift, knn, nSpk_min, vcFile_prm, maxWavCor] = get_(P, 'nTime_drift', 'knn', 'knn', 'vcFile_prm', 'maxWavCor');
 nClu = S_clu.nClu;
 
 % try loading the entire miKnn to RAM
@@ -991,22 +989,43 @@ nSites = size(P.miSites,2);
 [viLim_drift, mlDrift] = get_(S_clu.S_drift, 'viLim_drift', 'mlDrift');
 S_auto = makeStruct_(nDrift, nClu, nSites, knn, vcFile_prm, nSpk_min, ...
     vrRho, viClu, viLim_drift, ccviSpk_site_load, ccviSpk_site2_load, ...
-    type_fet, dimm_fet, mrPv, vrThresh_site, viShift, mlDrift);
+    type_fet, dimm_fet, mrPv, vrThresh_site, viShift, mlDrift, maxWavCor);
 
-
-t_fun = tic;
-mrDist_clu = nan(S_clu.nClu, 'single'); % 64 GB if 130839 units are found. sparse...
-for iSite = 1:nSites
-    mrDist_clu = wave_similarity_site_(iSite, S_auto, mrDist_clu);
+% compute pairwise distance in parallel by sites
+[cmlDist_clu, cvlExist_clu] = deal(cell(nClu, 1));
+fParfor = get_set_(P, 'fParfor', 1);
+if fParfor % && ~isLargeRecording_(P)
+    try
+        parfor iSite = 1:nSites
+            try
+                [cmlDist_clu{iSite}, cvlExist_clu{iSite}] = wave_similarity_site_(iSite, S_auto);
+            catch
+            end
+        end
+    catch
+    end
 end
 
-viClu_remove = [];
-fprintf('\twave_similarity_: took %0.1fs\n', toc(t_fun));
+% merge cluster pairwise distance
+mlDist_clu = false(nClu);
+mlDist_clu(sub2ind([nClu,nClu], 1:nClu, 1:nClu)) = true; % self join
+vlExist_clu = false(1, nClu);
+for iSite = 1:nSites
+    if isempty(cmlDist_clu{iSite})
+        [cmlDist_clu{iSite}, cvlExist_clu{iSite}] = wave_similarity_site_(iSite, S_auto);
+    end
+    mlDist_clu = mlDist_clu | cmlDist_clu{iSite};
+    vlExist_clu = vlExist_clu | cvlExist_clu{iSite};
+    [cmlDist_clu{iSite}, cvlExist_clu{iSite}] = deal([]); % clear memory
+end
+viClu_remove = find(~vlExist_clu);
+fprintf('\n\twave_similarity_: took %0.1fs\n', toc(t_fun));
 end %func
 
 
 %--------------------------------------------------------------------------
-function mrDist_clu = wave_similarity_site_(iSite1, S_auto, mrDist_clu)
+function [mlDist_clu, vlExist_clu] = wave_similarity_site_(iSite1, S_auto)
+
 NUM_KNN = 10;
 fUseSecondSite = 1;
 
@@ -1058,68 +1077,68 @@ for iDrift = 1:nDrift
         end         
     end
 end
+[trPc1, trPc2, miKnn1, miiKnn1, miiKnn2] = deal([]); % clear memory
 
 % distance calculation
+mlDist_clu = false(nClu);
 ml1_drift_clu = ~cellfun(@isempty, cc1_drift_clu);
 ml2_drift_clu = ~cellfun(@isempty, cc2_drift_clu);
-for iDrift = 1:nDrift   
-    viDrift1 = find(mlDrift(:,iDrift));
-    [cc1_clu2, cc2_clu2] = deal(cc1_drift_clu(viDrift1,:), cc2_drift_clu(viDrift1,:));
-    [ml1_clu2, ml2_clu2] = deal(ml1_drift_clu(viDrift1,:), ml2_drift_clu(viDrift1,:));
-    for iClu1 = 1:nClu-1        
-        viClu2 = iClu1+1:nClu;
-        mrPc1 = cc1_drift_clu{iDrift, iClu1};
-        if ~any(any(ml1_clu2(:,viClu2)) | any(ml2_clu2(:,viClu2))), continue; end
-        if ~isempty(mrPc1)
-            vrDist1 = clu_similarity_(mrPc1, mrPv, viShift, cc1_clu2(:,viClu2), cc2_clu2(:,viClu2));
-            mrDist_clu(viClu2,iClu1) = max(mrDist_clu(viClu2,iClu1), vrDist1);
-        end        
-        
-        if ~fSecondSite, continue; end
-        mrPc2 = cc2_drift_clu{iDrift, iClu1};
-        if ~isempty(mrPc2)
-            vrDist2 = clu_similarity_(mrPc2, mrPv, viShift, cc1_clu2(:,viClu2), cc2_clu2(:,viClu2));
-            mrDist_clu(viClu2,iClu1) = max(mrDist_clu(viClu2,iClu1), vrDist2);
-        end        
+vlExist_clu = any(ml1_drift_clu) | any(ml2_drift_clu);
+viClu_site1 = find(vlExist_clu);
+nClu1 = numel(viClu_site1);
+for iiClu1 = 1:nClu1-1
+    iClu1 = viClu_site1(iiClu1);
+    cmrPc1 = cc1_drift_clu(:,iClu1);
+    cmrWav1 = cellfun_(@(x)pc2wav_shift_(x, mrPv, viShift), cmrPc1);
+    for iiClu2 = iiClu1+1:nClu1
+        iClu2 = viClu_site1(iiClu2);
+        dist12 = clu_similarity_drift_(...
+            cmrWav1, ml1_drift_clu(:,iClu2), ml2_drift_clu(:,iClu2),...
+            cc1_drift_clu(:,iClu2), cc2_drift_clu(:,iClu2), mlDrift, mrPv);
+        mlDist_clu(iClu2,iClu1) = mlDist_clu(iClu2,iClu1) | (dist12>=maxWavCor);
+    end
+    if ~fSecondSite, continue; end
+    
+    cmrPc1 = cc2_drift_clu(:,iClu1);
+    cmrWav1 = cellfun_(@(x)pc2wav_shift_(x, mrPv, viShift), cmrPc1);
+    for iiClu2 = iiClu1+1:nClu1
+        iClu2 = viClu_site1(iiClu2);
+        dist12 = clu_similarity_drift_(...
+            cmrWav1, ml1_drift_clu(:,iClu2), ml2_drift_clu(:,iClu2),...
+            cc1_drift_clu(:,iClu2), cc2_drift_clu(:,iClu2), mlDrift, mrPv);
+        mlDist_clu(iClu2,iClu1) = mlDist_clu(iClu2,iClu1) | (dist12>=maxWavCor);
     end
 end
+
 fprintf('.');
 end %func
 
 
 %--------------------------------------------------------------------------
-function vrDist_clu1 = clu_similarity_(mrPc1, mrPv, viShift, cc1_clu2, cc2_clu2)
+function dist12 = clu_similarity_drift_(...
+    cmrWav1, vlPc2_1, vlPc2_2, cmrPc2_1, cmrPc2_2, mlDrift, mrPv)
 
-nClu2 = size(cc1_clu2,2);
-vrDist_clu1 = nan(nClu2, 1, 'single');
+viDrift1 = find(~cellfun(@isempty, cmrWav1))';
+dist12 = 0;
 
 norm_mr_ = @(mr)mr ./ sqrt(sum(mr.^2,1)); 
 tr2mr_pv_norm_ = @(tr,mr)norm_mr_(reshape(mr*reshape(tr,size(tr,1),[]),[],size(tr,3))); 
-  
-mrWav1 = tr2mr_pv_norm_(mrPc1, mrPv);
 
-% todo: shift waveform in time
-for iClu2 = 1:nClu2
-    flag1 = all(cellfun(@isempty, cc1_clu2(:,iClu2)));
-    flag2 = all(cellfun(@isempty, cc2_clu2(:,iClu2)));
-    if flag1 && flag2, continue; end
-    
-    if ~flag1
-        trPc12 = cat(3, cc1_clu2{:,iClu2});
-        max1 = tr2mr_pv_norm_(trPc12, mrPv)' * mrWav1;
-        max1 = max(max1(:));
-    else
-        max1 = nan;
+for iDrift1 = viDrift1
+    viDrift2 = find(mlDrift(:,iDrift1));
+    if ~any(vlPc2_1(viDrift2) | vlPc2_2(viDrift2)), continue; end
+    trPc2_1 = cat(3, cmrPc2_1{viDrift2});
+    trPc2_2 = cat(3, cmrPc2_2{viDrift2});
+%     if isempty(trPc2_1) && isempty(trPc2_2), continue; end
+    mrWav1 = cmrWav1{iDrift1};
+    if ~isempty(trPc2_1)
+        max1 = tr2mr_pv_norm_(trPc2_1, mrPv)' * mrWav1;
+        dist12 = max(dist12, max(max1(:)));
     end
-
-    if ~flag2
-        trPc22 = cat(3, cc2_clu2{:,iClu2});
-        max2 = tr2mr_pv_norm_(trPc22, mrPv)' * mrWav1;
-        max2 = max(max2(:));
-    else
-        max2 = nan;
+    if ~isempty(trPc2_2)
+        max1 = tr2mr_pv_norm_(trPc2_2, mrPv)' * mrWav1;
+        dist12 = max(dist12, max(max1(:)));
     end
-    vrDist_clu1(iClu2) = max(max1, max2);
 end
 end %func
 
@@ -1148,7 +1167,7 @@ S_auto = makeStruct_(nDrift, nClu, nSites, knn, vcFile_prm, nSpk_min, ...
 
 
 t_fun = tic;
-fLargeRecording = get_(P, 'nTime_drift') > get_set_(P, 'nTime_max_drift', 2^8);
+fLargeRecording = isLargeRecording_(P);
 fParfor = get_set_(P, 'fParfor', 1);
 [c_cc1_site, c_cc2_site] = deal(cell(1, nSites));
 if fParfor && ~fLargeRecording 
@@ -1264,6 +1283,8 @@ end %func
 
 %--------------------------------------------------------------------------
 function mrWav = pc2wav_shift_(trPc, mrPv, viShift)
+
+if isempty(trPc), mrWav=[]; return; end
 [nPc, nSites, nSpk, nT] = deal(size(trPc,1), size(trPc,2), size(trPc,3), size(mrPv,1));
 trWav = reshape(mrPv*reshape(trPc, nPc,[]), [nT, nSites, nSpk]);
 mrWav = reshape(shift_trWav_(trWav, viShift), nT*nSites, []);
@@ -1910,9 +1931,8 @@ runtime_sort = tic;
 
 S_drift = calc_drift_(S0, P);
 if true % disable parfor for large recordings
-    fLargeRecording = get_(P, 'nTime_drift') > get_set_(P, 'nTime_max_drift', 2^8);
     if get_set_(P, 'fGpu', 1)
-        P.fParfor = get_set_(P, 'fParfor', 1) && ~fLargeRecording; % disable parfor
+        P.fParfor = get_set_(P, 'fParfor', 1) && ~isLargeRecording_(P); % disable parfor
     end
 end
 [vrRho, vrDelta, viNneigh, memory_sort, nFeatures] = sort_page_(S0, P, S_drift);
@@ -4734,7 +4754,7 @@ else
             viClu_spk(ordrho_spk(ii)) = viClu_spk(nneigh1(ii));        
         end
         n1 = sum(viClu_spk<=0);
-        fprintf('nRepeat:%d, n0=%d\n', iRepeat, n1);
+        fprintf('\tnRepeat:%d, n0=%d\n', iRepeat, n1);
         if n1==0, break; end
     end
 end
@@ -4818,7 +4838,7 @@ end
 viUniq_ = unique(viMapClu);
 viMap_(viUniq_) = 1:numel(viUniq_);
 viMapClu_new = viMap_(viMapClu);
-fprintf('cell2map_: nRepeat=%d, took %0.1fs\n', iRepeat, toc(t_fun));
+fprintf('\tcell2map_: nRepeat=%d, took %0.1fs\n', iRepeat, toc(t_fun));
 end %func
 
 
