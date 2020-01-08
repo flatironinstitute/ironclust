@@ -151,7 +151,7 @@ end %func
 %--------------------------------------------------------------------------
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_()
-vcVer = 'v5.4.10';
+vcVer = 'v5.4.11';
 vcDate = '01/08/2020';
 vcHash = file2hash_();
 
@@ -3053,7 +3053,7 @@ mrVp_spk = [];
 
 % extract spike feaures
 if isempty(mrPv_global)
-    [mrPv_global, vrD_global] = get_pv_(trWav_spk, P); 
+    [mrPv_global, vrD_global] = get_prinvec_(trWav_spk, P); 
 end
 trPc_spk = gather_(project_pc_(trWav_spk, mrPv_global, P));
 
@@ -3127,27 +3127,33 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function [mrPv1, vrD1] = get_pv_(tr, P)
+function [mrPv1, vrD1] = get_prinvec_(tr, P)
 %tr: nSamples x nSpikes x nChans
-MAX_SAMPLE = 10000;        
+% MAX_SAMPLE = 10000;        
 
-viSpk_sub = subsample_vr_(1:size(tr,3), MAX_SAMPLE);
-switch 3
-    case 1, mr1 = squeeze(tr(:, 1, viSpk_sub)); % use peak chan only
-    case 2, mr1 = reshape(tr(:, 1:P.nSites_fet, viSpk_sub), size(tr,1), []); 
-    case 3, mr1 = reshape(tr(:, :, viSpk_sub), size(tr,1), []); % use all chan
-end
+% viSpk_sub = subsample_vr_(1:size(tr,3), MAX_SAMPLE);
+% switch 4
+%     case 1, mr1 = squeeze(tr(:, 1, viSpk_sub)); % use peak chan only
+%     case 2, mr1 = reshape(tr(:, 1:P.nSites_fet, viSpk_sub), size(tr,1), []); 
+%     case 3, mr1 = reshape(tr(:, :, viSpk_sub), size(tr,1), []); % use all chan
+%     case 4, mr1 = reshape(tr, size(tr,1), []); % use all chan
+% end
+t_fun = tic;
 nPc_spk = get_set_(P, 'nPc_spk', 9); % # components to compress spike waveforms
-
-switch 2
+mr1 = gather_(reshape(tr, size(tr,1), []));
+switch 3
     case 1
         % mrSpkWav1 = meanSubt_(mrSpkWav1);
         [mrPv1, vrD1] = eig(mr1 * mr1');
         mrPv1 = zscore_(fliplr(mrPv1)); % sort largest first
         vrD1 = flipud(diag(vrD1));
     case 2
-        [mrPv1, ~, vrD1] = pca(gather_(mr1)','Centered',false, 'NumComponents', nPc_spk);
+        [mrPv1, ~, vrD1] = pca(mr1','Centered',false, 'NumComponents', nPc_spk);
+    case 3
+        [mrPv1, ~, vrD1] = pca(double(mr1'),'Centered',false, 'NumComponents', nPc_spk);
+        [mrPv1, vrD1] = deal(single(mrPv1), single(vrD1));
 end
+fprintf('\tget_prinvec_: took %0.1fs\n', toc(t_fun));
 end %func
 
 
