@@ -9,8 +9,7 @@
 #define NC (45) //3pca x 16 channels max
 #define SINGLE_INF (3.402E+38) // equipvalent to NAN. consider -1 value
 #define SWAP(x, y, T) do { T SWAP = x; x = y; y = SWAP; } while (0)
-#define CHUNK (16) // 4
-#define NM (256) // number of drift
+#define CHUNK (8) // 16
 
 /** Main entry point.
  * Works out where the current thread should read/write to global memory
