@@ -20,6 +20,7 @@ persistent vcFile_prm_
 % batch processing. it uses default param for now
 fDetect = read_cfg_('fForceRerun');
 
+% run in batch mode
 if iscell(vcDir_in) && iscell(vcDir_out)    
     [csDir_in, csDir_out, csFile_arg, fParfor] = deal(vcDir_in, vcDir_out, vcFile_arg, vcArg3);
     if isempty(fParfor), fParfor = false; end
@@ -55,7 +56,7 @@ switch lower(vcCmd)
         [varargout{1}, varargout{2}] = readmda_(vcArg1); return;
     case 'import-clip'
         [S0, P] = import_clip_(vcArg1); 
-    case 'edit', edit_(vcArg1); return;
+    case 'edit', edit_(dir2prm_(vcArg1)); return;
     case 'juxta'
         convert_mda_ui('english'); return;
     case 'version'
@@ -64,7 +65,8 @@ switch lower(vcCmd)
         end
         return;
     case 'scoreboard', irc2_scoreboard(); return;
-    case {'spikesort', 'detect-sort', 'sort', 'auto', '', 'describe', 'manual', ...
+    case {'spikesort', 'detectsort', 'detectsort-verify', 'detect-sort', ...
+            'sort', 'auto', '', 'describe', 'manual', ...
             'verify', 'auto-verify', 'sort-verify', 'spikesort-verify'}
         if isempty(vcDir_out)
             vcFile_prm = vcFile_prm_;
@@ -106,7 +108,9 @@ switch lower(vcCmd)
     case 'export', irc('export', vcArg1); return;
     case {'export-phy', 'phy'}, irc2phy(vcArg1, vcArg2); return;
     case {'export-klusters', 'klusters', 'neurosuite'}, irc2klusters_v2(vcArg1, vcArg2); return;
-    otherwise, clear_();
+    otherwise % directory running mode
+        vcCmd=''; clear_(); 
+        fValidate = exist_file_(fullfile(vcDir_in, 'firings_true.mda'));
 end
 
 fprintf('Running irc2.m (%s)\n', version_());
@@ -815,8 +819,9 @@ if maxWavCor<1 && nClu > 1
             nClu_pre, nClu_post+numel(viClu_delete), nClu_post, toc(t_merge));
     catch E
         fprintf(2, 'Merging templates failed\n');
-        disp(E.stack);
-        disp(E.message);
+        disp(E);
+%         disp(E.stack);
+%         disp(E.message);
         assignWorkspace_(E);
         save0_(S0);
         rethrow(E);
@@ -1025,13 +1030,13 @@ S_auto = makeStruct_(nClu, nSites, knn, vcFile_prm, nSpk_min, ...
     type_fet, dimm_fet, mrPv, vrThresh_site, viShift, mlDrift, maxWavCor);
 
 % compute pairwise distance in parallel by sites
-[cmlDist_clu, cvlExist_clu] = deal(cell(nClu, 1));
+[cmlDist_site, cvlExist_site] = deal(cell(nSites, 1));
 fParfor = get_set_(P, 'fParfor', 1) && nSites > 1;
 if fParfor %&& ~isLargeRecording_(P)
     try
         parfor iSite = 1:nSites
             try
-                [cmlDist_clu{iSite}, cvlExist_clu{iSite}] = wave_similarity_site_(iSite, S_auto);
+                [cmlDist_site{iSite}, cvlExist_site{iSite}] = wave_similarity_site_(iSite, S_auto);
             catch
             end
         end
@@ -1044,12 +1049,12 @@ mlDist_clu = false(nClu);
 mlDist_clu(sub2ind([nClu,nClu], 1:nClu, 1:nClu)) = true; % self join
 vlExist_clu = false(1, nClu);
 for iSite = 1:nSites
-    if isempty(cmlDist_clu{iSite})
-        [cmlDist_clu{iSite}, cvlExist_clu{iSite}] = wave_similarity_site_(iSite, S_auto);
+    if isempty(cmlDist_site{iSite})
+        [cmlDist_site{iSite}, cvlExist_site{iSite}] = wave_similarity_site_(iSite, S_auto);
     end
-    mlDist_clu = mlDist_clu | cmlDist_clu{iSite};
-    vlExist_clu = vlExist_clu | cvlExist_clu{iSite};
-    [cmlDist_clu{iSite}, cvlExist_clu{iSite}] = deal([]); % clear memory
+    mlDist_clu = mlDist_clu | cmlDist_site{iSite};
+    vlExist_clu = vlExist_clu | cvlExist_site{iSite};
+    [cmlDist_site{iSite}, cvlExist_site{iSite}] = deal([]); % clear memory
 end
 viClu_remove = find(~vlExist_clu);
 fprintf('\n\twave_similarity_: took %0.1fs\n', toc(t_fun));
@@ -1918,10 +1923,10 @@ if ~fSkip_rho
 %     assert(isempty(dir(vcFile_miKnn)), sprintf('sort_long_: %s must be deleted', vcFile_miKnn));
     fprintf('sort_page_: calculating Rho...\n'); t_rho = tic;
     for iPage = 1:nPages  
-        fprintf('Page %d:\n', iPage); t_ = tic;
+        fprintf('Page %d ', iPage); t_ = tic;
         [S_page1, viSpk_in1, viSpk_out1] = prepare_page_(S_page, S_global, iPage);
         vrRho(viSpk_in1) = rho_page_(S_page1);
-        fprintf('took %0.1fs\n\n', toc(t_));
+        fprintf('\n\ttook %0.1fs\n', toc(t_));
     end %for
     fprintf('calculating Rho took %0.1fs\n', toc(t_rho));
     if fDebug
@@ -1935,11 +1940,11 @@ end
 
 fprintf('sort_page_: calculating Delta...\n'); t_delta = tic;
 for iPage = 1:nPages    
-    fprintf('Page %d:\n', iPage); t_ = tic;    
+    fprintf('Page %d ', iPage); t_ = tic;    
     [S_page1, viSpk_in1, viSpk_out1] = prepare_page_(S_page, S_global, iPage);
     [vrDelta(viSpk_in1), viNneigh(viSpk_in1)] = delta_page_(S_page1, vrRho(viSpk_out1));
 %     [vrDelta(viSpk_in1), viNneigh(viSpk_in1)] = delta_page_(S_page1, vrRho);
-    fprintf('took %0.1fs\n\n', toc(t_));
+    fprintf('\n\ttook %0.1fs\n\n', toc(t_));
 end %for
 fprintf('calculating Delta took %0.1fs\n', toc(t_delta));
 
@@ -2001,11 +2006,12 @@ vrRho_in1 = zeros(nSpk1, 1, 'single');
 for iSite = 1:nSites
     if isempty(cviiSpk_in1_site{iSite}), continue; end
     if isempty(cvrRho_in1{iSite})
-        fprintf('\tSite %d: ', iSite); t1=tic;
+%         fprintf('\tSite %d: ', iSite); t1=tic;
         S_site1 = cell2struct({cviiSpk_in1_site{iSite}, cviiSpk_out1_site{iSite}, ...
             cviiSpk2_in1_site{iSite}, cviiSpk2_out1_site{iSite}}, csName_site1, 2);        
         cvrRho_in1{iSite} = rho_paged_site_(S_page1, S_site1, iSite);        
-        fprintf('took %0.1fs\n', toc(t1));
+%         fprintf('took %0.1fs\n', toc(t1));
+        fprintf('.');
     end
     vrRho_in1(cviiSpk_in1_site{iSite}) = cvrRho_in1{iSite};
 end
@@ -2046,12 +2052,13 @@ viNneigh1 = zeros(nSpk1, 1, 'int64');
 for iSite = 1:nSites
     if isempty(cviiSpk_in1_site{iSite}), continue; end
     if isempty(cvrDelta_in1{iSite})
-        fprintf('\tSite %d: ', iSite); t1=tic;
+%         fprintf('\tSite %d: ', iSite); t1=tic;
         S_site1 = cell2struct({cviiSpk_in1_site{iSite}, cviiSpk_out1_site{iSite}, ...
             cviiSpk2_in1_site{iSite}, cviiSpk2_out1_site{iSite}}, csName_site1, 2);                
         [cvrDelta_in1{iSite}, cviNneigh_in1{iSite}] = ...
             delta_paged_site_(S_page1, S_site1, vrRho_page1, iSite);
-        fprintf('took %0.1fs\n', toc(t1));
+%         fprintf('took %0.1fs\n', toc(t1));
+        fprintf('.');
     end
     vrDelta1(cviiSpk_in1_site{iSite}) = cvrDelta_in1{iSite};
     viNneigh1(cviiSpk_in1_site{iSite}) = cviNneigh_in1{iSite};
