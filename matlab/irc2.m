@@ -170,8 +170,8 @@ end %func
 %--------------------------------------------------------------------------
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_()
-vcVer = 'v5.4.12';
-vcDate = '01/08/2020';
+vcVer = 'v5.4.13';
+vcDate = '01/09/2020';
 vcHash = file2hash_();
 
 if nargout==0
@@ -564,7 +564,10 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function S0 = load0_(vcFile_prm)
+function S0 = load0_(vcFile_prm, fLoad_bin)
+
+if nargin<2, fLoad_bin = 1; end
+
 fprintf('Loading %s... ', vcFile_prm); t1=tic;
 % set(0, 'UserData', []);
 vcFile_mat = strrep(vcFile_prm, '.prm', '_irc.mat');
@@ -572,7 +575,7 @@ vcFile_clu_mat = strrep(vcFile_prm, '.prm', '_clu_irc.mat');
 vcFile_knn = strrep(vcFile_prm, '.prm', '_knn.irc');
 
 S0 = load(vcFile_mat);
-if isfield(S0, 'S_var')
+if isfield(S0, 'S_var') && fLoad_bin
     S0 = struct_load_bin_(S0.S_var, S0);
 end
 S0.S_clu = get_(S0, 'S_clu');
@@ -580,7 +583,7 @@ if isempty(S0.S_clu)
     if exist_file_(vcFile_clu_mat)
         S0.S_clu = load(vcFile_clu_mat);
     end
-    if isfield(S0.S_clu, 'S_var')
+    if isfield(S0.S_clu, 'S_var') && fLoad_bin
         S0.S_clu = struct_load_bin_(S0.S_clu.S_var, S0.S_clu);
     end
 end
@@ -642,9 +645,19 @@ function csDesc = describe_(S0)
 % describe_(vcFile_prm)
 % csDesc = describe_(S0)
 
+csFields = {'runtime_detect', 'memory_detect', 'memory_init', 'dimm_fet', 'P'};
+csFields_clu = {'runtime_sort', 'runtime_automerge', 'memory_sort', 'nFeatures'};
+
 if ischar(S0)
     vcFile_prm = S0;
-    S0 = load0_(vcFile_prm);
+    vcFile_mat = strrep(vcFile_prm, '.prm', '_irc.mat');
+    vcFile_clu_mat = strrep(vcFile_prm, '.prm', '_clu_irc.mat');
+    if exist_file_(vcFile_mat)
+        S0 = load(vcFile_mat, csFields{:});
+    end
+    if exist_file_(vcFile_clu_mat)
+        S0.S_clu = load(vcFile_clu_mat, csFields_clu{:});
+    end
 end 
 P=S0.P;
 
@@ -665,7 +678,7 @@ memory_detect = S0.memory_detect - S0.memory_init;
 nSites = numel(P.viSite2Chan);
 nShanks = max(P.viShank_site);
 nSites_spk = size(P.miSites,1);
-nSpk = numel(S0.viTime_spk);
+nSpk = S0.dimm_fet(3);
 try
     nFeatures = S0.S_clu.nFeatures;
     nPcPerChan = nFeatures / nSites_spk;
