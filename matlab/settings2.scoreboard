@@ -2,11 +2,7 @@
 qqFactor = {4};
 spkRefrac_ms = {1/4};
 spkLim_ms = {[-.25, .75]};
-freqLim = {[300,6000], [300,8000]};
-
-fInterp_fet = {1};
-fSpatialMask_clu = {0};
-
+freqLim = {[300,8000]};
 
 % #Auto-merging
 maxWavCor = {.99};
@@ -21,10 +17,7 @@ step_sec_drift = {20};
 fft_thresh = {8};
 delta_cut = {1};
 
-% #Sort mode
+i% #Sort mode
 nPcPerChan = {0};
 nPc_spk = {9};
-post_merge_mode0 = {5};
-sort_mode = {1};
-merge_mode = {1};
-vcCommonRef = {'mean'};
+vcCommonRef = {'mean', 'none', 'trimmean'};
