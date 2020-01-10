@@ -44,8 +44,16 @@ if isempty(vcFile_arg)
 end
 [fDetect, fSort] = deal(exist_file_(vcDir_in) || exist_dir_(vcDir_in)); % cmd mode
 [P, S0, fPlot_gt, fValidate] = deal([]); 
+vcFile_prm = dir2prm_(vcArg1);
+if isempty(vcFile_prm)
+    vcFile_prm = vcFile_prm_;
+else
+    vcFile_prm_ = vcFile_prm;
+end
 switch lower(vcCmd)
+    case {'which', 'select'}, fprintf('%s\n', vcFile_prm); return;
     case {'export-sf2', 'export-spikeforest2', 'export2spikeforest2'}, export_sf2_(); return;
+    case {'export-ws', 'export-workspace', 'export'}, export_workspace_(vcFile_prm); return;
     case 'compile-deploy', compile_cuda_(vcArg1, '1'); return
     case {'compile', 'install'}, compile_cuda_(vcArg1, '0'); return
     case 'readmda_header', varargout{1} = readmda_header_(vcArg1); return;
@@ -56,7 +64,7 @@ switch lower(vcCmd)
         [varargout{1}, varargout{2}] = readmda_(vcArg1); return;
     case 'import-clip'
         [S0, P] = import_clip_(vcArg1); 
-    case 'edit', edit_(dir2prm_(vcArg1)); return;
+    case 'edit', edit_(vcFile_prm); return;
     case 'juxta'
         convert_mda_ui('english'); return;
     case 'version'
@@ -68,13 +76,8 @@ switch lower(vcCmd)
     case {'spikesort', 'detectsort', 'detectsort-verify', 'detect-sort', ...
             'sort', 'auto', '', 'describe', 'manual', ...
             'verify', 'auto-verify', 'sort-verify', 'spikesort-verify'}
-        if isempty(vcDir_out)
-            vcFile_prm = vcFile_prm_;
-            fprintf('irc2 (%s) opening %s\n', version_(), vcFile_prm);
-        else
-            vcFile_prm = dir2prm_(vcDir_out);
-            vcFile_prm_ = vcFile_prm;
-        end
+
+        fprintf('irc2 (%s) opening %s\n', version_(), vcFile_prm);
         if isempty(vcFile_prm), fprintf(2, 'provide .prm file.\n'); return; end
         if ~exist_file_(vcFile_prm)
             fprintf(2, 'File does not exist: %s\n', vcFile_prm); return;
@@ -86,7 +89,7 @@ switch lower(vcCmd)
             case {'auto', 'auto-verify'}, clear_('sort'); fDetect = 0; fSort = 0;
             case 'describe', describe_(vcFile_prm); return;
             case {'verify', 'validate'}, validate_(P, fPlot_gt); return;
-            case 'manual', manual_(P); return;
+            case {'manual', 'ui'}, irc2_ui(P); return;
         end
         fValidate = contains(vcCmd, {'auto-verify', 'sort-verify', 'spikesort-verify'});
     case 'benchmark'
@@ -105,9 +108,18 @@ switch lower(vcCmd)
         vcDir_in = get_test_data_(strsplit_get_(vcCmd,'-',2));
         [fDetect, fSort, fValidate] = deal(1, 1, 1);
     case 'test-all', test_all_(); return;
-    case 'export', irc('export', vcArg1); return;
-    case {'export-phy', 'phy'}, irc2phy(vcArg1, vcArg2); return;
+%     case 'export', irc('export', vcArg1); return;
+    case {'export-phy', 'phy'}, irc2phy(vcFile_prm, vcArg2); return;
     case {'export-klusters', 'klusters', 'neurosuite'}, irc2klusters_v2(vcArg1, vcArg2); return;
+    case 'call'
+        switch nargout
+            case 0, call_(vcArg1, vcArg2);
+            case 1, varargout{1} = call_(vcArg1, vcArg2);
+            case 2, [varargout{1}, varargout{2}] = call_(vcArg1, vcArg2);
+            case 3, [varargout{1}, varargout{2}, varargout{3}] = call_(vcArg1, vcArg2);
+            case 4, [varargout{1}, varargout{2}, varargout{3}, varargout{4}] = call_(vcArg1, vcArg2);
+        end %switch
+        return;
     otherwise % directory running mode
         vcCmd=''; clear_(); 
         fValidate = exist_file_(fullfile(vcDir_in, 'firings_true.mda'));
@@ -154,6 +166,15 @@ end %func
 
 
 %--------------------------------------------------------------------------
+function test_all_()
+irc2('test-monotrode');
+irc2('test-tetrode');
+irc2('test-static');
+irc2('test-drift');
+end %func
+
+
+%--------------------------------------------------------------------------
 % convert directory to prm file if directory path is given
 function vcFile_prm = dir2prm_(vcDir_in)
 [vcDir1, vcFile1, vcExt1] = fileparts(vcDir_in);
@@ -174,7 +195,7 @@ end %func
 %--------------------------------------------------------------------------
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_()
-vcVer = 'v5.4.13';
+vcVer = 'v5.4.14';
 vcDate = '01/09/2020';
 vcHash = file2hash_();
 
@@ -254,6 +275,19 @@ end %func
 
 
 %--------------------------------------------------------------------------
+function export_workspace_(vcFile_prm)
+if ~exist_file_(vcFile_prm)
+    error('%s does not exist\n', vcFile_prm);
+end
+S0 = load0_(vcFile_prm);
+S0.trPc_spk = load_fet_(S0, S0.P, 1);
+S0.trPc2_spk = load_fet_(S0, S0.P, 2);
+assignWorkspace_(S0);
+end %func
+
+
+%--------------------------------------------------------------------------
+% used externally, do not remove
 function trPc_spk = load_fet_(S0, P, iFet)
 if nargin<3, iFet = 1; end
 
@@ -275,7 +309,7 @@ if iFet==1
         trPc_spk = load_bin_(vcFile_fet, S0.type_fet, S0.dimm_fet);
     else
         csFiles_in = arrayfun_(@(x)[vcFile_prm_, sprintf('_fet_%d.irc',x)], 1:S0.nLoads);
-        trPc_spk = load_bin_merge_(csFiles_in, S0.type_fet, S0.dimm_fet);
+        trPc_spk = load_bin_merge_(csFiles_in, S0.type_fet, S0.dimm_fet, S0.ccviSpk_site_load);
     end
 elseif iFet==2
     if isempty(get_(S0, 'viSite2_spk'))
@@ -291,7 +325,7 @@ elseif iFet==2
         trPc_spk = load_bin_(vcFile_fet, S0.type_fet, S0.dimm_fet);
     else
         csFiles_in = arrayfun_(@(x)[vcFile_prm_, sprintf('_fet2_%d.irc',x)], 1:S0.nLoads);
-        trPc_spk = load_bin_merge_(csFiles_in, S0.type_fet, S0.dimm_fet);
+        trPc_spk = load_bin_merge_(csFiles_in, S0.type_fet, S0.dimm_fet, S0.ccviSpk_site2_load);
     end
 else
     error('invalid feature id');
@@ -301,7 +335,8 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function trPc_spk = load_bin_merge_(csFiles_in, type_fet, dimm_fet)
+function trPc_spk = load_bin_merge_(csFiles_in, type_fet, dimm_fet, ccviSpk_site_load)
+if nargin<4, ccviSpk_site_load={}; end
 if ~exist_file_(csFiles_in{1})
     trPc_spk = []; return; % memory out
 end
@@ -321,7 +356,12 @@ for iFile = 1:numel(csFiles_in)
     end
     tr_ = load_bin_(csFiles_in{iFile}, type_fet, dimm_fet1);
     if isempty(tr_), trPc_spk = []; return; end
-    vi1 = (1:dimm_fet1(end)) + iOffset;
+    if ~isempty(ccviSpk_site_load)
+        cviSpk_site1 = ccviSpk_site_load{iFile};
+        vi1 = cat(1,cviSpk_site1{:}) + iOffset;
+    else
+        vi1 = (1:dimm_fet1(end)) + iOffset;
+    end
     trPc_spk(:,:,vi1) = tr_;
     iOffset = vi1(end);
 end %for
@@ -329,74 +369,11 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function manual_(P)
-global fDebug_ui
-
-
-if ~is_sorted_(P)
-    fprintf(2, 'File must to be sorted first (run "irc spikesort %s")\n', P.vcFile_prm); 
-    return; 
-end
-S0 = load0_(P.vcFile_prm);
-P.fParfor = 0;
-fDebug_ui = false;
-
-% keep trPc_spk loaded for manual
-S0.trPc_spk = load_fet_(S0, P, 1);
-if isempty(get_(S0.S_clu, 'trWav_spk_clu'))
-    S0.S_clu = calc_clu_wav_(S0, P);    
-    S0.S_clu = S_clu_quality_(S0.S_clu, P);
-end
-set(0, 'UserData', S0);
-
-hMsg = msgbox_('Plotting... (this closes automatically)'); t1=tic;
-S0 = figures_manual_(P); %create figures for manual interface
-clear mouse_figure;
-clear get_fig_cache_ get_tag_ %clear persistent figure handles
-
-% Set fields
-S0 = struct_merge_(S0, ...
-    struct('iCluCopy', 1, 'iCluPaste', [], 'hCopy', [], 'hPaste', [], 'nSites', numel(P.viSite2Chan)));
-set(0, 'UserData', S0);
-
-% hFigRD
-try
-    S0.S_clu = plot_FigRD_(S0.S_clu, P); % ask user before doing so
-    set(0, 'UserData', S0);
-catch
-    ;
-end
-
-% Set initial amplitudes
-plot_FigWavCor_(S0);  % need `S_clu.mrWavCor`
-S0 = plot_FigWav_(S0); % hFigWav %do this after for ordering
-
-close_(get_fig_('FigTrial')); %close previous FigTrial figure
-close_(get_fig_('FigTrial_b')); %close previous FigTrial figure
-S0 = button_CluWav_simulate_(1, [], S0); %select first clu
-auto_scale_proj_time_(S0);
-S0 = keyPressFcn_cell_(get_fig_cache_('FigWav'), {'z'}, S0); %zoom
-S_log = load_(strrep(P.vcFile_prm, '.prm', '_log.mat'), [], 0);
-if ~isempty(S_log), S0.cS_log = {S_log}; end
-save_log_('start', S0); %crash proof log
-
-% Finish up
-close_(hMsg);
-fprintf('UI creation took %0.1fs\n', toc(t1));
-end %func
-
-
-%--------------------------------------------------------------------------
 function flag = is_sorted_(P)
 % return true if already detected. .spkwav file must exist
 
-vcFile_mat = subsFileExt_(P.vcFile_prm, '_irc.mat');
-if exist_file_(vcFile_mat)
-    csNames = whos('-file', vcFile_mat);
-    flag = ismember('S_clu', {csNames.name});    
-else
-    flag = 0;
-end
+vcFile_clu_mat = strrep(P.vcFile_prm, '.prm', '_clu_irc.mat');
+flag = exist_file_(vcFile_clu_mat);
 end %func
 
 
@@ -881,61 +858,6 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function [S_clu, viClu_delete] = calc_clu_wav_(S0, P)
-
-S_clu = S0.S_clu;
-S_clu.nClu = max(S_clu.viClu);
-cviSpk_clu = arrayfun_(@(x)find(S_clu.viClu==x), (1:S_clu.nClu)');
-viSite_clu = cellfun(@(x)mode(S0.viSite_spk(x)), cviSpk_clu);
-nT = size(S0.mrPv_global,1);
-if isempty(get_(S0, 'trPc_spk'))
-    trPc_spk = load_fet_(S0, P, 1);
-else
-    trPc_spk = S0.trPc_spk;
-end
-nSites_spk = size(trPc_spk,2);
-nSites = numel(P.viSite2Chan);
-trWav_clu = zeros(nT, nSites_spk, S_clu.nClu, 'single');
-tmrWav_clu = zeros(nT, nSites, S_clu.nClu, 'single'); %global waveform
-for iClu = 1:S_clu.nClu
-    viSpk1 = cviSpk_clu{iClu};
-    if isempty(viSpk1), continue; end
-    viSite1 = S0.viSite_spk(viSpk1);
-    iSite1 = viSite_clu(iClu);
-    trPc1 = trPc_spk(:,:,viSpk1);
-    mrPc1 = mean(trPc1(:,:,viSite1==iSite1),3);
-    mrWav1 = S0.mrPv_global * mrPc1;
-    trWav_clu(:,:,iClu) = mrWav1;
-    viSite_clu1 = P.miSites(:,iSite1);
-    tmrWav_clu(:,viSite_clu1,iClu) = mrWav1;
-end
-[trWav_raw_clu, tmrWav_raw_clu] = deal(trWav_clu, tmrWav_clu); % for now raw is not saved
-[trWav_spk_clu, tmrWav_spk_clu] = deal(trWav_clu, tmrWav_clu); % for now raw is not saved
-S_clu = struct_add_(S_clu, trWav_clu, trWav_raw_clu, tmrWav_clu, viSite_clu, tmrWav_raw_clu, trWav_spk_clu, tmrWav_spk_clu);
-
-% compute SNR
-mrWav1_clu = squeeze_(trWav_clu(:,1,:),2); 
-vrVmax_clu = max(mrWav1_clu)';
-vrVmin_clu = min(mrWav1_clu)';
-vrVpp_clu = vrVmax_clu - vrVmin_clu;
-vrRms_site = S0.vrThresh_site(:) / S0.P.qqFactor;
-S_clu.vrSnr_clu = abs(vrVmin_clu(:)) ./ vrRms_site(viSite_clu);
-S_clu.vrSnr2_clu = abs(vrVpp_clu(:)) ./ vrRms_site(viSite_clu);
-
-viClu_delete = [];
-
-% update similarity
-S0.S_clu = S_clu;
-mrWavCor = wave_similarity_clu_(S0, P);
-S_clu.mrWavCor = mrWavCor + mrWavCor'; % make it symmetric
-
-S_clu = S_clu_position_(S_clu);
-S_clu = S_clu_refresh_(S_clu, 1, S0.viSite_spk);
-if ~isfield(S_clu, 'csNote_clu'), S_clu.csNote_clu = cell(S_clu.nClu, 1); end
-end %func
-
-
-%--------------------------------------------------------------------------
 function trPc_full = trPc_full_(trPc, viSite, miSites, MIN_COUNT)
 
 nSites = size(miSites,2);
@@ -1233,75 +1155,6 @@ end %func
 
 
 %--------------------------------------------------------------------------
-% keeps trPc in the main memory, not sent out to workers
-function [mrDist_clu, viClu_remove] = wave_similarity_clu_(S0, P)
-S_clu = S0.S_clu;
-
-fprintf('Automated merging (post-hoc)\n'); t1=tic;
-[viClu_spk, miKnn, vrRho_spk] = struct_get_(S_clu, 'viClu', 'miKnn', 'rho');
-[viSite_spk, viSite2_spk, mrPv] = ...
-    struct_get_(S0, 'viSite_spk', 'viSite2_spk', 'mrPv_global');
-nShift_max = ceil(diff(P.spkLim) * P.frac_shift_merge / 2);
-viShift = -nShift_max:nShift_max;
-dimm_spk = [S0.dimm_fet(1), P.nSites_fet, S0.dimm_fet(3)];
-
-% create template (nTemplate per cluster)
-cS_clu = cell(S_clu.nClu, 1);
-nDrift = get_set_(P, 'nTime_drift', 64);
-nSpk_min = get_set_(P, 'knn', 30);
-nClu = S_clu.nClu;
-
-% try loading the entire miKnn to RAM
-try
-    miKnn = load_miKnn_spk_(P, viSite_spk);
-catch
-    miKnn = [];
-end
-
-fprintf('\tComputing templates...\n'); t_template = tic;
-cviSpk_clu = arrayfun_(@(x)find(S_clu.viClu==x), (1:S_clu.nClu)');
-S_pre = makeStruct_(vrRho_spk, viSite_spk, miKnn, nDrift, dimm_spk, ...
-    nSpk_min, viSite2_spk, P);
-fParfor = P.fParfor;
-if fParfor
-    try
-        parfor iClu = 1:S_clu.nClu
-            cS_clu{iClu} = wave_similarity_clu_pre_(cviSpk_clu{iClu}, S_pre);
-        end
-    catch
-        fParfor = 0;
-    end
-end
-if ~fParfor
-    for iClu = 1:S_clu.nClu
-        cS_clu{iClu} = wave_similarity_clu_pre_(cviSpk_clu{iClu}, S_pre);
-    end
-end
-[ctrPc_clu, cviSite_clu, viClu_remove] = merge_clu_pre_load_(cS_clu, S0, P);
-% [ctrPc_clu, cviSite_clu, viClu_remove] = merge_clu_pre_(cS_clu, S0, P);
-fprintf('\n\ttook %0.1fs\n', toc(t_template));
-
-% merge the templates: todo, faster code
-mrDist_clu = nan(S_clu.nClu, 'single');
-S_post = makeStruct_(cviSite_clu, ctrPc_clu, nClu, viShift, mrPv);
-if fParfor
-    try
-        parfor iClu1 = 1:(nClu-1)
-            mrDist_clu(:, iClu1) = wav_similarity_clu_post_(iClu1, S_post);
-        end %for
-    catch
-        fParfor = 0;
-    end 
-end
-if ~fParfor
-    for iClu1 = 1:(nClu-1)
-        mrDist_clu(:, iClu1) = wav_similarity_clu_post_(iClu1, S_post);
-    end %for
-end
-end %func
-
-
-%--------------------------------------------------------------------------
 function [viClu_remove, ctrPc_clu, cviSite_clu, cviDrift_clu] = ...
     find_low_snr_clu_(S0, P, ctrPc_clu, cviSite_clu, cviDrift_clu)
 if nargin<5, cviDrift_clu = {}; end
@@ -1427,105 +1280,6 @@ switch ndims(mrPc)
         [nPc, nSites, nWav] = size(mrPc);
         out = reshape(mrPv * reshape(mrPc, nPc,[]), [], nSites, nWav);
 end
-end %func
-
-
-%--------------------------------------------------------------------------
-function S_pre = wave_similarity_clu_pre_(viSpk1, S)
-switch 2 % 2
-    case 1, S_pre = wave_similarity_clu_pre1_(viSpk1, S);
-    case 2, S_pre = wave_similarity_clu_pre2_(viSpk1, S);
-    case 3, S_pre = wave_similarity_clu_pre3_(viSpk1, S);
-end
-end %func
-
-
-%--------------------------------------------------------------------------
-% iterate by drift, not sites
-function S_pre3 = wave_similarity_clu_pre2_(viSpk1, S)
-
-KNN_MAX = 16;
-[vrRho_spk, viSite_spk, viSite2_spk, miKnn, nDrift, nSpk_min, P] = ...
-    struct_get_(S, 'vrRho_spk', 'viSite_spk', 'viSite2_spk', 'miKnn', 'nDrift', 'nSpk_min', 'P');
-viSpk1 = viSpk1(:);
-viiSpk1 = round(linspace(1, numel(viSpk1), nDrift+1));
-vrRho1 = vrRho_spk(viSpk1)';
-viSite1 = viSite_spk(viSpk1)';
-[cviSite1, cviSite2, cviSpk1, cviSpk2] = deal({});
-knn_max = min(KNN_MAX, get_set_(P, 'knn', 30));
-nSites = size(P.miSites,2);
-cviSpk_site = vi2cell_(viSite_spk, nSites);
-for iDrift = 1:nDrift
-    vii1 = viiSpk1(iDrift):viiSpk1(iDrift+1);
-    viSite11 = viSite1(vii1);
-    iSite11 = mode(viSite11);
-    vii1 = vii1(viSite11 == iSite11);
-    if ~isempty(miKnn)
-        miKnn11 = miKnn(1:knn_max, viSpk1(vii1)); % todo: load from disk
-    else
-        miKnn11 = load_miKnn_site_(P, iSite11, cviSpk_site, viSpk1(vii1));
-        miKnn11 = miKnn11(1:knn_max, :);
-    end
-    viSpk11 = unique(miKnn11(vrRho_spk(miKnn11) >= vrRho1(vii1)));
-    
-    viSite_spk111 = viSite_spk(viSpk11);
-    iSite111 = mode(viSite_spk111);
-    viSpk111 = viSpk11(viSite_spk111 == iSite111);   
-    if numel(viSpk111) >= nSpk_min
-        cviSpk1{end+1} = viSpk111;
-        cviSite1{end+1} = iSite111;
-    end
-    
-    if ~isempty(viSite2_spk)
-        viSite_spk112 = viSite2_spk(viSpk11);
-        iSite112 = mode(viSite_spk112);
-        viSpk112 = viSpk11(viSite_spk112 == iSite112);   
-        if numel(viSpk112) >= nSpk_min
-            cviSpk2{end+1} = viSpk112;
-            cviSite2{end+1} = iSite112;
-        end    
-    end
-end
-[viSite1, viSite2] = deal(cell2mat(cviSite1), cell2mat(cviSite2)); 
-S_pre3 = makeStruct_(viSite1, viSite2, cviSpk1, cviSpk2);
-end %func
-
-
-%--------------------------------------------------------------------------
-% iterate by drift, not sites
-function S_pre3 = wave_similarity_clu_pre1_(viSpk1, S)
-
-[vrRho_spk, viSite_spk, viSite2_spk, miKnn, nDrift, dimm_spk, nSpk_min] = ...
-    struct_get_(S, 'vrRho_spk', 'viSite_spk', 'viSite2_spk', 'miKnn', 'nDrift', 'dimm_spk', 'nSpk_min');
-viSpk1 = viSpk1(:);
-viiSpk1 = round(linspace(1, numel(viSpk1), nDrift+1));
-[miKnn1, vrRho1] = deal(miKnn(:,viSpk1), vrRho_spk(viSpk1)');
-[viSite1, viSite2, cviSpk1, cviSpk2] = deal({});
-for iDrift = 1:nDrift
-    vii1 = viiSpk1(iDrift):viiSpk1(iDrift+1);
-    miKnn11 = miKnn1(:,vii1);
-    viSpk11 = unique(miKnn11(vrRho_spk(miKnn11) >= vrRho1(vii1)));
-    
-    viSite_spk111 = viSite_spk(viSpk11);
-    iSite111 = mode(viSite_spk111);
-    viSpk111 = viSpk11(viSite_spk111 == iSite111);   
-    if numel(viSpk111) >= nSpk_min
-        cviSpk1{end+1} = viSpk111;
-        viSite1{end+1} = iSite111;
-    end
-    
-    if ~isempty(viSite2_spk)
-        viSite_spk112 = viSite2_spk(viSpk11);
-        iSite112 = mode(viSite_spk112);
-        viSpk112 = viSpk11(viSite_spk112 == iSite112);   
-        if numel(viSpk112) >= nSpk_min
-            cviSpk2{end+1} = viSpk112;
-            viSite2{end+1} = iSite112;
-        end    
-    end
-end
-[viSite1, viSite2] = deal(cell2mat(viSite1), cell2mat(viSite2)); 
-S_pre3 = makeStruct_(viSite1, viSite2, cviSpk1, cviSpk2);
 end %func
 
 
@@ -1730,7 +1484,7 @@ miKnn = [];
 % end
 
 % output
-vrRho = vrRho / max(vrRho) / 10;     % divide by 10 to be compatible with previous version displays
+vrRho = vrRho / max(vrRho);     % divide by 10 to be compatible with previous version displays
 [~, ordrho] = sort(vrRho, 'descend');
 S_clu = struct('rho', vrRho, 'delta', vrDelta, 'ordrho', ordrho, 'nneigh', viNneigh, ...
     'P', P, 'miKnn', miKnn, 'S_drift', S_drift, 'nFeatures', nFeatures);
@@ -2647,18 +2401,16 @@ miKnn = int32(zeros([knn, n1], 'like', mrFet1));
 vrKnn = zeros([n1, 1], 'like', mrFet1);
 for i1 = 1:nStep_knn:n1
     vi1_ = i1:min(i1+nStep_knn-1, n1);
-    [mrKnn1, miKnn(:,vi1_)] = pdist2(mrFet2_T, mrFet1(:,vi1_)', 'euclidean', 'Smallest', knn);
+    [mrKnn1, miKnn_] = pdist2(mrFet2_T, mrFet1(:,vi1_)', 'euclidean', 'Smallest', knn);
     vrKnn(vi1_) = mrKnn1(end,:);
+    knn_ = size(miKnn_,1);
+    if knn_ == knn
+        miKnn(:,vi1_) = miKnn_;
+    else
+        miKnn(1:knn_,vi1_) = miKnn_;
+        miKnn(knn_+1:end,vi1_) = repmat(miKnn_(end,:), [knn-knn_,1]);
+    end    
 end %for
-% viZero = find(vrKnn==0);
-% if ~isempty(viZero)
-%     % find smallest non-zero
-%     mrD_zero = pdist2(mrFet2_T, mrFet1(:,viZero)');
-%     mrD_zero(mrD_zero==0) = inf;
-%     [mi_, mr_] = sort(mrD_zero);
-%     vrKnn(viZero) = mr_(knn,:);
-%     
-% end
 end %func
 
 
@@ -4503,9 +4255,108 @@ nClu_pre = numel(S_clu.icl);
 nClu1 = numel(S_clu.icl);
 [S_clu.viClu, S_clu.icl] = dpclus_remove_count_(S_clu.viClu, S_clu.icl, P.min_count);
 
-S_clu = S_clu_refresh_(S_clu);
+S_clu = S_clu_refresh_(S_clu, 0, []);
 fprintf('\tpostCluster_: Pre-merged %d->%d->%d clusters, took %0.1fs\n', ...
     nClu_pre, nClu1, S_clu.nClu, toc(t_fun));
+end %func
+
+
+%--------------------------------------------------------------------------
+function [S_clu, vlKeep_clu] = S_clu_refresh_(S_clu, fRemoveEmpty, viSite_spk)
+
+nClu = double(max(S_clu.viClu));
+S_clu.nClu = nClu;
+S_clu.cviSpk_clu = vi2cell_(S_clu.viClu, nClu);
+S_clu.vnSpk_clu = cellfun(@numel, S_clu.cviSpk_clu); 
+if ~isempty(viSite_spk)
+    S_clu.viSite_clu = double(arrayfun(@(iClu)mode(viSite_spk(S_clu.cviSpk_clu{iClu})), 1:nClu));
+end
+if fRemoveEmpty
+    [S_clu, vlKeep_clu] = S_clu_remove_empty_(S_clu); 
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+function [S_clu, vlKeep_clu] = S_clu_remove_empty_(S_clu)
+vlKeep_clu = S_clu.vnSpk_clu>0;
+if all(vlKeep_clu), return; end
+
+% waveform
+S_clu = S_clu_select_(S_clu, vlKeep_clu);
+if min(S_clu.viClu) < 1
+    S_clu.viClu(S_clu.viClu<1) = 0;
+    [~,~,S_clu.viClu] = unique(S_clu.viClu+1);        
+    S_clu.viClu = S_clu.viClu-1;
+else
+    [~,~,S_clu.viClu] = unique(S_clu.viClu);        
+end
+S_clu.viClu = int32(S_clu.viClu);
+S_clu.nClu = double(max(S_clu.viClu));
+end %func
+
+
+%--------------------------------------------------------------------------
+function S_clu = S_clu_select_(S_clu, viKeep_clu)
+% automatically trim clusters
+% 7/20/17 JJJ: auto selecting vectors and matrics
+% excl vnSpk_clu, viSite_clu, vrPosX_clu, vrPosY_clu
+
+% Quality
+csNames = fieldnames(S_clu);
+if isempty(csNames), return; end
+viMatch_v = cellfun(@(vi)~isempty(vi), cellfun(@(cs)regexp(cs, '^v\w*_clu$'), csNames, 'UniformOutput', false));
+S_clu = struct_select_(S_clu, csNames(viMatch_v), viKeep_clu);
+
+viMatch_t = cellfun(@(vi)~isempty(vi), cellfun(@(cs)regexp(cs, '^t\w*_clu$'), csNames, 'UniformOutput', false));
+S_clu = struct_select_(S_clu, csNames(viMatch_t), viKeep_clu, 3); 
+
+viMatch_c = cellfun(@(vi)~isempty(vi), cellfun(@(cs)regexp(cs, '^c\w*_clu$'), csNames, 'UniformOutput', false));
+S_clu = struct_select_(S_clu, csNames(viMatch_c), viKeep_clu);
+end %func
+
+
+%--------------------------------------------------------------------------
+function S = struct_select_(S, csNames, viKeep, iDimm)
+if isempty(csNames), return; end
+if nargin<4, iDimm = 1; end
+
+% function test
+if ischar(csNames), csNames = {csNames}; end
+for i=1:numel(csNames)
+    vcName_ = csNames{i};
+    if ~isfield(S, vcName_), continue; end
+    try
+        val = S.(vcName_);
+        if isempty(val), continue; end
+        ndims_ = ndims(val);
+        if ndims_==2 %find a column or row vectors
+            if size(val,1)==1 || size(val,2)==1, ndims_=1; end %iscol or isrow
+        end
+        switch ndims_
+            case 1, val = val(viKeep);
+            case 2
+                switch iDimm
+                    case 1, val = val(viKeep,:);
+                    case 2, val = val(:,viKeep);
+                    case 3
+                        val = val(:,:,viKeep);
+                    otherwise,disperr_('struct_select_: invalid iDimm');
+                end
+            case 3
+                switch iDimm
+                    case 1, val = val(viKeep,:,:);
+                    case 2, val = val(:,viKeep,:);
+                    case 3, val = val(:,:,viKeep);
+                    otherwise, disperr_('struct_select_: invalid iDimm');
+                end
+            otherwise, disperr_('struct_select_: invalid # of dimensions (1-3 supported)');
+        end %switch
+        S.(vcName_) = val;
+    catch
+        disperr_(sprintf('struct_select_: %s field error', vcName_));
+    end
+end %for
 end %func
 
 
@@ -4828,6 +4679,25 @@ end %func
 
 
 %--------------------------------------------------------------------------
+% 4/17/18 JJJ: documentation and testing
+function varargout = call_(vcFunc, cell_Input)
+% S_out = call_(vcFunc, cell_Input, nOutput)
+% varargout = call_(vcFunc, cell_Input)
+
+if vcFunc(end) ~= '_', vcFunc = [vcFunc, '_']; end
+
+nOutput = nargout();
+switch nOutput
+    case 0, feval(vcFunc, cell_Input{:});
+    case 1, varargout{1} = feval(vcFunc, cell_Input{:});
+    case 2, [varargout{1}, varargout{2}] = feval(vcFunc, cell_Input{:});
+    case 3, [varargout{1}, varargout{2}, varargout{3}] = feval(vcFunc, cell_Input{:});
+    case 4, [varargout{1}, varargout{2}, varargout{3}, varargout{4}] = feval(vcFunc, cell_Input{:});
+end %switch
+end %func
+
+
+%--------------------------------------------------------------------------
 % Call from irc.m
 function compile_cuda_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
 function frewind_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
@@ -4836,10 +4706,6 @@ function disperr_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); en
 function edit_prm_file_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
 % function write_bin_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
 function delete_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
-function plot_FigWavCor_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
-function close_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
-function auto_scale_proj_time_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
-function save_log_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
 function edit_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
 
 function out1 = load_prb_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
@@ -4856,7 +4722,6 @@ function out1 = exist_file_(varargin), fn=dbstack(); out1 = irc('call', fn(1).na
 function out1 = loadjson_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 % function out1 = get_set_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = filesize_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
-function out1 = mr2ref_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = car_reject_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = struct_copy_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = cast_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
@@ -4873,41 +4738,24 @@ function out1 = memory_matlab_(varargin), fn=dbstack(); out1 = irc('call', fn(1)
 function out1 = recording_duration_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = squeeze_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = struct_set_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
-function out1 = S_clu_refresh_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
+% function out1 = S_clu_refresh_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = find_site_spk23_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = mn2tn_wav_spk2_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = matchFileExt_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
-function out1 = delete_clu_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 % function out1 = shift_trWav_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = struct_copyas_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = set_bool_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = ifeq_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
-function out1 = spatial_smooth_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = file2hash_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = dir_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
-function out1 = msgbox_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
-function out1 = figures_manual_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
-function out1 = plot_FigRD_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
-function out1 = plot_FigWav_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = S_clu_sort_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = S_clu_refrac_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
-function out1 = correlogram_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
-function out1 = keyPressFcn_cell_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
-function out1 = load_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
-function out1 = button_CluWav_simulate_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
-function out1 = get_fig_cache_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
-function out1 = S_clu_position_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
-function out1 = S_clu_quality_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = map_index_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
-function out1 = S_clu_prune_icl_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 
 function [out1, out2] = readmda_(varargin), fn=dbstack(); [out1, out2] = irc('call', fn(1).name, varargin); end
 function [out1, out2] = mr2thresh_(varargin), fn=dbstack(); [out1, out2] = irc('call', fn(1).name, varargin); end
-function [out1, out2] = filt_car_(varargin), fn=dbstack(); [out1, out2] = irc('call', fn(1).name, varargin); end
 function [out1, out2] = findNearSites_(varargin), fn=dbstack(); [out1, out2] = irc('call', fn(1).name, varargin); end
 function [out1, out2] = shift_range_(varargin), fn=dbstack(); [out1, out2] = irc('call', fn(1).name, varargin); end
-% function [out1, out2] = wav_car_(varargin), fn=dbstack(); [out1, out2] = irc('call', fn(1).name, varargin); end
-function [out1, out2] = get_fig_(varargin), fn=dbstack(); [out1, out2] = irc('call', fn(1).name, varargin); end
 
 function [out1, out2, out3] = fopen_mda_(varargin), fn=dbstack(); [out1, out2, out3] = irc('call', fn(1).name, varargin); end
 function [out1, out2, out3] = fopen_nsx_(varargin), fn=dbstack(); [out1, out2, out3] = irc('call', fn(1).name, varargin); end
