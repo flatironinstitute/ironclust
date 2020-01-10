@@ -51,6 +51,7 @@ else
     vcFile_prm_ = vcFile_prm;
 end
 switch lower(vcCmd)
+    case 'export-mda', save_firings_mda_(vcFile_prm, vcArg2); return;
     case {'which', 'select'}, fprintf('%s\n', vcFile_prm); return;
     case {'export-sf2', 'export-spikeforest2', 'export2spikeforest2'}, export_sf2_(); return;
     case {'export-ws', 'export-workspace', 'export'}, export_workspace_(vcFile_prm); return;
@@ -75,7 +76,7 @@ switch lower(vcCmd)
     case 'scoreboard', irc2_scoreboard(); return;
     case {'spikesort', 'detectsort', 'detectsort-verify', 'detect-sort', ...
             'sort', 'auto', '', 'describe', 'manual', ...
-            'verify', 'auto-verify', 'sort-verify', 'spikesort-verify'}
+            'validate', 'verify', 'auto-verify', 'sort-verify', 'spikesort-verify'}
 
         fprintf('irc2 (%s) opening %s\n', version_(), vcFile_prm);
         if isempty(vcFile_prm), fprintf(2, 'provide .prm file.\n'); return; end
@@ -195,8 +196,8 @@ end %func
 %--------------------------------------------------------------------------
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_()
-vcVer = 'v5.4.14';
-vcDate = '01/09/2020';
+vcVer = 'v5.4.15';
+vcDate = '01/10/2020';
 vcHash = file2hash_();
 
 if nargout==0
@@ -754,8 +755,35 @@ end %func
 
 %--------------------------------------------------------------------------
 function save_firings_mda_(S0, vcFile_firings_mda)
-S_gt1 = struct('viTime', S0.viTime_spk, 'viSite', S0.viSite_spk, 'viClu', S0.S_clu.viClu);
-gt2mda_(S_gt1, vcFile_firings_mda);
+% save_firings_mda_(S0, vcFile_firings_mda)
+% save_firings_mda_(vcFile_prm, vcFile_firings_mda)
+if nargin<2, vcFile_firings_mda = ''; end
+
+try
+    if ischar(S0)
+        vcFile_prm = S0;
+        S0 = load(strrep(vcFile_prm, '.prm', '_irc.mat'), 'S_var'); 
+        S0 = struct_load_bin_(S0.S_var);
+        S0.S_clu = load(strrep(vcFile_prm, '.prm', '_clu_irc.mat'), 'viClu'); 
+    else
+        vcFile_prm = S0.P.vcFile_prm;
+    end
+    if isempty(vcFile_firings_mda)
+        vcFile_firings_mda = fullfile(fileparts(vcFile_prm), 'firings.mda');
+    end
+    mr = [S0.viSite_spk(:), S0.viTime_spk(:), S0.S_clu.viClu(:)]';
+catch
+    error('save_firings_mda_: invalid format');
+end
+writemda_(vcFile_firings_mda, double(mr));
+fprintf('Wrote to %s\n', vcFile_firings_mda);
+end %func
+
+
+%--------------------------------------------------------------------------
+% 64-bit addressing compatible
+function writemda_(vcFile, var)
+writemda_fid(vcFile, var);
 end %func
             
 
@@ -4730,7 +4758,7 @@ function out1 = subsample_vr_(varargin), fn=dbstack(); out1 = irc('call', fn(1).
 % function out1 = cell2mat_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = struct_default_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = get_filter_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
-function out1 = gt2mda_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
+% function out1 = gt2mda_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = exist_dir_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = meanSubt_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 % function out1 = templateMatch_post_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end

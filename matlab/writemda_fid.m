@@ -11,6 +11,8 @@ function FF = writemda_fid(FF, X)
 %    write the data to the file
 % writemda_fid(FF, 'close')
 %    close the file and update the header
+% writemda_fid(file_name, X)
+%    Write X to 'file_name' and close
 %
 % Inputs:
 %    X - the multi-dimensional array
@@ -25,6 +27,7 @@ function FF = writemda_fid(FF, X)
 % 12/10/2019: Persistent variables removed, using the header instead
 
 dim_type_str = 'int64'; %either int64 or int32
+fClose = 0;
 if nargin<2, X=[]; end
 switch dim_type_str
     case 'int32', DIMM_BYTE = 4;
@@ -33,6 +36,7 @@ switch dim_type_str
 end
 if ischar(FF)
     FF = fopen(FF, 'w+');
+    if nargout==0, fClose = 1; end
 end
 nbytes_now = ftell(FF); % update header if 
 
@@ -83,5 +87,6 @@ if nbytes_now == 0
 end
 
 fwrite(FF, X, class(X));
+if fClose, writemda_fid(FF, 'close'); end
 end
 
