@@ -19,13 +19,14 @@ if isempty(vcDir_out)
 end
 mkdir_(vcDir_out);
 
-vcFile_mat = strrep(vcFile_prm, '.prm', '_irc.mat');
-if exist_file_(vcFile_mat)
-    S0 = load(vcFile_mat);
-    P = S0.P;
-else
-    [S0, P] = load_cached_(vcFile_prm);
-end
+% vcFile_mat = strrep(vcFile_prm, '.prm', '_irc.mat');
+% if exist_file_(vcFile_mat)
+S0 = irc2('call', 'load0_', {vcFile_prm});
+if isempty(S0), error('%s: output is not found', vcFile_prm); end
+P = S0.P;
+% else
+%     [S0, P] = load_cached_(vcFile_prm);
+% end
 
 [vrAmp_spk, viTime_spk, viSite_spk, S_clu] = deal(S0.vrAmp_spk, S0.viTime_spk, S0.viSite_spk, get_(S0, 'S_clu'));
 nSpikes = numel(viTime_spk);
@@ -46,7 +47,6 @@ if ~isempty(S_clu)
 end
 
 % read feature file and write to it
-vcFile_fet = strrep(vcFile_prm, '.prm', '_fet.irc');
 if exist_file_(vcFile_fet) % irc vers2 format    
     trFet_spk = load_bin_(vcFile_fet, S0.type_fet, S0.dimm_fet);
     nSites_fet = size(trFet_spk, 2);

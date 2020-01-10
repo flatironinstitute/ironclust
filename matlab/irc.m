@@ -5698,7 +5698,7 @@ end
 
 hold on; plot_(x, y, '.');
 axis tight;
-axis_([-4 -.5 -1 2])
+axis_([-2 -1 -1 2])
 set(gcf,'color','w');
 set(gcf, 'UserData', struct('x', x, 'y', y)); grid on; 
 set(gca,'XScale','linear', 'YScale', 'linear');
