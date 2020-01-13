@@ -2638,7 +2638,7 @@ disp_load_(1, var_size1, toc(t_load1), numel(get_(cS_detect{1}, 'viTime_spk')));
 % extract info from the first load
 [vrThresh_site, mrPv_global] = struct_get_(cS_detect{1}, 'vrThresh_site', 'mrPv_global');
 S_cache = makeStruct_(vrThresh_site, mrPv_global);
-fprintf('\tMemory use: %0.3f GiB\n', (memory_matlab_()-memory_init)/2^30);
+% fprintf('\tMemory use: %0.3f GiB\n', (memory_matlab_()-memory_init)/2^30);
 delete_file_fet_(P); % clear fet
 [vcFile, vS_load] = readmda_paged_('close'); % close the file
 cS_detect{1} = detect_paged_save_(cS_detect{1}, P, 1);    
@@ -2668,7 +2668,7 @@ if ~fDone
     end
 end
 S0 = detect_merge_(cS_detect, viOffset_load, P);
-fprintf('\tMemory use: %0.3f GiB\n', memory_matlab_()/2^30);
+% fprintf('\tMemory use: %0.3f GiB\n', memory_matlab_()/2^30);
 runtime_detect = toc(runtime_detect);
 memory_detect = memory_matlab_();
 S0 = struct_add_(S0, vrThresh_site, mrPv_global, runtime_detect, P, memory_detect, memory_init, nLoads);
