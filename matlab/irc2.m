@@ -62,7 +62,7 @@ switch lower(vcCmd)
     case {'join-mda', 'join_mda', 'joinmda'}
         join_mda_(vcArg1, vcArg2); return;
     case {'readmda', 'read-mda', 'read_mda'}
-        [varargout{1}, varargout{2}] = readmda_(vcArg1); return;
+        mda = readmda_(vcArg1); assignWorkspace_(mda); return;
     case 'import-clip'
         [S0, P] = import_clip_(vcArg1); 
     case 'edit', edit_(vcFile_prm); return;
@@ -167,6 +167,60 @@ end %func
 
 
 %--------------------------------------------------------------------------
+function A = readmda_(fname)
+% Author: Jeremy Magland, modified by JJJ
+% Jan 2015; Last revision: 15-Feb-2106
+if ~exist_file_(fname)
+    error('File does not exist: %s', fname);
+end
+F=fopen(fname,'r','l');
+
+% read the first header sample: data type
+try
+    code=fread(F,1,'int32');
+catch
+    error('Problem reading file: %s',fname);
+end
+
+% read the second header sample: number of dimensions
+if (code>0) 
+    num_dims=code;
+    code=-1;
+else
+    fread(F,1,'int32');
+    num_dims=fread(F,1,'int32');    
+end
+
+% read the length per dimension
+dim_type_str='int32';
+if (num_dims<0)
+    num_dims=-num_dims;
+    dim_type_str='int64';
+end
+
+% read length per dimension
+S = fread(F, num_dims, dim_type_str)';
+N = prod(S);
+
+switch code
+    case -1
+        A = fread(F,N*2,'*float');
+        A = A(1:2:end) + sqrt(-1) * A(2:2:end);
+    case -2, A = fread(F,N,'*uchar');
+    case -3, A = fread(F,N,'*float');
+    case -4, A = fread(F,N,'*int16');
+    case -5, A = fread(F,N,'*int32');
+    case -6, A = fread(F,N,'*uint16');
+    case -7, A = fread(F,N,'*double');
+    case -8, A = fread(F,N,'*uint32');
+    otherwise, error('Unsupported data type code: %d',code);
+end
+A = reshape(A, S);
+fclose(F);
+end %func
+
+
+%--------------------------------------------------------------------------
 function test_all_()
 irc2('test-monotrode');
 irc2('test-tetrode');
@@ -196,8 +250,8 @@ end %func
 %--------------------------------------------------------------------------
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_()
-vcVer = 'v5.4.15';
-vcDate = '01/10/2020';
+vcVer = 'v5.5.0';
+vcDate = '01/13/2020';
 vcHash = file2hash_();
 
 if nargout==0
@@ -219,7 +273,7 @@ if isempty(S_clu), return; end
 % ordrho: nSpk x 1: double
 vcFile_prm_ = strrep(P.vcFile_prm, '.prm', '');
 
-csVar = {'rho', 'delta', 'nneigh', 'ordrho'};
+csVar = {'rho', 'delta', 'nneigh', 'ordrho', 'cviSpk_clu'};
 [S_clu, S_clu.S_var] = struct_save_bin_(S_clu, [vcFile_prm_, '_clu.irc'], csVar);
 
 miKnn = get_(S_clu, 'miKnn');
@@ -483,7 +537,8 @@ vcFile_prm_ = strrep(S0.P.vcFile_prm, '.prm', '');
 % vrPow_spk: nSpk x 1: single
 % mrPos_spk: nSpk x 2: single
 
-csVar_spk = {'viTime_spk', 'viSite_spk', 'viSite2_spk', 'vrAmp_spk', 'vrPow_spk', 'mrPos_spk'};
+csVar_spk = {'viTime_spk', 'viSite_spk', 'viSite2_spk', 'vrAmp_spk', ...
+    'vrPow_spk', 'mrPos_spk', 'ccviSpk_site_load', 'ccviSpk_site2_load'};
 [S0, S0.S_var] = struct_save_bin_(S0, [vcFile_prm_, '_spk.irc'], csVar_spk);
 
 trPc_spk = gather_(get_(S0, 'trPc_spk'));
@@ -491,9 +546,7 @@ S0.trPc_spk = [];
 fSave_fet = get_set_(S0.P, 'fSave_fet', 0);
 if ~isempty(trPc_spk) && fSave_fet
     S0.trPc_spk = [];
-    S0.dimm_fet = size(trPc_spk);
-    S0.type_fet = class(trPc_spk);
-    write_bin_([vcFile_prm_, '_fet.irc'], trPc_spk);
+    [S0.dimm_fet, S0.type_fet] = write_bin_([vcFile_prm_, '_fet.irc'], trPc_spk);
 end
 
 trPc2_spk = gather_(get_(S0, 'trPc2_spk'));
@@ -510,24 +563,46 @@ struct_save_(S0, [vcFile_prm_, '_irc.mat'], 1);
 if ~isempty(S_clu), save_clu_(S_clu, S0.P); end
 end
 
+
 %--------------------------------------------------------------------------
+% 2020/1/13: can save cell of arrays to a binary file
 function [S0, S_var] = struct_save_bin_(S0, vcFile, csName_var)
 % save variables and clear field
 S_var = struct('vcFile', vcFile);
 S_var.csName_var = csName_var;
-S_var.cDimm_var = cell(size(csName_var));
 S_var.csType_var = cell(size(csName_var));
+S_var.cDimm_var = cell(size(csName_var));
 
 fid_w = fopen(vcFile, 'w');
 for iVar = 1:numel(csName_var)
     name_ = csName_var{iVar};
     val_ = S0.(name_);
-    S_var.cDimm_var{iVar} = size(val_);
-    S_var.csType_var{iVar} = class(val_);
     S0.(name_) = []; % clear variable
-    write_bin_(fid_w, val_);
+    if ~iscell(val_)
+        [S_var.cDimm_var{iVar}, S_var.csType_var{iVar}] = write_bin_(fid_w, val_);
+    else
+        [S_var.cDimm_var{iVar}, S_var.csType_var{iVar}] = save_cell_(fid_w, val_);
+    end
 end
 fclose(fid_w);
+end %func
+
+
+%--------------------------------------------------------------------------
+function [cDimm_cell1, csType_cell1] = save_cell_(fid_w, cVal)
+if ~iscell(cVal)
+    [cDimm_cell1, csType_cell1] = write_bin_(fid_w, cVal);
+else
+    [cDimm_cell1, csType_cell1] = deal(cell(size(cVal)));        
+    for iCell1 = 1:numel(cVal)  
+        val_ = cVal{iCell1};
+        if ~iscell(val_)
+            [cDimm_cell1{iCell1}, csType_cell1{iCell1}] = write_bin_(fid_w, val_);
+        else
+            [cDimm_cell1{iCell1}, csType_cell1{iCell1}] = save_cell_(fid_w, val_);
+        end
+    end 
+end
 end %func
 
 
@@ -538,10 +613,32 @@ if nargin<2, S = struct(); end
 import_struct_(S_var); % import all fields in this struct
 fid_r = fopen(vcFile, 'r');
 for iVar = 1:numel(csName_var)
-    S.(csName_var{iVar}) = ...
-        load_bin_(fid_r, csType_var{iVar}, cDimm_var{iVar});
+    [type_, dimm_] = deal(csType_var{iVar}, cDimm_var{iVar});
+    if iscell(type_)
+        S.(csName_var{iVar}) = load_cell_(fid_r, type_, dimm_);
+    else
+        S.(csName_var{iVar}) = load_bin_(fid_r, type_, dimm_);
+    end
 end
 fclose(fid_r);
+end %func
+
+
+%--------------------------------------------------------------------------
+function cVal = load_cell_(fid_r, cType, cDimm)
+if ~iscell(cType)
+    cVal = load_bin_(fid_r, cType, cDimm);
+else
+    cVal = cell(cType);
+    for iCell1 = 1:numel(cVal)  
+        [type_, dimm_] = deal(cType{iCell1}, cDimm{iCell1});
+        if ~iscell(type_)
+            cVal{iCell1} = load_bin_(fid_r, type_, dimm_);
+        else
+            cVal{iCell1} = load_cell_(fid_r, type_, dimm_);
+        end
+    end 
+end
 end %func
 
 
@@ -550,7 +647,7 @@ function S0 = load0_(vcFile_prm, fLoad_bin)
 
 if nargin<2, fLoad_bin = 1; end
 
-fprintf('Loading %s... ', vcFile_prm); t1=tic;
+fprintf('Loading %s... ', vcFile_prm); t_fun = tic;
 % set(0, 'UserData', []);
 vcFile_mat = strrep(vcFile_prm, '.prm', '_irc.mat');
 vcFile_clu_mat = strrep(vcFile_prm, '.prm', '_clu_irc.mat');
@@ -576,7 +673,7 @@ if isempty(get_(S0.S_clu, 'miKnn'))
     end
 end
 % set(0, 'UserData', S0);
-fprintf('took %0.1fs\n', toc(t1));
+fprintf('took %0.1fs\n', toc(t_fun));
 end %func
 
 
@@ -771,11 +868,12 @@ try
     if isempty(vcFile_firings_mda)
         vcFile_firings_mda = fullfile(fileparts(vcFile_prm), 'firings.mda');
     end
-    mr = [S0.viSite_spk(:), S0.viTime_spk(:), S0.S_clu.viClu(:)]';
+    mr = [S0.viSite_spk(:), S0.viTime_spk(:), S0.S_clu.viClu(:)];
+    S0 = []; %free memory
 catch
     error('save_firings_mda_: invalid format');
 end
-writemda_(vcFile_firings_mda, double(mr));
+writemda_(vcFile_firings_mda, double(mr'));
 fprintf('Wrote to %s\n', vcFile_firings_mda);
 end %func
 
@@ -3515,7 +3613,7 @@ end %func
 
 %--------------------------------------------------------------------------
 function [S_mda, fid_r] = readmda_header_(fname)
-fid_r = fopen(fname,'rb');
+fid_r = fopen(fname,'r','l');
 
 try
     code=fread(fid_r,1,'int32');
@@ -3536,10 +3634,7 @@ if (num_dims<0)
     dim_type_str='int64';
 end
 
-dimm=zeros(1,num_dims);
-for j=1:num_dims
-    dimm(j)=fread(fid_r,1,dim_type_str);
-end
+dimm = fread(fid_r, num_dims, dim_type_str)';
 nBytes_header = ftell(fid_r);
 
 if (code==-1)
@@ -4594,11 +4689,13 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function dimm_mr = write_bin_(vcFile, mr, fVerbose)
+function [dimm_mr, type_mr] = write_bin_(vcFile, mr, fVerbose)
 if nargin<3, fVerbose = []; end
 
-t1=tic;
+t_fun = tic;
+if isa(mr, 'gpuArray'), mr = gather(mr); end
 dimm_mr = size(mr);
+type_mr = class(mr);
 if isempty(mr), return; end
 if isstruct(mr)
     save(vcFile, '-struct', 'mr', '-v7.3'); % save to matlab file
@@ -4620,7 +4717,7 @@ else
         dimm_mr = size(cmr{1});
         dimm_mr(end) = ndimm_end;
     else
-        fwrite(fid_w, mr, class(mr));
+        fwrite(fid_w, mr, type_mr);
     end
     if ischar(vcFile)
         fclose(fid_w); 
@@ -4629,7 +4726,7 @@ else
     end
 end
 if fVerbose
-    fprintf('Writing to %s took %0.1fs\n', vcFile, toc(t1));
+    fprintf('Writing to %s took %0.1fs\n', vcFile, toc(t_fun));
 end
 end %func
 
@@ -4726,13 +4823,64 @@ end %func
 
 
 %--------------------------------------------------------------------------
+% 17/12/1 JJJ: Load size is not limited by FFT cleanup process (fft_thresh>0)
+function [nLoad1, nSamples_load1, nSamples_last1] = plan_load_(nBytes_file, P)
+% plan load file size according to the available memory and file size (nBytes_file1)
+% LOAD_FACTOR = 8; % Memory usage overhead
+vcDataType = get_set_(P, 'vcDataType_filter', P.vcDataType);
+nSamples1 = floor(nBytes_file / bytesPerSample_(P.vcDataType) / P.nChans);
+MAX_BYTES_LOAD = get_set_(P, 'MAX_BYTES_LOAD', .5e9);
+nSamples_max = floor(MAX_BYTES_LOAD / P.nChans / bytesPerSample_(vcDataType));
+
+fTranspose_bin = get_set_(P, 'fTranspose_bin', 1); %load all in one, Catalin's format
+if ~fTranspose_bin 
+    [nLoad1, nSamples_load1, nSamples_last1] = deal(1, nSamples1, nSamples1);
+else
+    [nLoad1, nSamples_load1, nSamples_last1] = partition_load_(nSamples1, nSamples_max);
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+function [nLoad1, nSamples_load1, nSamples_last1] = partition_load_(nSamples1, nSamples_max)
+nLoad1 = setlim_(ceil(nSamples1 / nSamples_max), [1, inf]); 
+nSamples_load1 = min(nSamples1, nSamples_max);
+if nLoad1 == 1
+    nSamples_load1 = nSamples1;
+    nSamples_last1 = nSamples1;
+else
+    nSamples_last1 = mod(nSamples1, nSamples_load1);
+    if nSamples_last1==0
+        nSamples_last1 = nSamples_load1;
+    elseif nSamples_last1 < nSamples_load1/2
+        % if last part is too small increase the size
+        nLoad1 = nLoad1 - 1;
+        if nLoad1==1
+            nSamples_load1 = nSamples1;
+            nSamples_last1 = nSamples1;
+        else
+            nSamples_last1 = nSamples_last1 + nSamples_load1;
+        end
+    end
+    
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+% 17/9/13 JJJ: Created and tested
+function vr = setlim_(vr, lim_)
+% Set low and high limits
+vr = min(max(vr, lim_(1)), lim_(2));
+end %func
+
+
+%--------------------------------------------------------------------------
 % Call from irc.m
 function compile_cuda_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
 function frewind_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
 function disperr_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
-% function struct_save_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
 function edit_prm_file_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
-% function write_bin_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
 function delete_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
 function edit_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
 
@@ -4748,25 +4896,21 @@ function out1 = read_cfg_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name
 function out1 = file2struct_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = exist_file_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = loadjson_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
-% function out1 = get_set_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = filesize_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = car_reject_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = struct_copy_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = cast_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = mr2tr_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = subsample_vr_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
-% function out1 = cell2mat_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = struct_default_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = get_filter_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 % function out1 = gt2mda_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = exist_dir_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = meanSubt_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
-% function out1 = templateMatch_post_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = memory_matlab_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = recording_duration_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = squeeze_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = struct_set_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
-% function out1 = S_clu_refresh_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = find_site_spk23_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = mn2tn_wav_spk2_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = matchFileExt_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
@@ -4780,12 +4924,12 @@ function out1 = S_clu_sort_(varargin), fn=dbstack(); out1 = irc('call', fn(1).na
 function out1 = S_clu_refrac_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = map_index_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 
-function [out1, out2] = readmda_(varargin), fn=dbstack(); [out1, out2] = irc('call', fn(1).name, varargin); end
+% function [out1, out2] = readmda_(varargin), fn=dbstack(); [out1, out2] = irc('call', fn(1).name, varargin); end
 function [out1, out2] = mr2thresh_(varargin), fn=dbstack(); [out1, out2] = irc('call', fn(1).name, varargin); end
 function [out1, out2] = findNearSites_(varargin), fn=dbstack(); [out1, out2] = irc('call', fn(1).name, varargin); end
 function [out1, out2] = shift_range_(varargin), fn=dbstack(); [out1, out2] = irc('call', fn(1).name, varargin); end
 
 function [out1, out2, out3] = fopen_mda_(varargin), fn=dbstack(); [out1, out2, out3] = irc('call', fn(1).name, varargin); end
 function [out1, out2, out3] = fopen_nsx_(varargin), fn=dbstack(); [out1, out2, out3] = irc('call', fn(1).name, varargin); end
-function [out1, out2, out3] = plan_load_(varargin), fn=dbstack(); [out1, out2, out3] = irc('call', fn(1).name, varargin); end
+% function [out1, out2, out3] = plan_load_(varargin), fn=dbstack(); [out1, out2, out3] = irc('call', fn(1).name, varargin); end
 function [out1, out2, out3] = detect_spikes_(varargin), fn=dbstack(); [out1, out2, out3] = irc('call', fn(1).name, varargin); end

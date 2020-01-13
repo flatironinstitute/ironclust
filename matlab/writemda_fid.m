@@ -35,7 +35,7 @@ switch dim_type_str
     otherwise, error('dim_type_str must be either ''int32'' or ''int64'''); 
 end
 if ischar(FF)
-    FF = fopen(FF, 'w+');
+    FF = fopen(FF, 'w+', 'l');
     if nargout==0, fClose = 1; end
 end
 nbytes_now = ftell(FF); % update header if 
