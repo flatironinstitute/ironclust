@@ -250,7 +250,7 @@ end %func
 %--------------------------------------------------------------------------
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_()
-vcVer = 'v5.5.0';
+vcVer = 'v5.5.1';
 vcDate = '01/13/2020';
 vcHash = file2hash_();
 
@@ -1803,7 +1803,7 @@ if ~fSkip_rho
 %     assert(isempty(dir(vcFile_miKnn)), sprintf('sort_long_: %s must be deleted', vcFile_miKnn));
     fprintf('sort_page_: calculating Rho...\n'); t_rho = tic;
     for iPage = 1:nPages  
-        fprintf('Page %d ', iPage); t_ = tic;
+        fprintf('Page %d/%d ', iPage, nPages); t_ = tic;
         [S_page1, viSpk_in1, viSpk_out1] = prepare_page_(S_page, S_global, iPage);
         vrRho(viSpk_in1) = rho_page_(S_page1);
         fprintf('\n\ttook %0.1fs\n', toc(t_));
@@ -1820,11 +1820,11 @@ end
 
 fprintf('sort_page_: calculating Delta...\n'); t_delta = tic;
 for iPage = 1:nPages    
-    fprintf('Page %d ', iPage); t_ = tic;    
+    fprintf('Page %d/%d ', iPage, nPages); t_ = tic;    
     [S_page1, viSpk_in1, viSpk_out1] = prepare_page_(S_page, S_global, iPage);
     [vrDelta(viSpk_in1), viNneigh(viSpk_in1)] = delta_page_(S_page1, vrRho(viSpk_out1));
 %     [vrDelta(viSpk_in1), viNneigh(viSpk_in1)] = delta_page_(S_page1, vrRho);
-    fprintf('\n\ttook %0.1fs\n\n', toc(t_));
+    fprintf('\n\ttook %0.1fs\n', toc(t_));
 end %for
 fprintf('calculating Delta took %0.1fs\n', toc(t_delta));
 
@@ -2624,33 +2624,46 @@ memory_init = memory_matlab_();
 % load one
 S_paged = readmda_paged_(P); % initialize
 [nLoads, viOffset_load] = deal(S_paged.nLoads, S_paged.viOffset_load);
-[mrWav_T1, nlim_wav1, fDone] = readmda_paged_(); % process first part
 cS_detect = cell(nLoads, 1);
-cS_detect{1} = detect_paged_(mrWav_T1, P, makeStruct_(nlim_wav1)); % process the first part
-mrWav_T1 = [];
+disp_load_ = @(iPage, var_size, t_load, nSpikes)...
+    fprintf('\tDetecting %d/%d: %d spikes found (%0.1f spikes/s, %0.1f MB/s, took %0.1f s)\n', ...
+    iPage, nLoads, nSpikes, nSpikes/t_load, var_size/t_load/1e6, t_load);
+
+% process the first load
+t_load1 = tic;
+[mrWav_T1, nlim_wav1, fDone] = readmda_paged_(); var_size1 = var_size_(mrWav_T1);
+cS_detect{1} = detect_paged_(mrWav_T1, P, makeStruct_(nlim_wav1)); mrWav_T1 = [];
+disp_load_(1, var_size1, toc(t_load1), numel(get_(cS_detect{1}, 'viTime_spk')));
+
+% extract info from the first load
 [vrThresh_site, mrPv_global] = struct_get_(cS_detect{1}, 'vrThresh_site', 'mrPv_global');
 S_cache = makeStruct_(vrThresh_site, mrPv_global);
-fprintf('Memory use: %0.3f GiB\n', (memory_matlab_()-memory_init)/2^30);
+fprintf('\tMemory use: %0.3f GiB\n', (memory_matlab_()-memory_init)/2^30);
 delete_file_fet_(P); % clear fet
 [vcFile, vS_load] = readmda_paged_('close'); % close the file
 cS_detect{1} = detect_paged_save_(cS_detect{1}, P, 1);    
 viSite2Chan = get_(P, 'viSite2Chan');
+
 if ~fDone
     if fParfor
         parfor iLoad = 2:nLoads  % change to for loop for debugging
+            t_load1 = tic;
             S_load1 = vS_load(iLoad);
-            mrWav_T1 = load_file_part_(vcFile, S_load1, viSite2Chan);
-            S_cache1 = setfield(S_cache, 'nlim_wav1', S_load1.nlim);
+            mrWav_T1 = load_file_part_(vcFile, S_load1, viSite2Chan); var_size1 = var_size_(mrWav_T1);
+            S_cache1 = setfield(S_cache, 'nlim_wav1', S_load1.nlim); t_detect1 = tic;
             cS_detect{iLoad} = detect_paged_(mrWav_T1, P, S_cache1);  mrWav_T1 = [];
             cS_detect{iLoad} = detect_paged_save_(cS_detect{iLoad}, P, iLoad);        
+            disp_load_(iLoad, var_size1, toc(t_load1), numel(get_(cS_detect{iLoad}, 'viTime_spk')));
         end
     else
         for iLoad = 2:nLoads  % change to for loop for debugging
+            t_load1 = tic;
             S_load1 = vS_load(iLoad);
-            mrWav_T1 = load_file_part_(vcFile, S_load1, viSite2Chan);
+            mrWav_T1 = load_file_part_(vcFile, S_load1, viSite2Chan); var_size1 = var_size_(mrWav_T1);
             S_cache1 = setfield(S_cache, 'nlim_wav1', S_load1.nlim);
             cS_detect{iLoad} = detect_paged_(mrWav_T1, P, S_cache1);  mrWav_T1 = [];
-            cS_detect{iLoad} = detect_paged_save_(cS_detect{iLoad}, P, iLoad);        
+            cS_detect{iLoad} = detect_paged_save_(cS_detect{iLoad}, P, iLoad);      
+            disp_load_(iLoad, var_size1, toc(t_load1), numel(get_(cS_detect{iLoad}, 'viTime_spk')));
         end
     end
 end
@@ -2917,14 +2930,20 @@ end %func
 function S_detect = detect_paged_(mrWav_T, P, S_cache)
 % S_detect = detect_paged_(mrWav_T, P, S_cache)
 % S_detect = detect_paged_(file_name, P, S_cache)
- 
 if nargin<3, S_cache = []; end
 if isempty(mrWav_T)
     mrWav_T = load_bin_(S_cache.vcFile_wav1, P.vcDataType, S_cache.dimm_wav1);
-    delete_(S_cache.vcFile_wav1); % delete file 
+    delete_(S_cache.vcFile_wav1); % delete file
+
 end
 [mrWav_filt, vrWav_mean_filt] = filter_transpose_(mrWav_T, P);
 S_detect = get_spikes_(mrWav_filt, vrWav_mean_filt, P, S_cache);
+end %func
+
+
+%--------------------------------------------------------------------------
+function size_byte = var_size_(var)
+size_byte = numel(var) * bytesPerSample_(class_(var));
 end %func
 
 
@@ -3166,7 +3185,7 @@ end %func
 function [mrWav_filt, vrWav_filt_mean] = filter_transpose_(mnWav_T, P)
 %-----
 % Filter
-fprintf('\tFiltering spikes (%s)...', get_(P, 'vcCommonRef')); t_fun = tic;
+% fprintf('\tFiltering spikes (%s)...', get_(P, 'vcCommonRef')); t_fun = tic;
 % if get_set_(P, 'fSmooth_spatial', 0)
 %     mnWav_T = spatial_smooth_(mnWav_T, P);
 % end
@@ -3193,7 +3212,7 @@ if get_set_(P, 'fWhiten', 0)
     fprintf('\tWhitening...');
     mrWav_filt = spatial_whiten_(mrWav_filt, P);
 end
-fprintf(' took %0.1fs\n', toc(t_fun));
+% fprintf(' took %0.1fs\n', toc(t_fun));
 end %func
 
 
@@ -4876,6 +4895,266 @@ end %func
 
 
 %--------------------------------------------------------------------------
+function [viTime_spk, vrAmp_spk, viSite_spk] = detect_spikes_(mnWav3, vnThresh_site, vlKeep_ref, P)
+% fMerge_spk = 1;
+fMerge_spk = get_set_(P, 'fMerge_spk', 1);
+
+[n1, nSites, ~] = size(mnWav3);
+[cviSpk_site, cvrSpk_site] = deal(cell(nSites,1));
+if isempty(vnThresh_site)    
+    vnThresh_site = mr2thresh_(mnWav3, P);
+end
+
+for iSite = 1:nSites
+    [viSpk11, vrSpk11] = spikeDetectSingle_fast_(mnWav3(:,iSite), P, vnThresh_site(iSite));
+    
+    % Reject global mean
+    if isempty(vlKeep_ref)
+        cviSpk_site{iSite} = viSpk11;
+        cvrSpk_site{iSite} = vrSpk11;        
+    else
+        [cviSpk_site{iSite}, cvrSpk_site{iSite}] = select_vr_(viSpk11, vrSpk11, find(vlKeep_ref(viSpk11)));
+    end
+end
+
+% Group spiking events using vrWav_mean1. already sorted by time
+if fMerge_spk
+    [viTime_spk, vrAmp_spk, viSite_spk] = spikeMerge_(cviSpk_site, cvrSpk_site, P);
+else
+    viTime_spk = cell2mat_(cviSpk_site);
+    vrAmp_spk = cell2mat_(cvrSpk_site);
+    viSite_spk = cell2vi_(cviSpk_site);
+    %sort by time
+    [viTime_spk, viSrt] = sort(viTime_spk, 'ascend');
+    [vrAmp_spk, viSite_spk] = multifun_(@(x)x(viSrt), vrAmp_spk, viSite_spk);
+end
+vrAmp_spk = gather_(vrAmp_spk);
+
+end %func
+
+
+%--------------------------------------------------------------------------
+function varargout = select_vr_(varargin)
+% [var1, var2, ...] = select_vr(var1, var2, ..., index)
+
+% sort ascend
+viKeep = varargin{end};
+if islogical(viKeep), viKeep = find(viKeep); end
+for i=1:(nargin-1)
+    if isvector(varargin{i})
+        varargout{i} = varargin{i}(viKeep);
+    else
+        varargout{i} = varargin{i}(viKeep, :);
+    end
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+function vi = cell2vi_(cvi)
+% convert cell index to array of index
+vn_site = cellfun(@(x)numel(x), cvi); %create uniform output
+vi = cell(numel(cvi), 1);
+for iSite=1:numel(cvi)
+    vi{iSite} = iSite * ones(vn_site(iSite), 1);
+end
+vi = cell2mat_(vi);
+end %func
+
+
+%--------------------------------------------------------------------------
+function [viSpk, vrSpk, viSite] = spikeMerge_(cviSpk, cvrSpk, P)
+% provide spike index (cviSpk) and amplitudes (cvrSPk) per sites
+
+nSites = numel(cviSpk);
+viSpk = cell2mat_(cviSpk);      vrSpk = cell2mat_(cvrSpk);
+viSite = cell2mat_(cellfun(@(vi,i)repmat(i,size(vi)), cviSpk, num2cell((1:nSites)'), 'UniformOutput', false));
+[viSpk, viSrt] = sort(viSpk);   vrSpk = vrSpk(viSrt);   viSite = viSite(viSrt);
+viSite = int32(viSite); 
+viSpk = int64(viSpk);    % deal with longer recording
+
+[cviSpkA, cvrSpkA, cviSiteA] = deal(cell(nSites,1));
+%fParfor = get_set_(P, 'fParfor', 1);
+fParfor = 0;
+if fParfor
+    try
+        parfor iSite = 1:nSites %parfor speedup: 2x %parfor
+            try
+                [cviSpkA{iSite}, cvrSpkA{iSite}, cviSiteA{iSite}] = ...
+                    spikeMerge_single_(viSpk, vrSpk, viSite, iSite, P);            
+            catch
+                fprintf(2, 'Parfor error, retrying using a single thread.\n');
+            end
+        end
+    catch
+        fParfor = 0; 
+    end
+end %if
+if ~fParfor
+    for iSite = 1:nSites
+        try
+            [cviSpkA{iSite}, cvrSpkA{iSite}, cviSiteA{iSite}] = ...
+                spikeMerge_single_(viSpk, vrSpk, viSite, iSite, P);            
+        catch
+            disperr_();
+        end
+    end
+end
+
+% merge parfor output and sort
+viSpk = cell2mat_(cviSpkA);
+vrSpk = cell2mat_(cvrSpkA);
+viSite = cell2mat_(cviSiteA);
+[viSpk, viSrt] = sort(viSpk); %sort by time
+vrSpk = gather_(vrSpk(viSrt));
+viSite = viSite(viSrt);
+end %func
+
+
+%--------------------------------------------------------------------------
+function [viTime_spk2, vnAmp_spk2, viSite_spk2] = spikeMerge_single_(viTime_spk, vnAmp_spk, viSite_spk, iSite1, P)
+% maxDist_site_um = get_set_(P, 'maxDist_site_spk_um', 75);
+maxDist_site_um = get_set_(P, 'maxDist_site_um', 50);
+nlimit = int64(abs(P.spkRefrac));
+% spkLim = [-nlimit, nlimit];
+
+% Find spikes from site 1
+viSpk1 = find(viSite_spk == iSite1); % pre-cache
+[viTime_spk1, vnAmp_spk1] = deal(viTime_spk(viSpk1), vnAmp_spk(viSpk1));
+
+% Find neighboring spikes
+viSite1 = findNearSite_(P.mrSiteXY, iSite1, maxDist_site_um);
+viSpk12 = int32(find(ismember(viSite_spk, viSite1)));
+
+% Coarse selection
+[viTime_spk12, vnAmp_spk12, viSite_spk12] = deal(viTime_spk(viSpk12), vnAmp_spk(viSpk12), viSite_spk(viSpk12));
+
+% Fine selection
+vlKeep_spk1 = true(size(viSpk1));
+for iDelay = -nlimit:nlimit    
+    [vi12_, vi1_] = ismember(viTime_spk12, viTime_spk1 + iDelay);    
+    vi12_ = find(vi12_);
+    if iDelay == 0 % remove self if zero delay
+        vi12_(viSpk12(vi12_) == viSpk1(vi1_(vi12_))) = [];
+    end
+    vi12_(vnAmp_spk12(vi12_) > vnAmp_spk1(vi1_(vi12_))) = []; % keep more negative spikes
+    vlAmpEq = vnAmp_spk12(vi12_) == vnAmp_spk1(vi1_(vi12_));
+    if any(vlAmpEq)
+        if iDelay > 0 % spk1 occurs before spk12, thus keep 
+            vi12_(vlAmpEq) = [];
+        elseif iDelay == 0 % keep only if site is lower
+            vlAmpEq(iSite1 > viSite_spk12(vi12_(vlAmpEq))) = 0;
+            vi12_(vlAmpEq) = []; %same site same time same ampl is not possible
+        end
+    end
+    vlKeep_spk1(vi1_(vi12_)) = 0;
+end %for
+
+% Keep the peak spikes only
+viiSpk1 = find(vlKeep_spk1); %speed up since used multiple times
+[viTime_spk2, vnAmp_spk2] = deal(viTime_spk1(viiSpk1), vnAmp_spk1(viiSpk1));
+viSite_spk2 = repmat(int32(iSite1), size(viiSpk1));
+end %func
+
+
+%--------------------------------------------------------------------------
+% 11/15/17 JJJ: Cast the threshold like the vrWav1
+function [viSpk1, vrSpk1, thresh1] = spikeDetectSingle_fast_(vrWav1, P, thresh1)
+% P: spkThresh, qqSample, qqFactor, fGpu, uV_per_bit
+% vrWav1 can be either single or int16
+% 6/27/17 JJJ: bugfix: hard set threshold is applied
+
+% Determine threshold
+MAX_SAMPLE_QQ = 300000; 
+% fSpikeRefrac_site = 0;
+if nargin < 3, thresh1 = []; end
+if nargin < 2, P = struct('spkThresh', [], 'qqFactor', 5); end
+if ~isempty(get_(P, 'spkThresh')), thresh1 = P.spkThresh; end
+
+if thresh1==0, [viSpk1, vrSpk1] = deal([]); return; end % bad site
+if isempty(thresh1)    
+    thresh1 = median(abs(subsample_vr_(vrWav1, MAX_SAMPLE_QQ)));
+    thresh1 = single(thresh1)* P.qqFactor / 0.6745;
+end
+thresh1 = cast(thresh1, 'like', vrWav1); % JJJ 11/5/17
+
+% detect valley turning point. cannot detect bipolar
+% pick spikes crossing at least three samples
+nneigh_min = get_set_(P, 'nneigh_min_detect', 0);
+viSpk1 = find_peak_(vrWav1, thresh1, nneigh_min);
+if get_set_(P, 'fDetectBipolar', 0)
+   viSpk1 = [viSpk1; find_peak_(-vrWav1, thresh1, nneigh_min)]; 
+   viSpk1 = sort(viSpk1);
+end
+if isempty(viSpk1)
+    viSpk1 = double([]);
+    vrSpk1 = int16([]);
+else
+    vrSpk1 = vrWav1(viSpk1);
+    % Remove spikes too large
+    spkThresh_max_uV = get_set_(P, 'spkThresh_max_uV', []);
+    if ~isempty(spkThresh_max_uV)
+        thresh_max1 = abs(spkThresh_max_uV) / get_set_(P, 'uV_per_bit', 1);
+        thresh_max1 = cast(thresh_max1, 'like', vrSpk1);
+        viA1 = find(abs(vrSpk1) < abs(thresh_max1));
+        viSpk1 = viSpk1(viA1);
+        vrSpk1 = vrSpk1(viA1); 
+    end        
+end
+
+if isGpu_(viSpk1)
+    [viSpk1, vrSpk1, thresh1] = multifun_(@gather, viSpk1, vrSpk1, thresh1);
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+% 9/13/17 JJJ: Edge case error fixed (vi2 indexing) for small block many loads
+% 8/17/17 JJJ: fix for missing spikes
+function viSpk1 = find_peak_(vrWav1, thresh1, nneigh_min)
+% nneigh_min: number of neighbors around the spike below the threshold
+%  0,1,2. # neighbors of minimum point below negative threshold 
+% thresh1: absolute value. searching for negative peaks only
+
+if nargin<3, nneigh_min = []; end
+if isempty(nneigh_min), nneigh_min = 1; end
+
+viSpk1 = [];
+if isempty(vrWav1), return; end
+vl1 = vrWav1 < -abs(thresh1);
+vi2 = find(vl1);
+%vi2 = find(vrWav1 < -thresh1);
+if isempty(vi2), return; end
+
+if vi2(1)<=1
+    if numel(vi2) == 1, return; end
+    vi2(1) = []; 
+end    
+if vi2(end)>=numel(vrWav1)
+    if numel(vi2) == 1, return; end
+    vi2(end) = []; 
+end
+vrWav12 = vrWav1(vi2);
+viSpk1 = vi2(vrWav12 <= vrWav1(vi2+1) & vrWav12 <= vrWav1(vi2-1));
+if isempty(viSpk1), return; end
+
+switch nneigh_min
+    case 1
+        viSpk1 = viSpk1(vl1(viSpk1-1) | vl1(viSpk1+1));
+    case 2
+        viSpk1 = viSpk1(vl1(viSpk1-1) & vl1(viSpk1+1));
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+function viSiteNear = findNearSite_(mrSiteXY, iSite, maxDist_site_um)
+vrDist = pdist2_(mrSiteXY(iSite,:), mrSiteXY);
+viSiteNear = find(vrDist <= maxDist_site_um);
+end %func
+
+
+%--------------------------------------------------------------------------
 % Call from irc.m
 function compile_cuda_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
 function frewind_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
@@ -4932,4 +5211,4 @@ function [out1, out2] = shift_range_(varargin), fn=dbstack(); [out1, out2] = irc
 function [out1, out2, out3] = fopen_mda_(varargin), fn=dbstack(); [out1, out2, out3] = irc('call', fn(1).name, varargin); end
 function [out1, out2, out3] = fopen_nsx_(varargin), fn=dbstack(); [out1, out2, out3] = irc('call', fn(1).name, varargin); end
 % function [out1, out2, out3] = plan_load_(varargin), fn=dbstack(); [out1, out2, out3] = irc('call', fn(1).name, varargin); end
-function [out1, out2, out3] = detect_spikes_(varargin), fn=dbstack(); [out1, out2, out3] = irc('call', fn(1).name, varargin); end
+% function [out1, out2, out3] = detect_spikes_(varargin), fn=dbstack(); [out1, out2, out3] = irc('call', fn(1).name, varargin); end
