@@ -144,15 +144,14 @@ end
 
 if isempty(struct_get_(S0, 'S_clu')) || fSort
     S0.S_clu = sort_(S0, P);
-    if fDebug
-        save_clu_(S0.S_clu, P);
-    end
+    save_clu_(S0.S_clu, P);
 end
 try
-    S0 = auto_(S0, P);
-    save_clu_(S0.S_clu, P);
+    S0.S_auto = auto_(S0, P);
+    save_auto_(S0.S_auto, P);
 catch E
     fprintf(2, 'auto-merging error: \n\t%s\n', P.vcFile_prm);
+    disp(lasterr);
     return;
 end
 
@@ -250,8 +249,8 @@ end %func
 %--------------------------------------------------------------------------
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_()
-vcVer = 'v5.5.1';
-vcDate = '01/13/2020';
+vcVer = 'v5.5.2';
+vcDate = '01/14/2020';
 vcHash = file2hash_();
 
 if nargout==0
@@ -259,7 +258,6 @@ if nargout==0
     return;
 end
 end %func
-
 
 
 %--------------------------------------------------------------------------
@@ -272,19 +270,25 @@ if isempty(S_clu), return; end
 % nneigh: nSpk x 1: int64
 % ordrho: nSpk x 1: double
 vcFile_prm_ = strrep(P.vcFile_prm, '.prm', '');
-
-csVar = {'rho', 'delta', 'nneigh', 'ordrho', 'cviSpk_clu'};
+csVar = {'rho', 'delta', 'nneigh', 'ordrho'};
 [S_clu, S_clu.S_var] = struct_save_bin_(S_clu, [vcFile_prm_, '_clu.irc'], csVar);
-
-miKnn = get_(S_clu, 'miKnn');
-if ~isempty(miKnn)
-    S_clu.miKnn = [];
-    S_clu.dimm_knn = size(miKnn);
-    S_clu.type_knn = class(miKnn);
-    write_bin_([vcFile_prm_, '_knn.irc'], miKnn);
-end
-
 struct_save_(S_clu, [vcFile_prm_, '_clu_irc.mat'], 1);
+end %func
+
+
+%--------------------------------------------------------------------------
+function save_auto_(S_auto, P)
+if isempty(S_auto), return; end
+
+% save separately
+% viClu: nSpk x 1: int32
+% cviSpk_clu: nClu x 1: contains int64
+
+csVar = {'viClu', 'cviSpk_clu'};
+
+vcFile_prm_ = strrep(P.vcFile_prm, '.prm', '');
+[S_auto, S_auto.S_var] = struct_save_bin_(S_auto, [vcFile_prm_, '_auto.irc'], csVar);
+struct_save_(S_auto, [vcFile_prm_, '_auto_irc.mat'], 1);
 end %func
 
 
@@ -556,11 +560,13 @@ if ~isempty(trPc2_spk) && fSave_fet
     write_bin_([vcFile_prm_, '_fet2.irc'], trPc2_spk);
 end
 
-S_clu = get_(S0, 'S_clu');
-S0.S_clu = [];
-struct_save_(S0, [vcFile_prm_, '_irc.mat'], 1);
-
+S_clu = get_(S0, 'S_clu');  S0.S_clu = [];
 if ~isempty(S_clu), save_clu_(S_clu, S0.P); end
+
+S_auto = get_(S0, 'S_auto');  S0.S_auto = [];
+if ~isempty(S_auto), save_auto_(S_auto, S0.P); end
+
+struct_save_(S0, [vcFile_prm_, '_irc.mat'], 1);
 end
 
 
@@ -651,12 +657,14 @@ fprintf('Loading %s... ', vcFile_prm); t_fun = tic;
 % set(0, 'UserData', []);
 vcFile_mat = strrep(vcFile_prm, '.prm', '_irc.mat');
 vcFile_clu_mat = strrep(vcFile_prm, '.prm', '_clu_irc.mat');
+vcFile_auto_mat = strrep(vcFile_prm, '.prm', '_auto_irc.mat');
 vcFile_knn = strrep(vcFile_prm, '.prm', '_knn.irc');
 
 S0 = load(vcFile_mat);
 if isfield(S0, 'S_var') && fLoad_bin
     S0 = struct_load_bin_(S0.S_var, S0);
 end
+
 S0.S_clu = get_(S0, 'S_clu');
 if isempty(S0.S_clu)
     if exist_file_(vcFile_clu_mat)
@@ -664,6 +672,16 @@ if isempty(S0.S_clu)
     end
     if isfield(S0.S_clu, 'S_var') && fLoad_bin
         S0.S_clu = struct_load_bin_(S0.S_clu.S_var, S0.S_clu);
+    end
+end
+
+S0.S_auto = get_(S0, 'S_auto');
+if isempty(S0.S_auto)
+    if exist_file_(vcFile_auto_mat)
+        S0.S_auto = load(vcFile_auto_mat);
+    end
+    if isfield(S0.S_auto, 'S_var') && fLoad_bin
+        S0.S_auto = struct_load_bin_(S0.S_auto.S_var, S0.S_auto);
     end
 end
 
@@ -725,24 +743,25 @@ function csDesc = describe_(S0)
 % csDesc = describe_(S0)
 
 csFields = {'runtime_detect', 'memory_detect', 'memory_init', 'dimm_fet', 'P'};
-csFields_clu = {'runtime_sort', 'runtime_automerge', 'memory_sort', 'nFeatures'};
+csFields_clu = {'runtime_sort', 'memory_sort', 'nFeatures'};
+csFields_auto = {'runtime_automerge', 'memory_auto', 'nSpk_unique', 'nClu'};
 
 if ischar(S0)
     vcFile_prm = S0;
     vcFile_mat = strrep(vcFile_prm, '.prm', '_irc.mat');
     vcFile_clu_mat = strrep(vcFile_prm, '.prm', '_clu_irc.mat');
+    vcFile_auto_mat = strrep(vcFile_prm, '.prm', '_auto_irc.mat');
     if exist_file_(vcFile_mat)
         S0 = load(vcFile_mat, csFields{:});
     end
-    if exist_file_(vcFile_clu_mat)
-        S0.S_clu = load(vcFile_clu_mat, csFields_clu{:});
-    end
-end 
+    S0.S_clu = load_(vcFile_clu_mat, csFields_clu);
+    S0.S_auto = load_(vcFile_auto_mat, csFields_auto);    
+end
 P=S0.P;
 
 try
     [runtime_detect, runtime_sort, runtime_automerge] = ...
-        deal(S0.runtime_detect, S0.S_clu.runtime_sort, S0.S_clu.runtime_automerge);
+        deal(S0.runtime_detect, S0.S_clu.runtime_sort, S0.S_auto.runtime_automerge);
     runtime_total = runtime_detect + runtime_sort + runtime_automerge;
 catch
     runtime_total = nan;
@@ -752,10 +771,16 @@ try
 catch
     tDur = nan;
 end
-memory_sort = S0.S_clu.memory_sort - S0.memory_init;
 memory_detect = S0.memory_detect - S0.memory_init;
+memory_sort = S0.S_clu.memory_sort - S0.memory_init;
+memory_auto = S0.S_auto.memory_auto - S0.memory_init;
 nSites = numel(P.viSite2Chan);
-nShanks = max(P.viShank_site);
+viShank_site = get_(P, 'viShank_site');
+if isempty(viShank_site)
+    nShanks = 1;
+else
+    nShanks = numel(unique(viShank_site));
+end
 nSites_spk = size(P.miSites,1);
 nSpk = S0.dimm_fet(3);
 try
@@ -798,13 +823,13 @@ try
     csDesc{end+1} = sprintf('    #Features/event:        %d', nFeatures);    
     csDesc{end+1} = sprintf('    #PC/chan:               %d', nPcPerChan);
 catch
-    ;
 end
-if isfield(S0, 'S_clu')
-    S_clu = S0.S_clu;
-    csDesc{end+1} = sprintf('Cluster');    
-    csDesc{end+1} = sprintf('    #Clusters:              %d', get_(S_clu, 'nClu'));
-    csDesc{end+1} = sprintf('    #Unique events:         %d', sum(get_(S_clu, 'viClu')>0));
+try
+   
+    S_auto = get_(S0, 'S_auto');
+    csDesc{end+1} = sprintf('Cluster');       
+    csDesc{end+1} = sprintf('    #Clusters:              %d', get_(S_auto, 'nClu'));
+    csDesc{end+1} = sprintf('    #Unique events:         %d', get_(S_auto, 'nSpk_unique'));
     csDesc{end+1} = sprintf('    min. spk/clu:           %d', P.min_count);
     csDesc{end+1} = sprintf('    Cluster method:         %s', P.vcCluster);
     csDesc{end+1} = sprintf('    knn:                    %d', P.knn);
@@ -815,6 +840,7 @@ if isfield(S0, 'S_clu')
     csDesc{end+1} = sprintf('Auto-merge');   
     csDesc{end+1} = sprintf('    delta_cut:              %0.3f', get_set_(P, 'delta_cut', 1));
     csDesc{end+1} = sprintf('    maxWavCor:              %0.3f', P.maxWavCor);
+catch
 end
 try
     csDesc{end+1} = sprintf('Runtime (s)');
@@ -825,9 +851,10 @@ try
     csDesc{end+1} = sprintf('    Runtime speed:          x%0.1f realtime', tDur / runtime_total);    
     csDesc{end+1} = sprintf('    Processing speed:       %0.1f spikes/s', nSpk / runtime_total);    
 
-    csDesc{end+1} = sprintf('memory usage (GiB):         %0.3f', max(memory_detect, memory_sort)/2^30);
-    csDesc{end+1} = sprintf('    detect(GiB):            %0.3f', memory_detect/2^30);
-    csDesc{end+1} = sprintf('    sort(GiB):              %0.3f', memory_sort/2^30);
+    csDesc{end+1} = sprintf('memory usage (GiB):         %0.3f', max(memory_detect, memory_sort, memory_auto)/2^30);
+    csDesc{end+1} = sprintf('    detect:                 %0.3f', memory_detect/2^30);
+    csDesc{end+1} = sprintf('    sort:                   %0.3f', memory_sort/2^30);
+    csDesc{end+1} = sprintf('    auto-merge:             %0.3f', memory_auto/2^30);
 
     csDesc{end+1} = sprintf('Execution');
     csDesc{end+1} = sprintf('    irc2 version:           %s', get_(P, 'vcVersion'));
@@ -836,10 +863,26 @@ try
     csDesc{end+1} = sprintf('    fLargeRecording:        %d', isLargeRecording_(P)); 
     csDesc{end+1} = sprintf('    Parameter file:         %s', P.vcFile_prm);
 catch
-    ;
 end
 if nargout==0
     cellfun(@(x)disp(x), csDesc);
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+function S = load_(vcFile, csFields)
+if nargin<2, csFields={}; end
+S = [];
+if exist_file_(vcFile)
+    try
+        if ~isempty(csFields)
+            S = load(vcFile, csFields{:});
+        else
+            S = load(vcFile);
+        end
+    catch
+    end
 end
 end %func
 
@@ -868,7 +911,7 @@ try
     if isempty(vcFile_firings_mda)
         vcFile_firings_mda = fullfile(fileparts(vcFile_prm), 'firings.mda');
     end
-    mr = [S0.viSite_spk(:), S0.viTime_spk(:), S0.S_clu.viClu(:)];
+    mr = [S0.viSite_spk(:), S0.viTime_spk(:), S0.S_auto.viClu(:)];
     S0 = []; %free memory
 catch
     error('save_firings_mda_: invalid format');
@@ -887,37 +930,25 @@ end %func
 
 %--------------------------------------------------------------------------
 % auto merge
-function S0 = auto_(S0, P)
+function S_auto = auto_(S0, P)
 
 fDebug = 0;
-
-if nargin<2, P=[]; end
-if nargin<1, S0=[]; end
-if isempty(S0)
-    S0 = get(0, 'UserData');
-elseif isempty(P)
-    P = S0.P;
-end
 
 fprintf('\nauto-merging...\n'); runtime_automerge = tic;
 if fDebug, fprintf(2, 'auto_() is running in Debugging mode\n'); end
 
 % refresh clu, start with fundamentals
-if (~fDebug) || (~isfield(S0.S_clu, 'viClu') && fDebug)
-    S0.S_clu = struct_copy_(S0.S_clu, ...
-        'rho', 'delta', 'ordrho', 'nneigh', 'P', 'miKnn', 'S_drift', ...
-        'nFeatures', 'runtime_sort', 'memory_sort');
-    S0.S_clu = postCluster_(S0.S_clu, P, S0.viSite_spk); % peak merging
-end
+S_auto = postCluster_(S0.S_clu, P, S0.viSite_spk); % peak merging
 
 maxWavCor = get_set_(P, 'maxWavCor', .99);
-nClu = get_(S0.S_clu, 'nClu');
+nClu = get_(S_auto, 'nClu');
 if maxWavCor<1 && nClu > 1
     try
         fprintf('\tMerging templates...\n\t'); t_merge=tic;
-        nClu_pre = S0.S_clu.nClu;
+        nClu_pre = S_auto.nClu;
+        S0.S_auto = S_auto;
         [mlDist_clu, viClu_delete] = wave_similarity_(S0, P);
-        [S0.S_clu, nClu_post] = ml_merge_clu_(S0.S_clu, mlDist_clu, viClu_delete);    
+        [S_auto, nClu_post] = ml_merge_clu_(S_auto, mlDist_clu, viClu_delete);    
         fprintf('\tMerged waveforms (%d->%d->%d), took %0.1fs\n', ...
             nClu_pre, nClu_post+numel(viClu_delete), nClu_post, toc(t_merge));
     catch E
@@ -931,13 +962,13 @@ if maxWavCor<1 && nClu > 1
     end
 end
 
-S0.S_clu = S_clu_refresh_(S0.S_clu, 1, S0.viSite_spk);
-S0.S_clu = S_clu_sort_(S0.S_clu, 'viSite_clu');
-S0.S_clu = S_clu_refrac_(S0.S_clu, P, [], S0.viTime_spk); % refractory violation removal
-
-S0.S_clu.runtime_automerge = toc(runtime_automerge);
+S_auto = S_clu_refrac_(S_auto, P, [], S0.viTime_spk); % refractory violation removal
+S_auto = S_auto_refresh_(S_auto, 1, S0.viSite_spk);
+S_auto = S_clu_sort_(S_auto, 'viSite_clu');
+S_auto.runtime_automerge = toc(runtime_automerge);
+S_auto.memory_auto = memory_matlab_();
 fprintf('\tauto-merging took %0.1fs (fGpu=%d, fParfor=%d)\n', ...
-    S0.S_clu.runtime_automerge, P.fGpu, P.fParfor);
+    S_auto.runtime_automerge, P.fGpu, P.fParfor);
 end %func
 
 
@@ -961,16 +992,16 @@ end %func
 %--------------------------------------------------------------------------
 % 4/12/2019 JJJ: Template merging cluster
 % no membership reassignment, no core calculation
-function [S_clu, nClu_post] = ml_merge_clu_(S_clu, mlWavCor_clu, viClu_delete)
+function [S_auto, nClu_post] = ml_merge_clu_(S_auto, mlWavCor_clu, viClu_delete)
 if nargin<3, viClu_delete=[]; end
 if ~isempty(viClu_delete)
     mlWavCor_clu(viClu_delete,:) = false;
     mlWavCor_clu(:,viClu_delete) = false;
-    S_clu.viClu(ismember(S_clu.viClu, viClu_delete)) = 0;
+    S_auto.viClu(ismember(S_auto.viClu, viClu_delete)) = 0;
     fprintf('\tdeleted %d clusters with SNR below the detection threshold\n', numel(viClu_delete));
 end
 % nClu_pre = size(mlWavCor_clu,1);
-[S_clu.viClu, viMap_new] = map_using_ml_(S_clu.viClu, mlWavCor_clu);
+[S_auto.viClu, viMap_new] = map_using_ml_(S_auto.viClu, mlWavCor_clu);
 nClu_post = sum(viMap_new>0);
 end %func
 
@@ -1056,18 +1087,19 @@ end %func
 %--------------------------------------------------------------------------
 % keeps trPc in the main memory, not sent out to workers
 function [mlDist_clu, viClu_remove] = wave_similarity_(S0, P)
-
-S_clu = S0.S_clu;
+S_auto = get_(S0, 'S_auto');
+S_clu = get_(S0, 'S_clu');
 t_fun = tic;
 % fprintf('\tAutomated merging based on waveform similarity...\n'); t_template=tic;
-[viClu, vrRho] = struct_get_(S_clu, 'viClu', 'rho');
+viClu = S_auto.viClu;
+vrRho = S_clu.rho;
 [ccviSpk_site_load, ccviSpk_site2_load, type_fet, dimm_fet, mrPv, vrThresh_site] = ...
     get_(S0, 'ccviSpk_site_load', 'ccviSpk_site2_load', 'type_fet', ...
         'dimm_fet', 'mrPv_global', 'vrThresh_site');
 nShift_max = ceil(diff(P.spkLim) * P.frac_shift_merge / 2);
 viShift = -nShift_max:nShift_max;
 [knn, nSpk_min, vcFile_prm, maxWavCor] = get_(P, 'knn', 'knn', 'vcFile_prm', 'maxWavCor');
-nClu = S_clu.nClu;
+nClu = S_auto.nClu;
 
 % try loading the entire miKnn to RAM
 nSites = size(P.miSites,2);
@@ -4375,46 +4407,38 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function S_clu = postCluster_(S_clu, P, viSite_spk)
+function S_auto = postCluster_(S_clu, P, viSite_spk)
 t_fun = tic;
-if isempty(S_clu), return; end
-if isfield(S_clu, 'viClu')
-    S_clu = rmfield(S_clu, 'viClu');
-end
+if isempty(S_clu), S_auto=[]; return; end
+
 fprintf('\tpostCluster_...\n');
-S_clu.icl = find(S_clu.delta(:) > get_set_(P, 'delta_cut', 1));
-% Update P
-S_clu.P.min_count = P.min_count;
-S_clu.P.delta1_cut = P.delta1_cut;
-S_clu.P.rho_cut = P.rho_cut;
-S_clu.viClu = [];
+P.min_count = get_set_(P, 'min_count', 0);
 
-if isempty(P.min_count), P.min_count = 0; end
-if ~isfield(S_clu, 'viClu'), S_clu.viClu = []; end
+[viClu, icl, nClu_pre] = assignCluster_knn_(S_clu, viSite_spk, P);
+nClu_post = numel(icl);
+[viClu, icl] = dpclus_remove_count_(viClu, icl, P.min_count);
 
-nClu_pre = numel(S_clu.icl);
-[S_clu.viClu, S_clu.icl] = assignCluster_knn_(S_clu, viSite_spk, P);
-nClu1 = numel(S_clu.icl);
-[S_clu.viClu, S_clu.icl] = dpclus_remove_count_(S_clu.viClu, S_clu.icl, P.min_count);
-
-S_clu = S_clu_refresh_(S_clu, 0, []);
+S_auto = makeStruct_(viClu, icl, P);
+S_auto = S_auto_refresh_(S_auto, 0, []);
 fprintf('\tpostCluster_: Pre-merged %d->%d->%d clusters, took %0.1fs\n', ...
-    nClu_pre, nClu1, S_clu.nClu, toc(t_fun));
+    nClu_pre, nClu_post, S_auto.nClu, toc(t_fun));
 end %func
 
 
 %--------------------------------------------------------------------------
-function [S_clu, vlKeep_clu] = S_clu_refresh_(S_clu, fRemoveEmpty, viSite_spk)
+function [S_auto, vlKeep_clu] = S_auto_refresh_(S_auto, fRemoveEmpty, viSite_spk)
 
-nClu = double(max(S_clu.viClu));
-S_clu.nClu = nClu;
-S_clu.cviSpk_clu = vi2cell_(S_clu.viClu, nClu);
-S_clu.vnSpk_clu = cellfun(@numel, S_clu.cviSpk_clu); 
+nClu = double(max(S_auto.viClu));
+S_auto.nClu = nClu;
+S_auto.cviSpk_clu = vi2cell_(S_auto.viClu, nClu);
+S_auto.vnSpk_clu = cellfun(@numel, S_auto.cviSpk_clu); 
+S_auto.nSpk_unique = sum(cellfun(@numel, S_auto.cviSpk_clu));
 if ~isempty(viSite_spk)
-    S_clu.viSite_clu = double(arrayfun(@(iClu)mode(viSite_spk(S_clu.cviSpk_clu{iClu})), 1:nClu));
+    S_auto.viSite_clu = double(arrayfun(@(iClu)mode(viSite_spk(S_auto.cviSpk_clu{iClu})), 1:nClu));
+    S_auto.viSite_clu = S_auto.viSite_clu(:);
 end
 if fRemoveEmpty
-    [S_clu, vlKeep_clu] = S_clu_remove_empty_(S_clu); 
+    [S_auto, vlKeep_clu] = S_clu_remove_empty_(S_auto); 
 end
 end %func
 
@@ -4503,44 +4527,43 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function [viClu_spk, viSpk_peak] = assignCluster_knn_(S_clu, viSite_spk, P)
+function [viClu_spk, viSpk_peak, nClu_pre] = assignCluster_knn_(S_clu, viSite_spk, P)
 
-% NUM_KNN = 10;
 nRepeat = 10;
-[viClu_spk, ordrho_spk, viSpk_nneigh, viSpk_peak, vrRho] = ...
-    get_(S_clu, 'viClu', 'ordrho', 'nneigh', 'icl', 'rho');
+[vrRho_spk, vrDelta_spk, ordrho_spk, viSpk_nneigh] = ...
+    get_(S_clu, 'rho', 'delta', 'ordrho', 'nneigh');
+viSpk_peak = find(vrDelta_spk(:) >= get_set_(P, 'delta_cut', 1));
+nClu_pre = numel(viSpk_peak);
+
 fParfor = get_set_(P, 'fParfor', 1);
 nSpk = numel(ordrho_spk);
-if isempty(viClu_spk)
-    viClu_spk = zeros([nSpk, 1], 'int32');
-    if false
-        viSpk_peak(vrDelta(viSpk_peak) > 1e10) = []; % remove super high 
-    end
-    [vrRho_peak, ix_] = sort(vrRho(viSpk_peak), 'descend'); viSpk_peak = viSpk_peak(ix_);
-    miKnn_peak = load_miKnn_spk_(P, viSite_spk, viSpk_peak);    
-%     miKnn_peak = miKnn_peak(1:min(NUM_KNN, size(miKnn_peak,1)), :);
+viClu_spk = zeros([nSpk, 1], 'int32');
+if false
+    viSpk_peak(vrDelta(viSpk_peak) > 1e10) = []; % remove super high 
+end
+[vrRho_peak, ix_] = sort(vrRho_spk(viSpk_peak), 'descend'); viSpk_peak = viSpk_peak(ix_);
+miKnn_peak = load_miKnn_spk_(P, viSite_spk, viSpk_peak);    
 
-    % check for knn overlap    
-    cvi_peak = cell(numel(viSpk_peak), 1);  
-    if fParfor
-        try
-            parfor iPeak = 1:numel(viSpk_peak)
-                viPeak1 = find(any(ismember(miKnn_peak(:,1:iPeak-1), miKnn_peak(:,iPeak))));        
-                cvi_peak{iPeak} = [viPeak1(:); iPeak];
-            end
-        catch
-            fParfor = 0;
-        end
-    end
-    if ~fParfor
-        for iPeak = 1:numel(viSpk_peak)
+% check for knn overlap    
+cvi_peak = cell(numel(viSpk_peak), 1);  
+if fParfor
+    try
+        parfor iPeak = 1:numel(viSpk_peak)
             viPeak1 = find(any(ismember(miKnn_peak(:,1:iPeak-1), miKnn_peak(:,iPeak))));        
             cvi_peak{iPeak} = [viPeak1(:); iPeak];
         end
+    catch
+        fParfor = 0;
     end
-    [viClu_spk(viSpk_peak), viiPeak] = cell2map_(cvi_peak);
-    [viSpk_peak, vrRho_peak] = deal(viSpk_peak(viiPeak), vrRho_peak(viiPeak));
 end
+if ~fParfor
+    for iPeak = 1:numel(viSpk_peak)
+        viPeak1 = find(any(ismember(miKnn_peak(:,1:iPeak-1), miKnn_peak(:,iPeak))));        
+        cvi_peak{iPeak} = [viPeak1(:); iPeak];
+    end
+end
+[viClu_spk(viSpk_peak), viiPeak] = cell2map_(cvi_peak);
+[viSpk_peak, vrRho_peak] = deal(viSpk_peak(viiPeak), vrRho_peak(viiPeak));
 
 if numel(viSpk_peak) == 0 || numel(viSpk_peak) == 1
     viClu_spk = ones([nSpk, 1], 'int32');
@@ -4587,47 +4610,22 @@ function [viMapClu_new, viUniq_, viMapClu] = cell2map_(cvi_clu)
 nRepeat = 10;
 
 t_fun = tic;
-switch 3
-    case 1
-        for iRepeat = 1:2
-            viClu_update = find(cellfun(@(x)numel(x)>1, cvi_clu));
-            for iClu = viClu_update(:)'
-                viClu1 = cvi_clu{iClu};
-                cvi_clu(viClu1) = cellfun_(@(x)union(x, viClu1), cvi_clu(viClu1));
-            end    
-        end
-    case 2
-        for iRepeat = 1:nRepeat
-            cvi_clu1 = cell(size(cvi_clu));
-            viClu_update = find(cellfun(@(x)numel(x)>1, cvi_clu));
-            for iClu = viClu_update(:)'
-                viClu1 = cvi_clu{iClu};
-                cvi_clu1(viClu1) = cellfun_(@(x)[x(:); viClu1(:)], cvi_clu(viClu1));
-            end    
-            cvi_clu1 = cellfun_(@(x)unique(x), cvi_clu1);
-            if all(cellfun(@numel, cvi_clu1) == cellfun(@numel, cvi_clu))
-                break;
-            else
-                cvi_clu = cvi_clu1;
-            end
-        end
-    case 3
-        for iRepeat = 1:nRepeat
-            cvi_clu1 = cell(size(cvi_clu));
-            viClu_update = find(cellfun(@(x)numel(x)>1, cvi_clu));
-            for iClu = viClu_update(:)'
-                viClu1 = cvi_clu{iClu};
-                viClu1 = [viClu1(:); cat(1, cvi_clu{viClu1})];
-                cvi_clu1(viClu1) = {viClu1};
-            end    
-            cvi_clu1 = cellfun_(@(x)unique(x), cvi_clu1);
-            if all(cellfun(@numel, cvi_clu1) == cellfun(@numel, cvi_clu))
-                break;
-            else
-                cvi_clu = cvi_clu1;
-            end
-        end
-end %switch
+for iRepeat = 1:nRepeat
+    cvi_clu1 = cell(size(cvi_clu));
+    viClu_update = find(cellfun(@(x)numel(x)>1, cvi_clu));
+    viClu_update = viClu_update(:)';
+    for iClu = viClu_update
+        viClu1 = cvi_clu{iClu};
+        viClu1 = cat(1, viClu1(:), cvi_clu{viClu1});
+        cvi_clu1(viClu1) = {viClu1};
+    end    
+    cvi_clu1 = cellfun_(@(x)unique(x), cvi_clu1);
+    if all(cellfun(@numel, cvi_clu1) == cellfun(@numel, cvi_clu))
+        break;
+    else
+        cvi_clu = cvi_clu1;
+    end
+end
 
 nClu = numel(cvi_clu);
 viMapClu = 1:nClu;
