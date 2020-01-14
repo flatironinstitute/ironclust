@@ -51,6 +51,19 @@ else
     vcFile_prm_ = vcFile_prm;
 end
 switch lower(vcCmd)
+    case {'run-hs', 'run-herdingspikes', 'run-herdingspikes2'}
+        run_spikeforest2_('herdingspikes2', vcArg1, vcArg2, vcArg3); return;
+    case {'run-sc', 'run-spykingcircus'}
+        run_spikeforest2_('spykingcircus', vcArg1, vcArg2, vcArg3); return;
+    case {'run-ms4', 'run-mountainsort4', 'run-mountainsort'}
+        run_spikeforest2_('mountainsort4', vcArg1, vcArg2, vcArg3); return;
+    case {'run-tdc', 'run-tridesclous'}, run_spikeforest2_('tridesclous', vcArg1, vcArg2, vcArg3); return;
+    case {'run-klusta'}, run_spikeforest2_('klusta', vcArg1, vcArg2, vcArg3); return;
+    case {'run-jrclust', 'run-jrc'}, run_spikeforest2_('jrclust', vcArg1, vcArg2, vcArg3); return;
+    case {'run-ks', 'run-kilosort'}, run_spikeforest2_('kilosort', vcArg1, vcArg2, vcArg3); return;
+        
+    case {'run-ks2', 'run-kilosort2'}, run_ksort2(vcArg1, vcArg2, vcArg3); return;
+        
     case 'export-mda', save_firings_mda_(vcFile_prm, vcArg2); return;
     case {'which', 'select'}, fprintf('%s\n', vcFile_prm); return;
     case {'export-sf2', 'export-spikeforest2', 'export2spikeforest2'}, export_sf2_(); return;
@@ -166,6 +179,20 @@ end %func
 
 
 %--------------------------------------------------------------------------
+% 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
+function [vcVer, vcDate, vcHash] = version_()
+vcVer = 'v5.5.3';
+vcDate = '01/14/2020';
+vcHash = file2hash_();
+
+if nargout==0
+    fprintf('%s (%s) installed, MD5: %s\n', vcVer, vcDate, vcHash);
+    return;
+end
+end %func
+
+
+%--------------------------------------------------------------------------
 function A = readmda_(fname)
 % Author: Jeremy Magland, modified by JJJ
 % Jan 2015; Last revision: 15-Feb-2106
@@ -242,20 +269,6 @@ if ~strcmpi(vcExt1, '.prm')
     end
 else
     vcFile_prm = vcDir_in;
-end
-end %func
-
-
-%--------------------------------------------------------------------------
-% 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
-function [vcVer, vcDate, vcHash] = version_()
-vcVer = 'v5.5.2';
-vcDate = '01/14/2020';
-vcHash = file2hash_();
-
-if nargout==0
-    fprintf('%s (%s) installed, MD5: %s\n', vcVer, vcDate, vcHash);
-    return;
 end
 end %func
 
@@ -5149,6 +5162,38 @@ end %func
 function viSiteNear = findNearSite_(mrSiteXY, iSite, maxDist_site_um)
 vrDist = pdist2_(mrSiteXY(iSite,:), mrSiteXY);
 viSiteNear = find(vrDist <= maxDist_site_um);
+end %func
+
+
+%--------------------------------------------------------------------------
+% Run spikeforest2 through python docker interface
+function run_spikeforest2_(vcSorter, vcDir_in, vcDir_out, vcArg)
+
+csSorters_sf2 = {'mountainsort4', 'ironclust', 'kilosort2', 'kilosort', 'spykingcircus', 'herdingspikes2', 'tridesclous', 'klusta', 'waveclus', 'jrclust'};
+
+t_fun=tic;
+if isempty(vcDir_out)
+    vcDir_out = fullfile(vcDir_in, vcSorter);
+    mkdir(vcDir_out);
+end
+if contains(lower(vcSorter), csSorters_sf2)
+    fprintf('Running %s through spikeforest2...\n', vcSorter);
+    vcFile_firings = fullfile(vcDir_out, 'firings.mda');
+    py.spikeforest2.sorters.sort(lower(vcSorter), vcDir_in, vcFile_firings);
+    fprintf('%s: wrote to %s, took %0.1fs\n', vcSorter, vcFile_firings, toc(t_fun));
+else
+    fprintf(2, '%s is not currently supported\n');
+    return;
+end
+
+% validate
+vcFile_true = fullfile(vcDir_in, 'firings_true.mda');
+if exist_file_(vcFile_true)
+    fPlot_gt = read_cfg_('fPlot_gt');
+    vcFile_raw = fullfile(vcDir_in, 'raw.mda');
+    S_score = irc('validate-mda', vcFile_true, vcFile_firings, vcFile_raw, fPlot_gt); % assume that groundtruth file exists
+    struct_save_(S_score, fullfile(vcDir_out, 'raw_geom_score.mat'), 1);
+end
 end %func
 
 
