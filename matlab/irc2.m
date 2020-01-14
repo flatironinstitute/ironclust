@@ -5177,9 +5177,20 @@ if isempty(vcDir_out)
     mkdir(vcDir_out);
 end
 if contains(lower(vcSorter), csSorters_sf2)
+    % check python path
+    spikeforest2_python_path = read_cfg_('spikeforest2_python_path');
+    [~, loaded_python_path, ~] = pyversion();    
+    if ~strcmpi(spikeforest2_python_path, loaded_python_path)
+        try
+            pyversion(spikeforest2_python_path)
+        catch
+            fprintf(2, 'Using %s\n', loaded_python_path);
+        end
+    end
+    
     fprintf('Running %s through spikeforest2...\n', vcSorter);
     vcFile_firings = fullfile(vcDir_out, 'firings.mda');
-    py.spikeforest2.sorters.sort(lower(vcSorter), vcDir_in, vcFile_firings);
+    py.spikeforest2.experimental.sort(lower(vcSorter), vcDir_in, vcFile_firings);
     fprintf('%s: wrote to %s, took %0.1fs\n', vcSorter, vcFile_firings, toc(t_fun));
 else
     fprintf(2, '%s is not currently supported\n');
