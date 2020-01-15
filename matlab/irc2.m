@@ -161,12 +161,14 @@ if isempty(struct_get_(S0, 'S_clu')) || fSort
 end
 try
     S0.S_auto = auto_(S0, P);
-    save_auto_(S0.S_auto, P);
+    save_auto_(S0.S_auto, P);    
 catch E
     fprintf(2, 'auto-merging error: \n\t%s\n', P.vcFile_prm);
     disp(lasterr);
+    fid_fet_cache_('clear');
     return;
 end
+fid_fet_cache_('clear');
 
 % output
 describe_(S0);
@@ -181,8 +183,8 @@ end %func
 %--------------------------------------------------------------------------
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_()
-vcVer = 'v5.5.3';
-vcDate = '01/14/2020';
+vcVer = 'v5.5.4';
+vcDate = '01/15/2020';
 vcHash = file2hash_();
 
 if nargout==0
@@ -864,7 +866,7 @@ try
     csDesc{end+1} = sprintf('    Runtime speed:          x%0.1f realtime', tDur / runtime_total);    
     csDesc{end+1} = sprintf('    Processing speed:       %0.1f spikes/s', nSpk / runtime_total);    
 
-    csDesc{end+1} = sprintf('memory usage (GiB):         %0.3f', max(memory_detect, memory_sort, memory_auto)/2^30);
+    csDesc{end+1} = sprintf('memory usage (GiB):         %0.3f', max([memory_detect, memory_sort, memory_auto])/2^30);
     csDesc{end+1} = sprintf('    detect:                 %0.3f', memory_detect/2^30);
     csDesc{end+1} = sprintf('    sort:                   %0.3f', memory_sort/2^30);
     csDesc{end+1} = sprintf('    auto-merge:             %0.3f', memory_auto/2^30);
@@ -875,10 +877,11 @@ try
     csDesc{end+1} = sprintf('    fParfor (parfor use):   %d', P.fParfor);
     csDesc{end+1} = sprintf('    fLargeRecording:        %d', isLargeRecording_(P)); 
     csDesc{end+1} = sprintf('    Parameter file:         %s', P.vcFile_prm);
+    csDesc{end+1} = sprintf('------------------------------');        
 catch
 end
 if nargout==0
-    cellfun(@(x)disp(x), csDesc);
+    disp_cs_(csDesc); %cellfun(@(x)disp(x), csDesc);
 end
 end %func
 
@@ -2018,6 +2021,7 @@ end %func
 %--------------------------------------------------------------------------
 function vrRho_in = rho_paged_site_(S_page, S_site, iSite)
 
+nRetry = 3;
 vrRho_in=[]; 
 if isempty(S_site.viiSpk_in1), return; end
 
@@ -2025,14 +2029,20 @@ csVar = import_struct_(prepare_page_site_(S_page, S_site, iSite));
 
 fGpu = get_set_(P, 'fGpu', 1);
 if fGpu
-    try
-        [vrRho_in, miKnn_in] = search_knn_drift_(vl_in, mrFet_out, viDrift_out, mlDrift1, P);
-    catch
-        fGpu=0; 
-        fprintf(2, 'CPU');
+    for iRetry = 1:nRetry
+        try        
+            [vrRho_in, miKnn_in] = search_knn_drift_(vl_in, mrFet_out, viDrift_out, mlDrift1, P);
+            break;
+        catch
+            P.nThreads_rho = round(P.nThreads_rho * .75);
+        end
+        if iRetry == nRetry
+            fGpu=0;             
+            fprintf(2, 'C');
+        end      
     end
 end
-if ~fGpu
+if ~fGpu    
     knn = get_set_(P, 'knn', 30);
     [n_in, nDrift, viDrift_in] = deal(sum(vl_in), size(mlDrift1,1), viDrift_out(vl_in));
     cviiSpk_in_drift = vi2cell_(viDrift_in, nDrift);
@@ -2065,6 +2075,7 @@ end %func
 %--------------------------------------------------------------------------
 function [vrDelta_in, viNneigh_in] = delta_paged_site_(S_page1, S_site1, vrRho_page1, iSite)
 
+nRetry = 3;
 [vrDelta_in, viNneigh_in] = deal([]);
 if isempty(S_site1.viiSpk_in1), return; end
 SINGLE_INF = 3.402E+38;
@@ -2075,12 +2086,18 @@ vrRho_in = vrRho_out(vl_in);
 
 fGpu = get_set_(P, 'fGpu', 1);
 if fGpu    
-    try
-        [vrDelta_in, viNneigh_in] = search_delta_drift_(vl_in, mrFet_out, vrRho_out, viDrift_out, mlDrift1, P);
-    catch
-        fGpu = 0;
-        fprintf(2, 'CPU');
-    end
+    for iRetry = 1:nRetry
+        try        
+            [vrDelta_in, viNneigh_in] = search_delta_drift_(vl_in, mrFet_out, vrRho_out, viDrift_out, mlDrift1, P);
+            break;
+        catch
+            P.nThreads_delta = round(P.nThreads_delta * .75);
+        end
+        if iRetry == nRetry
+            fGpu=0; 
+            fprintf(2, 'C');
+        end
+    end    
 end
 if ~fGpu
     [n_in, nDrift, viDrift_in, vrRho_in] = ...
@@ -2111,10 +2128,12 @@ end %func
 %--------------------------------------------------------------------------
 % uses search_min_drift.cu
 function [vrKnn_in, miKnn_in] = search_knn_drift_(vl_in, mrFet_out, viDrift_out, mlDrift1, P)
+persistent CK
 
 knn = get_set_(P, 'knn', 30);
 n_in = sum(vl_in);
-[CHUNK, nC_max, nThreads] = deal(8, 45, 1024); % tied to search_min_drift.cu
+nThreads = get_set_(P, 'nThreads_rho', 1024);
+[CHUNK, nC_max] = deal(8, 45); % tied to search_min_drift.cu
 [nC, nF] = deal(size(mrFet_out,1), size(mrFet_out,2));
 
 viDrift_in = viDrift_out(vl_in);
@@ -2127,10 +2146,18 @@ viBB = viDrift_out(viiBB(1:end-1));
 vnBB = diff(viiBB);
 in_offset = find(vl_in, 1, 'first') - 1;
 
-CK = parallel.gpu.CUDAKernel('search_min_drift.ptx','search_min_drift.cu'); % auto-compile if ptx doesn't exist
-CK.ThreadBlockSize = [nThreads, 1];          
-CK.SharedMemorySize = 4 * CHUNK * (nC_max + 1); % @TODO: update the size
-
+if isempty(CK)
+    CK = parallel.gpu.CUDAKernel('search_min_drift.ptx','search_min_drift.cu');
+end
+for iRetry = 1:2
+    try
+        CK.ThreadBlockSize = [nThreads, 1];          
+        CK.SharedMemorySize = 4 * CHUNK * (nC_max + 1); % @TODO: update the size
+        break;
+    catch
+        CK = parallel.gpu.CUDAKernel('search_min_drift.ptx','search_min_drift.cu');
+    end
+end
                 
 for iiAA = 1:numel(viAA)
     % determine index
@@ -2168,9 +2195,11 @@ end %func
 % uses search_min_drift.cu
 function [vrDelta_in, viNneigh_in] = search_delta_drift_(vl_in, mrFet_out, vrRho_out, viDrift_out, mlDrift1, P)
 
+persistent CK
 knn = get_set_(P, 'knn', 30);
 n_in = sum(vl_in);
-[CHUNK, nC_max, nThreads] = deal(16, 45, 512); % tied to cuda_knn_index.cu
+nThreads = get_set_(P, 'nThreads_delta', 512);
+[CHUNK, nC_max] = deal(16, 45); % tied to cuda_knn_index.cu
 [nC, nF] = deal(size(mrFet_out,1), size(mrFet_out,2));
 
 viDrift_in = viDrift_out(vl_in);
@@ -2184,9 +2213,18 @@ viBB = viDrift_out(viiBB(1:end-1));
 vnBB = diff(viiBB);
 in_offset = find(vl_in, 1, 'first') - 1;
 
-CK = parallel.gpu.CUDAKernel('search_delta_drift.ptx','search_delta_drift.cu'); % auto-compile if ptx doesn't exist
-CK.ThreadBlockSize = [nThreads, 1];          
-CK.SharedMemorySize = 4 * CHUNK * (nC_max + 2); % @TODO: update the size
+if isempty(CK)
+    CK = parallel.gpu.CUDAKernel('search_delta_drift.ptx','search_delta_drift.cu');
+end
+for iRetry = 1:2
+    try
+        CK.ThreadBlockSize = [nThreads, 1];          
+        CK.SharedMemorySize = 4 * CHUNK * (nC_max + 2); % @TODO: update the size
+        break;
+    catch
+        CK = parallel.gpu.CUDAKernel('search_delta_drift.ptx','search_delta_drift.cu');
+    end
+end
 
                 
 for iiAA = 1:numel(viAA)
@@ -2424,7 +2462,7 @@ if nargin<4, viSpk = []; end
 
 [type_fet, dimm_fet, vcFile_prm, mlPc] = ...
     struct_get_(S_fet, 'type_fet', 'dimm_fet', 'vcFile_prm', 'mlPc');
-vcFile_prm_ = strrep(vcFile_prm, '.prm', '');
+% vcFile_prm_ = strrep(vcFile_prm, '.prm', '');
 bytes_per_spk = bytesPerSample_(type_fet) * dimm_fet(1) * dimm_fet(2);
 fh_sum = @(x,y)sum(cellfun(@numel, x(1:y-1)));
 nLoads = numel(S_fet.ccviSpk_site_load);
@@ -2432,11 +2470,11 @@ switch iFet
     case 1
         vnSpk_load = cellfun(@(x)numel(x{iSite}), S_fet.ccviSpk_site_load);
         vnBytes_offset_load = cellfun(@(x)fh_sum(x, iSite), S_fet.ccviSpk_site_load) * bytes_per_spk;
-        csFiles_fet = arrayfun_(@(x)[vcFile_prm_, sprintf('_fet_%d.irc',x)], 1:nLoads);
+%         csFiles_fet = arrayfun_(@(x)[vcFile_prm_, sprintf('_fet_%d.irc',x)], 1:nLoads);
         cviSpk_load = cellfun_(@(x)x{iSite}, S_fet.ccviSpk_site_load);
     case 2
         vnSpk_load = cellfun(@(x)numel(x{iSite}), S_fet.ccviSpk_site2_load);
-        csFiles_fet = arrayfun_(@(x)[vcFile_prm_, sprintf('_fet2_%d.irc',x)], 1:nLoads);
+%         csFiles_fet = arrayfun_(@(x)[vcFile_prm_, sprintf('_fet2_%d.irc',x)], 1:nLoads);
         vnBytes_offset_load = cellfun(@(x)fh_sum(x, iSite), S_fet.ccviSpk_site2_load) * bytes_per_spk;
         cviSpk_load = cellfun_(@(x)x{iSite}, S_fet.ccviSpk_site2_load);
 end
@@ -2454,7 +2492,7 @@ else
     trPc1 = zeros(dimm_fet(1), dimm_fet(2), numel(viSpk), type_fet);
 end
 [iOffset_spk, viSpk_lim] = deal(0, [min(viSpk), max(viSpk)]);
-for iLoad = 1:numel(csFiles_fet)
+for iLoad = 1:nLoads
     if ~fLoad_all
         viSpk1 = [];
         viSpk_load1 = cviSpk_load{iLoad};
@@ -2473,10 +2511,12 @@ for iLoad = 1:numel(csFiles_fet)
     end
     if isempty(viSpk1), continue; end    
     dimm_fet1 = [dimm_fet(1), dimm_fet(2), vnSpk_load(iLoad)];
-    fid1=fopen(csFiles_fet{iLoad},'r'); 
+    [fid1, fCached1] = fid_fet_cache_(vcFile_prm, iLoad, iFet);
+%     fid1 = fopen(csFiles_fet{iLoad},'r'); 
     fseek(fid1, vnBytes_offset_load(iLoad), 'bof'); 
     trPc_load1 = fread_(fid1, dimm_fet1, type_fet);
-    fclose(fid1);
+%     fclose(fid1);
+    if ~fCached1, fclose(fid1); end % inside of parfor, close
     
     if ~isempty(mlPc)
         if fLoad_all
@@ -2498,6 +2538,50 @@ if ~isempty(mlPc)
 else
     out1 = trPc1;
 end
+end %func
+
+
+%--------------------------------------------------------------------------
+% cached access to feature files to save fopen time for single-threads
+function [fid, fCached] = fid_fet_cache_(vcCmd, arg1, arg2)
+% usage
+% -----
+% fid_fet_cache_('clear')
+% fid = fid_fet_cache_('set', v_fid_fet, v_fid_fet2)
+% fid = fid_fet_cache_(vcFile_prm, iLoad, iFet)
+
+persistent c_fid_load c_fid2_load
+fCached = 0;
+
+switch lower(vcCmd)
+    case 'set'
+        c_fid_load = arg1;
+        c_fid2_load = arg2;
+    case 'clear'
+        fclose_(c_fid_load);
+        fclose_(c_fid2_load);
+        c_fid_load = [];
+        c_fid2_load = [];
+    otherwise
+        [vcFile_prm, iLoad, iFet] = deal(vcCmd, arg1, arg2);
+        vcFile_ = strrep(vcFile_prm, '.prm', '');
+        switch iFet
+            case 1
+                if isempty(c_fid_load)
+                    fid = fopen(sprintf('%s_fet_%d.irc', vcFile_, iLoad), 'r');
+                else
+                    fid = c_fid_load{iLoad};
+                    fCached = 1;
+                end
+            case 2
+                if isempty(c_fid2_load)
+                    fid = fopen(sprintf('%s_fet2_%d.irc', vcFile_, iLoad), 'r');
+                else
+                    fid = c_fid2_load{iLoad};
+                    fCached = 1;
+                end
+        end % switch
+end % switch
 end %func
 
 
@@ -2686,11 +2770,11 @@ S_cache = makeStruct_(vrThresh_site, mrPv_global);
 % fprintf('\tMemory use: %0.3f GiB\n', (memory_matlab_()-memory_init)/2^30);
 delete_file_fet_(P); % clear fet
 [vcFile, vS_load] = readmda_paged_('close'); % close the file
-cS_detect{1} = detect_paged_save_(cS_detect{1}, P, 1);    
 viSite2Chan = get_(P, 'viSite2Chan');
-
+fid_fet_cache_('clear');
 if ~fDone
     if fParfor
+        cS_detect{1} = detect_paged_save_(cS_detect{1}, P, 1);    
         parfor iLoad = 2:nLoads  % change to for loop for debugging
             t_load1 = tic;
             S_load1 = vS_load(iLoad);
@@ -2701,15 +2785,18 @@ if ~fDone
             disp_load_(iLoad, var_size1, toc(t_load1), numel(get_(cS_detect{iLoad}, 'viTime_spk')));
         end
     else
+        [c_fid_fet, c_fid_fet2] = deal(cell(nLoads, 1));
+        [cS_detect{1}, c_fid_fet{1}, c_fid_fet2{1}] = detect_paged_save_(cS_detect{1}, P, 1);            
         for iLoad = 2:nLoads  % change to for loop for debugging
             t_load1 = tic;
             S_load1 = vS_load(iLoad);
             mrWav_T1 = load_file_part_(vcFile, S_load1, viSite2Chan); var_size1 = var_size_(mrWav_T1);
             S_cache1 = setfield(S_cache, 'nlim_wav1', S_load1.nlim);
             cS_detect{iLoad} = detect_paged_(mrWav_T1, P, S_cache1);  mrWav_T1 = [];
-            cS_detect{iLoad} = detect_paged_save_(cS_detect{iLoad}, P, iLoad);      
+            [cS_detect{iLoad}, c_fid_fet{iLoad}, c_fid_fet2{iLoad}] = detect_paged_save_(cS_detect{iLoad}, P, iLoad);      
             disp_load_(iLoad, var_size1, toc(t_load1), numel(get_(cS_detect{iLoad}, 'viTime_spk')));
         end
+        fid_fet_cache_('set', c_fid_fet, c_fid_fet2);
     end
 end
 S0 = detect_merge_(cS_detect, viOffset_load, P);
@@ -2898,15 +2985,19 @@ end %func
 
 %--------------------------------------------------------------------------
 % Save trPc_spk and trPc2_spk and remove from the struct
-function S_detect = detect_paged_save_(S_detect, P, iLoad)
+function [S_detect, fid_fet, fid_fet2] = detect_paged_save_(S_detect, P, iLoad)
 
-fSave_fet = get_set_(P, 'fSave_fet', 0);
+fKeep_fid = nargout>1;
+
 nSites = size(P.miSites, 2);
-
 vcFile_prm_ = strrep(P.vcFile_prm, '.prm', '');
-if fSave_fet
-    write_bin_([vcFile_prm_, sprintf('_fet_%d.irc', iLoad)], S_detect.trPc_spk);    
+
+if fKeep_fid
+    fid_fet = fopen([vcFile_prm_, sprintf('_fet_%d.irc', iLoad)], 'w+');
+else    
+    fid_fet = sprintf('%s_fet_%d.irc', vcFile_prm_, iLoad);
 end
+write_bin_(fid_fet, S_detect.trPc_spk);
 S_detect.type_fet = class(S_detect.trPc_spk);
 S_detect.dimm_fet = size(S_detect.trPc_spk);
 S_detect.cviSpk_site = save_paged_fet_site_(...
@@ -2916,10 +3007,13 @@ S_detect.trPc_spk = [];
 if isempty(get_(S_detect, 'trPc2_spk'))
     S_detect.cviSpk2_site = cell(size(S_detect.cviSpk_site));
     return; 
-end   
-if fSave_fet
-    write_bin_([vcFile_prm_, sprintf('_fet2_%d.irc', iLoad)], S_detect.trPc2_spk);    
 end
+if fKeep_fid
+    fid_fet2 = fopen([vcFile_prm_, sprintf('_fet2_%d.irc', iLoad)], 'w+');
+else
+    fid_fet2 = sprintf('%s_fet2_%d.irc', vcFile_prm_, iLoad);
+end
+write_bin_(fid_fet2, S_detect.trPc2_spk);    
 S_detect.cviSpk2_site = save_paged_fet_site_(...
     [vcFile_prm_, sprintf('_fet2_%d.irc', iLoad)], ...
         S_detect.trPc2_spk, S_detect.viSite2_spk, nSites);
@@ -4623,6 +4717,7 @@ function [viMapClu_new, viUniq_, viMapClu] = cell2map_(cvi_clu)
 nRepeat = 10;
 
 t_fun = tic;
+fprintf('\tcell2map_: '); t_fun=tic;
 for iRepeat = 1:nRepeat
     cvi_clu1 = cell(size(cvi_clu));
     viClu_update = find(cellfun(@(x)numel(x)>1, cvi_clu));
@@ -4638,6 +4733,7 @@ for iRepeat = 1:nRepeat
     else
         cvi_clu = cvi_clu1;
     end
+    fprintf('.');
 end
 
 nClu = numel(cvi_clu);
@@ -4651,7 +4747,7 @@ end
 viUniq_ = unique(viMapClu);
 viMap_(viUniq_) = 1:numel(viUniq_);
 viMapClu_new = viMap_(viMapClu);
-fprintf('\tcell2map_: nRepeat=%d, took %0.1fs\n', iRepeat, toc(t_fun));
+fprintf(' nRepeat=%d, took %0.1fs\n', iRepeat, toc(t_fun));
 end %func
 
 
@@ -5209,8 +5305,133 @@ end %func
 
 
 %--------------------------------------------------------------------------
+% Compile CUDA codes for IronClust
+% 10/5/17 JJJ: Error messages converted to warning
+% 7/26/17 JJJ: Code cleanup and testing
+function fSuccess = compile_cuda_(csFiles_cu, vcDeploy)
+S_cfg = read_cfg_();
+if nargin<1 || isempty(csFiles_cu)     
+    csFiles_cu = S_cfg.csFiles_cuda; %version 3 cuda
+elseif ischar(csFiles_cu)
+    csFiles_cu = {csFiles_cu};
+end
+fDeploy = ifeq_(isempty(vcDeploy), 1, str2num_(vcDeploy));
+
+t1 = tic;
+disp('Compiling CUDA codes...');
+fSuccess = 1;
+S_gpu = gpuDevice(1);
+vcPath_nvcc = get_set_(S_cfg, 'vcPath_nvcc', get_nvcc_path_(S_gpu));
+if isempty(vcPath_nvcc), fSuccess = 0; return; end
+if fSuccess
+    try % determine compute capability version
+        sm_ver = str2double(S_gpu.ComputeCapability);
+        fprintf('GPU compute capability: %s\n', S_gpu.ComputeCapability);
+        if fDeploy
+            if sm_ver >=3.5
+                vc_sm_ver = '35'; % supports over 4GB GPU memory
+            else
+                vc_sm_ver = '30'; % supports under 4GB GPU memory
+            end
+        else
+           vc_sm_ver = sprintf('%d', round(sm_ver*10));
+        end
+    catch
+        fSuccess = 0;
+    end
+    for i=1:numel(csFiles_cu)
+        vcFile_ = ircpath_(csFiles_cu{i});
+        vcCmd1 = sprintf('%s -ptx -m 64 -arch sm_%s "%s"', vcPath_nvcc, vc_sm_ver, vcFile_);
+        fprintf('\t%s\n\t', vcCmd1);
+        try          
+            status = system(vcCmd1);
+            fSuccess = fSuccess && (status==0);        
+        catch
+            fprintf('\tWarning: CUDA could not be compiled: %s\n', vcFile_); 
+        end
+    end
+end
+if ~fSuccess
+    disp_cs_({'    Warning: CUDA could not be compiled but IronClust may work fine.', 
+    sprintf('    If not, install CUDA toolkit v%0.1f and run "irc install".', S_gpu.ToolkitVersion),
+    '    If you encounter error:  nvcc fatal   : Microsoft Visual Studio configuration file ''vcvars64.bat'' could not be found...', 
+    '      1. Copy $VS12/VC/bin/x86_amd64 to $VS12/VC/bin/amd64', 
+    '      2. Rename $VS12/VC/bin/amd64/vcvarsx86_amd64.bat to vcvars64.bat'});
+end
+
+% clear cuda code persistent cache
+clear cuda_knn_ search_knn_drift_ search_delta_drift_ 
+
+fprintf('\tFinished compiling, took %0.1fs\n', toc(t1));
+end %func
+
+
+%---------------------------------------------------------------------------
+function out = ifeq_(if_, true_, false_)
+if (if_)
+    out = true_;
+else
+    out = false_;
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+% 9/26/17 JJJ: Created and tested
+function vcFile_full = ircpath_(vcFile, fConditional)
+% make it a irc path
+% Add a full path if the file doesn't exist in the current folder
+% 
+
+if nargin<1, vcFile = ''; end
+if nargin<2, fConditional = 0; end
+
+ircpath = fileparts(mfilename('fullpath'));
+if fConditional
+    if exist_file_(vcFile)
+        vcFile_full = vcFile;
+        return;
+    end
+end
+vcFile_full = [ircpath, filesep(), vcFile];
+end %func
+
+
+%--------------------------------------------------------------------------
+function disp_cs_(cs)
+% display cell string
+cellfun(@(s)fprintf('%s\n',s), cs);
+end %func
+
+
+%--------------------------------------------------------------------------
+function vcPath_nvcc = get_nvcc_path_(S_gpu)
+if ispc()    
+    csDir = sub_dir_('C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v*');
+    if isempty(csDir), vcPath_nvcc=[]; return; end
+    vrVer = cellfun(@(x)str2num(x(2:end)), csDir);
+    [~,imin] = min(abs(vrVer-S_gpu.ToolkitVersion));    
+    vcPath_nvcc = sprintf('"C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v%0.1f\\bin\\nvcc"', vrVer(imin));    
+else
+    vcPath_nvcc = read_cfg_('nvcc_path');
+    if ~exist_file_(vcPath_nvcc)
+        vcPath_nvcc = '/usr/local/cuda/bin/nvcc'; % try default installation location
+    end
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+function csDir = sub_dir_(vc)
+S_dir = dir(vc);
+csDir = {S_dir.name};
+csDir = csDir([S_dir.isdir]);
+end %func
+
+
+%--------------------------------------------------------------------------
 % Call from irc.m
-function compile_cuda_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
+% function compile_cuda_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
 function frewind_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
 function disperr_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
 function edit_prm_file_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
@@ -5224,7 +5445,6 @@ function out1 = load_batch_(varargin), fn=dbstack(); out1 = irc('call', fn(1).na
 function out1 = list_files_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = meta2struct_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = struct_merge_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
-function out1 = ircpath_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = read_cfg_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = file2struct_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = exist_file_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
@@ -5237,7 +5457,6 @@ function out1 = mr2tr_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, v
 function out1 = subsample_vr_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = struct_default_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = get_filter_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
-% function out1 = gt2mda_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = exist_dir_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = meanSubt_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = memory_matlab_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
@@ -5247,22 +5466,17 @@ function out1 = struct_set_(varargin), fn=dbstack(); out1 = irc('call', fn(1).na
 function out1 = find_site_spk23_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = mn2tn_wav_spk2_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = matchFileExt_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
-% function out1 = shift_trWav_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = struct_copyas_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = set_bool_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
-function out1 = ifeq_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = file2hash_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = dir_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = S_clu_sort_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = S_clu_refrac_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = map_index_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 
-% function [out1, out2] = readmda_(varargin), fn=dbstack(); [out1, out2] = irc('call', fn(1).name, varargin); end
 function [out1, out2] = mr2thresh_(varargin), fn=dbstack(); [out1, out2] = irc('call', fn(1).name, varargin); end
 function [out1, out2] = findNearSites_(varargin), fn=dbstack(); [out1, out2] = irc('call', fn(1).name, varargin); end
 function [out1, out2] = shift_range_(varargin), fn=dbstack(); [out1, out2] = irc('call', fn(1).name, varargin); end
 
 function [out1, out2, out3] = fopen_mda_(varargin), fn=dbstack(); [out1, out2, out3] = irc('call', fn(1).name, varargin); end
 function [out1, out2, out3] = fopen_nsx_(varargin), fn=dbstack(); [out1, out2, out3] = irc('call', fn(1).name, varargin); end
-% function [out1, out2, out3] = plan_load_(varargin), fn=dbstack(); [out1, out2, out3] = irc('call', fn(1).name, varargin); end
-% function [out1, out2, out3] = detect_spikes_(varargin), fn=dbstack(); [out1, out2, out3] = irc('call', fn(1).name, varargin); end
