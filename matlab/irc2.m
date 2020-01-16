@@ -187,8 +187,8 @@ end %func
 %--------------------------------------------------------------------------
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_()
-vcVer = 'v5.5.5';
-vcDate = '01/15/2020';
+vcVer = 'v5.5.6';
+vcDate = '01/16/2020';
 vcHash = file2hash_();
 
 if nargout==0
@@ -1145,17 +1145,21 @@ if fParfor %&& ~isLargeRecording_(P)
 end
 
 % merge cluster pairwise distance
-mlDist_clu = false(nClu);
-mlDist_clu(sub2ind([nClu,nClu], 1:nClu, 1:nClu)) = true; % self join
 vlExist_clu = false(1, nClu);
+mlDist_clu = [];
 for iSite = 1:nSites
     if isempty(cmlDist_site{iSite})
         [cmlDist_site{iSite}, cvlExist_site{iSite}] = wave_similarity_site_(iSite, S_auto);
     end
-    mlDist_clu = mlDist_clu | cmlDist_site{iSite};
+    if isempty(mlDist_clu)
+        mlDist_clu = cmlDist_site{iSite};
+    else
+        mlDist_clu = mlDist_clu | cmlDist_site{iSite};
+    end
     vlExist_clu = vlExist_clu | cvlExist_site{iSite};
     [cmlDist_site{iSite}, cvlExist_site{iSite}] = deal([]); % clear memory
 end
+mlDist_clu(sub2ind([nClu,nClu], 1:nClu, 1:nClu)) = true; % self join
 viClu_remove = find(~vlExist_clu);
 fprintf('\n\twave_similarity_: took %0.1fs\n', toc(t_fun));
 end %func

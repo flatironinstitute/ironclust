@@ -4796,7 +4796,7 @@ fprintf('SNR(%s)>%0.1f Groundtruth Units\n', read_cfg_('vcSnr_gt'), snr_thresh_g
 [vrSnr, vrFp, vrFn, vrAccuracy, vnSite, vnSpk] = ...
     multifun_(@(x)x(:), vrSnr, vrFp, vrFn, vrAccuracy, vnSite, vnSpk);
 [vrFp_pct, vrFn_pct, vrAccuracy_pct] = deal(vrFp*100, vrFn*100, vrAccuracy*100);
-vrF1_score = 2./(1./vrFp_pct+1./vrFn_pct);
+vrF1_score = 2./(1./(100-vrFp_pct) + 1./(100-vrFn_pct));
 vrScore2 = 100-vrFp_pct/2-vrFn_pct/2;
 fprintf('\tSNR (Vp/Vrms): '); disp_stats_(vrSnr);
 fprintf('\tFalse Positive (%%): '); disp_stats_(vrFp_pct);
