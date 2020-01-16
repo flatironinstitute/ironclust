@@ -2772,32 +2772,30 @@ delete_file_fet_(P); % clear fet
 [vcFile, vS_load] = readmda_paged_('close'); % close the file
 viSite2Chan = get_(P, 'viSite2Chan');
 fid_fet_cache_('clear');
-if ~fDone
-    if fParfor
-        cS_detect{1} = detect_paged_save_(cS_detect{1}, P, 1);    
-        parfor iLoad = 2:nLoads  % change to for loop for debugging
-            t_load1 = tic;
-            S_load1 = vS_load(iLoad);
-            mrWav_T1 = load_file_part_(vcFile, S_load1, viSite2Chan); var_size1 = var_size_(mrWav_T1);
-            S_cache1 = setfield(S_cache, 'nlim_wav1', S_load1.nlim); t_detect1 = tic;
-            cS_detect{iLoad} = detect_paged_(mrWav_T1, P, S_cache1);  mrWav_T1 = [];
-            cS_detect{iLoad} = detect_paged_save_(cS_detect{iLoad}, P, iLoad);        
-            disp_load_(iLoad, var_size1, toc(t_load1), numel(get_(cS_detect{iLoad}, 'viTime_spk')));
-        end
-    else
-        [c_fid_fet, c_fid_fet2] = deal(cell(nLoads, 1));
-        [cS_detect{1}, c_fid_fet{1}, c_fid_fet2{1}] = detect_paged_save_(cS_detect{1}, P, 1);            
-        for iLoad = 2:nLoads  % change to for loop for debugging
-            t_load1 = tic;
-            S_load1 = vS_load(iLoad);
-            mrWav_T1 = load_file_part_(vcFile, S_load1, viSite2Chan); var_size1 = var_size_(mrWav_T1);
-            S_cache1 = setfield(S_cache, 'nlim_wav1', S_load1.nlim);
-            cS_detect{iLoad} = detect_paged_(mrWav_T1, P, S_cache1);  mrWav_T1 = [];
-            [cS_detect{iLoad}, c_fid_fet{iLoad}, c_fid_fet2{iLoad}] = detect_paged_save_(cS_detect{iLoad}, P, iLoad);      
-            disp_load_(iLoad, var_size1, toc(t_load1), numel(get_(cS_detect{iLoad}, 'viTime_spk')));
-        end
-        fid_fet_cache_('set', c_fid_fet, c_fid_fet2);
+if fParfor
+    cS_detect{1} = detect_paged_save_(cS_detect{1}, P, 1);    
+    parfor iLoad = 2:nLoads  % change to for loop for debugging
+        t_load1 = tic;
+        S_load1 = vS_load(iLoad);
+        mrWav_T1 = load_file_part_(vcFile, S_load1, viSite2Chan); var_size1 = var_size_(mrWav_T1);
+        S_cache1 = setfield(S_cache, 'nlim_wav1', S_load1.nlim); t_detect1 = tic;
+        cS_detect{iLoad} = detect_paged_(mrWav_T1, P, S_cache1);  mrWav_T1 = [];
+        cS_detect{iLoad} = detect_paged_save_(cS_detect{iLoad}, P, iLoad);        
+        disp_load_(iLoad, var_size1, toc(t_load1), numel(get_(cS_detect{iLoad}, 'viTime_spk')));
     end
+else
+    [c_fid_fet, c_fid_fet2] = deal(cell(nLoads, 1));
+    [cS_detect{1}, c_fid_fet{1}, c_fid_fet2{1}] = detect_paged_save_(cS_detect{1}, P, 1);            
+    for iLoad = 2:nLoads  % change to for loop for debugging
+        t_load1 = tic;
+        S_load1 = vS_load(iLoad);
+        mrWav_T1 = load_file_part_(vcFile, S_load1, viSite2Chan); var_size1 = var_size_(mrWav_T1);
+        S_cache1 = setfield(S_cache, 'nlim_wav1', S_load1.nlim);
+        cS_detect{iLoad} = detect_paged_(mrWav_T1, P, S_cache1);  mrWav_T1 = [];
+        [cS_detect{iLoad}, c_fid_fet{iLoad}, c_fid_fet2{iLoad}] = detect_paged_save_(cS_detect{iLoad}, P, iLoad);      
+        disp_load_(iLoad, var_size1, toc(t_load1), numel(get_(cS_detect{iLoad}, 'viTime_spk')));
+    end
+    fid_fet_cache_('set', c_fid_fet, c_fid_fet2);
 end
 S0 = detect_merge_(cS_detect, viOffset_load, P);
 % fprintf('\tMemory use: %0.3f GiB\n', memory_matlab_()/2^30);
