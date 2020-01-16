@@ -51,6 +51,7 @@ else
     vcFile_prm_ = vcFile_prm;
 end
 switch lower(vcCmd)
+    % spikeforest2 interface
     case {'run-hs', 'run-herdingspikes', 'run-herdingspikes2'}
         run_spikeforest2_('herdingspikes2', vcArg1, vcArg2, vcArg3); return;
     case {'run-sc', 'run-spykingcircus'}
@@ -60,9 +61,12 @@ switch lower(vcCmd)
     case {'run-tdc', 'run-tridesclous'}, run_spikeforest2_('tridesclous', vcArg1, vcArg2, vcArg3); return;
     case {'run-klusta'}, run_spikeforest2_('klusta', vcArg1, vcArg2, vcArg3); return;
     case {'run-jrclust', 'run-jrc'}, run_spikeforest2_('jrclust', vcArg1, vcArg2, vcArg3); return;
-    case {'run-ks', 'run-kilosort'}, run_spikeforest2_('kilosort', vcArg1, vcArg2, vcArg3); return;
+    case {'run-ks', 'run-kilosort'}, run_spikeforest2_('kilosort', vcArg1, vcArg2, vcArg3); return;    
+    case {'run-irc', 'run-ironclust'}, run_spikeforest2_('ironclust', vcArg1, vcArg2, vcArg3); return;
+    case {'run-ks2', 'run-kilosort2'}, run_spikeforest2_('kilosort2', vcArg1, vcArg2, vcArg3); return;
         
-    case {'run-ks2', 'run-kilosort2'}, run_ksort2(vcArg1, vcArg2, vcArg3); return;
+    % direcly run kilosort2 from the source
+    case {'ks2', 'kilosort2'}, run_ksort2(vcArg1, vcArg2, vcArg3); return;
         
     case 'export-mda', save_firings_mda_(vcFile_prm, vcArg2); return;
     case {'which', 'select'}, fprintf('%s\n', vcFile_prm); return;
@@ -183,7 +187,7 @@ end %func
 %--------------------------------------------------------------------------
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_()
-vcVer = 'v5.5.4';
+vcVer = 'v5.5.5';
 vcDate = '01/15/2020';
 vcHash = file2hash_();
 
@@ -3763,7 +3767,7 @@ if isempty(vcDir_out)
         vcDir_out = strrep(vcDir_in, 'groundtruth', 'irc2'); 
     end
 end
-if ~exist_dir_(vcDir_out), mkdir(vcDir_out); end
+mkdir_(vcDir_out);
 end %func
 
 
@@ -4756,18 +4760,18 @@ nClu = size(mlClu,1);
 % mlClu = set_diag_(mlClu | mlClu', true(nClu,1));
 % set diagonal to true
 
-viClu = find(any(mlClu,1) | any(mlClu,2)');
-for iClu = viClu
-    vi1_ = find(mlClu(:,iClu) | mlClu(iClu,:)');
-    mlClu(vi1_,vi1_) = true;
-end    
+mlClu = mlClu | mlClu'; % make symmetric
+viClu = find(any(mlClu,1));
+for iClu = viClu % very slow, how to speed it up?
+    vl_ = mlClu(:,iClu);
+    mlClu(vl_,vl_) = true;
+end
 
 viMapClu = zeros(1, nClu);
-for iClu = 1:nClu
+for iClu = 1:nClu 
     iClu1 = find(mlClu(:,iClu), 1, 'first');
     if ~isempty(iClu1), viMapClu(iClu) = iClu1; end
 end
-% viMapClu = viMapClu(viMapClu>0);
 
 % Compact the map so the index doesn't have a gap
 viUniq_ = setdiff(unique(viMapClu), 0);
@@ -5262,14 +5266,16 @@ end %func
 %--------------------------------------------------------------------------
 % Run spikeforest2 through python docker interface
 function run_spikeforest2_(vcSorter, vcDir_in, vcDir_out, vcArg)
+if nargin<4, vcArg = ''; end
 
 csSorters_sf2 = {'mountainsort4', 'ironclust', 'kilosort2', 'kilosort', 'spykingcircus', 'herdingspikes2', 'tridesclous', 'klusta', 'waveclus', 'jrclust'};
 
 t_fun=tic;
 if isempty(vcDir_out)
-    vcDir_out = fullfile(vcDir_in, vcSorter);
-    mkdir(vcDir_out);
+    vcDir_out = fullfile(vcDir_in, vcSorter);    
 end
+mkdir_(vcDir_out);
+
 if contains(lower(vcSorter), csSorters_sf2)
     % check python path
     spikeforest2_python_path = read_cfg_('spikeforest2_python_path');
@@ -5284,7 +5290,14 @@ if contains(lower(vcSorter), csSorters_sf2)
     
     fprintf('Running %s through spikeforest2...\n', vcSorter);
     vcFile_firings = fullfile(vcDir_out, 'firings.mda');
-    py.spikeforest2.experimental.sort(lower(vcSorter), vcDir_in, vcFile_firings);
+    if isempty(vcArg)
+        py.spikeforest2.experimental.sort(...
+            pyargs('algorithm', lower(vcSorter), 'recording_path', vcDir_in, 'sorting_out', vcFile_firings));
+    else
+        params = sf2_params_(vcArg);
+        py.spikeforest2.experimental.sort(...
+            pyargs('algorithm', lower(vcSorter), 'recording_path', vcDir_in, 'sorting_out', vcFile_firings, 'params', params));
+    end
     fprintf('%s: wrote to %s, took %0.1fs\n', vcSorter, vcFile_firings, toc(t_fun));
 else
     fprintf(2, '%s is not currently supported\n');
@@ -5298,6 +5311,72 @@ if exist_file_(vcFile_true)
     vcFile_raw = fullfile(vcDir_in, 'raw.mda');
     S_score = irc('validate-mda', vcFile_true, vcFile_firings, vcFile_raw, fPlot_gt); % assume that groundtruth file exists
     struct_save_(S_score, fullfile(vcDir_out, 'raw_geom_score.mat'), 1);
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+function fCreatedDir = mkdir_(vcDir)
+% make only if it doesn't exist. provide full path for dir
+fCreatedDir = exist_dir_(vcDir);
+if ~fCreatedDir
+    try
+        mkdir(vcDir); 
+    catch
+        fCreatedDir = 0;
+    end
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+function params = sf2_params_(vcArg)
+params = py.dict;
+if isempty(vcArg), return; end
+
+if isstruct(vcArg)
+    S_arg = vcArg;
+elseif ischar(vcArg)
+    S_arg = meta2struct_(vcArg); % name = value type
+end
+
+params = pydict_add_(params, S_arg, {'detect_threshold', 'freq_min', 'freq_max', 'detect_sign', 'adjacency_radius'}, 'double');
+params = pydict_add_(params, S_arg, {'whiten'}, 'logical');
+
+% ironclust
+params = pydict_add_(params, S_arg, {'merge_thresh', 'fft_thresh'}, 'double');
+params = pydict_add_(params, S_arg, {'common_ref_type'}, 'char');
+
+% kilosort2
+params = pydict_add_(params, S_arg, {'sigmaMask', 'nPCs', 'minFR', 'Nt', 'preclust_threshold'}, 'double');
+params = pydict_add_(params, S_arg, {'projection_threshold'}, @(x)py.list(x));
+params = pydict_add_(params, S_arg, {'car'}, 'logical');
+
+% mountainsort4
+params = pydict_add_(params, S_arg, {'clip_size', 'detect_interval'}, 'double');
+params = pydict_add_(params, S_arg, {'curation'}, 'logical');
+
+% spykingcircus
+params = pydict_add_(params, S_arg, {'auto_merge', 'template_width_ms'}, 'double');
+end %func
+
+
+%--------------------------------------------------------------------------
+function pydict = pydict_add_(pydict, S, csNames, fh_cast)
+
+if nargin<4, fh_cast = []; end
+if isempty(fh_cast)
+    fh_cast = @(x)x;
+elseif ischar(fh_cast)
+    fh_cast = @(x)cast(x, fh_cast);
+end
+
+if ischar(csNames), csNames = {csNames}; end
+for iCell = 1:numel(csNames)
+    vcName_ = csNames{iCell};
+    if isfield(S, vcName_)
+        pydict{vcName_} = fh_cast(S.(vcName_));
+    end
 end
 end %func
 
@@ -5428,6 +5507,22 @@ end %func
 
 
 %--------------------------------------------------------------------------
+% 8/7/2018 JJJ
+function flag = exist_dir_(vcDir)
+if isempty(vcDir)
+    flag = 0;
+else
+    S_dir = dir(vcDir);
+    if isempty(S_dir)
+        flag = 0;
+    else
+        flag = sum([S_dir.isdir]) > 0;
+    end
+end
+end %func
+
+
+%--------------------------------------------------------------------------
 % Call from irc.m
 % function compile_cuda_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
 function frewind_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
@@ -5455,7 +5550,6 @@ function out1 = mr2tr_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, v
 function out1 = subsample_vr_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = struct_default_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = get_filter_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
-function out1 = exist_dir_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = meanSubt_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = memory_matlab_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = recording_duration_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
