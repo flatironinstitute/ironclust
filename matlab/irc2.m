@@ -1,10 +1,12 @@
-% works on mda format only for now
-% no manual interface now
-% analyzes single mda file format
-% todo: multiple mda files
-% todo: multiple formats
-
 %--------------------------------------------------------------------------
+% IronClust: terabyte-scale drift-resistent spike sorter 
+%    based on KNN-graph density clustering and anatomical similarity
+%
+% Author: James Jun (2018-2020)
+%   Center for Computational Mathematics
+%   Flatiron Institute, a division of Simons Foundation
+
+
 function varargout = irc2(vcDir_in, vcDir_out, vcFile_arg, vcArg3)
 % irc2(vcDir_in, vcDir_out, vcFile_arg)
 % irc2(vcCmd, vcArg1, vcArg2)
@@ -187,7 +189,7 @@ end %func
 %--------------------------------------------------------------------------
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_()
-vcVer = 'v5.5.6';
+vcVer = 'v5.5.7';
 vcDate = '01/16/2020';
 vcHash = file2hash_();
 
@@ -2128,6 +2130,7 @@ if fGpu
         if iRetry == nRetry
             fGpu=0;             
             fprintf(2, 'C');
+            disp(lasterr)
         end      
     end
 end
@@ -3974,15 +3977,28 @@ end
 % set adjacency radius
 P.maxDist_site_um = get_set_(S_txt, 'adjacency_radius', 50);
 P.maxDist_site_spk_um = get_set_(S_txt, 'adjacency_radius_out', 75);
-if P.maxDist_site_spk_um<=0, P.maxDist_site_spk_um = inf; end
-%P.maxDist_site_merge_um = P.maxDist_site_spk_um * 0.4667;   
+if P.maxDist_site_spk_um<=0
+    P.maxDist_site_spk_um = inf; 
+elseif P.maxDist_site_spk_um < P.maxDist_site_um
+    P.maxDist_site_spk_um = P.maxDist_site_um;
+end
 
 % set frequency
 freq_min = get_set_(S_txt, 'freq_min', []);
 freq_max = get_set_(S_txt, 'freq_max', []);
 if ~isempty(freq_min) && ~isempty(freq_max)
     P.freqLim = [freq_min, freq_max]; 
+elseif isempty(freq_min) && ~isempty(freq_max)
+    P.freqLim = [nan, freq_max]; 
+elseif ~isempty(freq_min) && isempty(freq_max)
+    P.freqLim = [freq_min, nan]; 
+elseif isempty(freq_min) && isempty(freq_max)
+    P.freqLim = [nan, nan];
 end
+
+% disable filter
+fFilter = logical_(get_set_(S_txt, 'filter', 1));
+if ~fFilter, P.freqLim = [nan, nan]; end
 
 % vcCommonRef and whiten
 fWhiten = strcmpi(get_(S_txt, 'whiten'), 'True');
@@ -5389,7 +5405,7 @@ if contains(lower(vcSorter), csSorters_sf2)
         py.spikeforest2.experimental.sort(...
             pyargs('algorithm', lower(vcSorter), 'recording_path', vcDir_in, 'sorting_out', vcFile_firings));
     else
-        params = sf2_params_(vcArg);
+        params = sf2_params_(vcArg, vcSorter);
         py.spikeforest2.experimental.sort(...
             pyargs('algorithm', lower(vcSorter), 'recording_path', vcDir_in, 'sorting_out', vcFile_firings, 'params', params));
     end
@@ -5425,7 +5441,8 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function params = sf2_params_(vcArg)
+function params = sf2_params_(vcArg, vcSorter)
+
 params = py.dict;
 if isempty(vcArg), return; end
 
@@ -5435,24 +5452,56 @@ elseif ischar(vcArg)
     S_arg = meta2struct_(vcArg); % name = value type
 end
 
-params = pydict_add_(params, S_arg, {'detect_threshold', 'freq_min', 'freq_max', 'detect_sign', 'adjacency_radius'}, 'double');
-params = pydict_add_(params, S_arg, {'whiten'}, 'logical');
+% global parameters
+cs_common_double = {'detect_threshold', 'detect_sign', 'adjacency_radius'};
+params = pydict_add_(params, S_arg, cs_common_double, 'double');
 
-% ironclust
-params = pydict_add_(params, S_arg, {'merge_thresh', 'fft_thresh'}, 'double');
-params = pydict_add_(params, S_arg, {'common_ref_type'}, 'char');
+% sorter-specific parameters
+[cs_sorter_double, cs_sorter_char, cs_sorter_logical, cs_sorter_pylist] = deal({});
+switch lower(vcSorter)
+    case 'ironclust'
+        cs_sorter_double = {'freq_min', 'adjacency_radius_out', 'merge_thresh', 'fft_thresh', 'knn', ...
+            'min_count', 'delta_cut', 'pc_per_chan', 'batch_sec_drift', 'step_sec_drift', 'freq_max'};
+        cs_sorter_char = {'common_ref_type'};
+        cs_sorter_logical = {'whiten', 'fGpu', 'filter'};
+    case 'mountainsort'
+        cs_sorter_double = {'freq_min', 'clip_size', 'detect_interval', 'freq_max'};
+        cs_sorter_logical = {'curation', 'whiten', 'filter'};
+    case 'kilosort2'
+        cs_sorter_double = {'freq_min', 'sigmaMask', 'nPCs', 'minFR', 'Nt', 'preclust_threshold'};
+        cs_sorter_logical = {'car'};
+        cs_sorter_pylist = {'projection_threshold'};
+    case 'spykingcircus'
+        cs_sorter_double = {'auto_merge', 'template_width_ms', 'whitening_max_elts', 'clustering_max_elts'};
+        cs_sorter_logical = {'filter', 'merge_spikes'};        
+    case 'jrclust'        
+    case 'waveclus'        
+    case 'kilosort'        
+    case 'tridesclous'        
+    case 'klusta'
+        
+    otherwise, error('unsupported sorter');
+end
+params = pydict_add_(params, S_arg, cs_sorter_double, 'double');
+params = pydict_add_(params, S_arg, cs_sorter_char, 'char');
+params = pydict_add_(params, S_arg, cs_sorter_logical, @(x)logical_(x));
+params = pydict_add_(params, S_arg, cs_sorter_pylist, @(x)py.list(x));
+end %func
 
-% kilosort2
-params = pydict_add_(params, S_arg, {'sigmaMask', 'nPCs', 'minFR', 'Nt', 'preclust_threshold'}, 'double');
-params = pydict_add_(params, S_arg, {'projection_threshold'}, @(x)py.list(x));
-params = pydict_add_(params, S_arg, {'car'}, 'logical');
 
-% mountainsort4
-params = pydict_add_(params, S_arg, {'clip_size', 'detect_interval'}, 'double');
-params = pydict_add_(params, S_arg, {'curation'}, 'logical');
-
-% spykingcircus
-params = pydict_add_(params, S_arg, {'auto_merge', 'template_width_ms'}, 'double');
+%--------------------------------------------------------------------------
+function x = logical_(x)
+if ischar(x)
+    if strcmpi(x, 'true') || strcmpi(x, '1')
+        x = true;
+    elseif strcmpi(x, 'false') || strcmpi(x, '0')
+        x = false;
+    else
+        error('logical_: undefined: %s', x);
+    end
+else
+    x = logical(x);
+end
 end %func
 
 
@@ -5460,6 +5509,8 @@ end %func
 function pydict = pydict_add_(pydict, S, csNames, fh_cast)
 
 if nargin<4, fh_cast = []; end
+if isempty(csNames), return; end
+
 if isempty(fh_cast)
     fh_cast = @(x)x;
 elseif ischar(fh_cast)

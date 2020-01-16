@@ -17,7 +17,7 @@ step_sec_drift = {20};
 fft_thresh = {8};
 delta_cut = {1};
 
-i% #Sort mode
+% #Sort mode
 nPcPerChan = {0};
 nPc_spk = {9};
 vcCommonRef = {'mean', 'none', 'trimmean'};
