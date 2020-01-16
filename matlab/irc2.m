@@ -967,8 +967,14 @@ if maxWavCor<1 && nClu > 1
         fprintf('\tMerging templates...\n\t'); t_merge=tic;
         nClu_pre = S_auto.nClu;
         S0.S_auto = S_auto;
-        [mlDist_clu, viClu_delete] = wave_similarity_(S0, P);
-        [S_auto, nClu_post] = ml_merge_clu_(S_auto, mlDist_clu, viClu_delete);    
+        switch 2
+            case 1
+                [mlDist_clu, viClu_delete] = wave_similarity_(S0, P);
+                [S_auto, nClu_post] = ml_merge_clu_(S_auto, mlDist_clu, viClu_delete);    
+            case 2
+                [S_auto, viClu_delete] = wave_similarity_merge_(S0, P);
+                nClu_post = S_auto.nClu;
+        end %switch
         fprintf('\tMerged waveforms (%d->%d->%d), took %0.1fs\n', ...
             nClu_pre, nClu_post+numel(viClu_delete), nClu_post, toc(t_merge));
     catch E
@@ -1166,7 +1172,70 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function [mlDist_clu, vlExist_clu] = wave_similarity_site_(iSite1, S_auto)
+% keeps trPc in the main memory, not sent out to workers
+function [S_auto, viClu_remove] = wave_similarity_merge_(S0, P)
+S_auto = get_(S0, 'S_auto');
+S_clu = get_(S0, 'S_clu');
+t_fun = tic;
+% fprintf('\tAutomated merging based on waveform similarity...\n'); t_template=tic;
+viClu = S_auto.viClu;
+vrRho = S_clu.rho;
+[ccviSpk_site_load, ccviSpk_site2_load, type_fet, dimm_fet, mrPv, vrThresh_site] = ...
+    get_(S0, 'ccviSpk_site_load', 'ccviSpk_site2_load', 'type_fet', ...
+        'dimm_fet', 'mrPv_global', 'vrThresh_site');
+nShift_max = ceil(diff(P.spkLim) * P.frac_shift_merge / 2);
+viShift = -nShift_max:nShift_max;
+[knn, nSpk_min, vcFile_prm, maxWavCor] = get_(P, 'knn', 'knn', 'vcFile_prm', 'maxWavCor');
+nClu = S_auto.nClu;
+
+% try loading the entire miKnn to RAM
+nSites = size(P.miSites,2);
+[viLim_drift, mlDrift] = get_(S_clu.S_drift, 'viLim_drift', 'mlDrift');
+% nDrift = size(mlDrift,1);
+S_auto = makeStruct_(nClu, nSites, knn, vcFile_prm, nSpk_min, ...
+    vrRho, viClu, viLim_drift, ccviSpk_site_load, ccviSpk_site2_load, ...
+    type_fet, dimm_fet, mrPv, vrThresh_site, viShift, mlDrift, maxWavCor);
+
+% compute pairwise distance in parallel by sites
+[cviClu_clu_site, cvlExist_site] = deal(cell(nSites, 1));
+fParfor = get_set_(P, 'fParfor', 1) && nSites > 1;
+if fParfor %&& ~isLargeRecording_(P)
+    try
+        parfor iSite = 1:nSites
+            try
+                [cviClu_clu_site{iSite}, cvlExist_site{iSite}] = wave_similarity_site_(iSite, S_auto, 1);
+            catch
+            end
+        end
+    catch
+    end
+end
+
+% merge cluster pairwise distance
+cviClu_clu = cell(nClu, 1);
+vlExist_clu = false(1, nClu);
+for iSite = 1:nSites
+    if isempty(cviClu_clu_site{iSite})
+        [cviClu_clu_site{iSite}, cvlExist_site{iSite}] = wave_similarity_site_(iSite, S_auto, 1);
+    end    
+    cviClu_clu = cellfun_(@(x,y)[x(:);y(:)], cviClu_clu, cviClu_clu_site{iSite});
+    vlExist_clu = vlExist_clu | cvlExist_site{iSite};
+end
+cviClu_clu = cellfun_(@unique, cviClu_clu);
+viClu_remove = find(~vlExist_clu);
+
+viMapClu_new = cell2map_(cviClu_clu, viClu_remove);
+vlUpdate = S_auto.viClu > 0;
+S_auto.viClu(vlUpdate) = viMapClu_new(S_auto.viClu(vlUpdate));
+S_auto.nClu = sum(unique(viMapClu_new)>0);
+
+fprintf('\n\twave_similarity_: took %0.1fs\n', toc(t_fun));
+end %func
+
+
+%--------------------------------------------------------------------------
+function [mlDist_clu, vlExist_clu] = wave_similarity_site_(iSite1, S_auto, fCell_out)
+if nargin<3, fCell_out = 0; end
 
 NUM_KNN = 10;
 fUseSecondSite = 1;
@@ -1234,7 +1303,11 @@ end
 [trPc1, trPc2, miKnn1, miiKnn1, miiKnn2] = deal([]); % clear memory
 vlExist_clu = false(1, nClu);
 vlExist_clu([cviClu_drift{:}]) = true;
-mlDist_clu = false(nClu);
+if fCell_out
+    cviClu_clu = arrayfun_(@(x)x, (1:nClu)'); %start with self-containing cell
+else
+    mlDist_clu = false(nClu);
+end
 
 norm_mr_ = @(mr)mr ./ sqrt(sum(mr.^2,1)); 
 tr2mr_pv_norm_ = @(tr,mr)norm_mr_(reshape(mr*reshape(tr,size(tr,1),[]),[],size(tr,3))); 
@@ -1256,13 +1329,21 @@ for iDrift = 1:nDrift
         for iiClu2 = 1:numel(viClu2)
             iClu2 = viClu2(iiClu2);         
             if iClu2 > iClu1 % symmetric
-                dist12 = max(mrWav_clu2(:,iiClu2)' * mrWav11);
-                mlDist_clu(iClu2, iClu1) = mlDist_clu(iClu2, iClu1) | (dist12>=maxWavCor);
+                if max(mrWav_clu2(:,iiClu2)' * mrWav11) >= maxWavCor 
+                    if fCell_out
+                        cviClu_clu{iClu1} = [cviClu_clu{iClu1}; iClu2];
+                        cviClu_clu{iClu2} = [cviClu_clu{iClu2}; iClu1];
+                    else
+                        mlDist_clu(iClu2, iClu1) = true;
+                    end
+                end
             end
         end
     end
 end
 
+if fCell_out, mlDist_clu = cviClu_clu; end
+    
 fprintf('.');
 end %func
 
@@ -4719,8 +4800,15 @@ end %func
 
 %--------------------------------------------------------------------------
 % 190816 JJJ: Faster implementation
-function [viMapClu_new, viUniq_, viMapClu] = cell2map_(cvi_clu)
+function [viMapClu_new, viUniq_, viMapClu] = cell2map_(cvi_clu, viClu_remove)
+if nargin<2, viClu_remove = []; end
+
 nRepeat = 10;
+
+if ~isempty(viClu_remove)
+    cvi_clu = cellfun_(@(x)setdiff(x, viClu_remove), cvi_clu);
+    cvi_clu(viClu_remove) = {[]};
+end
 
 t_fun = tic;
 fprintf('\tcell2map_: '); t_fun=tic;
@@ -4753,6 +4841,9 @@ end
 viUniq_ = unique(viMapClu);
 viMap_(viUniq_) = 1:numel(viUniq_);
 viMapClu_new = viMap_(viMapClu);
+if ~isempty(viClu_remove)
+    viMapClu_new(viClu_remove) = 0;
+end
 fprintf(' nRepeat=%d, took %0.1fs\n', iRepeat, toc(t_fun));
 end %func
 
