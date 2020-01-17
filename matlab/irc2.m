@@ -642,17 +642,35 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function S = struct_load_bin_(S_var, S)
+% 2020/1/17: `csVar_load` added to select variables to load
+function S = struct_load_bin_(S_var, S, csVar_load)
+% Usage
+% -----
+% S = struct_load_bin_(S_var, S)
+% S = struct_load_bin_(S_var, S, csVar_load)
+% S = struct_load_bin_(S_var, [], csVar_load)
+
 % save variables and clear field
 if nargin<2, S = struct(); end
+if nargin<3, csVar_load={}; end
+
 import_struct_(S_var); % import all fields in this struct
 fid_r = fopen(vcFile, 'r');
-for iVar = 1:numel(csName_var)
-    [type_, dimm_] = deal(csType_var{iVar}, cDimm_var{iVar});
-    if iscell(type_)
-        S.(csName_var{iVar}) = load_cell_(fid_r, type_, dimm_);
+for iVar = 1:numel(csName_var)    
+    [type_, dimm_, name_] = deal(csType_var{iVar}, cDimm_var{iVar}, csName_var{iVar});    
+    if ~isempty(csVar_load)
+        fSkip = ~contains(name_, csVar_load);
     else
-        S.(csName_var{iVar}) = load_bin_(fid_r, type_, dimm_);
+        fSkip = 0;
+    end
+    if iscell(type_)
+        S.(csName_var{iVar}) = load_cell_(fid_r, type_, dimm_, fSkip);
+    else
+        if fSkip
+            fseek(fid_r, prod(dimm_) * bytesPerSample_(type_), 'cof');
+        else
+            S.(csName_var{iVar}) = load_bin_(fid_r, type_, dimm_);            
+        end
     end
 end
 fclose(fid_r);
@@ -660,17 +678,23 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function cVal = load_cell_(fid_r, cType, cDimm)
+function cVal = load_cell_(fid_r, cType, cDimm, fSkip)
+if nargin<4, fSkip = 0; end
+
 if ~iscell(cType)
     cVal = load_bin_(fid_r, cType, cDimm);
 else
     cVal = cell(cType);
     for iCell1 = 1:numel(cVal)  
         [type_, dimm_] = deal(cType{iCell1}, cDimm{iCell1});
-        if ~iscell(type_)
-            cVal{iCell1} = load_bin_(fid_r, type_, dimm_);
-        else
+        if iscell(type_)
             cVal{iCell1} = load_cell_(fid_r, type_, dimm_);
+        else
+            if fSkip
+                fseek(fid_r, prod(dimm_) * bytesPerSample_(type_), 'cof');
+            else
+                cVal{iCell1} = load_bin_(fid_r, type_, dimm_);
+            end
         end
     end 
 end
@@ -928,26 +952,27 @@ function save_firings_mda_(S0, vcFile_firings_mda)
 % save_firings_mda_(S0, vcFile_firings_mda)
 % save_firings_mda_(vcFile_prm, vcFile_firings_mda)
 if nargin<2, vcFile_firings_mda = ''; end
-
+t_fun = tic;
 try
     if ischar(S0)
         vcFile_prm = S0;
-        S0 = load(strrep(vcFile_prm, '.prm', '_irc.mat'), 'S_var'); 
-        S0 = struct_load_bin_(S0.S_var);
-        S0.S_clu = load(strrep(vcFile_prm, '.prm', '_clu_irc.mat'), 'viClu'); 
+        S_ = load(strrep(vcFile_prm, '.prm', '_irc.mat'), 'S_var'); 
+        S0 = struct_load_bin_(S_.S_var, [], {'viSite_spk', 'viTime_spk'});
+        S_ = load(strrep(vcFile_prm, '.prm', '_auto_irc.mat'), 'S_var', 'viClu'); 
+        S0.S_auto = struct_load_bin_(S_.S_var, [], {}); 
     else
         vcFile_prm = S0.P.vcFile_prm;
     end
     if isempty(vcFile_firings_mda)
         vcFile_firings_mda = fullfile(fileparts(vcFile_prm), 'firings.mda');
     end
-    mr = [S0.viSite_spk(:), S0.viTime_spk(:), S0.S_auto.viClu(:)];
+    mr = [double(S0.viSite_spk(:)), double(S0.viTime_spk(:)), double(S0.S_auto.viClu(:))];
     S0 = []; %free memory
 catch
     error('save_firings_mda_: invalid format');
 end
-writemda_(vcFile_firings_mda, double(mr'));
-fprintf('Wrote to %s\n', vcFile_firings_mda);
+writemda_(vcFile_firings_mda, mr');
+fprintf('Wrote to %s, took %0.1fs\n', vcFile_firings_mda, toc(t_fun));
 end %func
 
 
