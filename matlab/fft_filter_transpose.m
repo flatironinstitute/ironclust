@@ -203,9 +203,9 @@ if isempty(freqLim), freqLim = [nan, nan]; end
 
 if ~isnan(flo) && ~isnan(fhi)
     filt = sqrt((1+erf((abs(f)-flo)/fwid_lo)) .* (1-erf((abs(f)-fhi)/fwid_hi)))/2;
-elseif ~isnan(flo)
+elseif ~isnan(flo) && isnan(fhi)
     filt = sqrt((1+erf((abs(f)-flo)/fwid_lo))/2);
-elseif ~isnan(fhi)
+elseif ~isnan(fhi) && isnan(flo)
     filt = sqrt((1-erf((abs(f)-fhi)/fwid_hi))/2);
 else
     filt = [];
