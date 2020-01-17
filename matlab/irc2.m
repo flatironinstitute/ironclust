@@ -68,10 +68,10 @@ switch lower(vcCmd)
     % direcly run kilosort2 from the source
     case {'ks2', 'kilosort2'}, run_ksort2(vcArg1, vcArg2, vcArg3); return;
         
-    case 'export-mda', save_firings_mda_(vcFile_prm, vcArg2); return;
+    case 'export-mda', save_firings_mda_(vcFile_prm); return;
     case {'which', 'select'}, fprintf('%s\n', vcFile_prm); return;
     case {'export-sf2', 'export-spikeforest2', 'export2spikeforest2'}, export_sf2_(); return;
-    case {'export-ws', 'export-workspace', 'export'}, export_workspace_(vcFile_prm); return;
+    case {'export-ws', 'export-workspace', 'export'}, export_workspace_(vcArg1); return;
     case 'compile-deploy', compile_cuda_(vcArg1, '1'); return
     case {'compile', 'install'}, compile_cuda_(vcArg1, '0'); return
     case 'readmda_header', varargout{1} = readmda_header_(vcArg1); return;
@@ -187,8 +187,8 @@ end %func
 %--------------------------------------------------------------------------
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_()
-vcVer = 'v5.5.6';
-vcDate = '01/16/2020';
+vcVer = 'v5.5.7';
+vcDate = '01/17/2020';
 vcHash = file2hash_();
 
 if nargout==0
@@ -265,16 +265,17 @@ end %func
 % convert directory to prm file if directory path is given
 function vcFile_prm = dir2prm_(vcDir_in)
 [vcDir1, vcFile1, vcExt1] = fileparts(vcDir_in);
-if ~strcmpi(vcExt1, '.prm')
-    vcDir_out = fullfile(vcDir_in, 'irc2');
-    S_prm = dir(fullfile(vcDir_out, '*.prm'));
-    if numel(S_prm) == 1
-        vcFile_prm = fullfile(S_prm.folder, S_prm.name);
-    else
-        vcFile_prm = '';
-    end
-else
-    vcFile_prm = vcDir_in;
+switch lower(vcExt1)
+    case '.prm', vcFile_prm = vcDir_in;        
+    case '.mat', vcFile_prm = fullfile(vcDir1, strrep(vcFile1, '_irc', ''), '.prm');        
+    case ''
+        vcDir_out = fullfile(vcDir_in, 'irc2');
+        S_prm = dir(fullfile(vcDir_out, '*.prm'));
+        if numel(S_prm) == 1
+            vcFile_prm = fullfile(S_prm.folder, S_prm.name);
+        else
+            vcFile_prm = '';
+        end
 end
 end %func
 
@@ -357,9 +358,18 @@ function export_workspace_(vcFile_prm)
 if ~exist_file_(vcFile_prm)
     error('%s does not exist\n', vcFile_prm);
 end
-S0 = load0_(vcFile_prm);
-S0.trPc_spk = load_fet_(S0, S0.P, 1);
-S0.trPc2_spk = load_fet_(S0, S0.P, 2);
+[~,~,vcExt] = fileparts(vcFile_prm);
+switch lower(vcExt)
+    case '.prm'
+        S0 = load0_(vcFile_prm);
+        S0.trPc_spk = load_fet_(S0, S0.P, 1);
+        S0.trPc2_spk = load_fet_(S0, S0.P, 2);
+    case '.mat'
+        S0 = load(vcFile_prm);
+        if isfield(S0, 'S_var')
+            S0 = struct_load_bin_(S0.S_var, S0);
+        end
+end %switch
 assignWorkspace_(S0);
 end %func
 
@@ -677,7 +687,7 @@ fprintf('Loading %s... ', vcFile_prm); t_fun = tic;
 vcFile_mat = strrep(vcFile_prm, '.prm', '_irc.mat');
 vcFile_clu_mat = strrep(vcFile_prm, '.prm', '_clu_irc.mat');
 vcFile_auto_mat = strrep(vcFile_prm, '.prm', '_auto_irc.mat');
-vcFile_knn = strrep(vcFile_prm, '.prm', '_knn.irc');
+% vcFile_knn = strrep(vcFile_prm, '.prm', '_knn.irc');
 
 S0 = load(vcFile_mat);
 if isfield(S0, 'S_var') && fLoad_bin
@@ -704,11 +714,11 @@ if isempty(S0.S_auto)
     end
 end
 
-if isempty(get_(S0.S_clu, 'miKnn'))
-    if exist_file_(vcFile_knn)
-        S0.S_clu.miKnn = load_bin_(vcFile_knn, S0.S_clu.type_knn, S0.S_clu.dimm_knn);
-    end
-end
+% if isempty(get_(S0.S_clu, 'miKnn'))
+%     if exist_file_(vcFile_knn)
+%         S0.S_clu.miKnn = load_bin_(vcFile_knn, S0.S_clu.type_knn, S0.S_clu.dimm_knn);
+%     end
+% end
 % set(0, 'UserData', S0);
 fprintf('took %0.1fs\n', toc(t_fun));
 end %func
@@ -988,13 +998,66 @@ if maxWavCor<1 && nClu > 1
     end
 end
 
-S_auto = S_clu_refrac_(S_auto, P, [], S0.viTime_spk); % refractory violation removal
+S_auto = S_auto_refrac_(S_auto, P, S0.viTime_spk); % refractory violation removal
 S_auto = S_auto_refresh_(S_auto, 1, S0.viSite_spk);
 S_auto = S_clu_sort_(S_auto, 'viSite_clu');
 S_auto.runtime_automerge = toc(runtime_automerge);
 S_auto.memory_auto = memory_matlab_();
 fprintf('\tauto-merging took %0.1fs (fGpu=%d, fParfor=%d)\n', ...
     S_auto.runtime_automerge, P.fGpu, P.fParfor);
+end %func
+
+
+%--------------------------------------------------------------------------
+function [S_auto, nRemoved] = S_auto_refrac_(S_auto, P, viTime_spk)
+
+t_fun = tic;
+
+% remove refractory spikes
+nSkip = get_set_(P, 'nSkip_refrac', 4);
+nRefrac = round(get_set_(P, 'spkRefrac_merge_ms', .25) * P.sRateHz / 1000);
+nClu = max(S_auto.viClu);
+nTotal = sum(S_auto.viClu>0);
+fParfor = get_set_(P, 'fParfor', 1);
+cviSpk_remove_clu = cell(nClu,1);
+cviSpk_clu = vi2cell_(S_auto.viClu, S_auto.nClu);
+cviTime_clu = cellfun_(@(x)viTime_spk(x), cviSpk_clu);
+if fParfor
+    try
+        parfor iClu = 1:nClu
+            cviSpk_remove_clu{iClu} = S_auto_refrac_clu_(...
+                cviTime_clu{iClu}, cviSpk_clu{iClu}, nRefrac, nSkip);
+        end
+    catch
+    end
+end
+if ~fParfor
+    for iClu = 1:nClu
+        cviSpk_remove_clu{iClu} = S_auto_refrac_clu_(...
+            cviTime_clu{iClu}, cviSpk_clu{iClu}, nRefrac, nSkip);
+    end    
+end
+viSpk_remove = cat(1, cviSpk_remove_clu{:});
+S_auto.viClu(viSpk_remove) = 0;
+nRemoved = numel(viSpk_remove);
+% assert(nRemoved == numel(unique(viSpk_remove)))
+
+fprintf('Removed %d/%d (%0.1f%%) duplicate spikes, took %0.1fs\n', ...
+    nRemoved, nTotal, nRemoved/nTotal*100, toc(t_fun));
+end %func
+
+
+%--------------------------------------------------------------------------
+function viSpk_remove = S_auto_refrac_clu_(viTime1, viSpk, nRefrac, nSkip)
+% removal loop
+vlKeep1 = true(size(viTime1));
+while true
+    viKeep1 = find(vlKeep1);
+    viRefrac_ = find(diff(viTime1(viKeep1)) < nRefrac) + 1;
+    if isempty(viRefrac_), break; end
+    vlKeep1(viKeep1(viRefrac_(1:nSkip:end))) = false;
+end
+viSpk_remove = viSpk(~vlKeep1);
 end %func
 
 
@@ -1192,7 +1255,7 @@ nClu = S_auto.nClu;
 nSites = size(P.miSites,2);
 [viLim_drift, mlDrift] = get_(S_clu.S_drift, 'viLim_drift', 'mlDrift');
 % nDrift = size(mlDrift,1);
-S_auto = makeStruct_(nClu, nSites, knn, vcFile_prm, nSpk_min, ...
+S_param = makeStruct_(nClu, nSites, knn, vcFile_prm, nSpk_min, ...
     vrRho, viClu, viLim_drift, ccviSpk_site_load, ccviSpk_site2_load, ...
     type_fet, dimm_fet, mrPv, vrThresh_site, viShift, mlDrift, maxWavCor);
 
@@ -1203,7 +1266,7 @@ if fParfor %&& ~isLargeRecording_(P)
     try
         parfor iSite = 1:nSites
             try
-                [cviClu_clu_site{iSite}, cvlExist_site{iSite}] = wave_similarity_site_(iSite, S_auto, 1);
+                [cviClu_clu_site{iSite}, cvlExist_site{iSite}] = wave_similarity_site_(iSite, S_param, 1);
             catch
             end
         end
@@ -1216,7 +1279,7 @@ cviClu_clu = cell(nClu, 1);
 vlExist_clu = false(1, nClu);
 for iSite = 1:nSites
     if isempty(cviClu_clu_site{iSite})
-        [cviClu_clu_site{iSite}, cvlExist_site{iSite}] = wave_similarity_site_(iSite, S_auto, 1);
+        [cviClu_clu_site{iSite}, cvlExist_site{iSite}] = wave_similarity_site_(iSite, S_param, 1);
     end    
     cviClu_clu = cellfun_(@(x,y)[x(:);y(:)], cviClu_clu, cviClu_clu_site{iSite});
     vlExist_clu = vlExist_clu | cvlExist_site{iSite};
@@ -1281,19 +1344,23 @@ for iDrift = 1:nDrift
         vii_ = cviiSpk_clu_{iClu};
         [miKnn11_, miiKnn11_] = deal(miKnn11(:,vii_), miiKnn11(:,vii_));
         vrRho11_T = vrRho11(vii_)';
-        vii1_ = miiKnn11_(vrRho_1(miKnn11_) >= vrRho11_T);  
-        mrPc1 = mean_conditional_(trPc1, vii1_, nSpk_min, mrPv, thresh1);
-        if ~isempty(mrPc1)
-            viClu_drift1(end+1) = iClu;
-            cmrPc_drift1{end+1} = mrPc1;
-        end
+        vii1_ = miiKnn11_(vrRho_1(miKnn11_) >= vrRho11_T); 
+        if numel(vii1_) >= nSpk_min
+            mrPc1 = mean(trPc1(:,:,vii1_),3);
+            if abs(min(mrPv * mrPc1(:,1))) >= thresh1
+                viClu_drift1(end+1) = iClu;
+                cmrPc_drift1{end+1} = mrPc1;
+            end
+        end        
         if fSecondSite
             miiKnn21_ = miiKnn21(:,vii_);
             vii2_ = miiKnn21_(vrRho_2(miKnn11_) >= vrRho11_T);
-            mrPc2 = mean_conditional_(trPc2, vii2_, nSpk_min, mrPv, thresh1);
-            if ~isempty(mrPc2)
-                viClu_drift1(end+1) = iClu;
-                cmrPc_drift1{end+1} = mrPc2;
+            if numel(vii2_) >= nSpk_min
+                mrPc2 = mean(trPc2(:,:,vii2_),3);
+                if abs(min(mrPv * mrPc2(:,1))) >= thresh1
+                    viClu_drift1(end+1) = iClu;
+                    cmrPc_drift1{end+1} = mrPc2;
+                end
             end
         end         
     end
@@ -1907,8 +1974,6 @@ end %func
 %--------------------------------------------------------------------------
 function [vrRho, vrDelta, viNneigh, memory_sort, nFeatures] = sort_page_(S0, P, S_drift)
 
-fDebug = 0;
-fSkip_rho = 0;
 
 [viSite_spk, viSite2_spk] = get_(S0, 'viSite_spk', 'viSite2_spk');
 t_fun = tic;
@@ -1933,34 +1998,23 @@ nPages = size(miSpk_lim_out,1);
 viNneigh = zeros(nSpk, 1, 'int64');
 S_global = makeStruct_(S_drift, miSpk_lim_out, miSpk_lim_in, miDrift_lim_out, viSite_spk, viSite2_spk);
 
-% clear _miKnn_site_#.irc and append to these files
-if ~fSkip_rho
-    vcFile_miKnn = [strrep(vcFile_prm, '.prm', ''), '_knn_*.irc'];
-    delete_(vcFile_miKnn);
+vcFile_miKnn = [strrep(vcFile_prm, '.prm', ''), '_knn_*.irc'];
+delete_(vcFile_miKnn);
 %     assert(isempty(dir(vcFile_miKnn)), sprintf('sort_long_: %s must be deleted', vcFile_miKnn));
-    fprintf('sort_page_: calculating Rho...\n'); t_rho = tic;
-    for iPage = 1:nPages  
-        fprintf('Page %d/%d ', iPage, nPages); t_ = tic;
-        [S_page1, viSpk_in1, viSpk_out1] = prepare_page_(S_page, S_global, iPage);
-        vrRho(viSpk_in1) = rho_page_(S_page1);
-        fprintf('\n\ttook %0.1fs\n', toc(t_));
-    end %for
-    fprintf('calculating Rho took %0.1fs\n', toc(t_rho));
-    if fDebug
-        S_page.vrRho = vrRho;    
-        struct_save_(S_page, 'S_sort.mat');
-        fprintf(2, 'DEBUG: Saved to S_sort.mat\n');
-    end
-else
-    load S_sort.mat
-end
+fprintf('sort_page_: calculating Rho...\n'); t_rho = tic;
+for iPage = 1:nPages  
+    fprintf('Page %d/%d ', iPage, nPages); t_ = tic;
+    [S_page1, viSpk_in1, viSpk_out1] = prepare_page_(S_page, S_global, iPage);
+    vrRho(viSpk_in1) = rho_page_(S_page1);
+    fprintf('\n\ttook %0.1fs\n', toc(t_));
+end %for
+fprintf('calculating Rho took %0.1fs\n', toc(t_rho));
 
 fprintf('sort_page_: calculating Delta...\n'); t_delta = tic;
 for iPage = 1:nPages    
     fprintf('Page %d/%d ', iPage, nPages); t_ = tic;    
     [S_page1, viSpk_in1, viSpk_out1] = prepare_page_(S_page, S_global, iPage);
     [vrDelta(viSpk_in1), viNneigh(viSpk_in1)] = delta_page_(S_page1, vrRho(viSpk_out1));
-%     [vrDelta(viSpk_in1), viNneigh(viSpk_in1)] = delta_page_(S_page1, vrRho);
     fprintf('\n\ttook %0.1fs\n', toc(t_));
 end %for
 fprintf('calculating Delta took %0.1fs\n', toc(t_delta));
@@ -4833,17 +4887,21 @@ end
 nClu = numel(cvi_clu);
 viMapClu = 1:nClu;
 for iClu = 1:nClu
-    iClu1 = min(cvi_clu{iClu});
-    if ~isempty(iClu1), viMapClu(iClu) = iClu1; end
+    iClu1 = min(cvi_clu{iClu});    
+    if ~isempty(iClu1)
+        viMapClu(iClu) = iClu1; 
+    end
+end
+if ~isempty(viClu_remove)
+    viMapClu(viClu_remove) = 0;
 end
 
 % Compact the map so the index doesn't have a gap
-viUniq_ = unique(viMapClu);
+viUniq_ = setdiff(unique(viMapClu), 0);
 viMap_(viUniq_) = 1:numel(viUniq_);
-viMapClu_new = viMap_(viMapClu);
-if ~isempty(viClu_remove)
-    viMapClu_new(viClu_remove) = 0;
-end
+vlUpdate = viMapClu>0;
+viMapClu_new = zeros(size(viMapClu));
+viMapClu_new(vlUpdate) = viMap_(viMapClu(vlUpdate));
 fprintf(' nRepeat=%d, took %0.1fs\n', iRepeat, toc(t_fun));
 end %func
 
@@ -5658,7 +5716,7 @@ function out1 = set_bool_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name
 function out1 = file2hash_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = dir_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = S_clu_sort_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
-function out1 = S_clu_refrac_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
+% function out1 = S_clu_refrac_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = map_index_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 
 function [out1, out2] = mr2thresh_(varargin), fn=dbstack(); [out1, out2] = irc('call', fn(1).name, varargin); end
