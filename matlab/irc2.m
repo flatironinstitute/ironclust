@@ -553,8 +553,16 @@ if ~exist_file_(vcFile_gt_mda), return; end
 vcFile_firings_mda = fullfile(P.vcDir_out, 'firings.mda');
 S_score = irc('validate-mda', P.vcFile_gt, vcFile_firings_mda, P.vcFile, fPlot_gt); % assume that groundtruth file exists
 struct_save_(S_score, fullfile(P.vcDir_out, 'raw_geom_score.mat'), 1);
-
+% save_score_(S_score, fullfile(P.vcDir_out, 'raw_geom_score.mat'));
 end %func
+
+
+% function save_score_(S_score, vcFile)
+% csVar_spk = {'viTime_spk', 'viSite_spk', 'viSite2_spk', 'vrAmp_spk', ...
+%     'vrPow_spk', 'mrPos_spk', 'ccviSpk_site_load', 'ccviSpk_site2_load'};
+% [S0, S0.S_var] = struct_save_bin_(S0, [vcFile_prm_, '_spk.irc'], csVar_spk);
+% struct_save_(S_score, vcFile, 1);
+% end %func
 
 
 %--------------------------------------------------------------------------
@@ -1786,11 +1794,17 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function vr = cell2mat_(cvr)
+function vr = cell2mat_(cvr, empty_val)
+if nargin<2, empty_val = []; end
 % create a matrix that is #vectors x # cells
 % remove empty
 vi = find(cellfun(@(x)~isempty(x), cvr));
 vr = cell2mat(cvr(vi));
+if ~isempty(empty_val) && numel(vi) < numel(cvr)
+    vr1 = repmat(empty_val, size(cvr));
+    vr1(vi) = vr;
+    vr = vr1;
+end
 end %func
 
 
@@ -3045,18 +3059,12 @@ vi_site = vr(vi_change(1:end-1));
 vl_remove = vi_site < 1;
 if any(vl_remove)
     vi_site(vl_remove) = [];
-    vi_change(find(vl_remove)) = [];
+    vi_change(vl_remove) = [];
 end
 for iStep = 1:numel(vi_site)
     cviSpk_site{vi_site(iStep)} = vi(vi_change(iStep):vi_change(iStep+1)-1);
 end
 vi_site = vi_site(:)';
-
-% check equal condition
-if false
-    cviSpk_site0 = arrayfun(@(x)find(viSite_spk==x), 1:nSites, 'UniformOutput', 0)';
-    assert(all(cellfun(@(x,y)all(x==y), cviSpk_site0, cviSpk_site)), 'vi2cell_: must equal');
-end
 end %func
 
 
@@ -5735,6 +5743,69 @@ else
         flag = sum([S_dir.isdir]) > 0;
     end
 end
+end %func
+
+
+%--------------------------------------------------------------------------
+% loads mda format
+function S_firings = load_firings_(vcFile, sRateHz)
+if nargin<2, sRateHz = []; end
+if isempty(sRateHz), sRateHz = 30000; end
+
+% load firings.mda
+mr_ = readmda_(vcFile);
+[viSite_spk, viTime_spk, viClu_spk] = deal(int32(mr_(1,:))', int64(mr_(2,:)'), int32(mr_(3,:)'));
+mr_ = [];
+
+cviSpk_clu = vi2cell_(viClu_spk);
+vnSpk_clu = cellfun(@(x)numel(x), cviSpk_clu);
+cviTime_clu = cellfun_(@(x)viTime_spk(x), cviSpk_clu);
+cviSite_clu = cellfun_(@(x)viSite_spk(x), cviSpk_clu);
+nClu_exist = sum(vnSpk_clu>0);
+
+nSites = numel(unique(viSite_spk));
+nClu = numel(cviSpk_clu);
+vrDur_clu = cell2mat_(cellfun_(@(x)double(range(x))/sRateHz, cviTime_clu), nan);
+vrRate_clu = arrayfun(@(x)vnSpk_clu(x) / vrDur_clu(x), 1:nClu); % .17 hz rate
+duration_sec = double(range(viTime_spk)) / sRateHz; % .916 hr median, 35 hr max
+
+S_firings = makeStruct_(sRateHz, nClu, nClu_exist, nSites, vcFile, duration_sec, ...
+    viSite_spk, viTime_spk, viClu_spk, ...
+    cviSpk_clu, cviTime_clu, cviSite_clu, vrDur_clu, vnSpk_clu, vrRate_clu);
+end %func
+
+
+%--------------------------------------------------------------------------
+function describe_firings_(S_firings)
+
+S = S_firings;
+nSites = numel(unique(S.viSite_spk));
+nClu = numel(unique(S.viClu_spk));
+nClu_exist = numel(unique(S.viClu_spk));
+
+csDesc = {};
+csDesc{end+1} = sprintf('');    
+csDesc{end+1} = sprintf('------------------------------');    
+csDesc{end+1} = sprintf('Summary of %s', S.vcFile);
+csDesc{end+1} = sprintf('------------------------------');    
+csDesc{end+1} = sprintf('    #Sites:                 %d', nSites);
+csDesc{end+1} = sprintf('Pre-processing');
+csDesc{end+1} = sprintf('    Filter type:            %s', P.vcFilter);
+csDesc{end+1} = sprintf('    Filter range (Hz):      [%0.1f, %0.1f]', P.freqLim);
+csDesc{end+1} = sprintf('    Common ref:             %s', P.vcCommonRef);
+csDesc{end+1} = sprintf('    Whiten:                 %d', get_set_(P, 'fWhiten', 0));
+csDesc{end+1} = sprintf('    FFT threshold:          %d', get_set_(P, 'fft_thresh', 0));
+csDesc{end+1} = sprintf('    blank threshold:        %d', get_set_(P, 'blank_thresh', 0));    
+csDesc{end+1} = sprintf('Events');
+csDesc{end+1} = sprintf('    #Spikes:                %d', nSpk);
+csDesc{end+1} = sprintf('    Feature extracted:      %s', P.vcFet);    
+csDesc{end+1} = sprintf('    #Sites/event:           %d', nSites_spk);
+csDesc{end+1} = sprintf('    maxDist_site_um:        %0.0f', P.maxDist_site_um);    
+csDesc{end+1} = sprintf('    maxDist_site_spk_um:    %0.0f', P.maxDist_site_spk_um);
+csDesc{end+1} = sprintf('    spkLim_ms:              [%0.3f, %0.3f]', P.spkLim_ms);
+csDesc{end+1} = sprintf('    #Features/event:        %d', nFeatures);    
+csDesc{end+1} = sprintf('    #PC/chan:               %d', nPcPerChan);
+
 end %func
 
 
