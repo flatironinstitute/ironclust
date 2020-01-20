@@ -189,8 +189,8 @@ end %func
 %--------------------------------------------------------------------------
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_()
-vcVer = 'v5.5.7';
-vcDate = '01/16/2020';
+vcVer = 'v5.5.8';
+vcDate = '01/20/2020';
 vcHash = file2hash_();
 
 if nargout==0
@@ -3996,6 +3996,13 @@ elseif isempty(freq_min) && isempty(freq_max)
     P.freqLim = [nan, nan];
 end
 
+% spkLim_ms
+clip_pre = get_set_(S_txt, 'clip_pre', []);
+clip_post = get_set_(S_txt, 'clip_post', []);
+if ~isempty(clip_pre) && ~isempty(clip_post)
+    P.spkLim_ms = [-abs(clip_pre), abs(clip_post)];
+end
+
 % disable filter
 fFilter = logical_(get_set_(S_txt, 'filter', 1));
 if ~fFilter, P.freqLim = [nan, nan]; end
@@ -5460,8 +5467,9 @@ params = pydict_add_(params, S_arg, cs_common_double, 'double');
 [cs_sorter_double, cs_sorter_char, cs_sorter_logical, cs_sorter_pylist] = deal({});
 switch lower(vcSorter)
     case 'ironclust'
-        cs_sorter_double = {'freq_min', 'adjacency_radius_out', 'merge_thresh', 'fft_thresh', 'knn', ...
-            'min_count', 'delta_cut', 'pc_per_chan', 'batch_sec_drift', 'step_sec_drift', 'freq_max'};
+        cs_sorter_double = {'freq_min', 'adjacency_radius_out', 'merge_thresh', ...
+            'fft_thresh', 'knn', 'min_count', 'delta_cut', 'pc_per_chan', ...
+            'batch_sec_drift', 'step_sec_drift', 'freq_max', 'clip_pre', 'clip_post'};
         cs_sorter_char = {'common_ref_type'};
         cs_sorter_logical = {'whiten', 'fGpu', 'filter'};
     case 'mountainsort'
