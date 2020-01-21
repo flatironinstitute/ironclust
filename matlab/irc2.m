@@ -70,6 +70,7 @@ switch lower(vcCmd)
     % direcly run kilosort2 from the source
     case {'ks2', 'kilosort2'}, run_ksort2(vcArg1, vcArg2, vcArg3); return;
         
+    case 'compare-mda', compare_mda_(vcArg1, vcArg2); return;
     case 'export-mda', save_firings_mda_(vcFile_prm); return;
     case {'which', 'select'}, fprintf('%s\n', vcFile_prm); return;
     case {'export-sf2', 'export-spikeforest2', 'export2spikeforest2'}, export_sf2_(); return;
@@ -280,6 +281,8 @@ switch lower(vcExt1)
         else
             vcFile_prm = '';
         end
+    otherwise
+        vcFile_prm = vcDir_in;
 end
 end %func
 
@@ -713,6 +716,16 @@ end %func
 
 %--------------------------------------------------------------------------
 function S_score = compare_mda_(vcFile_gt_mda, vcFile_clu_mda, P)
+
+S_cfg = read_cfg_();
+if nargin<3
+    [P.spkJitter_ms_gt, P.freqLim, P.freqLim_width, P.spkLim] = ...
+        struct_get_(S_cfg, 'spkJitter_ms_gt', 'freqLim_gt', 'freqLim_width_gt', 'spkLim_ms_gt');
+    S_json = loadjson_(fullfile(fileparts(vcFile_gt_mda), 'params.json'));
+    P.sRateHz = get_(S_json, 'samplerate');
+    P.vcFile = fullfile(fileparts(vcFile_gt_mda), 'raw.mda');  
+end
+
 % usage
 % -----
 nSamples_max = 2^10;
@@ -798,6 +811,11 @@ S_score = makeStruct_(vrAccuracy_gt, viClu_gt, vrPrecision_gt, vrRecall_gt, ...
     vrSnr_gt, vrSnr_clu, viSite_gt, viSite_clu, vrNoise_site, ...
     vcFile_gt_mda, vcFile_clu_mda, P);
 
+if nargout==0
+    S_score_plot_(S_score, S_cfg);
+    vcFile_score = fullfile(fileparts(vcFile_clu_mda), 'raw_geom_score.mat');
+    struct_save_(S_score, vcFile_score, 1);
+end
 fprintf('\tValidation took %0.1fs\n', toc(t_fun));
 end %func
 
