@@ -46,37 +46,6 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function S_xml1 = load_xml_neuroscope1_(vcFile_xml1)
-vcFile_dat1 = subsFileExt_(vcFile_xml1, '.dat');
-S_xml1 = xml2struct(vcFile_rhd1);
-S_ = S_xml1.parameters.acquisitionSystem;
-sRateHz = str2num_(S_.samplingRate.Text);
-nChans = str2num_(S_.nChannels.Text);
-nBits = str2num_(S_.nBits.Text);
-voltageRange1 = str2num_(S_.voltageRange.Text);
-amplification1 = str2num_(S_.amplification.Text);
-uV_per_bit = (voltageRange1 / amplification1 * 1e6) / 2 ^ nBits;
-vcDataType = sprintf('int%d', nBits);
-parse_channelGroups_ = @(x)cellfun_(@(y)cellfun(@(z)str2num(z.Text), y.channel), x.group);
-cell_group1 = S_xml1.parameters.anatomicalDescription.channelGroups.group;
-cviChan_group = cellfun_(@(x)x.channel, cell_group1);
-assert(numel(cviChan_group) == 2, 'export_spikeforest_english_: must have two channel groups');
-if isstruct(cviChan_group{2}) && iscell(cviChan_group{1})
-    [iGroup_intra, iGroup_extra] = deal(2,1);
-elseif isstruct(cviChan_group{1}) && iscell(cviChan_group{2})
-    [iGroup_intra, iGroup_extra] = deal(1,2);
-else
-    error('invalid format');        
-end
-iChan_intra = str2num(cviChan_group{iGroup_intra}.Text) + 1;
-viChan_extra = cellfun(@(x)str2num(x.Text), cviChan_group{iGroup_extra}) + 1;
-viChan_extra = fliplr(viChan_extra(:)');
-
-S_xml1 = makeStruct_(iChan_intra, viChan_extra, sRateHz, nChans, uV_per_bit, nBits);
-end %func
-
-
-%--------------------------------------------------------------------------
 % perform linear interpolation
 function mr2 = resample_(mr1, nSamples2)
 [nSamples1, nChans1] = size(mr1);
@@ -219,6 +188,60 @@ vcFile_in_ = vcFile_in1;
 end %func
 
 
+%--------------------------------------------------------------------------
+function S_xml = load_xml_neuroscope_(vcFile_xml)
+% Usage
+% -----
+% S_xml = load_xml_neuroscope_(vcFile_xml)
+% S_xml = load_xml_neuroscope_(vcFile_xml, S_cfg): override settings
+% S_xml = load_xml_neuroscope_(vcFile_xml, 'settings.cfg')
+
+[vcDir,vcFile,vcExt] = fileparts(vcFile_xml);
+vcFile_dat = fullfile(vcDir, [vcFile, '.dat']);
+vcFile_xml = fullfile(vcDir, [vcFile, '.xml']);
+if ~exist_file_(vcFile_xml), S_xml=[]; return; end
+
+
+S_xml1 = xml2struct(vcFile_xml); % depends on an external file
+sRateHz = str2num_(S_xml1.parameters.acquisitionSystem.samplingRate.Text);
+nChans = str2num_(S_xml1.parameters.acquisitionSystem.nChannels.Text);
+
+nBits = str2num_(S_xml1.parameters.acquisitionSystem.nBits.Text);
+uV_per_bit = read_cfg_('uV_per_bit');
+if isempty(uV_per_bit)
+    voltageRange = str2num_(S_xml1.parameters.acquisitionSystem.voltageRange.Text);
+    amplification = str2num_(S_xml1.parameters.acquisitionSystem.amplification.Text);
+    uV_per_bit = (voltageRange / amplification * 1e6) / 2 ^ nBits;
+end
+vcDataType = sprintf('int%d', nBits);
+
+% parse out channel maps, bottom to top order
+[viSite2chan1, viSite2chan2, viSite2chan3, viSite2chan4] = deal([]);
+% fh_site2chan = @(x)fliplr(cellfun(@(y)str2num_(y.Text), x)) + 1;
+cS_channels = S_xml1.parameters.anatomicalDescription.channelGroups.group;
+if ~iscell(cS_channels), cS_channels = {cS_channels}; end
+cviSite2chan = cell(size(cS_channels));
+for iCell = 1:numel(cS_channels)
+    cS_channel1 = cS_channels{iCell}.channel;
+    if ~iscell(cS_channel1), cS_channel1 = {cS_channel1}; end
+    viSite2chan_ = fliplr(cellfun(@(x)str2num_(x.Text), cS_channel1)) + 1;
+    eval(sprintf('viSite2chan%d = viSite2chan_;', iCell));
+    cviSite2chan{iCell} = viSite2chan_;
+end
+try
+    viSite2Chan = cell2mat_(cviSite2chan);
+    viShank_site = cell2mat_(arrayfun(@(x,y)repmat(y,1,x), ...
+        cellfun(@numel, cviSite2chan), 1:numel(cviSite2chan), ...
+        'UniformOutput', 0));
+catch
+    [viSite2Chan, viShank_site] = deal([]);
+end
+S_xml = makeStruct_(sRateHz, nChans, uV_per_bit, nBits, vcDataType, ...
+    viSite2chan1, viSite2chan2, viSite2chan3, viSite2chan4, viSite2Chan, viShank_site, ...
+    vcFile_dat, vcFile_xml, cviSite2chan);
+end %func
+
+
 
 %--------------------------------------------------------------------------
 function S_mda = export_spikeforest_crcns_(vcFile_dat1, vcDir_out1, mrLim_incl1, viChan_ext1, vcFile_prb)
@@ -340,10 +363,10 @@ vcFile_dat1 = csFiles_dat{iFile};
 [vcDir_, vcDir12] = fileparts(vcFile_dat1);
 [~, vcDir11] = fileparts(vcDir_);
 vcDir_out1 = fullfile(vcDir_out, sprintf('%s_%s', vcDir11, vcDir12));
-S_cfg = file2struct_('dan_english.cfg');
+[S_cfg, vcFile_cfg] = read_cfg_();
 switch lower(h.Label)
     case 'edit settings'
-        edit_('dan_english.cfg');
+        edit_(vcFile_cfg);
     case 'load'
         
     case {'convert and next', 'convert', 'convert and summarize recording'}
@@ -359,9 +382,6 @@ switch lower(h.Label)
         figure_wait_(0, hFig);
         if strcmpi(h.Label, 'convert') || strcmpi(h.Label, 'convert and summarize recording')            
             summarize_recording_(S_cfg.vcDir_out, vcFile_dat1);
-%             msgbox_(sprintf('Exported to %s', vcFile_dat1), 1);
-%         else
-%             msgbox_(sprintf('Exported to %s\n Advancing to next', vcFile_dat1), 1);
         end
         return; 
 
@@ -683,13 +703,14 @@ hAx1 = axes(hFig, 'OuterPosition', [0 .7 1 .1]); xylabel_(hAx1, 't','V_int','V_i
 hAx2 = axes(hFig, 'OuterPosition', [0 .6 1 .1]); xylabel_(hAx2, 't','dV_int/dt','dV_int/dt');    
 hAx3 = axes(hFig, 'OuterPosition', [0 .5 1 .1]); xylabel_(hAx3, 't','I_int', 'I_int');
 hAx4 = axes(hFig, 'OuterPosition', [0 0 1 .5]); xylabel_(hAx4, 'Time (adc)','V_ext','V_ext (Change scale using UP/DOWN arrows)');
-S_fig = struct_append_(S_fig, makeStruct_(hTbl, hAx1, hAx2, hAx3, hAx4, hText));
+[S_cfg, vcFile_cfg] = read_cfg_();
+S_fig = struct_append_(S_fig, makeStruct_(hTbl, hAx1, hAx2, hAx3, hAx4, hText, S_cfg));
 hFig.UserData = S_fig;
 
 % create menu
 set(hFig, 'MenuBar', 'none'); 
 mh_convert = uimenu_(hFig,'Label','Action'); 
-uimenu_(mh_convert,'Label', 'Edit settings', 'Callback', @(h,e)edit_('dan_english.cfg'));
+uimenu_(mh_convert,'Label', 'Edit settings', 'Callback', @(h,e)edit_(vcFile_cfg));
 uimenu_(mh_convert,'Label', 'convert and next', 'Callback', @cbf_menu_crcns_);
 uimenu_(mh_convert,'Label', 'convert', 'Callback', @cbf_menu_crcns_);
 uimenu_(mh_convert,'Label', 'skip and next', 'Callback', @cbf_menu_crcns_);
@@ -897,6 +918,7 @@ hFig1 = source.Parent.Parent;
 S_fig1 = hFig1.UserData;
 [iFile, hTbl, hAx1, nTime] = struct_get_(S_fig1, 'iFile', 'hTbl', 'hAx1', 'nTime');
 mrLim_incl = str2num_(hTbl.Data{iFile, 3});
+if any(isnan(mrLim_incl)), mrLim_incl = []; end
 mrLim_incl = update_lim_(nTime, mrLim_incl, xlim, fInclude);
 set_table_(hTbl, iFile, 3, lim2str_(mrLim_incl));
 
@@ -1083,7 +1105,7 @@ dimm1 = size(S_gt1.trWav_clu);
 vrWav_int = readmda_(fullfile(vcDir1, 'raw_true.mda'));
 S_true = loadjson_(fullfile(vcDir1, 'params_true.json'));
 [sRateHz, uV_per_bit, vcFilter_intra] = struct_get_(S_true, 'samplerate', 'scale_factor', 'filter');
-S_cfg = file2struct_('dan_english.cfg');
+S_cfg = read_cfg_();
 spkLim_ms = get_set_(S_cfg, 'spkLim_ms', [-2, 2]);
 spkLim = round(spkLim_ms/1000 * sRateHz);
 mrWav_int_spk = vr2mr3_(vrWav_int, S_gt1.viTime, spkLim);
@@ -1325,10 +1347,12 @@ end
 
 
 %--------------------------------------------------------------------------
-function val = read_cfg_(name, default)
+function [val, vcFile_cfg] = read_cfg_(name, default)
+vcFile_cfg = 'dan_english.cfg';
+
 if nargin<1, name=[]; end
 if nargin<2, default = []; end
-S_cfg = file2struct_(ircpath_('dan_english.cfg'));
+S_cfg = file2struct_(ircpath_(vcFile_cfg));
 if isempty(name)
     val = S_cfg;
 else
@@ -1550,7 +1574,7 @@ function out1 = cellstr2vc_(varargin), fn=dbstack(); out1 = irc('call', fn(1).na
 function out1 = lim2range_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = load_bin_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = load_prb_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
-function out1 = load_xml_neuroscope_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
+% function out1 = load_xml_neuroscope_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = reshape_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = subsFileExt_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = str2num_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end

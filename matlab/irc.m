@@ -28536,6 +28536,8 @@ for iArg = 1:nargin
         % strip non numeric characters
         val1 = val1(ismember(val1, vcValid));
         varargout{iArg} = str2num(val1);
+    elseif isempty(val1)
+        varargout{iArg} = [];
     else
         varargout{iArg} = nan;
     end
