@@ -189,8 +189,8 @@ end %func
 %--------------------------------------------------------------------------
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_()
-vcVer = 'v5.5.8';
-vcDate = '01/20/2020';
+vcVer = 'v5.5.9';
+vcDate = '01/21/2020';
 vcHash = file2hash_();
 
 if nargout==0
@@ -993,8 +993,8 @@ end
 S_auto = S_clu_refrac_(S_auto, P, [], S0.viTime_spk); % refractory violation removal
 S_auto = S_auto_refresh_(S_auto, 1, S0.viSite_spk);
 S_auto = S_clu_sort_(S_auto, 'viSite_clu');
-S_auto.runtime_automerge = toc(runtime_automerge);
 S_auto.memory_auto = memory_matlab_();
+S_auto.runtime_automerge = toc(runtime_automerge);
 fprintf('\tauto-merging took %0.1fs (fGpu=%d, fParfor=%d)\n', ...
     S_auto.runtime_automerge, P.fGpu, P.fParfor);
 end %func
@@ -1753,8 +1753,8 @@ vrRho = vrRho / max(vrRho);     % divide by 10 to be compatible with previous ve
 [~, ordrho] = sort(vrRho, 'descend');
 S_clu = struct('rho', vrRho, 'delta', vrDelta, 'ordrho', ordrho, 'nneigh', viNneigh, ...
     'P', P, 'miKnn', miKnn, 'S_drift', S_drift, 'nFeatures', nFeatures);
-S_clu.runtime_sort = toc(runtime_sort);
 S_clu.memory_sort = memory_sort;
+S_clu.runtime_sort = toc(runtime_sort);
 end %func
 
 
@@ -2890,9 +2890,8 @@ else
     fid_fet_cache_('set', c_fid_fet, c_fid_fet2);
 end
 S0 = detect_merge_(cS_detect, viOffset_load, P);
-% fprintf('\tMemory use: %0.3f GiB\n', memory_matlab_()/2^30);
-runtime_detect = toc(runtime_detect);
 memory_detect = memory_matlab_();
+runtime_detect = toc(runtime_detect);
 S0 = struct_add_(S0, vrThresh_site, mrPv_global, runtime_detect, P, memory_detect, memory_init, nLoads);
 fprintf('Detection took %0.1fs and used %0.3f GiB (fParfor=%d, fGpu=%d)\n', ...
     runtime_detect, (memory_detect-memory_init)/2^30, P.fParfor, P.fGpu);
@@ -5408,14 +5407,19 @@ if contains(lower(vcSorter), csSorters_sf2)
     
     fprintf('Running %s through spikeforest2...\n', vcSorter);
     vcFile_firings = fullfile(vcDir_out, 'firings.mda');
-    if isempty(vcArg)
-        py.spikeforest2.experimental.sort(...
-            pyargs('algorithm', lower(vcSorter), 'recording_path', vcDir_in, 'sorting_out', vcFile_firings));
-    else
-        params = sf2_params_(vcArg, vcSorter);
-        py.spikeforest2.experimental.sort(...
-            pyargs('algorithm', lower(vcSorter), 'recording_path', vcDir_in, 'sorting_out', vcFile_firings, 'params', params));
+    sf2_params = {'algorithm', lower(vcSorter), 'recording_path', vcDir_in};
+    fContainer = read_cfg_('spikeforest2_use_container');   
+    if fContainer == 1
+        sf2_params = {sf2_params{:}, 'container', 'default'};
+        fprintf('irc2: spikeforest2_use_container=True\n');
+    elseif fContainer == 0
+        sf2_params = {sf2_params{:}, 'container', py.NoneType};
+        fprintf('irc2: spikeforest2_use_container=False\n');
     end
+    if ~isempty(vcArg)
+        sf2_params = {sf2_params{:}, 'params', sf2_params_(vcArg, vcSorter)};        
+    end    
+    py.spikeforest2.experimental.sort(pyargs(sf2_params{:}));
     fprintf('%s: wrote to %s, took %0.1fs\n', vcSorter, vcFile_firings, toc(t_fun));
 else
     fprintf(2, '%s is not currently supported\n');
@@ -5456,6 +5460,7 @@ if isempty(vcArg), return; end
 if isstruct(vcArg)
     S_arg = vcArg;
 elseif ischar(vcArg)
+    if ~exist_file_(vcArg), error('%s does not exist', vcArg); end
     S_arg = meta2struct_(vcArg); % name = value type
 end
 
