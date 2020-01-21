@@ -28787,8 +28787,8 @@ else
 end
 
 % compute S_gt1
-mnGt = int32(readmda_(vcFile_gt_mda)');
-[viSite, viTime, viClu] = deal(mnGt(:,1), mnGt(:,2), mnGt(:,3));
+mnGt = readmda_(vcFile_gt_mda)';
+[viSite, viTime, viClu] = deal(int32(mnGt(:,1)), int64(mnGt(:,2)), int32(mnGt(:,3)));
 if min(viClu(:))==0, viClu = viClu + 1; end
 S_gt = makeStruct_(viClu, viTime, viSite);
 S_gt1 = gt2spk_(S_gt, P);

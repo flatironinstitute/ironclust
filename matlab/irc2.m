@@ -19,7 +19,8 @@ if nargin<4, vcArg3 = ''; end
 persistent vcFile_prm_
 
 % batch processing. it uses default param for now
-fDetect = read_cfg_('fForceRerun');
+S_cfg = read_cfg_();
+fDetect = get_(S_cfg, 'fForceRerun');
 
 % run in batch mode
 if iscell(vcDir_in) && iscell(vcDir_out)    
@@ -41,7 +42,7 @@ end
 
 [vcCmd, vcArg1, vcArg2] = deal(vcDir_in, vcDir_out, vcFile_arg); 
 if isempty(vcFile_arg)
-    vcFile_arg = file2struct_(read_cfg_('default2_prm'));
+    vcFile_arg = file2struct_(get_(S_cfg, 'default2_prm'));
 end
 [fDetect, fSort] = deal(exist_file_(vcDir_in) || exist_dir_(vcDir_in)); % cmd mode
 [P, S0, fPlot_gt, fValidate] = deal([]); 
@@ -92,9 +93,10 @@ switch lower(vcCmd)
         end
         return;
     case 'scoreboard', irc2_scoreboard(); return;
-    case {'spikesort', 'detectsort', 'detectsort-verify', 'detect-sort', ...
-            'sort', 'auto', '', 'describe', 'manual', ...
-            'validate', 'verify', 'auto-verify', 'sort-verify', 'spikesort-verify'}
+    case {'spikesort', 'detectsort', 'detect-sort', 'sort', 'auto', ...
+            'describe', 'manual', 'validate', 'verify', ...
+            'auto-verify', 'sort-verify', 'spikesort-verify', 'detectsort-verify', ...
+            'auto-validate', 'sort-validate', 'spikesort-validate', 'detectsort-validate'}
 
         fprintf('irc2 (%s) opening %s\n', version_(), vcFile_prm);
         if isempty(vcFile_prm), fprintf(2, 'provide .prm file.\n'); return; end
@@ -189,8 +191,8 @@ end %func
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_()
 
-vcVer = 'v5.5.9';
-vcDate = '01/21/2020';
+vcVer = 'v5.5.10';
+vcDate = '01/22/2020';
 vcHash = file2hash_();
 
 if nargout==0
@@ -546,24 +548,387 @@ end %func
 
 %--------------------------------------------------------------------------
 function validate_(P, fPlot_gt)
+t_fun=tic;
 if nargin<2, fPlot_gt = []; end
-if isempty(fPlot_gt), fPlot_gt = read_cfg_('fPlot_gt'); end
+
+S_cfg = read_cfg_();
+fPlot_gt = get_(fPlot_gt, 'fPlot_gt');
+P.spkJitter_ms_gt = get_set_(S_cfg, 'spkJitter_ms_gt', 1);
 
 vcFile_gt_mda = get_(P, 'vcFile_gt');
 if ~exist_file_(vcFile_gt_mda), return; end
 vcFile_firings_mda = fullfile(P.vcDir_out, 'firings.mda');
-S_score = irc('validate-mda', P.vcFile_gt, vcFile_firings_mda, P.vcFile, fPlot_gt); % assume that groundtruth file exists
+switch 2
+    case 1
+        S_score = irc('validate-mda', vcFile_gt_mda, vcFile_firings_mda, P.vcFile, fPlot_gt);
+    case 2
+        [P.freqLim, P.freqLim_width] = deal(S_cfg.freqLim_gt, S_cfg.freqLim_width_gt);
+        S_score = compare_mda_(vcFile_gt_mda, vcFile_firings_mda, P);
+        S_score_plot_(S_score, S_cfg);
+end
 struct_save_(S_score, fullfile(P.vcDir_out, 'raw_geom_score.mat'), 1);
 % save_score_(S_score, fullfile(P.vcDir_out, 'raw_geom_score.mat'));
+fprintf('validate_ took %0.1fs\n', toc(t_fun));
 end %func
 
 
-% function save_score_(S_score, vcFile)
-% csVar_spk = {'viTime_spk', 'viSite_spk', 'viSite2_spk', 'vrAmp_spk', ...
-%     'vrPow_spk', 'mrPos_spk', 'ccviSpk_site_load', 'ccviSpk_site2_load'};
-% [S0, S0.S_var] = struct_save_bin_(S0, [vcFile_prm_, '_spk.irc'], csVar_spk);
-% struct_save_(S_score, vcFile, 1);
-% end %func
+%--------------------------------------------------------------------------
+function S_score_plot_(S_score, S_cfg)
+if nargin<2, S_cfg=[]; end
+if isempty(S_cfg), S_cfg = read_cfg_(); end
+
+vcSnr_gt = sprintf(' >= SNR%0.1f', S_cfg.snr_thresh_gt);
+vlGt = S_score.vrSnr_gt>=S_cfg.snr_thresh_gt;        
+disp_stats_(); % show caption        
+disp_stats_(S_score.vrAccuracy_gt(vlGt), ['vrAccuracy_gt', vcSnr_gt]);
+disp_stats_(S_score.vrF1_gt(vlGt), ['vrF1_gt', vcSnr_gt]);
+disp_stats_(S_score.vrPrecision_gt(vlGt), ['vrPrecision_F1_gt', vcSnr_gt]);
+disp_stats_(S_score.vrRecall_gt(vlGt), ['vrRecall_F1_gt', vcSnr_gt]);
+
+vcSnr_clu = sprintf(' >= SNR%0.1f', S_cfg.snr_thresh_clu);
+vlClu = S_score.vrSnr_clu>=S_cfg.snr_thresh_clu;
+fprintf('\n');      
+disp_stats_(S_score.vrAccuracy_clu(vlClu), ['vrAccuracy_clu', vcSnr_clu]);
+disp_stats_(S_score.vrF1_clu(vlClu), ['vrF1_clu', vcSnr_clu]);
+disp_stats_(S_score.vrPrecision_clu(vlClu), ['vrPrecision_F1_clu', vcSnr_clu]);
+disp_stats_(S_score.vrRecall_clu(vlClu), ['vrRecall_F1_clu', vcSnr_clu]);
+fprintf('\n');
+
+title_str_ = @(x)sprintf('n=%d, %0.1f/%0.1f, [%0.1f, %0.1f, *%0.1f, %0.1f, %0.1f]', ...
+    numel(x), nanmean(x), nanstd(x), quantile(x, [.1,.25,.5,.75,.9]));
+plot_gt_ = @(x){plot(S_score.vrSnr_gt, S_score.(x), 'k.', ...
+    S_score.vrSnr_gt(vlGt), S_score.(x)(vlGt), 'b.'), ...
+        xylabel_([],'SNR_gt',x,title_str_(S_score.(x)(vlGt)),1)};
+plot_clu_ = @(x){plot(S_score.vrSnr_clu, S_score.(x), 'k.', ...
+    S_score.vrSnr_clu(vlClu), S_score.(x)(vlClu), 'b.'), ...
+        xylabel_([],'SNR_clu',x,title_str_(S_score.(x)(vlClu)),1)};
+    
+figure('Color','w', 'Name', ...
+    sprintf('Groundtruth: %s, Sorted: %s', ...
+        S_score.vcFile_gt_mda, S_score.vcFile_clu_mda));     
+AX=[];
+AX(end+1)=subplot(421); plot_gt_('vrAccuracy_gt'); 
+AX(end+1)=subplot(423); plot_gt_('vrF1_gt');
+AX(end+1)=subplot(425); plot_gt_('vrPrecision_F1_gt');
+AX(end+1)=subplot(427); plot_gt_('vrRecall_F1_gt');
+AX(end+1)=subplot(422); plot_clu_('vrAccuracy_clu');
+AX(end+1)=subplot(424); plot_clu_('vrF1_clu');
+AX(end+1)=subplot(426); plot_clu_('vrPrecision_F1_clu');
+AX(end+1)=subplot(428); plot_clu_('vrRecall_F1_clu');
+linkaxes(AX, 'xy');
+snr_max = max([20, max(S_score.vrSnr_gt), max(S_score.vrSnr_clu)]);
+axis(AX(1), [0 snr_max 0 100]);
+% title_(AX(1), S_score.vcFile_gt_mda);
+% title_(AX(5), S_score.vcFile_clu_mda);
+end %func
+
+
+%--------------------------------------------------------------------------
+function hAx = xylabel_(hAx, vcXLabel, vcYLabel, vcTitle, fGrid)
+
+if isempty(hAx), hAx = gca; end
+if nargin<4, vcTitle=''; end
+if nargin<5, fGrid=[]; end
+
+xlabel(hAx, vcXLabel, 'Interpreter', 'none');
+ylabel(hAx, vcYLabel, 'Interpreter', 'none');
+title_(hAx, vcTitle);
+if fGrid, grid(hAx,'on'); end
+end %func
+
+
+%--------------------------------------------------------------------------
+function hTitle = title_(hAx, vc)
+% title_(vc)
+% title_(hAx, vc)
+
+if nargin==1, vc=hAx; hAx=[]; end
+% Set figure title
+
+if isempty(hAx), hAx = gca; end
+hTitle = get_(hAx, 'Title');
+if isempty(hTitle)
+    hTitle = title(hAx, vc, 'Interpreter', 'none', 'FontWeight', 'normal');
+else
+    set_(hTitle, 'String', vc, 'Interpreter', 'none', 'FontWeight', 'normal');
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+function vc = set_(vc, varargin)
+% Set handle to certain values
+% set_(S, name1, val1, name2, val2)
+
+if isempty(vc), return; end
+if isstruct(vc)
+    for i=1:2:numel(varargin)        
+        vc.(varargin{i}) = varargin{i+1};
+    end
+    return;
+end
+if iscell(vc)
+    for i=1:numel(vc)
+        try
+            set(vc{i}, varargin{:});
+        catch
+        end
+    end
+elseif numel(vc)>1
+    for i=1:numel(vc)
+        try
+            set(vc(i), varargin{:});
+        catch
+        end
+    end
+else
+    try
+        set(vc, varargin{:});
+    catch
+    end 
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+function disp_stats_(vr, vcCaption)
+nBlanks = 32;
+vcCaption_pad = repmat(' ', [1,nBlanks]);
+
+if nargin==0
+    fprintf('%sn, mu/sd, (10,25,*50,75,90%%), [min-max]\t: \n', vcCaption_pad);
+    return;
+end
+if nargin<2, vcCaption = ''; end
+
+nCaption = min(nBlanks, numel(vcCaption));
+vcCaption_pad(1:nCaption) = vcCaption(1:nCaption);
+
+vr = vr(~isnan(vr));
+vr = vr(:);
+fprintf('%s%d, %0.1f/%0.1f, (%0.1f, %0.1f, *%0.1f, %0.1f, %0.1f), [%0.1f-%0.1f]\n', ...
+    vcCaption_pad, numel(vr), mean(vr), std(vr), quantile(vr, [.1,.25,.5,.75,.9]), min(vr), max(vr));
+end %func
+
+
+%--------------------------------------------------------------------------
+function S_score = compare_mda_(vcFile_gt_mda, vcFile_clu_mda, P)
+% usage
+% -----
+nSamples_max = 2^10;
+
+t_fun = tic;
+fprintf('Validating cluster...\n');
+
+% determine jitter sample size
+spkJitter_ms_gt = get_set_(P, 'spkJitter_ms_gt', 1);
+jitter = round(spkJitter_ms_gt * P.sRateHz / 1000); %1 ms jitter
+
+% read from firings.mda files
+mr_gt = readmda_(vcFile_gt_mda); [viTimeGt, viGt] = deal(mr_gt(2,:)', mr_gt(3,:)'); mr_gt = [];
+mr_clu = readmda_(vcFile_clu_mda); [viTimeClu, viClu] = deal(mr_clu(2,:)', mr_clu(3,:)'); mr_clu = [];
+
+[cviSpk_gt, nGt] = vi2cell_(int32(viGt));
+[cviSpk_clu, nClu] = vi2cell_(int32(viClu));
+cviTime_gt = cellfun(@(vi_)unique(int32(viTimeGt(vi_)/jitter)), cviSpk_gt, 'UniformOutput', 0);
+cviTime_clu = cellfun(@(vi_)unique(int32(viTimeClu(vi_)/jitter)), cviSpk_clu, 'UniformOutput', 0);
+
+% compute the SNR
+t1=tic;
+vcFile_filt = strrep(P.vcFile, '.mda', '_filt.mda');
+if exist_file_(vcFile_filt)
+    fprintf('\tLoading from %s...', vcFile_filt); 
+    mrWav_filt = readmda_(vcFile_filt);   
+    fprintf(' took %0.1fs\n', toc(t1));
+else
+    fprintf('\tFiltering...');
+    mrWav_filt = fft_filter_transpose(readmda_(P.vcFile), P);
+    writemda_(vcFile_filt , mrWav_filt);
+    fprintf(' took %0.1fs, saved to %s\n', toc(t1), vcFile_filt);
+end
+tr2vr_peak_mean_ = @(tr)min(min(mean(tr,2)));
+mr2tr_subsample_ = @(x,y)mr2tr_(mrWav_filt, P.spkLim, x(subsample_vr_(y, nSamples_max)));
+[vrPeak_gt, viSite_gt] = cellfun(@(x)tr2vr_peak_mean_(mr2tr_subsample_(viTimeGt, x)), cviSpk_gt);
+[vrPeak_clu, viSite_clu] = cellfun(@(x)tr2vr_peak_mean_(mr2tr_subsample_(viTimeClu, x)), cviSpk_clu);
+vrNoise_site = mr2rms_(mrWav_filt, 1e5)';
+vrSnr_gt = abs(vrPeak_gt(:)) ./ vrNoise_site(viSite_gt);
+vrSnr_clu = abs(vrPeak_clu(:)) ./ vrNoise_site(viSite_clu);
+mrWav_filt = [];
+
+% Compute intersection
+mnIntersect = zeros(nClu, nGt);
+fParfor = get_set_(P, 'fParfor', 1);
+if fParfor
+    try
+        parfor iGt=1:nGt
+            mnIntersect(:, iGt) = compare_mda_gt_(cviTime_gt{iGt}, cviTime_clu);
+        end
+    catch
+        fParfor = 0;
+    end
+end
+if ~fParfor
+    for iGt=1:nGt
+        mnIntersect(:, iGt) = compare_mda_gt_(cviTime_gt{iGt}, cviTime_clu);
+    end
+end
+
+% compute accuracy, precision, recall
+vnSpk_clu = cellfun(@numel, cviTime_clu); vnSpk_clu = vnSpk_clu(:);
+vnSpk_gt = cellfun(@numel, cviTime_gt); vnSpk_gt = vnSpk_gt(:)';
+mrPrecision = mnIntersect ./ vnSpk_clu * 100;
+mrRecall = mnIntersect ./ vnSpk_gt * 100;
+mrSum_clu_gt = vnSpk_clu+vnSpk_gt;
+mrAccuracy = mnIntersect ./ (mrSum_clu_gt-mnIntersect) * 100;
+mrF1 = 2*mnIntersect ./ mrSum_clu_gt * 100;
+
+[vrAccuracy_gt, viClu_gt, vrPrecision_gt, vrRecall_gt] = ...
+    find_best_score_(mrAccuracy, mrPrecision, mrRecall);
+[vrAccuracy_clu, viClu_clu, vrPrecision_clu, vrRecall_clu] = ...
+    find_best_score_(mrAccuracy', mrPrecision', mrRecall');
+[vrF1_gt, viClu_F1_gt, vrPrecision_F1_gt, vrRecall_F1_gt] = ...
+    find_best_score_(mrF1, mrPrecision, mrRecall);
+[vrF1_clu, viClu_F1_clu, vrPrecision_F1_clu, vrRecall_F1_clu] = ...
+    find_best_score_(mrF1', mrPrecision', mrRecall');
+
+S_score = makeStruct_(vrAccuracy_gt, viClu_gt, vrPrecision_gt, vrRecall_gt, ...
+    vrAccuracy_clu, viClu_clu, vrPrecision_clu, vrRecall_clu, ...
+    vrF1_gt, viClu_F1_gt, vrPrecision_F1_gt, vrRecall_F1_gt, ...
+    vrF1_clu, viClu_F1_clu, vrPrecision_F1_clu, vrRecall_F1_clu, ...
+    vrSnr_gt, vrSnr_clu, viSite_gt, viSite_clu, vrNoise_site, ...
+    vcFile_gt_mda, vcFile_clu_mda, P);
+
+fprintf('\tValidation took %0.1fs\n', toc(t_fun));
+end %func
+
+
+%--------------------------------------------------------------------------
+function [vrVrms_site, vrVsd_site] = mr2rms_(mr, max_sample)
+% uses median to estimate RMS
+if nargin<2, max_sample = []; end
+if ~isempty(max_sample), mr = subsample_mr_(mr, max_sample, 1); end
+vrVrms_site = median(abs(mr));
+vrVrms_site = single(vrVrms_site) / 0.6745;
+if nargout>=2, vrVsd_site = std(single(mr)); end
+end % func
+
+
+%--------------------------------------------------------------------------
+function vi = subsample_vr_(vi, nMax)
+if numel(vi)>nMax
+    nSkip = floor(numel(vi)/nMax);
+    if nSkip>1, vi = vi(1:nSkip:end); end
+    if numel(vi)>nMax
+        try
+            nRemove = numel(vi) - nMax;
+            viRemove = round(linspace(1, numel(vi), nRemove));
+            viRemove = min(max(viRemove, 1), numel(vi));
+            vi(viRemove) = [];
+        catch
+            vi = vi(1:nMax);
+        end
+    end
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+function [mr, vi] = subsample_mr_(mr, nMax, dimm)
+%[mr, vi] = subsample_mr_(mr, nMax, dimm)
+% subsample the column
+if nargin<3, dimm = 2; end
+if isempty(nMax), return; end
+
+n = size(mr,dimm);
+nSkip = max(floor(n / nMax), 1);
+vi = 1:nSkip:n;
+if nSkip==1, return; end
+vi = vi(1:nMax);
+
+switch dimm
+    case 2
+        mr = mr(:,vi);
+    case 1
+        mr = mr(vi,:);
+end
+
+if nargout>=2
+    if n > nMax
+        vi = 1:nSkip:n;
+        vi = vi(1:nMax);
+    else
+        vi = 1:n;
+    end
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+function [tr, miRange] = mr2tr_(mr, spkLim, viTime, viSite, fMeanSubt)
+% tr: nSamples x nSpikes x nChans
+
+if nargin<4, viSite=[]; end %faster indexing
+if nargin<5, fMeanSubt=0; end
+
+% JJJ 2015 Dec 24
+% vr2mr2: quick version and doesn't kill index out of range
+% assumes vi is within range and tolerates spkLim part of being outside
+% works for any datatype
+if isempty(viTime), tr=[]; return; end
+[N, M] = size(mr);
+if ~isempty(viSite), M = numel(viSite); end
+if iscolumn(viTime), viTime = viTime'; end
+if isGpu_(mr)
+    [viTime, viSite] = deal(gpuArray_(viTime), gpuArray_(viSite)); 
+else
+    [viTime, viSite] = deal(gather_(viTime), gather_(viSite)); 
+end
+viTime0 = [spkLim(1):spkLim(end)]'; %column
+miRange = bsxfun(@plus, int32(viTime0), int32(viTime));
+miRange = min(max(miRange, 1), N);
+miRange = miRange(:);
+if isempty(viSite)
+    tr = mr(miRange,:);
+else
+    tr = mr(miRange, viSite);
+end
+tr = reshape(tr, [numel(viTime0), numel(viTime), M]);
+
+if fMeanSubt
+%     trWav1 = single(permute(trWav1, [1,3,2])); 
+    tr = single(tr);
+    dimm1 = size(tr);
+    tr = reshape(tr, size(tr,1), []);
+    tr = bsxfun(@minus, tr, mean(tr)); %mean subtract
+    tr = reshape(tr, dimm1);    
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+function [vrScore, viRow, vr1, vr2] = find_best_score_(mrScore, mr1, mr2)
+[vrScore, viRow] = max(mrScore, [], 1);
+vi_mr = sub2ind(size(mrScore), viRow, 1:size(mrScore,2));
+[vr1, vr2] = deal(mr1(vi_mr), mr2(vi_mr));
+end %func
+
+
+%--------------------------------------------------------------------------
+function vnIntersect = compare_mda_gt_(viTime1, cviTime_clu)
+
+nClu = numel(cviTime_clu);
+vnIntersect = zeros(nClu,1);
+if isempty(viTime1), return; end
+lim1 = [min(viTime1), max(viTime1)];
+% overlap_ = @(x)sum(ismember(viTime1,x) | ismember(viTime1,x-1) | ismember(viTime1,x+1));
+overlap_ = @(x)sum(ismember(viTime1,x) | ismember(viTime1+1,x) | ismember(viTime1-1,x));
+for iClu=1:nClu        
+    viTime_clu1 = cviTime_clu{iClu};
+    if a_in_b_(lim1, viTime_clu1, 1)
+        vnIntersect(iClu) = overlap_(viTime_clu1);
+    end
+end
+end %func
 
 
 %--------------------------------------------------------------------------
@@ -5847,8 +6212,8 @@ function out1 = filesize_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name
 function out1 = car_reject_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = struct_copy_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = cast_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
-function out1 = mr2tr_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
-function out1 = subsample_vr_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
+% function out1 = mr2tr_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
+% function out1 = subsample_vr_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = struct_default_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = get_filter_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = meanSubt_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end

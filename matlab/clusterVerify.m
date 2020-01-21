@@ -148,9 +148,17 @@ end %func
 
 %--------------------------------------------------------------------------
 function nOverlap = count_overlap_(viGt, viTest)
-viGt_diff = setdiff(setdiff(setdiff(viGt, viTest), viTest+1), viTest-1);
-nOverlap = numel(viGt) - numel(viGt_diff);
+nOverlap = sum(ismember(viGt, viTest) | ismember(viGt, viTest+1) | ismember(viGt, viTest-1));
+% viGt_diff = setdiff(setdiff(setdiff(viGt, viTest), viTest+1), viTest-1);
+% nOverlap = numel(viGt) - numel(viGt_diff);
 end %func
+
+
+%--------------------------------------------------------------------------
+% function nOverlap = count_overlap_(viGt, viTest)
+% viGt_diff = setdiff(setdiff(setdiff(viGt, viTest), viTest+1), viTest-1);
+% nOverlap = numel(viGt) - numel(viGt_diff);
+% end %func
 
 
 %--------------------------------------------------------------------------
