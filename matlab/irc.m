@@ -10128,10 +10128,8 @@ end %func
 function [S_clu, nRemoved] = S_clu_refrac_(S_clu, P, iClu1, viTime_spk)
 if nargin<3, iClu1 = []; end
 if nargin<4, viTime_spk = []; end
-% clu_refrac(Sclu, P)   %process refrac on all clusters
-% clu_refrac(Sclu, P, iClu1) %process on specific clusters
-% P.nSkip_refrac = 4; 
-% P.fShow_refrac = 0;
+t_fun = tic;
+
 if isempty(viTime_spk), viTime_spk = get0_('viTime_spk'); end
 % remove refractory spikes
 if isempty(iClu1)
@@ -10181,8 +10179,8 @@ else
 end
 
 if get_(P, 'fVerbose')
-    fprintf('Clu%d removed %d/%d (%0.1f%%) duplicate spikes\n', ...
-        iClu1, nRemoved, nTotal1, nRemoved/nTotal1*100);
+    fprintf('Clu%d removed %d/%d (%0.1f%%) duplicate spikes, took %0.1fs\n', ...
+        iClu1, nRemoved, nTotal1, nRemoved/nTotal1*100, toc(t_fun));
 end
 end %func
 
