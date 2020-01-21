@@ -579,17 +579,38 @@ end %func
 function S_score_plot_(S_score, S_cfg)
 if nargin<2, S_cfg=[]; end
 if isempty(S_cfg), S_cfg = read_cfg_(); end
+SNR_MAX = 20;
 
-vcSnr_gt = sprintf(' >= SNR%0.1f', S_cfg.snr_thresh_gt);
-vlGt = S_score.vrSnr_gt>=S_cfg.snr_thresh_gt;        
+vrSnr_gt = get_(S_score, 'vrSnr_gt');
+if ~isempty(vrSnr_gt)
+    vcSnr_gt = sprintf(' >= SNR%0.1f', S_cfg.snr_thresh_gt);
+    vlGt = vrSnr_gt>=S_cfg.snr_thresh_gt;   
+    vcX_gt = 'vrSnr_gt';
+else
+    vrSnr_gt = 1:S_score.nGt;
+    vcSnr_gt = '';
+    vlGt = true(S_score.nGt, 1);
+    vcX_gt = 'viGt_ordered';
+end
+vrSnr_clu = get_(S_score, 'vrSnr_clu');
+if ~isempty(vrSnr_clu)
+    vcSnr_clu = sprintf(' >= SNR%0.1f', S_cfg.snr_thresh_clu);
+    vlClu = vrSnr_clu>=S_cfg.snr_thresh_clu;
+    vcX_clu = 'vrSnr_clu';
+else
+    vrSnr_clu = 1:S_score.nClu;
+    vcSnr_clu = '';
+    vlClu = true(S_score.nClu,1);
+    vcX_clu = 'viClu_ordered';
+end
+snr_max = max([SNR_MAX, max(vrSnr_gt), max(vrSnr_clu)]);
+
 disp_stats_(); % show caption        
 disp_stats_(S_score.vrAccuracy_gt(vlGt), ['vrAccuracy_gt', vcSnr_gt]);
 disp_stats_(S_score.vrF1_gt(vlGt), ['vrF1_gt', vcSnr_gt]);
 disp_stats_(S_score.vrPrecision_gt(vlGt), ['vrPrecision_F1_gt', vcSnr_gt]);
 disp_stats_(S_score.vrRecall_gt(vlGt), ['vrRecall_F1_gt', vcSnr_gt]);
 
-vcSnr_clu = sprintf(' >= SNR%0.1f', S_cfg.snr_thresh_clu);
-vlClu = S_score.vrSnr_clu>=S_cfg.snr_thresh_clu;
 fprintf('\n');      
 disp_stats_(S_score.vrAccuracy_clu(vlClu), ['vrAccuracy_clu', vcSnr_clu]);
 disp_stats_(S_score.vrF1_clu(vlClu), ['vrF1_clu', vcSnr_clu]);
@@ -599,12 +620,12 @@ fprintf('\n');
 
 title_str_ = @(x)sprintf('n=%d, %0.1f/%0.1f, [%0.1f, %0.1f, *%0.1f, %0.1f, %0.1f]', ...
     numel(x), nanmean(x), nanstd(x), quantile(x, [.1,.25,.5,.75,.9]));
-plot_gt_ = @(x){plot(S_score.vrSnr_gt, S_score.(x), 'k.', ...
-    S_score.vrSnr_gt(vlGt), S_score.(x)(vlGt), 'b.'), ...
-        xylabel_([],'SNR_gt',x,title_str_(S_score.(x)(vlGt)),1)};
-plot_clu_ = @(x){plot(S_score.vrSnr_clu, S_score.(x), 'k.', ...
-    S_score.vrSnr_clu(vlClu), S_score.(x)(vlClu), 'b.'), ...
-        xylabel_([],'SNR_clu',x,title_str_(S_score.(x)(vlClu)),1)};
+plot_gt_ = @(x){plot(vrSnr_gt, S_score.(x), 'k.', ...
+    vrSnr_gt(vlGt), S_score.(x)(vlGt), 'b.'), ...
+        xylabel_([],vcX_gt,x,title_str_(S_score.(x)(vlGt)),1)};
+plot_clu_ = @(x){plot(vrSnr_clu, S_score.(x), 'k.', ...
+    vrSnr_clu(vlClu), S_score.(x)(vlClu), 'b.'), ...
+        xylabel_([],vcX_clu,x,title_str_(S_score.(x)(vlClu)),1)};
     
 figure('Color','w', 'Name', ...
     sprintf('Groundtruth: %s, Sorted: %s', ...
@@ -619,7 +640,6 @@ AX(end+1)=subplot(424); plot_clu_('vrF1_clu');
 AX(end+1)=subplot(426); plot_clu_('vrPrecision_F1_clu');
 AX(end+1)=subplot(428); plot_clu_('vrRecall_F1_clu');
 linkaxes(AX, 'xy');
-snr_max = max([20, max(S_score.vrSnr_gt), max(S_score.vrSnr_clu)]);
 axis(AX(1), [0 snr_max 0 100]);
 % title_(AX(1), S_score.vcFile_gt_mda);
 % title_(AX(5), S_score.vcFile_clu_mda);
@@ -723,7 +743,10 @@ if nargin<3
         struct_get_(S_cfg, 'spkJitter_ms_gt', 'freqLim_gt', 'freqLim_width_gt', 'spkLim_ms_gt');
     S_json = loadjson_(fullfile(fileparts(vcFile_gt_mda), 'params.json'));
     P.sRateHz = get_(S_json, 'samplerate');
-    P.vcFile = fullfile(fileparts(vcFile_gt_mda), 'raw.mda');  
+    P.vcFile = fullfile(fileparts(vcFile_gt_mda), 'raw.mda'); 
+    fCompute_snr = get_(S_cfg, 'fCompute_snr_mda');
+else
+    fCompute_snr = 1;
 end
 
 % usage
@@ -747,26 +770,30 @@ cviTime_gt = cellfun(@(vi_)unique(int32(viTimeGt(vi_)/jitter)), cviSpk_gt, 'Unif
 cviTime_clu = cellfun(@(vi_)unique(int32(viTimeClu(vi_)/jitter)), cviSpk_clu, 'UniformOutput', 0);
 
 % compute the SNR
-t1=tic;
-vcFile_filt = strrep(P.vcFile, '.mda', '_filt.mda');
-if exist_file_(vcFile_filt)
-    fprintf('\tLoading from %s...', vcFile_filt); 
-    mrWav_filt = readmda_(vcFile_filt);   
-    fprintf(' took %0.1fs\n', toc(t1));
+if fCompute_snr
+    t1=tic;
+    vcFile_filt = strrep(P.vcFile, '.mda', '_filt.mda');
+    if exist_file_(vcFile_filt)
+        fprintf('\tLoading from %s...', vcFile_filt); 
+        mrWav_filt = readmda_(vcFile_filt);   
+        fprintf(' took %0.1fs\n', toc(t1));
+    else
+        fprintf('\tFiltering...');
+        mrWav_filt = fft_filter_transpose(readmda_(P.vcFile), P);
+        writemda_(vcFile_filt , mrWav_filt);
+        fprintf(' took %0.1fs, saved to %s\n', toc(t1), vcFile_filt);
+    end
+    tr2vr_peak_mean_ = @(tr)min(min(mean(tr,2)));
+    mr2tr_subsample_ = @(x,y)mr2tr_(mrWav_filt, P.spkLim, x(subsample_vr_(y, nSamples_max)));
+    [vrPeak_gt, viSite_gt] = cellfun(@(x)tr2vr_peak_mean_(mr2tr_subsample_(viTimeGt, x)), cviSpk_gt);
+    [vrPeak_clu, viSite_clu] = cellfun(@(x)tr2vr_peak_mean_(mr2tr_subsample_(viTimeClu, x)), cviSpk_clu);
+    vrNoise_site = mr2rms_(mrWav_filt, 1e5)';
+    vrSnr_gt = abs(vrPeak_gt(:)) ./ vrNoise_site(viSite_gt);
+    vrSnr_clu = abs(vrPeak_clu(:)) ./ vrNoise_site(viSite_clu);
+    mrWav_filt = [];
 else
-    fprintf('\tFiltering...');
-    mrWav_filt = fft_filter_transpose(readmda_(P.vcFile), P);
-    writemda_(vcFile_filt , mrWav_filt);
-    fprintf(' took %0.1fs, saved to %s\n', toc(t1), vcFile_filt);
+    [vrSnr_gt, vrSnr_clu, viSite_gt, viSite_clu, vrNoise_site] = deal([]);
 end
-tr2vr_peak_mean_ = @(tr)min(min(mean(tr,2)));
-mr2tr_subsample_ = @(x,y)mr2tr_(mrWav_filt, P.spkLim, x(subsample_vr_(y, nSamples_max)));
-[vrPeak_gt, viSite_gt] = cellfun(@(x)tr2vr_peak_mean_(mr2tr_subsample_(viTimeGt, x)), cviSpk_gt);
-[vrPeak_clu, viSite_clu] = cellfun(@(x)tr2vr_peak_mean_(mr2tr_subsample_(viTimeClu, x)), cviSpk_clu);
-vrNoise_site = mr2rms_(mrWav_filt, 1e5)';
-vrSnr_gt = abs(vrPeak_gt(:)) ./ vrNoise_site(viSite_gt);
-vrSnr_clu = abs(vrPeak_clu(:)) ./ vrNoise_site(viSite_clu);
-mrWav_filt = [];
 
 % Compute intersection
 mnIntersect = zeros(nClu, nGt);
@@ -809,7 +836,7 @@ S_score = makeStruct_(vrAccuracy_gt, viClu_gt, vrPrecision_gt, vrRecall_gt, ...
     vrF1_gt, viClu_F1_gt, vrPrecision_F1_gt, vrRecall_F1_gt, ...
     vrF1_clu, viClu_F1_clu, vrPrecision_F1_clu, vrRecall_F1_clu, ...
     vrSnr_gt, vrSnr_clu, viSite_gt, viSite_clu, vrNoise_site, ...
-    vcFile_gt_mda, vcFile_clu_mda, P);
+    vcFile_gt_mda, vcFile_clu_mda, P, nGt, nClu);
 
 if nargout==0
     S_score_plot_(S_score, S_cfg);
