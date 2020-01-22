@@ -3655,6 +3655,7 @@ else
         fid_fet2 = sprintf('%s_fet2_%d.irc', vcFile_prm_, iLoad);
     end
     write_bin_(fid_fet2, S_detect.trPc2_spk);    
+    if ~fKeep_fid, fid_fet2 = []; end
     S_detect.cviSpk2_site = save_paged_fet_site_(...
         [vcFile_prm_, sprintf('_fet2_%d.irc', iLoad)], ...
             S_detect.trPc2_spk, S_detect.viSite2_spk, nSites);
