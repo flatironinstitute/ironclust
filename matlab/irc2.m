@@ -192,7 +192,7 @@ end %func
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_()
 
-vcVer = 'v5.5.10';
+vcVer = 'v5.5.11';
 vcDate = '01/22/2020';
 vcHash = file2hash_();
 
@@ -3643,20 +3643,23 @@ S_detect.cviSpk_site = save_paged_fet_site_(...
     [vcFile_prm_, sprintf('_fet_%d.irc', iLoad)], ...
         S_detect.trPc_spk, S_detect.viSite_spk, nSites);
 S_detect.trPc_spk = [];
+
 if isempty(get_(S_detect, 'trPc2_spk'))
     S_detect.cviSpk2_site = cell(size(S_detect.cviSpk_site));
-    return; 
-end
-if fKeep_fid
-    fid_fet2 = fopen([vcFile_prm_, sprintf('_fet2_%d.irc', iLoad)], 'w+');
+    fid_fet2 = [];
+    S_detect.trPc2_spk = [];
 else
-    fid_fet2 = sprintf('%s_fet2_%d.irc', vcFile_prm_, iLoad);
+    if fKeep_fid
+        fid_fet2 = fopen([vcFile_prm_, sprintf('_fet2_%d.irc', iLoad)], 'w+');
+    else
+        fid_fet2 = sprintf('%s_fet2_%d.irc', vcFile_prm_, iLoad);
+    end
+    write_bin_(fid_fet2, S_detect.trPc2_spk);    
+    S_detect.cviSpk2_site = save_paged_fet_site_(...
+        [vcFile_prm_, sprintf('_fet2_%d.irc', iLoad)], ...
+            S_detect.trPc2_spk, S_detect.viSite2_spk, nSites);
+    S_detect.trPc2_spk = [];
 end
-write_bin_(fid_fet2, S_detect.trPc2_spk);    
-S_detect.cviSpk2_site = save_paged_fet_site_(...
-    [vcFile_prm_, sprintf('_fet2_%d.irc', iLoad)], ...
-        S_detect.trPc2_spk, S_detect.viSite2_spk, nSites);
-S_detect.trPc2_spk = [];
 end %func
 
 
