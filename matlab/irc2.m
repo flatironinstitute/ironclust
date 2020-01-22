@@ -70,6 +70,7 @@ switch lower(vcCmd)
     % direcly run kilosort2 from the source
     case {'ks2', 'kilosort2'}, run_ksort2(vcArg1, vcArg2, vcArg3); return;
         
+    case 'describe-mda', describe_mda_(vcArg1, vcArg2); return;
     case 'compare-mda', compare_mda_(vcArg1, vcArg2); return;
     case 'export-mda', save_firings_mda_(vcFile_prm); return;
     case {'which', 'select'}, fprintf('%s\n', vcFile_prm); return;
@@ -86,8 +87,7 @@ switch lower(vcCmd)
     case 'import-clip'
         [S0, P] = import_clip_(vcArg1); 
     case 'edit', edit_(vcFile_prm); return;
-    case 'juxta'
-        convert_mda_ui('english'); return;
+    case 'juxta', convert_mda_ui('english'); return;
     case 'version'
         if nargout==0, version_(); 
         else, varargout{1} = version_(); 
@@ -714,26 +714,91 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function disp_stats_(vr, vcCaption)
+function vc = disp_stats_(vr, vcCaption)
 nBlanks = 32;
 vcCaption_pad = repmat(' ', [1,nBlanks]);
-
-if nargin==0
-    fprintf('%sn, mu/sd, (10,25,*50,75,90%%), [min-max]\t: \n', vcCaption_pad);
-    return;
-end
 if nargin<2, vcCaption = ''; end
 
-nCaption = min(nBlanks, numel(vcCaption));
-vcCaption_pad(1:nCaption) = vcCaption(1:nCaption);
-
-vr = vr(~isnan(vr));
-vr = vr(:);
-fprintf('%s%d, %0.1f/%0.1f, (%0.1f, %0.1f, *%0.1f, %0.1f, %0.1f), [%0.1f-%0.1f]\n', ...
-    vcCaption_pad, numel(vr), mean(vr), std(vr), quantile(vr, [.1,.25,.5,.75,.9]), min(vr), max(vr));
+if nargin==0
+    vc = sprintf('%sn, mu/sd, (10,25,*50,75,90%%), [min-max]\t: ', vcCaption_pad);
+else
+    nCaption = min(nBlanks, numel(vcCaption));
+    vcCaption_pad(1:nCaption) = vcCaption(1:nCaption);
+    vr = vr(~isnan(vr));
+    vr = vr(:);
+    vc = sprintf('%s%d, %0.1f/%0.1f, (%0.1f, %0.1f, *%0.1f, %0.1f, %0.1f), [%0.1f-%0.1f]', ...
+        vcCaption_pad, numel(vr), mean(vr), std(vr), quantile(vr, [.1,.25,.5,.75,.9]), min(vr), max(vr));
+end
+if nargout==0
+    fprintf('%s\n', vc);
+end
 end %func
 
 
+%--------------------------------------------------------------------------
+function describe_mda_(vcFile_clu_mda, vcFile_raw_mda)
+% usage
+% -----
+% describe_mda_(vcFile_clu_mda): describe in adc samples
+% describe_mda_(vcFile_clu_mda, vcFile_raw_mda)
+
+if nargin<2, vcFile_raw_mda=[]; end
+if isempty(vcFile_raw_mda)
+    % find out about the duration
+    vcDir = fileparts(fileparts(vcFile_clu_mda));
+    vcFile_raw_mda = fullfile(vcDir, 'raw.mda');
+    if ~exist_file_(vcFile_raw_mda), vcFile_raw_mda = ''; end
+end
+if ~isempty(vcFile_raw_mda)
+    vcFile_json = fullfile(fileparts(vcFile_raw_mda), 'params.json');
+    S_json = loadjson_(vcFile_json);
+    sRateHz = get_(S_json, 'samplerate');
+else
+    sRateHz = [];
+end
+
+if ~exist_file_(vcFile_clu_mda)
+    error('%s does not exist', vcFile_clu_mda);
+end
+
+mr_clu = readmda_(vcFile_clu_mda)';
+[viSite_spk, viTime_spk, viClu_spk] = ...
+    deal(int32(mr_clu(:,1)), int64(mr_clu(:,2)), int32(mr_clu(:,3))); 
+mr_clu = [];
+
+[cviSpk_clu, nClu] = vi2cell_(viClu_spk);
+[cviSpk_site, nSites] = vi2cell_(viSite_spk);
+vnSpk_clu = cellfun(@numel, cviSpk_clu);
+vnSpk_site = cellfun(@numel, cviSpk_site);
+vnDur_clu = cellfun(@(x)diff(viTime_spk([min(x), max(x)])), cviSpk_clu);
+nDuration = max(viTime_spk) - min(viTime_spk);
+nSpk = numel(viTime_spk);
+
+csDesc = {};
+csDesc{end+1} = sprintf('');    
+csDesc{end+1} = sprintf('------------------------------');    
+csDesc{end+1} = sprintf('%s', vcFile_clu_mda);
+csDesc{end+1} = sprintf('------------------------------');    
+csDesc{end+1} = sprintf('  # Spikes:               %d', nSpk);
+csDesc{end+1} = sprintf('  # Clusters:             %d', nClu);
+csDesc{end+1} = sprintf('  # Sites:                %d', nSites);
+csDesc{end+1} = sprintf('  Duration (# samples):   %d', nDuration);   
+
+if ~isempty(sRateHz)
+    vrDur_clu = double(vnDur_clu) ./ sRateHz;
+    vrRate_clu = vnSpk_clu ./ vrDur_clu;
+    csDesc{end+1} = disp_stats_();
+    csDesc{end+1} = disp_stats_(vrDur_clu, 'vrDur_clu');
+    csDesc{end+1} = disp_stats_(vrRate_clu, 'vrRate_clu');
+    csDesc{end+1} = disp_stats_(vnSpk_clu, 'vnSpk_clu');
+    csDesc{end+1} = disp_stats_(vnSpk_site, 'vnSpk_site');
+end
+
+csDesc{end+1} = sprintf('------------------------------');
+disp_cs_(csDesc);
+end
+    
+    
 %--------------------------------------------------------------------------
 function S_score = compare_mda_(vcFile_gt_mda, vcFile_clu_mda, P)
 
