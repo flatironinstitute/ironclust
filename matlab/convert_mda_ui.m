@@ -331,6 +331,20 @@ csMsg = {
     sprintf('channel group 2:\n    %s', sprintf('%d,', viSite2chan2)),        
 	sprintf('channel group 3:\n    %s', sprintf('%d,', viSite2chan3)),
     };
+
+% filter and cache
+t1=tic;
+[vcDir_, vcFile_, vcExt_] = fileparts(vcFile_dat1);
+vcFile_filt = fullfile(vcDir_, [vcFile_, '_filt.irc']);
+if exist_file_(vcFile_filt)
+    mnWav_ext = reshape_(load_bin_(vcFile_filt, vcDataType), nChans1);
+    fprintf('Loaded from %s, took %0.1fs\n', vcFile_filt, toc(t1));
+else    
+    mnWav_ext = fft_filter_transpose_(mnWav_ext, S_mda.S_json.samplerate);
+    write_bin_(vcFile_filt, mnWav_ext);
+    fprintf('Saved to %s, took %0.1fs\n', vcFile_filt, toc(t1));
+end
+
 % output
 vcLabel_stim = 'Current stim';
 S_mda = makeStruct_(mnWav_ext, vnWav_int, vnWav_stim, mrSiteXY, S_json, viSpk_gt, csMsg, S_intra, vcLabel_stim);
@@ -821,13 +835,6 @@ if isempty(viChan_ext)
     set_table_(hTbl, iFile, 4, num2str_(1:size(mnWav_ext,1)));
     fSave = 1;
 end
-% fMeanSubt_ext = size(mnWav_ext,1) >= 16;
-% if 0
-%     fMeanSubt_ext = read_cfg_('fMeanSubt_plot', 0);
-%     mnWav_ext = filt_car_gpu_(mnWav_ext', fMeanSubt_ext, 1);
-% else        
-mnWav_ext = fft_filter_transpose_(mnWav_ext, S_mda.S_json.samplerate);
-% end
 
 viX_ext = 1:nSkip_plot:size(mnWav_ext,1);
 if nSkip_plot>1
@@ -873,6 +880,7 @@ end %func
 
 
 %--------------------------------------------------------------------------
+% todo: cache the filtered binary, load from cache
 function mrWav_filt = fft_filter_transpose_(mnWav_T, sRateHz)
 S_cfg = read_cfg_();
 fGpu = 1;
@@ -1513,6 +1521,12 @@ end %func
 
 
 %--------------------------------------------------------------------------
+% irc2.m
+function write_bin_(varargin), fn=dbstack(); irc2('call', fn(1).name, varargin); end
+
+
+%--------------------------------------------------------------------------
+% irc.m
 function frewind_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
 function disperr_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
 function struct_save_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
