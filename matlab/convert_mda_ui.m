@@ -21,15 +21,17 @@ end %func
 function convert_mda_english_(vcDir_in, vcDir_out)
 S_cfg = read_cfg_();
 if isempty(vcDir_in)
-    vcDir_in = S_cfg.vcDir_in;
-    if ~exist_dir_(vcDir_in)
-        vcDir_in = strrep(strrep(vcDir_in, '/mnt/ceph/users/jjun/', 'D:/Globus/'), '/', '\');
+    if ispc()
+        vcDir_in = fullfile(S_cfg.vcDir_win, S_cfg.vcDir_in);
+    else
+        vcDir_in = fullfile(S_cfg.vcDir_lin, S_cfg.vcDir_in);
     end
 end
 if isempty(vcDir_out)
-    vcDir_out = S_cfg.vcDir_out;
-    if ~exist_dir_(vcDir_out)
-        vcDir_out = strrep(strrep(vcDir_out, '/mnt/ceph/users/jjun/', 'D:/Globus/'), '/', '\');
+    if ispc()
+        vcDir_out = fullfile(S_cfg.vcDir_win, S_cfg.vcDir_out);
+    else
+        vcDir_out = fullfile(S_cfg.vcDir_lin, S_cfg.vcDir_out);
     end
 end
 dir_ext_ = @(ext)arrayfun_(@(x)fullfile(x.folder, x.name), dir(fullfile(vcDir_in, ext)));
@@ -501,7 +503,7 @@ table_data(:,3) = {''};
 table_data(:,4) = {''};
 table_data(:,5) = {''};
 get_end_ = @(x,i)x{end-i};
-dir2id_ = @(x)cellfun_(@(x1)get_end_(strsplit(x1,'/'),1), x);
+dir2id_ = @(x)cellfun_(@(x1)get_end_(strsplit(x1,filesep()),1), x);
 if exist_file_(vcFile_mat)
     S_mat = load(vcFile_mat);
     table_data_old = struct_get_(S_mat, 'table_data');
