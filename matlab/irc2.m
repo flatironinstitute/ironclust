@@ -194,8 +194,8 @@ end %func
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_()
 
-vcVer = 'v5.5.11';
-vcDate = '01/22/2020';
+vcVer = 'v5.5.12';
+vcDate = '01/23/2020';
 vcHash = file2hash_();
 
 if nargout==0
