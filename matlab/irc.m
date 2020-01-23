@@ -1458,6 +1458,7 @@ if ischar(fid_bin)
         P = struct_merge_(P, P1);
         nSamples_load1 = size(mnWav1,2);
         fClose_file = 0;
+        P.fTranspose_bin = 1;
     else
         [fid_bin, nBytes_file1] = fopen_(vcFile, 'r');
         if ~isempty(get_(P, 'header_offset'))
@@ -3124,7 +3125,7 @@ t1 = tic;
 fprintf('Computing ground truth units...\n');
 viClu = int32(S_gt.viClu); 
 
-viTime_spk = int32(S_gt.viTime);
+viTime_spk = S_gt.viTime;
 nSites = numel(get_(P, 'viSite2Chan'));
 
 [vcFilter, freqLim, nDiff_filt, spkLim_ms, freqLim_width, qqFactor, fft_thresh] = ...
@@ -28972,8 +28973,9 @@ end %func
 function [xlim, ylim] = uirect_()
 [xlim, ylim] = deal([]);
 
-h=imrect();
-position = wait(h);
+h = imrect();
+wait(h);
+position = h.getPosition;
 delete(h);
 
 if isempty(position), return; end

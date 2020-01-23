@@ -62,106 +62,80 @@ end %func
 
 %--------------------------------------------------------------------------
 % 3/29/2019 JJJ: convert to english format
-function S_mda = export_spikeforest_english_(vcFile_in1, vcDir_out1, mrLim_incl1, viSite_ext1, vcFile_prb)
+function S_mda = export_spikeforest_english_(vcFile_in, vcDir_out, mrLim_incl, viSite_ext, vcFile_prb)
 % S_mda = export_spikeforest_english_(vcFile_rhd1, vcDir_out1, mrLim_incl1, viChan_ext1)
 % S_mda = export_spikeforest_english_(vcFile_rhd1, vcDir_out1, mrLim_incl1, vcFile_prb)
 
-if nargin<2, vcDir_out1 = []; end
-if nargin<3, mrLim_incl1 = []; end
-if nargin<4, viSite_ext1 = []; end
+if nargin<2, vcDir_out = []; end
+if nargin<3, mrLim_incl = []; end
+if nargin<4, viSite_ext = []; end
 if nargin<5, vcFile_prb = []; end
 
-persistent vcFile_in_ S_mda_
-
-if strcmpi(vcFile_in_, vcFile_in1) && read_cfg_('fUse_cache', 1)
-    S_mda = S_mda_;
-    fprintf('Loaded from cache: %s\n', vcFile_in1);
-    return;
-end        
+% persistent vcFile_in_ S_mda_
+% 
+% if strcmpi(vcFile_in_, vcFile_in1) && read_cfg_('fUse_cache', 1)
+%     S_mda = S_mda_;
+%     fprintf('Loaded from cache: %s\n', vcFile_in1);
+%     return;
+% end        
     
 S_cfg = read_cfg_();
-if isempty(vcFile_prb)    
-    vcFile_prb = S_cfg.vcFile_probe;
-end
+if isempty(vcFile_prb), vcFile_prb = S_cfg.vcFile_probe; end
 S_prb = load_prb_(vcFile_prb);
 mrSiteXY = S_prb.mrSiteXY;
 
-if matchFileExt_(vcFile_in1, '.rhd')
-    [vcFile_dat1, vcFile_meta, S_meta1] = rhd2bin_(vcFile_in1);
-    [nChans1, sRateHz1, vcDataType, uV_per_bit] = get_(S_meta1, 'nChans', 'sRateHz', 'vcDataType', 'uV_per_bit');
-    iChan_intra = get_set_(S_cfg, 'iChan_intra', nChans1);
-    viChan_extra = S_prb.viSite2Chan;
-elseif matchFileExt_(vcFile_in1, '.xml')
-    vcFile_dat1 = subsFileExt_(vcFile_in1, '.dat');
-    S_xml1 = load_xml_neuroscope_(vcFile_in1);
-    [nChans1, sRateHz1, vcDataType, uV_per_bit, vcFile_dat1] = ...
+if matchFileExt_(vcFile_in, '.rhd')
+    [vcFile_dat, vcFile_meta, S_meta1] = rhd2bin_(vcFile_in);
+    [nChans, sRateHz, vcDataType, uV_per_bit] = get_(S_meta1, 'nChans', 'sRateHz', 'vcDataType', 'uV_per_bit');
+    iChan_int = get_set_(S_cfg, 'iChan_intra', nChans);
+    viChan_ext = S_prb.viSite2Chan;
+elseif matchFileExt_(vcFile_in, '.xml')
+    S_xml1 = load_xml_neuroscope_(vcFile_in);
+    [nChans, sRateHz, vcDataType, uV_per_bit, vcFile_dat] = ...
         get_(S_xml1, 'nChans', 'sRateHz', 'vcDataType', 'uV_per_bit', 'vcFile_dat');
-    iChan_intra = S_xml1.viSite2chan2;    
-    if isempty(iChan_intra)
+    iChan_int = S_xml1.viSite2chan2;    
+    if isempty(iChan_int)
         fprintf(2, 'Intracellular channel is not defined. Loading from default config.\n');        
-        if nChans1 == 5 % tetrode
-            iChan_intra = 1;
-            viChan_extra = 2:5;
+        if nChans == 5 % tetrode
+            iChan_int = 1;
+            viChan_ext = 2:5;
         else
-            iChan_intra = S_cfg.iChan_intra;
-            viChan_extra = S_prb.viSite2Chan;
+            iChan_int = S_cfg.iChan_intra;
+            viChan_ext = S_prb.viSite2Chan;
         end
-    elseif numel(iChan_intra)>1        
-        assert(numel(iChan_intra)==1, 'export_spikeforest_english_: second group must be intra');
+    elseif numel(iChan_int)>1        
+        assert(numel(iChan_int)==1, 'export_spikeforest_english_: second group must be intra');
     else
-        viChan_extra = S_xml1.viSite2chan1;
-    end
+        viChan_ext = S_xml1.viSite2chan1;
+    end    
+else
+    error('unsupported format: %s', vcFile_in);
 end
-
-mnWav_ext = load_bin_(vcFile_dat1, vcDataType, nChans1);
-if ~isempty(mrLim_incl1)
-    mnWav_ext = mnWav_ext(:, lim2range_(size(mnWav_ext,2), mrLim_incl1));
-end
-
-vnWav_int = mnWav_ext(iChan_intra,:)';
-mnWav_ext = mnWav_ext(viChan_extra,:);
-if ~isempty(viSite_ext1), mnWav_ext = mnWav_ext(viSite_ext1,:); end
-
-% load stim
 viChan_stim = get_set_(S_cfg, 'viChan_stim', 1);
 vcLabel_stim = get_set_(S_cfg, 'vcLabel_stim', 'current injection');
-try
-    vcFile_stim1 = strrep(vcFile_dat1, '.dat', '_analogin.xml');           
-    if exist_file_(vcFile_stim1)
-        S_xml_stim1 = load_xml_neuroscope_(vcFile_stim1);
-        nChans_aux = S_xml_stim1.nChans; 
-        mnWav_aux = load_bin_(S_xml_stim1.vcFile_dat, vcDataType, nChans_aux);
-        vnWav_stim = mean(mnWav_aux(viChan_stim,:), 1)';
-        vnWav_stim = cast(vnWav_stim, class(mnWav_aux));
-        if size(vnWav_stim,1) ~= size(vnWav_int,1)
-            fprintf(2, 'intra and stim channel size mismatch. interpolating stim chan to match the intra chan.\n');
-            vnWav_stim = resample_(vnWav_stim, numel(vnWav_int)); 
-        end
-%         assert(size(vnWav_stim,1)==size(vnWav_int,1), 'export_spikeforest_english_: intra and stim size must match');
-    else
-        vnWav_stim = [];
-    end
-catch
-    fprintf(2, 'export_spikeforest_english_: loading `analogin.dat` error: \n\t%s\n', lasterr());
-    vnWav_stim= [];
-end
 
-S_json = struct('spike_sign', -1, 'samplerate', sRateHz1, 'scale_factor', uV_per_bit);
-t_dur1 = filesize_(vcFile_dat1) / nChans1 / sRateHz1 / bytesPerSample_(vcDataType); 
-if isa(vnWav_int, 'int16')
-    rSaturation = mean(vnWav_int == int16(2^15-1) | vnWav_int == int16(-2^15));
-elseif isa(vnWav_int, 'uint16')
-    rSaturation = mean(vnWav_int == uint16(2^16-1));
+[mrWav_filt_ext, vrWav_filt_int, vnWav_stim, mnWav_ext_T] = ...
+    load_filt_cache_(vcFile_dat, ...
+        makeStruct_(viChan_ext, iChan_int, viChan_stim, nChans, sRateHz, vcDataType, mrLim_incl));
+
+if ~isempty(viSite_ext), mrWav_filt_ext = mrWav_filt_ext(:,viSite_ext); end
+
+% quality check
+t_dur = filesize_(vcFile_dat) / nChans / sRateHz / bytesPerSample_(vcDataType); 
+if isa(vrWav_filt_int, 'int16')
+    rSaturation = mean(vrWav_filt_int == int16(2^15-1) | vrWav_filt_int == int16(-2^15));
+elseif isa(vrWav_filt_int, 'uint16')
+    rSaturation = mean(vrWav_filt_int == uint16(2^16-1));
 else
     rSaturation = 0;
 end
 
 % build message
 csMsg = {
-    sprintf('channel count: %d', nChans1);
-    sprintf('site count: %d', size(mnWav_ext,1));
-	sprintf('recording duration: %0.1f sec', t_dur1);
-	sprintf('ADC sampling rate: %0.1f', sRateHz1);
+    sprintf('channel count: %d', nChans);
+    sprintf('site count: %d', size(mrWav_filt_ext,2));
+	sprintf('recording duration: %0.1f sec', t_dur);
+	sprintf('ADC sampling rate: %0.1f', sRateHz);
 	sprintf('scale factor: %0.4f uV/bit', uV_per_bit);
 	sprintf('probe file: %s', vcFile_prb);
 	sprintf('ADC saturation: %0.2f %%', rSaturation * 100)
@@ -169,24 +143,108 @@ csMsg = {
 csMsg = {cellstr2vc_(csMsg)};
 
 spkLim_ms = read_cfg_('spkLim_ms', [-2,2]); 
-spkLim1 = round(sRateHz1*spkLim_ms / 1000);
+spkLim = round(sRateHz*spkLim_ms / 1000);
 fJuxta = get_set_(S_cfg, 'fJuxta', 1);
-[viSpk_gt, S_intra] = detect_spikes_intra_(vnWav_int, vnWav_stim, spkLim1, fJuxta);            
+[viSpk_gt, S_intra] = detect_spikes_intra_(vrWav_filt_int, vnWav_stim, spkLim, fJuxta, sRateHz);            
 
 % output
-S_mda = makeStruct_(mnWav_ext, vnWav_int, vnWav_stim, mrSiteXY, S_json, viSpk_gt, csMsg, S_intra, vcLabel_stim);
-if isempty(vcDir_out1)
+S_json = struct('spike_sign', -1, 'samplerate', sRateHz, 'scale_factor', uV_per_bit);
+S_mda = makeStruct_(vnWav_stim, mrSiteXY, S_json, viSpk_gt, csMsg, S_intra, vcLabel_stim);
+S_mda.mnWav_ext = mrWav_filt_ext;
+S_mda.vnWav_int = vrWav_filt_int;
+if isempty(vcDir_out)
     vcDir_out = read_cfg_('vcDir_out');
-    [~, vcDir11] = fileparts(fileparts(vcFile_in1));
-    vcDir_out1 = fullfile(vcDir_out, sprintf('%s', vcDir11)); 
+    [~, vcDir11] = fileparts(fileparts(vcFile_in));
+    vcDir_out = fullfile(vcDir_out, sprintf('%s', vcDir11)); 
 end
-if ~isempty(vcDir_out1) % write to file
-    mkdir_(vcDir_out1);
-    export_spikeforest_intra_(vcDir_out1, S_intra, S_json);    
-    export_spikeforest_(vcDir_out1, mnWav_ext, mrSiteXY, S_json, viSpk_gt);     
+if ~isempty(vcDir_out) % write to file
+    mkdir_(vcDir_out);
+    export_spikeforest_intra_(vcDir_out, S_intra, S_json);    
+    export_spikeforest_(vcDir_out, mnWav_ext_T, mrSiteXY, S_json, viSpk_gt);     
 end
-S_mda_ = S_mda;
-vcFile_in_ = vcFile_in1;
+end %func
+
+
+%--------------------------------------------------------------------------
+function [mrWav_ext, vrWav_int, vrWav_stim, mnWav_ext_T] = load_filt_cache_(vcFile_dat, P)
+
+t_fun = tic;
+[viChan_ext, iChan_int, nChans, sRateHz, vcDataType, mrLim_incl, viChan_stim] = ...
+    get_(P, 'viChan_ext', 'iChan_int', 'nChans', 'sRateHz', 'vcDataType', 'mrLim_incl', 'viChan_stim');
+
+% filtered version
+[vcDir_, vcFile_, ~] = fileparts(vcFile_dat); 
+vcFile = fullfile(vcDir_, vcFile_);
+vcFile_ext = fullfile([vcFile, '_ext.mda']);
+vcFile_int = fullfile([vcFile, '_int.mda']);
+mnWav_T = load_bin_(vcFile_dat, vcDataType, nChans);
+mnWav_ext_T = mnWav_T(viChan_ext,:);
+if exist_file_(vcFile_ext) && exist_file_(vcFile_int)
+    fprintf('Loading %s from cache...', vcFile_dat); 
+    mrWav_ext = readmda_(vcFile_ext); 
+    vrWav_int = readmda_(vcFile_int);    
+else
+    fprintf('Loading and filtering %s...', vcFile_dat);     
+    mrWav_ext = fft_filter_transpose_(mnWav_T, sRateHz);   
+    vrWav_int = mrWav_ext(:,iChan_int);
+    mrWav_ext = mrWav_ext(:,viChan_ext);
+    writemda_(vcFile_ext, mrWav_ext, 1);
+    writemda_(vcFile_int, vrWav_int, 1);    
+end
+fprintf(' took %0.1fs\n', toc(t_fun));
+
+% trim the timing
+if ~isempty(mrLim_incl) 
+    viTime = lim2range_(size(mrWav_ext,1), mrLim_incl);
+    mrWav_ext = mrWav_ext(viTime,:); 
+    vrWav_int = vrWav_int(viTime);  
+    mnWav_ext_T = mnWav_ext_T(:,viTime);
+else
+    viTime = [];
+end
+
+% load stim
+vcFile_stim = fullfile([vcFile, '_stim.mda']);
+vcFile_xml_stim = [vcFile, '_analogin.xml'];
+vrWav_stim = [];
+if exist_file_(vcFile_stim)
+    vrWav_stim = readmda_(vcFile_stim);
+else
+    try
+        if exist_file_(vcFile_xml_stim)
+            S_xml_stim = load_xml_neuroscope_(vcFile_xml_stim);
+            nChans_stim = S_xml_stim.nChans;
+            vcFile_dat_stim = strrep(vcFile_xml_stim, '.xml', '.dat');
+        else
+            vcFile_rhd = fullfile(vcDir_, 'info.rhd');
+            vcFile_dat_stim = fullfile(vcDir_, 'analogin.dat');
+            if ~exist_file_(vcFile_rhd)
+                vcFile_rhd = [vcFile, '_info.rhd'];
+                vcFile_dat_stim = [vcFile, '_analogin.dat'];
+            end
+            if exist_file_(vcFile_rhd) && exist_file_(vcFile_dat_stim)
+                S_rhd = import_rhd(vcFile_rhd);
+%                 sRateHz_stim = get_(get_(S_rhd, 'frequency_parameters'), 'board_adc_sample_rate');
+                nChans_stim = numel(S_rhd.board_adc_channels);
+            else
+                return;
+            end
+        end        
+        mnWav_stim = load_bin_(vcFile_dat_stim, vcDataType, nChans_stim);
+        vrWav_stim = mean(single(mnWav_stim(viChan_stim,:)), 1)';
+        if size(vrWav_stim,1) ~= size(vrWav_int,1)
+            fprintf(2, 'intra and stim channel size mismatch. interpolating stim chan to match the intra chan.\n');
+            vrWav_stim = resample_(vrWav_stim, numel(vrWav_int)); 
+        end
+        writemda_(vcFile_stim, vrWav_stim, 1);
+    catch
+    end    
+end
+
+% trim the timing
+if ~isempty(viTime) && ~isempty(vrWav_stim)
+    vrWav_stim = vrWav_stim(viTime);
+end
 end %func
 
 
@@ -246,122 +304,176 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function S_mda = export_spikeforest_crcns_(vcFile_dat1, vcDir_out1, mrLim_incl1, viChan_ext1, vcFile_prb)
-% S_mda = export_spikeforest_crcns_(vcFile_dat1, vcDir_out1, mrLim_incl1, viChan_ext1)
+% function S_mda = export_spikeforest_crcns_(vcFile_dat1, vcDir_out1, mrLim_incl1, viChan_ext1, vcFile_prb)
+% % S_mda = export_spikeforest_crcns_(vcFile_dat1, vcDir_out1, mrLim_incl1, viChan_ext1)
+% 
+% if nargin<2, vcDir_out1 = []; end
+% if nargin<3, mrLim_incl1 = []; end
+% if nargin<4, viChan_ext1 = []; end
+% if nargin<5, vcFile_prb = []; end
+% 
+% if matchFileExt_(vcFile_dat1, {'.rhd', '.xml'})
+%     % dan english format
+%     S_mda = export_spikeforest_english_(vcFile_dat1, vcDir_out1, mrLim_incl1, viChan_ext1, vcFile_prb);
+%     return;    
+% end
+% 
+% vcDataType = 'int16';
+% [site_dist, shank_dist] = deal(25, 250);
+% % params.json
+% vcFile_xml = subsFileExt_(vcFile_dat1, '.xml');
+% S_xml1 = load_xml_neuroscope_(vcFile_xml);
+% [sRateHz1, nChans1, scale_factor1, viSite2chan1, viSite2chan2, viSite2chan3, nBits1] = ...
+%     struct_get_(S_xml1, 'sRateHz', 'nChans', 'uV_per_bit', ...
+%         'viSite2chan1', 'viSite2chan2', 'viSite2chan3', 'nBits');
+% S_json = struct('spike_sign', -1, 'samplerate', sRateHz1, 'scale_factor', scale_factor1);
+% 
+% % filter out legacy format
+% if nBits1 ~= 16, return; end
+% if isempty(viSite2chan2) % find intracellular channel
+%     viSite2chan2 = viSite2chan1(end-2:end);
+%     viSite2chan1 = viSite2chan1(1:end-3);
+% end     
+% if ~isempty(viSite2chan3) 
+%     viSite2chan_int1 = viSite2chan3;
+% else
+%     viSite2chan_int1 = viSite2chan2;
+% end
+% if numel(viSite2chan_int1) > 1
+%     iChan_stim = viSite2chan_int1(end-1);
+% else
+%     iChan_stim = [];
+% end
+% iChan_int = viSite2chan_int1(end);
+% % shank selection
+% if isempty(viSite2chan3)
+%     viChan_ext1 = viSite2chan1;
+% else
+%     viChan_ext1 = [viSite2chan1, viSite2chan2];
+% end
+% 
+% % filter and cache
+% mnWav_ext = load_filter_cache_(vcFile_dat1, ...
+%     struct('nChans', nChans1, 'vcDataType', vcDataType, 'sRateHz', sRateHz1));
+% if isempty(mnWav_ext), return; end
+% 
+% vnWav_int = mnWav_ext(:,iChan_int);
+% if isempty(iChan_stim)
+%     vnWav_stim = [];
+% else
+%     vnWav_stim = mnWav_ext(:,iChan_stim);
+% end
+% mnWav_ext = mnWav_ext(:,viChan_ext1);
+% 
+% % firings_true.mda
+% spkLim1 = round(sRateHz1*[-1,1] / 1000);
+% [viSpk_gt, S_intra] = detect_spikes_intra_(vnWav_int, vnWav_stim, spkLim1, 0, sRateHz1);            
+% 
+% % geom.csv
+% nSites1 = numel(viChan_ext1);
+% switch nSites1
+%     case 32
+%         S_prb1 = load_prb_('poly3nn.prb');
+%         mrSiteXY = S_prb1.mrSiteXY;   
+%     otherwise
+%         mrSiteXY = [zeros(1, nSites1); (0:nSites1-1)]' * site_dist;
+%         if ~isempty(viSite2chan3) % two shanks
+%             viSite_shank2 = (1:numel(viSite2chan2)) + numel(viSite2chan1);
+%             mrSiteXY(viSite_shank2,1) = shank_dist;  % shank separation distance
+%         end
+% end %switch          
+% 
+% % set the 
+% t_dur1 = filesize_(vcFile_dat1) / nChans1 / sRateHz1 / bytesPerSample_(vcDataType); 
+% csMsg = {
+%     sprintf('channel_count: %d\nt_dur1: %0.1fs\nsRateHz: %0.1f\nscale_factor: %0.4f', ...
+%         nChans1, t_dur1, sRateHz1, scale_factor1),
+%     sprintf('channel group 1:\n    %s', sprintf('%d,', viSite2chan1)),
+%     sprintf('channel group 2:\n    %s', sprintf('%d,', viSite2chan2)),        
+% 	sprintf('channel group 3:\n    %s', sprintf('%d,', viSite2chan3)),
+%     };
+% 
+% % output
+% vcLabel_stim = 'Current stim';
+% S_mda = makeStruct_(mnWav_ext, vnWav_int, vnWav_stim, mrSiteXY, S_json, viSpk_gt, csMsg, S_intra, vcLabel_stim);
+% if ~isempty(vcDir_out1) % write to file
+%     mkdir_(vcDir_out1);
+%     export_spikeforest_intra_(vcDir_out1, S_mda.vnWav_int, S_mda.S_intra);
+%     export_spikeforest_(vcDir_out1, S_mda.mnWav_ext, mrSiteXY, S_mda.S_json, S_mda.viSpk_gt);     
+% end
+% end %func
 
-if nargin<2, vcDir_out1 = []; end
-if nargin<3, mrLim_incl1 = []; end
-if nargin<4, viChan_ext1 = []; end
-if nargin<5, vcFile_prb = []; end
 
-if matchFileExt_(vcFile_dat1, {'.rhd', '.xml'})
-    % dan english format
-    S_mda = export_spikeforest_english_(vcFile_dat1, vcDir_out1, mrLim_incl1, viChan_ext1, vcFile_prb);
-    return;    
+%--------------------------------------------------------------------------
+% 64-bit addressing compatible
+function writemda_(vcFile, var, fVerbose)
+if nargin<3, fVerbose = 0; end
+t_fun = tic;
+writemda_fid(vcFile, var);
+if fVerbose
+    fprintf('Wrote to %s, took %0.1fs\n', vcFile, toc(t_fun));
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+function A = readmda_(fname)
+% Author: Jeremy Magland, modified by JJJ
+% Jan 2015; Last revision: 15-Feb-2106
+if ~exist_file_(fname)
+    error('File does not exist: %s', fname);
+end
+F=fopen(fname,'r','l');
+
+% read the first header sample: data type
+try
+    code=fread(F,1,'int32');
+catch
+    error('Problem reading file: %s',fname);
 end
 
-vcDataType = 'int16';
-[site_dist, shank_dist] = deal(25, 250);
-% params.json
-vcFile_xml = subsFileExt_(vcFile_dat1, '.xml');
-S_xml1 = load_xml_neuroscope_(vcFile_xml);
-[sRateHz1, nChans1, scale_factor1, viSite2chan1, viSite2chan2, viSite2chan3, nBits1] = ...
-    struct_get_(S_xml1, 'sRateHz', 'nChans', 'uV_per_bit', ...
-        'viSite2chan1', 'viSite2chan2', 'viSite2chan3', 'nBits');
-S_json = struct('spike_sign', -1, 'samplerate', sRateHz1, 'scale_factor', scale_factor1);
-
-% filter out legacy format
-if nBits1 ~= 16, return; end
-if isempty(viSite2chan2) % find intracellular channel
-    viSite2chan2 = viSite2chan1(end-2:end);
-    viSite2chan1 = viSite2chan1(1:end-3);
-end     
-
-% raw.mda
-% [mnWav1, vnWav_int1, viSpk_gt1] = deal([]);
-% if ~exist_file_(fullfile(vcDir_out1, 'raw.mda')) || ~exist_file_(fullfile(vcDir_out1, 'firings_true.mda'))
-mnWav1 = reshape_(load_bin_(vcFile_dat1, vcDataType), nChans1);
-if ~isempty(mrLim_incl1)
-    mnWav1 = mnWav1(:, lim2range_(size(mnWav1,2), mrLim_incl1));
-end
-if ~isempty(viSite2chan3) 
-    viSite2chan_int1 = viSite2chan3;
+% read the second header sample: number of dimensions
+if (code>0) 
+    num_dims=code;
+    code=-1;
 else
-    viSite2chan_int1 = viSite2chan2;
-end
-if numel(viSite2chan_int1) > 1
-    vnWav_stim = mnWav1(viSite2chan_int1(end-1),:)'; % load intracelluar recordings
-else
-    vnWav_stim = [];
-end
-vnWav_int = mnWav1(viSite2chan_int1(end),:)'; % load intracelluar recordings
-
-% firings_true.mda
-if isempty(mnWav1), return; end
-
-spkLim1 = round(sRateHz1*[-1,1] / 1000);
-[viSpk_gt, S_intra] = detect_spikes_intra_(vnWav_int, vnWav_stim, spkLim1);            
-
-% shank selection
-if isempty(viSite2chan3)
-    mnWav_ext = mnWav1(viSite2chan1,:); % use three column map and find first and last
-else
-    mnWav_ext = mnWav1([viSite2chan1, viSite2chan2],:);
-end
-if ~isempty(viChan_ext1), mnWav_ext = mnWav_ext(viChan_ext1,:); end
-
-% geom.csv
-nSites1 = size(mnWav_ext,1);
-switch nSites1
-    case 32
-        S_prb1 = load_prb_('poly3nn.prb');
-        mrSiteXY = S_prb1.mrSiteXY;   
-    otherwise
-        mrSiteXY = [zeros(1, nSites1); (0:nSites1-1)]' * site_dist;
-        if ~isempty(viSite2chan3) % two shanks
-            viSite_shank2 = (1:numel(viSite2chan2)) + numel(viSite2chan1);
-            mrSiteXY(viSite_shank2,1) = shank_dist;  % shank separation distance
-        end
-end %switch          
-
-% set the 
-t_dur1 = filesize_(vcFile_dat1) / nChans1 / sRateHz1 / bytesPerSample_(vcDataType); 
-csMsg = {
-    sprintf('channel_count: %d\nt_dur1: %0.1fs\nsRateHz: %0.1f\nscale_factor: %0.4f', ...
-        nChans1, t_dur1, sRateHz1, scale_factor1),
-    sprintf('channel group 1:\n    %s', sprintf('%d,', viSite2chan1)),
-    sprintf('channel group 2:\n    %s', sprintf('%d,', viSite2chan2)),        
-	sprintf('channel group 3:\n    %s', sprintf('%d,', viSite2chan3)),
-    };
-
-% filter and cache
-t1=tic;
-[vcDir_, vcFile_, vcExt_] = fileparts(vcFile_dat1);
-vcFile_filt = fullfile(vcDir_, [vcFile_, '_filt.irc']);
-if exist_file_(vcFile_filt)
-    mnWav_ext = reshape_(load_bin_(vcFile_filt, vcDataType), nChans1);
-    fprintf('Loaded from %s, took %0.1fs\n', vcFile_filt, toc(t1));
-else    
-    mnWav_ext = fft_filter_transpose_(mnWav_ext, S_mda.S_json.samplerate);
-    write_bin_(vcFile_filt, mnWav_ext);
-    fprintf('Saved to %s, took %0.1fs\n', vcFile_filt, toc(t1));
+    fread(F,1,'int32');
+    num_dims=fread(F,1,'int32');    
 end
 
-% output
-vcLabel_stim = 'Current stim';
-S_mda = makeStruct_(mnWav_ext, vnWav_int, vnWav_stim, mrSiteXY, S_json, viSpk_gt, csMsg, S_intra, vcLabel_stim);
-if ~isempty(vcDir_out1) % write to file
-    mkdir_(vcDir_out1);
-    export_spikeforest_intra_(vcDir_out1, S_mda.vnWav_int, S_mda.S_intra);
-    export_spikeforest_(vcDir_out1, S_mda.mnWav_ext, mrSiteXY, S_mda.S_json, S_mda.viSpk_gt);     
+% read the length per dimension
+dim_type_str='int32';
+if (num_dims<0)
+    num_dims=-num_dims;
+    dim_type_str='int64';
 end
+
+% read length per dimension
+S = fread(F, num_dims, dim_type_str)';
+N = prod(S);
+
+switch code
+    case -1
+        A = fread(F,N*2,'*float');
+        A = A(1:2:end) + sqrt(-1) * A(2:2:end);
+    case -2, A = fread(F,N,'*uchar');
+    case -3, A = fread(F,N,'*float');
+    case -4, A = fread(F,N,'*int16');
+    case -5, A = fread(F,N,'*int32');
+    case -6, A = fread(F,N,'*uint16');
+    case -7, A = fread(F,N,'*double');
+    case -8, A = fread(F,N,'*uint32');
+    otherwise, error('Unsupported data type code: %d',code);
+end
+A = reshape(A, S);
+fclose(F);
 end %func
 
 
 %--------------------------------------------------------------------------
 % convert crcns files to mda, only include selected range
 % pay attention to geometry files
-function cbf_menu_crcns_(h, e)
+function cbf_menu_(h, e)
 % read table and convert file
 hFig = h.Parent.Parent;
 S_fig = hFig.UserData;
@@ -376,28 +488,45 @@ catch
 end
 
 vcFile_dat1 = csFiles_dat{iFile};
-[vcDir_, vcDir12] = fileparts(vcFile_dat1);
-[~, vcDir11] = fileparts(vcDir_);
-vcDir_out1 = fullfile(vcDir_out, sprintf('%s_%s', vcDir11, vcDir12));
+[~, vcDir1] = fileparts(fileparts(vcFile_dat1));
+vcDir_out1 = fullfile(vcDir_out, vcDir1);
 [S_cfg, vcFile_cfg] = read_cfg_();
 switch lower(h.Label)
+    case 'pre-filter all'
+        t1 = tic;
+        nFiles = numel(csFiles_dat);
+        for iFile1 = 1:nFiles
+            vcFile_dat1 = csFiles_dat{iFile1};
+            fprintf('Filtering %s (%d/%d)...\n', vcFile_dat1, iFile1, nFiles); 
+            t2=tic;
+            try                                
+                [~, vcDir1] = fileparts(fileparts(vcFile_dat1));
+                vcDir_out1 = fullfile(vcDir_out, vcDir1);
+                export_spikeforest_english_(vcFile_dat1, vcDir_out1);
+                fprintf('\tFiltering %s took %0.1fs\n\n', vcFile_dat1, toc(t2));
+            catch
+                fprintf('\tError filtering %s:\n\t%s\n\n', vcFile_dat1, lasterr());
+            end
+        end
+        fprintf('pre-filter all: finished, took %0.1fs\n', toc(t1));
+        return;
     case 'edit settings'
         edit_(vcFile_cfg);
     case 'load'
         
     case {'convert and next', 'convert', 'convert and summarize recording'}
-        figure_wait_(1, hFig);
+        figure_wait_(1, hFig); drawnow();
         try
             mrLim_incl1 = str2num_(cLim_incl{iFile});
             viChan_ext1 = str2num_(cChan_ext{iFile});            
-            export_spikeforest_crcns_(vcFile_dat1, vcDir_out1, mrLim_incl1, viChan_ext1, vcFile_prb);                               
+            export_spikeforest_english_(vcFile_dat1, vcDir_out1, mrLim_incl1, viChan_ext1, vcFile_prb);                               
         catch
             errordlg(lasterr());
             return;
         end
         figure_wait_(0, hFig);
         if strcmpi(h.Label, 'convert') || strcmpi(h.Label, 'convert and summarize recording')            
-            summarize_recording_(S_cfg.vcDir_out, vcFile_dat1);
+            summarize_recording_(S_fig.vcDir_out, vcFile_dat1);
         end
         return; 
 
@@ -414,12 +543,12 @@ switch lower(h.Label)
         return;
         
     case 'summarize study'
-        vcFile_summary = summarize_study_(S_cfg.vcDir_out);
+        vcFile_summary = summarize_study_(S_fig.vcDir_out);
         winopen_(vcFile_summary);
         return;
         
     case 'summarize recording'
-        summarize_recording_(S_cfg.vcDir_out, vcFile_dat1);
+        summarize_recording_(S_fig.vcDir_out, vcFile_dat1);
         return;        
         
     otherwise, return;
@@ -470,7 +599,7 @@ vnSpikes_crnc = zeros(size(csFiles_dat));
 cS_crcns = cell(size(csFiles_dat));
 for iFile = 1:numel(csFiles_dat)
     try
-       S_mda1 = export_spikeforest_crcns_(csFiles_dat{iFile});
+       S_mda1 = export_spikeforest_english_(csFiles_dat{iFile});
        [mrSiteXY, S_json, viSpk_gt, csMsg] = ...
            struct_get_(S_mda1, 'mrSiteXY', 'S_json', 'viSpk_gt', 'csMsg');
        vnSpikes_crcns(iFile) = numel(viSpk_gt);
@@ -719,6 +848,7 @@ hAx1 = axes(hFig, 'OuterPosition', [0 .7 1 .1]); xylabel_(hAx1, 't','V_int','V_i
 hAx2 = axes(hFig, 'OuterPosition', [0 .6 1 .1]); xylabel_(hAx2, 't','dV_int/dt','dV_int/dt');    
 hAx3 = axes(hFig, 'OuterPosition', [0 .5 1 .1]); xylabel_(hAx3, 't','I_int', 'I_int');
 hAx4 = axes(hFig, 'OuterPosition', [0 0 1 .5]); xylabel_(hAx4, 'Time (adc)','V_ext','V_ext (Change scale using UP/DOWN arrows)');
+linkaxes([hAx1,hAx2,hAx3,hAx4], 'x');
 [S_cfg, vcFile_cfg] = read_cfg_();
 S_fig = struct_append_(S_fig, makeStruct_(hTbl, hAx1, hAx2, hAx3, hAx4, hText, S_cfg));
 hFig.UserData = S_fig;
@@ -727,12 +857,13 @@ hFig.UserData = S_fig;
 set(hFig, 'MenuBar', 'none'); 
 mh_convert = uimenu_(hFig,'Label','Action'); 
 uimenu_(mh_convert,'Label', 'Edit settings', 'Callback', @(h,e)edit_(vcFile_cfg));
-uimenu_(mh_convert,'Label', 'convert and next', 'Callback', @cbf_menu_crcns_);
-uimenu_(mh_convert,'Label', 'convert', 'Callback', @cbf_menu_crcns_);
-uimenu_(mh_convert,'Label', 'skip and next', 'Callback', @cbf_menu_crcns_);
-uimenu_(mh_convert,'Label', 'open output', 'Callback', @cbf_menu_crcns_);
-uimenu_(mh_convert,'Label', 'summarize study', 'Callback', @cbf_menu_crcns_);
-uimenu_(mh_convert,'Label', 'summarize recording', 'Callback', @cbf_menu_crcns_);
+uimenu_(mh_convert,'Label', 'pre-filter all', 'Callback', @cbf_menu_);
+uimenu_(mh_convert,'Label', 'convert and next', 'Callback', @cbf_menu_);
+uimenu_(mh_convert,'Label', 'convert', 'Callback', @cbf_menu_);
+uimenu_(mh_convert,'Label', 'skip and next', 'Callback', @cbf_menu_);
+uimenu_(mh_convert,'Label', 'open output', 'Callback', @cbf_menu_);
+uimenu_(mh_convert,'Label', 'summarize study', 'Callback', @cbf_menu_);
+uimenu_(mh_convert,'Label', 'summarize recording', 'Callback', @cbf_menu_);
 
 % add call back functions 
 hTbl.CellSelectionCallback = @cbf_table_crcns_;
@@ -748,7 +879,6 @@ function cbf_table_crcns_(hTbl, arg2)
 % cbf_table_crcns_(hTbl, event)
 % cbf_table_crcns_(hTbl, iFile)
 
-nPlot_max = 1000000;
 hFig = hTbl.Parent;
 
 if nargin<2, arg2 = struct_get_(hFig.UserData, 'iFile'); end
@@ -780,7 +910,7 @@ if isempty(vcFile_prb)
     vcFile_prb = S_cfg.vcFile_probe;
     hTbl.Data{iFile,5} = vcFile_prb;
 end
-S_mda = export_spikeforest_crcns_(vcFile_dat1, [], [], [], vcFile_prb);
+S_mda = export_spikeforest_english_(vcFile_dat1, [], [], [], vcFile_prb);
 % set_userdata_(hFig, S_mda);
 
 [mnWav_ext, vnWav_int, vnWav_stim, mrSiteXY, S_json, viSpk_gt, csMsg, S_intra] = ...
@@ -790,33 +920,24 @@ nTime = numel(vnWav_int);
 if isempty(vnWav_stim), vnWav_stim = zeros(size(vnWav_int)); end
 [vrFilt_intra, thresh_intra] = struct_get_(S_intra, 'vrWav_filt', 'thresh');
 S_fig1.hText.String = csMsg;
-nSkip_plot = min(4, max(1, floor(numel(vnWav_int)/nPlot_max)));
-switch 2
-    case 2
-        nSkip_plot = 1;
-        [vrX_plot, vrY1_plot, vrY2_plot, vrY3_plot] = deal((1:numel(vnWav_int))', vnWav_int, vrFilt_intra, vnWav_stim);        
-        plot__ = @fastplot;
-    case 1
-        [vrX_plot, vrY1_plot, vrY2_plot, vrY3_plot] = plot_subsample_(nSkip_plot, viSpk_gt, vnWav_int, vrFilt_intra, vnWav_stim);
-        plot__ = @plot;
-end
+[vrX_plot, vrY1_plot, vrY2_plot, vrY3_plot] = deal((1:numel(vnWav_int))', vnWav_int, vrFilt_intra, vnWav_stim);        
 xlim0 = [0, vrX_plot(end)];    
 
 sRateHz = S_json.samplerate;
 fh_title = @(x,y)title(hAx1, sprintf('%d spikes, %0.3f Hz', numel(x), numel(x)/lim2duration_(y)*sRateHz));
 fh_axis = @(h,y)set(h, 'XLim', xlim0, 'YLim', [min(y), max(y)+eps()]);
 
-vhPlot1 = plot__(hAx1, vrX_plot, vrY1_plot, 'k-', viSpk_gt, vnWav_int(viSpk_gt), 'k.');
+vhPlot1 = fastplot(hAx1, vrX_plot, vrY1_plot, 'k-', viSpk_gt, vnWav_int(viSpk_gt), 'k.');
 xylabel_(hAx1, '', 'V_int');
 fh_axis(hAx1, vrY1_plot);
 
-vhPlot2 = plot__(hAx2, vrX_plot, vrY2_plot, 'k-', viSpk_gt, vrFilt_intra(viSpk_gt), 'k.');
+vhPlot2 = fastplot(hAx2, vrX_plot, vrY2_plot, 'k-', viSpk_gt, vrFilt_intra(viSpk_gt), 'k.');
 plot(hAx2, [1, numel(vrFilt_intra)], -double(thresh_intra) * [1,1], 'r-');
 vcLabel_filt = get_set_(S_intra, 'vcLabel', 'd/dt(V_int)');
 xylabel_(hAx2, '', vcLabel_filt);
 fh_axis(hAx2, vrY2_plot);
 
-vhPlot3 = plot__(hAx3, vrX_plot, vrY3_plot, 'k-', viSpk_gt, vnWav_stim(viSpk_gt), 'k.'); 
+vhPlot3 = fastplot(hAx3, vrX_plot, vrY3_plot, 'k-', viSpk_gt, vnWav_stim(viSpk_gt), 'k.'); 
 xylabel_(hAx3, 'Time (adc)', S_mda.vcLabel_stim);
 fh_axis(hAx3, vrY3_plot);
 
@@ -834,19 +955,15 @@ fh_title(viSpk_gt(viSpk_plot), mrLim_incl); % update title
 
 viChan_ext = str2num_(hTbl.Data{iFile,4});
 if isempty(viChan_ext)
-    set_table_(hTbl, iFile, 4, num2str_(1:size(mnWav_ext,1)));
+    set_table_(hTbl, iFile, 4, num2str_(1:size(mnWav_ext,2)));
     fSave = 1;
 end
 
-viX_ext = 1:nSkip_plot:size(mnWav_ext,1);
-if nSkip_plot>1
-    scale_ext = double(max(max(mnWav_ext) - min(mnWav_ext))) / 2;
-    hPlot = multiplot(hAx4, scale_ext, viX_ext, mnWav_ext(viX_ext,:));
-else
-    hPlot = plot__(hAx4, viX_ext, mnWav_ext(viX_ext,:));
-end
+hPlot = fastplot(hAx4, vrX_plot, mnWav_ext);
+
 set(hAx4, 'YLim', [0, size(mnWav_ext,2)+1], 'YTick', 1:size(mnWav_ext,2), 'XLim', xlim0);
 hFig.KeyPressFcn = @(h,e)multifun_cbf_(h,e,hPlot);
+% linkaxes([hAx1, hAx2, hAx3, hAx4], 'x');
 
 % add context menu
 c_ = uicontextmenu(hFig);
@@ -875,8 +992,7 @@ cellfun(@(x)set_userdata_(x, 'axis0', [double(x.XLim), double(x.YLim)]), {hAx1, 
 set_userdata_(hFig, 'iFile', iFile, 'nTime', nTime, 'sRateHz', sRateHz);
 set(hFig, 'Name', sprintf('(#%d) crcns data selector: %s', iFile, vcFile_dat1));
 if fSave, cbf_table_save_(hTbl); end
-linkaxes([hAx1, hAx2, hAx3, hAx4], 'x');
-drawnow_();
+% drawnow_();
 figure_wait_(0, hFig);
 end %func
 
@@ -886,7 +1002,7 @@ end %func
 function mrWav_filt = fft_filter_transpose_(mnWav_T, sRateHz)
 S_cfg = read_cfg_();
 fGpu = 1;
-[freqLim, freqLim_width, fft_thresh, fMeanSubt_plot] = struct_get_(S_cfg, 'freqLim_plot','freqLim_width','fft_thresh', 'fMeanSubt_plot');
+[freqLim, freqLim_width, fft_thresh, fMeanSubt_plot] = struct_get_(S_cfg, 'freqLim','freqLim_width','fft_thresh', 'fMeanSubt');
 P1 = makeStruct_(sRateHz, freqLim, freqLim_width, fGpu, fft_thresh);
 mrWav_filt = fft_filter_transpose(single(mnWav_T), P1);
 if fMeanSubt_plot
@@ -948,55 +1064,42 @@ end %for
 
 % save table data
 cbf_table_save_(hTbl);
-drawnow_(); 
+% drawnow_(); 
 figure_wait_(0, hFig1);
 end % func
 
 
 %--------------------------------------------------------------------------
 % 1/18/2019 detect intracellular spikes
-function [viSpk1, S_intra] = detect_spikes_intra_(vnWav_int1, vnWav_stim1, spkLim, fJuxta)
+function [viSpk1, S_intra] = detect_spikes_intra_(vrWav_filt, vnWav_stim, spkLim, fJuxta, sRateHz)
 if nargin<3, spkLim = []; end
 if nargin<4, fJuxta = 0; end
+if nargin<5, sRateHz = []; end
+
 if isempty(spkLim), spkLim = [-30 30]; end
 [min_stim_step, thresh_stim_mad] = deal(10, 10);
 
-vrWav_raw = single(vnWav_int1);
-% mad_int1 = mad_nonzero_(vrWav_int1);
+vrWav_filt = single(-vrWav_filt);
 S_cfg = read_cfg_();
 if fJuxta    
-    qqFactor = get_set_(S_cfg, 'qqFactor_juxta', 8);
-    fft_thresh = get_set_(S_cfg, 'fft_thresh', 8);
-    vrWav_raw = fft_clean_(vrWav_raw, struct('fft_thresh', fft_thresh, 'fGpu', 1));   
-    vrWav_filt = -ms_bandpass_filter_(vrWav_raw, ...
-        struct('freqLim', [300 6000], 'sRateHz', 30000, 'freqLim_width', [100 1000]));
+    qqFactor = S_cfg.qqFactor_juxta;
     vcLabel = '-bandpass(V_int)';
 else
     qqFactor = get_set_(S_cfg, 'qqFactor_intra', 12);
-    fft_thresh = get_set_(S_cfg, 'fft_thresh', 8);
-    vrWav_filt = -ndiff_(vrWav_raw, 4);
-    vcLabel = 'd/dt(V_int)';
+    vcLabel = '-d/dt(V_int)';
 end
 nRefrac = diff(spkLim);
 [viSpk1, vrSpk1, thresh] = spikeDetectSingle_fast_(vrWav_filt, struct('qqFactor', qqFactor));
-if 0
-    vrAmp_int_spk1 = abs(vrWav_raw(viSpk1)) / mad_nonzero_(vrWav_raw,0);
-%     vrAmp_filt_spk = abs(vrWav_filt(viSpk1)) / mad_nonzero_(vrWav_filt,0);
-    viiKeep_spk1 = find(vrAmp_int_spk1 >= qqFactor / .6745);
-    [viSpk1, vrSpk1] = deal(viSpk1(viiKeep_spk1), vrSpk1(viiKeep_spk1));
-%     figure; plot(vrAmp_int_spk, vrAmp_filt_spk, '.');
-end
-
 [viSpk1, vrSpk1] = spike_refrac_(viSpk1, vrSpk1, [], nRefrac); %same site spikes
 
 % remove step artifact
 vlKeep_spk = true(size(viSpk1));
-if ~isempty(vnWav_stim1) && ~isempty(viSpk1)
-    max_step_stim1 = max(abs(diff(vnWav_stim1)));
+if ~isempty(vnWav_stim) && ~isempty(viSpk1)
+    max_step_stim1 = max(abs(diff(vnWav_stim)));
     if max_step_stim1 > min_stim_step % if significant current stimulation is given remove artifact
-        vrPre_spk1 = median(vr2mr3_(vnWav_stim1,viSpk1, [spkLim(1), 0]));
-        vrPost_spk1 = median(vr2mr3_(vnWav_stim1,viSpk1, [0, spkLim(2)]));
-        mad_stim = single(mad_nonzero_(vnWav_stim1));
+        vrPre_spk1 = median(vr2mr3_(vnWav_stim,viSpk1, [spkLim(1), 0]));
+        vrPost_spk1 = median(vr2mr3_(vnWav_stim,viSpk1, [0, spkLim(2)]));
+        mad_stim = single(mad_nonzero_(vnWav_stim));
         vrStim_mad_spk1 = abs(single(vrPre_spk1) - single(vrPost_spk1)) / mad_stim;
         vlKeep_spk(vrStim_mad_spk1 >= thresh_stim_mad) = 0;
     end
@@ -1005,15 +1108,14 @@ end
 % remove negative intracelluar spike artifact
 if ~fJuxta && ~isempty(viSpk1)
     viSpk_pre1 = max(viSpk1 - spkLim(2), 1);
-    vr_dAmp = vnWav_int1(viSpk1) - vnWav_int1(viSpk_pre1); % should be positive
+    vr_dAmp = vrWav_filt(viSpk1) - vrWav_filt(viSpk_pre1); % should be positive
     vlKeep_spk(vr_dAmp<0) = 0;
     viSpk1 = viSpk1(vlKeep_spk);
 end
 
 % get amplitudes
 vrAmp_filt_spk = vrWav_filt(viSpk1);
-vrAmp_int_spk = vrWav_raw(viSpk1);
-S_intra = makeStruct_(vrWav_raw, vrWav_filt, thresh, vcLabel, vrAmp_filt_spk, vrAmp_int_spk);
+S_intra = makeStruct_(vrWav_filt, thresh, vcLabel, vrAmp_filt_spk);
 end %func
 
 
@@ -1029,14 +1131,14 @@ S_true_json = struct('samplerate', S_json.samplerate, 'scale_factor', 1, 'filter
 struct2json_(S_true_json, vcFile_json);
 
 if read_cfg_('fRaw_intra_mda', 1)
-    vrWav_intra = S_intra.vrWav_raw;
+    vrWav_int = -S_intra.vrWav_filt;
 else
-    vrWav_intra = S_intra.vrWav_filt;
+    vrWav_int = S_intra.vrWav_filt;
 end
-vrWav_intra = single(vrWav_intra(:)') * single(S_json.scale_factor);
+vrWav_int = single(vrWav_int(:)') * single(S_json.scale_factor);
 
 % write firings_true.mda
-writemda_(vrWav_intra, vcFile_true);
+writemda_(vcFile_true, vrWav_int);
 end %func
 
 
@@ -1052,7 +1154,7 @@ function export_spikeforest_(vcDir_out1, mnWav_T1, mrSiteXY1, S_json1, mrGt1)
 mkdir_(vcDir_out1);
 
 % write raw.mda
-writemda_(mnWav_T1, fullfile(vcDir_out1, 'raw.mda'));
+writemda_(fullfile(vcDir_out1, 'raw.mda'), mnWav_T1);
 
 % write geom.csv
 csvwrite(fullfile(vcDir_out1, 'geom.csv'), mrSiteXY1);
@@ -1067,7 +1169,7 @@ if ~isempty(mrGt1)
         mrGt1 = ones(3, numel(viTime1), 'double');
         mrGt1(2,:) = viTime1;
     end
-    writemda_(mrGt1, fullfile(vcDir_out1, 'firings_true.mda'));
+    writemda_(fullfile(vcDir_out1, 'firings_true.mda'), mrGt1);
 end %if
 end %func
 
@@ -1134,6 +1236,7 @@ csMsg = {
     sprintf('  scale factor: %0.4f uV/bit', uV_per_bit);
 	sprintf('  exported duration: %0.1f sec', t_dur1);
 	sprintf('  Number of spikes: %d', nSpk1);
+    sprintf('  Spike rate (Hz): %0.1f', nSpk1/t_dur1);
 	sprintf('# Extracellular info');
 	sprintf('  SNR Vpp: %0.4f', snr_pp1);
 	sprintf('  SNR Vp: %0.4f', snr_min1);
@@ -1166,9 +1269,9 @@ vrT_plot = (spkLim(1):spkLim(2)) / sRateHz * 1000;
 plot(hAx1, vrT_plot, vrWav_int_spk); 
 plot(hAx2, vrT_plot, S_gt1.trWav_raw_clu);
 plot(hAx3, vrT_plot, S_gt1.trWav_clu);
-for hAx_ = [hAx2, hAx3]
-    legend(hAx_, arrayfun(@(x)sprintf('Chan %d', x), 1:nSites1, 'UniformOutput', 0), 'Location', 'southwest');
-end
+% for hAx_ = [hAx2, hAx3]
+%     legend(hAx_, arrayfun(@(x)sprintf('Chan %d', x), 1:nSites1, 'UniformOutput', 0), 'Location', 'southwest');
+% end
 grid_([hAx1, hAx2, hAx3, hAx4], 'on');
 linkaxes([hAx1, hAx2, hAx3], 'x');
 xylabel_(hAx1, 'time (ms)','V_int (uV)','Intracellular mean raw waveform'); % all subsampled
@@ -1312,21 +1415,23 @@ function vcFile_tbl = summarize_study_(vcDir_study)
 % todo: support firings_true.mda files 
 
 [csDir_full, csDir_rec] = subdir_(vcDir_study);
+fUse_cache_gt = read_cfg_('fUse_cache_gt', 1);
 
 nRec = numel(csDir_full);
-[vnSpikes, vr_snr_pp, vr_snr_min, vr_snr_rms, vrVpp, vrVmin, vrNoise, viSite] = deal(zeros(nRec,1));
+[vnSpikes, vr_snr_pp, vr_snr_min, vr_snr_rms, vrVpp, vrVmin, vrNoise, viSite] = deal(nan(nRec,1));
 % generate a table output
 for iRec = 1:nRec
     vcDir1 = csDir_full{iRec};
     vcFile_gt1 = fullfile(vcDir1, 'raw_geom_gt1.mat');
     vcFile_gt_mda1 = fullfile(vcDir1, 'firings_true.mda');
-    if exist_file_(vcFile_gt1)
+    if exist_file_(vcFile_gt1) && fUse_cache_gt
         S_gt1 = load(vcFile_gt1);
     elseif exist_file_(vcFile_gt_mda1)        
         S_gt1 = mda2gt_(vcFile_gt_mda1);
         struct_save_(S_gt1, vcFile_gt1);
     else
-        disperr_('groundtruth file not found');
+        fprintf(2, 'error loading : %s\n', vcDir1);
+        continue;
     end
     [vpp1, vmin1, snr_rms1, snr_min1, nSpk1, iSite1] = ...
         struct_get_(S_gt1, 'vrVpp_clu', 'vrVmin_clu', 'vrSnr_sd_clu', 'vrSnr_min_clu', 'vnSpk_clu', 'viSite_clu');
@@ -1350,7 +1455,7 @@ end %func
 function S_gt1 = mda2gt_(vcFile_gt_mda1)
 S_cfg = read_cfg_();
 [spkLim_ms_gt, fProcessRaw_gt, vcFilter_gt, freqLim_gt, fft_thresh_gt] = ...
-    struct_get_(S_cfg, 'spkLim_ms', 'fRaw_extra_plot', 'vcFilter_plot', 'freqLim_plot', 'fft_thresh_plot');
+    struct_get_(S_cfg, 'spkLim_ms', 'fRaw_extra', 'vcFilter', 'freqLim', 'fft_thresh');
 P_gt1 = makeStruct_(spkLim_ms_gt, fProcessRaw_gt, vcFilter_gt, freqLim_gt, fft_thresh_gt);
 S_gt1 = mda2gt1_(vcFile_gt_mda1, P_gt1);
 end
@@ -1539,10 +1644,9 @@ function msgbox_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
 function set_table_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
 function winopen_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
 function xylabel_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
-function drawnow_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
+% function drawnow_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
 function reset_view_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
 function struct2json_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
-function writemda_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
 function disp_cs_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
 function grid_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
 function xlim_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
@@ -1551,7 +1655,6 @@ function ylim_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
 function out1 = meta2struct_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = struct_merge_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = ircpath_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
-%function out1 = read_cfg_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = file2struct_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = exist_file_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = loadjson_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
@@ -1616,7 +1719,7 @@ function out1 = ndiff_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, v
 function out1 = vr2mr3_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = key_modifier_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = mda2gt1_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
-function out1 = readmda_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
+% function out1 = readmda_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = dir_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = figure_wait_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 
