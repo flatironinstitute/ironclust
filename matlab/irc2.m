@@ -6287,6 +6287,41 @@ end %func
 
 
 %--------------------------------------------------------------------------
+function S_score = score_param_(vcDir_in, cName_prm, cVal_prm1)
+% find diff operation
+% S_score = validate_
+
+t_fun = tic;
+csDir_in = sub_dir_(vcDir_in, 1);
+nRec = numel(csDir_in);
+S_prmset = file2struct_(vcFile_prmset);
+[cName_prm, cVal_prm] = deal(fieldnames(S_prmset), struct2cell(S_prmset));
+nPrmset = prod(cellfun(@numel, cVal_prm));
+ccScore_prmset_rec = cell(nPrmset, nRec);
+fParfor = 0;
+if fParfor
+    try
+        parfor iRec = 1:nRec
+            ccScore_prmset_rec(:,iRec) = score_paramset_(csDir_in{iRec}, cName_prm, cVal_prm);
+        end
+    catch
+    end
+end
+if ~fParfor
+    for iRec = 1:nRec
+        ccScore_prmset_rec(:,iRec) = score_paramset_(csDir_in{iRec}, cName_prm, cVal_prm);
+    end
+end
+
+if isempty(vcFile_out)
+    vcFile_out = fullfile(vcDir_in, 'param_scores.mat');
+end
+save(vcFile_out, ccScore_prmset_rec);
+fprintf('Saved %s, took %0.1fs\n', vcFile_out, toc(t_fun));
+end %func
+
+
+%--------------------------------------------------------------------------
 function cScore_prmset = score_paramset_(vcDir_in, cName_prm, cVal_prm)
 dimm_prmset = cellfun(@numel, cVal_prm);
 nPrmset = prod(dimm_prmset);
@@ -6297,14 +6332,6 @@ for iPrmset = 1:nPrmset
     cVal_prm1 = cellfun_(@(x,y)x{y}, cVal_prm, arrayfun_(@(x)x, viPrm1));
     cScore_prmset{iPrmset} = score_param_(vcDir_in, cName_prm, cVal_prm1);
 end
-end %func
-
-
-%--------------------------------------------------------------------------
-function S_score = score_param_(vcDir_in, cName_prm, cVal_prm1)
-% find diff operation
-error('not implemented yet');
-% S_score = validate_
 end %func
 
 
