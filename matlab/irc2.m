@@ -6258,6 +6258,9 @@ if isempty(vcFile_out)
 end
 save(vcFile_out, ccScore_prmset_rec);
 fprintf('Saved %s, took %0.1fs\n', vcFile_out, toc(t_fun));
+
+% display the optimized param
+
 end %func
 
 
