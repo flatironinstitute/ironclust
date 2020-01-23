@@ -192,8 +192,8 @@ end %func
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_()
 
-vcVer = 'v5.5.11';
-vcDate = '01/22/2020';
+vcVer = 'v5.5.12';
+vcDate = '01/23/2020';
 vcHash = file2hash_();
 
 if nargout==0
@@ -577,8 +577,13 @@ end %func
 
 %--------------------------------------------------------------------------
 function S_score_plot_(S_score, S_cfg)
+
 if nargin<2, S_cfg=[]; end
+if isempty(S_cfg)
+    S_cfg = get_(S_score, 'S_cfg');
+end
 if isempty(S_cfg), S_cfg = read_cfg_(); end
+
 SNR_MAX = 20;
 
 vrSnr_gt = get_(S_score, 'vrSnr_gt');
@@ -587,10 +592,11 @@ if ~isempty(vrSnr_gt)
     vlGt = vrSnr_gt>=S_cfg.snr_thresh_gt;   
     vcX_gt = 'vrSnr_gt';
 else
-    vrSnr_gt = 1:S_score.nGt;
+    vrSnr_gt = rankorder_(S_score.vrAccuracy_gt, 'ascend');
     vcSnr_gt = '';
     vlGt = true(S_score.nGt, 1);
     vcX_gt = 'viGt_ordered';
+    SNR_MAX = 0;
 end
 vrSnr_clu = get_(S_score, 'vrSnr_clu');
 if ~isempty(vrSnr_clu)
@@ -598,24 +604,25 @@ if ~isempty(vrSnr_clu)
     vlClu = vrSnr_clu>=S_cfg.snr_thresh_clu;
     vcX_clu = 'vrSnr_clu';
 else
-    vrSnr_clu = 1:S_score.nClu;
+    vrSnr_clu = rankorder_(S_score.vrAccuracy_clu, 'ascend');
     vcSnr_clu = '';
     vlClu = true(S_score.nClu,1);
     vcX_clu = 'viClu_ordered';
+    SNR_MAX = 0;
 end
 snr_max = max([SNR_MAX, max(vrSnr_gt), max(vrSnr_clu)]);
 
 disp_stats_(); % show caption        
 disp_stats_(S_score.vrAccuracy_gt(vlGt), ['vrAccuracy_gt', vcSnr_gt]);
 disp_stats_(S_score.vrF1_gt(vlGt), ['vrF1_gt', vcSnr_gt]);
-disp_stats_(S_score.vrPrecision_gt(vlGt), ['vrPrecision_F1_gt', vcSnr_gt]);
-disp_stats_(S_score.vrRecall_gt(vlGt), ['vrRecall_F1_gt', vcSnr_gt]);
+disp_stats_(S_score.vrPrecision_gt(vlGt), ['vrPrecision_gt', vcSnr_gt]);
+disp_stats_(S_score.vrRecall_gt(vlGt), ['vrRecall_gt', vcSnr_gt]);
 
 fprintf('\n');      
 disp_stats_(S_score.vrAccuracy_clu(vlClu), ['vrAccuracy_clu', vcSnr_clu]);
 disp_stats_(S_score.vrF1_clu(vlClu), ['vrF1_clu', vcSnr_clu]);
-disp_stats_(S_score.vrPrecision_clu(vlClu), ['vrPrecision_F1_clu', vcSnr_clu]);
-disp_stats_(S_score.vrRecall_clu(vlClu), ['vrRecall_F1_clu', vcSnr_clu]);
+disp_stats_(S_score.vrPrecision_clu(vlClu), ['vrPrecision_clu', vcSnr_clu]);
+disp_stats_(S_score.vrRecall_clu(vlClu), ['vrRecall_clu', vcSnr_clu]);
 fprintf('\n');
 
 title_str_ = @(x)sprintf('n=%d, %0.1f/%0.1f, [%0.1f, %0.1f, *%0.1f, %0.1f, %0.1f]', ...
@@ -643,6 +650,22 @@ linkaxes(AX, 'xy');
 axis(AX(1), [0 snr_max 0 100]);
 % title_(AX(1), S_score.vcFile_gt_mda);
 % title_(AX(5), S_score.vcFile_clu_mda);
+end %func
+
+
+%--------------------------------------------------------------------------
+function [vi, viSort] = rankorder_(vr, vcOrder)
+% warning: 32 bit addressing
+if nargin<2, vcOrder = 'ascend'; end
+n=numel(vr);
+[~,viSort] = sort(vr, vcOrder);
+if isGpu_(vr)
+    vi = zeros(n,1,'int32', 'gpuArray');
+    vi(viSort) = 1:n;
+else
+    vi=zeros(n,1,'int32');
+    vi(viSort) = 1:n;
+end
 end %func
 
 
@@ -901,7 +924,7 @@ S_score = makeStruct_(vrAccuracy_gt, viClu_gt, vrPrecision_gt, vrRecall_gt, ...
     vrF1_gt, viClu_F1_gt, vrPrecision_F1_gt, vrRecall_F1_gt, ...
     vrF1_clu, viClu_F1_clu, vrPrecision_F1_clu, vrRecall_F1_clu, ...
     vrSnr_gt, vrSnr_clu, viSite_gt, viSite_clu, vrNoise_site, ...
-    vcFile_gt_mda, vcFile_clu_mda, P, nGt, nClu);
+    vcFile_gt_mda, vcFile_clu_mda, P, nGt, nClu, S_cfg);
 
 if nargout==0
     S_score_plot_(S_score, S_cfg);
@@ -5965,7 +5988,7 @@ if contains(lower(vcSorter), csSorters_sf2)
     
     fprintf('Running %s through spikeforest2...\n', vcSorter);
     vcFile_firings = fullfile(vcDir_out, 'firings.mda');
-    sf2_params = {'algorithm', lower(vcSorter), 'recording_path', vcDir_in};
+    sf2_params = {'algorithm', lower(vcSorter), 'recording_path', vcDir_in, 'sorting_out', vcFile_firings};
     fContainer = read_cfg_('spikeforest2_use_container');   
     if fContainer == 1
         sf2_params = {sf2_params{:}, 'container', 'default'};
@@ -5989,7 +6012,9 @@ vcFile_true = fullfile(vcDir_in, 'firings_true.mda');
 if exist_file_(vcFile_true)
     fPlot_gt = read_cfg_('fPlot_gt');
     vcFile_raw = fullfile(vcDir_in, 'raw.mda');
-    S_score = irc('validate-mda', vcFile_true, vcFile_firings, vcFile_raw, fPlot_gt); % assume that groundtruth file exists
+%     S_score = irc('validate-mda', vcFile_true, vcFile_firings, vcFile_raw, fPlot_gt); % assume that groundtruth file exists
+    S_score = compare_mda_(vcFile_true, vcFile_firings);
+    S_score_plot_(S_score);
     struct_save_(S_score, fullfile(vcDir_out, 'raw_geom_score.mat'), 1);
 end
 end %func
