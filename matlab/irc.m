@@ -18147,7 +18147,6 @@ end
 end %func
 
 
-
 %--------------------------------------------------------------------------
 % Read a text file and output cell strings separated by new lines
 % 7/24/17 JJJ: Code cleanup

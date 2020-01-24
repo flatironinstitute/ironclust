@@ -742,8 +742,14 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function vc = disp_stats_(vr, vcCaption)
-nBlanks = 32;
+function vc = disp_stats_(vr, vcCaption, nBlanks)
+
+if nargin<3, nBlanks=[]; end
+if isempty(nBlanks)
+    nBlanks = 32; 
+elseif nBlanks==0
+    nBlanks = numel(vcCaption) + 2;
+end
 vcCaption_pad = repmat(' ', [1,nBlanks]);
 if nargin<2, vcCaption = ''; end
 
@@ -837,10 +843,8 @@ if nargin<3
     S_json = loadjson_(fullfile(fileparts(vcFile_gt_mda), 'params.json'));
     P.sRateHz = get_(S_json, 'samplerate');
     P.vcFile = fullfile(fileparts(vcFile_gt_mda), 'raw.mda'); 
-    fCompute_snr = get_(S_cfg, 'fCompute_snr_mda');
-else
-    fCompute_snr = 1;
 end
+fCompute_snr = get_(S_cfg, 'fCompute_snr_mda');
 
 % usage
 % -----
@@ -6270,89 +6274,270 @@ end %func
 
 %--------------------------------------------------------------------------
 % 2020/jan/23, run parameter optimizer for ironclust
-function optimize_param_(vcDir_in, vcFile_prmset, vcFile_out)
+function optimize_param_(vcDir_rec, vcFile_prmset, vcFile_out)
 % usage
 % -----
 if nargin<3, vcFile_out = ''; end
+if isempty(vcFile_out)
+    vcFile_out = fullfile(vcDir_rec, 'param_scores.mat');
+end
 
-t_fun = tic;
-csDir_in = sub_dir_(vcDir_in, 1);
-nRec = numel(csDir_in);
-S_prmset = file2struct_(vcFile_prmset);
-[cName_prm, cVal_prm] = deal(fieldnames(S_prmset), struct2cell(S_prmset));
-nPrmset = prod(cellfun(@numel, cVal_prm));
-ccScore_prmset_rec = cell(nPrmset, nRec);
-fParfor = 0;
-if fParfor
+fDebug = 1;
+fUse_cache = 1;
+
+S = [];
+if exist_file_(vcFile_out) && fUse_cache
     try
-        parfor iRec = 1:nRec
-            ccScore_prmset_rec(:,iRec) = score_paramset_(csDir_in{iRec}, cName_prm, cVal_prm);
-        end
+        S = load(vcFile_out);
     catch
     end
 end
-if ~fParfor
-    for iRec = 1:nRec
-        ccScore_prmset_rec(:,iRec) = score_paramset_(csDir_in{iRec}, cName_prm, cVal_prm);
+if isempty(S)
+    t_fun = tic;
+    csDir_rec = sub_dir_(vcDir_rec, 1);
+    nRec = numel(csDir_rec);
+    S_prmset = file2struct_ordered_(vcFile_prmset);
+    [cName_prm, cVal_prm] = deal(fieldnames(S_prmset), struct2cell(S_prmset));
+    nPrmset = prod(cellfun(@numel, cVal_prm));
+    ccScore_prmset_rec = cell(nPrmset, nRec);
+
+    if fDebug, [fParfor, nRec] = deal(1, 4); end
+
+    if fParfor==0, fprintf(2, 'optimize_param_: fParfor=0\n'); end
+    if fParfor
+        try
+            parfor iRec = 1:nRec
+                ccScore_prmset_rec(:,iRec) = score_paramset_(csDir_rec{iRec}, cName_prm, cVal_prm);
+            end
+        catch
+            fParfor = 0;
+        end
     end
+    if ~fParfor
+        for iRec = 1:nRec
+            ccScore_prmset_rec(:,iRec) = score_paramset_(csDir_rec{iRec}, cName_prm, cVal_prm);
+        end
+    end
+    t_fun = toc(t_fun);
+    fprintf('took %0.1fs\n', t_fun);
+    % display
+    S = makeStruct_(S_prmset, ccScore_prmset_rec, vcFile_prmset, ...
+        csDir_rec, cVal_prm, cName_prm, t_fun, vcDir_rec);
+    struct_save_(S, vcFile_out, 1);    
 end
 
-if isempty(vcFile_out)
-    vcFile_out = fullfile(vcDir_in, 'param_scores.mat');
-end
-save(vcFile_out, ccScore_prmset_rec);
-fprintf('Saved %s, took %0.1fs\n', vcFile_out, toc(t_fun));
-
-% display the optimized param
-
+optimize_param_disp_(S);
 end %func
 
 
 %--------------------------------------------------------------------------
-function S_score = score_param_(vcDir_in, cName_prm, cVal_prm1)
-% find diff operation
-% S_score = validate_
+function csDesc = optimize_param_disp_(S_prmset)
 
-t_fun = tic;
-csDir_in = sub_dir_(vcDir_in, 1);
-nRec = numel(csDir_in);
-S_prmset = file2struct_(vcFile_prmset);
-[cName_prm, cVal_prm] = deal(fieldnames(S_prmset), struct2cell(S_prmset));
-nPrmset = prod(cellfun(@numel, cVal_prm));
-ccScore_prmset_rec = cell(nPrmset, nRec);
-fParfor = 0;
-if fParfor
+MAX_PRMSET = 10;
+import_struct_(S_prmset);
+
+% display the optimized param
+[nPrm, nRec, nPrmset] = deal(numel(cVal_prm), size(ccScore_prmset_rec,2), size(ccScore_prmset_rec,1));
+mrF1_prmset_rec = cellfun(@(x)mean(get_(x,'vrF1_gt')), ccScore_prmset_rec);
+vrF1_mean_prmset = nanmean(mrF1_prmset_rec,2);
+[~, iPrmset_max] = max(vrF1_mean_prmset);
+mrAccuracy_prmset_rec = cellfun(@(x)mean(get_(x, 'vrAccuracy_gt')), ccScore_prmset_rec);
+mrPrecision_prmset_rec = cellfun(@(x)mean(get_(x, 'vrPrecision_F1_gt')), ccScore_prmset_rec);
+mrRecall_prmset_rec = cellfun(@(x)mean(get_(x, 'vrRecall_F1_gt')), ccScore_prmset_rec);
+vrAccuracy_mean_prmset = nanmean(mrAccuracy_prmset_rec,2);
+vrPrecision_mean_prmset = nanmean(mrPrecision_prmset_rec,2);
+vrRecall_mean_prmset = nanmean(mrRecall_prmset_rec,2);
+
+% do the SNR analysis by recording?
+[vrF1_prmset_srt, viPrmset_srt] = sort(vrF1_mean_prmset,'descend');
+cell_ = cellfun_(@(x)x(viPrmset_srt), {vrAccuracy_mean_prmset, vrPrecision_mean_prmset, vrRecall_mean_prmset});
+[vrAccuracy_srt, vrPrecision_srt, vrRecall_srt] = deal(cell_{:});
+figure('Color','w','Name', vcDir_rec); 
+bar([vrF1_prmset_srt, vrPrecision_srt, vrRecall_srt, vrAccuracy_srt]); 
+grid on; xlabel('prmset # (sorted by F1-score)'); ylabel('Score'); set(gca,'YLim', [0 100]);
+legend({'F1','Precision','Recall','Accuracy'});
+score_prm_ = @(x){mrF1_prmset_rec(x,:), mrPrecision_prmset_rec(x,:), mrRecall_prmset_rec(x,:), mrAccuracy_prmset_rec(x,:)};
+title_(disp_stats_(mrF1_prmset_rec(iPrmset_max,:), 'vrF1_gt_max', 0));
+
+% output summary text
+csDesc = {};
+csDesc{end+1} = sprintf('');    
+csDesc{end+1} = sprintf('------------------------------');    
+csDesc{end+1} = sprintf('  vcDir_rec:              %s', vcDir_rec);
+csDesc{end+1} = sprintf('  vcFile_prmset:          %s', vcFile_prmset);
+csDesc{end+1} = sprintf('  # Files:                %d', nRec);
+csDesc{end+1} = sprintf('  # parameters:           %d', nPrm);
+csDesc{end+1} = sprintf('  # parameter sets:       %d', nPrmset);
+csDesc{end+1} = sprintf('------------------------------');
+csDesc{end+1} = disp_stats_();
+cScore1 = score_prm_(iPrmset_max);
+csDesc{end+1} = disp_stats_(cScore1{1}, 'vrF1_gt');
+csDesc{end+1} = disp_stats_(cScore1{2}, 'vrPrecision_gt');
+csDesc{end+1} = disp_stats_(cScore1{3}, 'vrRecall_gt');
+csDesc{end+1} = disp_stats_(cScore1{4}, 'vrAccuracy_gt');
+
+% show prmset
+nPrmset_show = min(MAX_PRMSET, nPrmset);
+for iPrmset = 1:nPrmset_show
+    iPrmset1 = viPrmset_srt(iPrmset);
+    csDesc{end+1} = sprintf('------------------------------');
+    csDesc{end+1} = sprintf('  prmset rank #%d (#%d):', iPrmset, iPrmset1);
+    csDesc{end+1} = sprintf('    F1:%0.1f Precision:%0.1f Reccall:%0.1f Accuracy:%0.1f', ...
+        cellfun(@nanmean, score_prm_(iPrmset1)));
+    cVal_prm1 = permute_prm_(cVal_prm, iPrmset1);
+    for iPrm = 1:nPrm
+        csDesc{end+1} = sprintf('  %s: %s', cName_prm{iPrm}, numstr_(cVal_prm1{iPrm}));
+    end
+end
+
+csDesc{end+1} = sprintf('');    
+disp_cs_(csDesc);
+assignWorkspace_(S_prmset);
+end %func
+
+
+%--------------------------------------------------------------------------
+function vc = numstr_(vr)
+if ischar(vr)
+    vc = vr;
+elseif isnumeric(vr)
+    vc = num2str(vr);
+    if numel(vr)>1, vc = sprintf('[%s]', vc); end
+else
+    vc = vr;
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+function P = file2struct_ordered_(vcFile_file2struct)
+% James Jun 2017 May 23
+% Run a text file as .m script and result saved to a struct P
+% _prm and _prb can now be called .prm and .prb files
+P = []; 
+if ~exist_file_(vcFile_file2struct), return; end
+    
+% load text file. trim and line break. remove comments.  replace 
+csLines = file2lines_(vcFile_file2struct);
+csLines = strip_comments_(csLines);
+if isempty(csLines), return; end
+
+P = struct();
+for iLine = 1:numel(csLines)
     try
-        parfor iRec = 1:nRec
-            ccScore_prmset_rec(:,iRec) = score_paramset_(csDir_in{iRec}, cName_prm, cVal_prm);
-        end
+        vcLine1 = strtrim(csLines{iLine});
+        eval(sprintf('P.%s;', vcLine1));
     catch
+        fprintf(2, '%s\n', lasterr());
     end
 end
-if ~fParfor
-    for iRec = 1:nRec
-        ccScore_prmset_rec(:,iRec) = score_paramset_(csDir_in{iRec}, cName_prm, cVal_prm);
-    end
-end
+end %func
 
-if isempty(vcFile_out)
-    vcFile_out = fullfile(vcDir_in, 'param_scores.mat');
+
+%--------------------------------------------------------------------------
+% Strip comments from cell string
+% 7/24/17 JJJ: Code cleanup
+function csLines = strip_comments_(csLines)
+csLines = csLines(cellfun(@(x)~isempty(x), csLines));
+csLines = cellfun(@(x)strtrim(x), csLines, 'UniformOutput', 0);
+csLines = csLines(cellfun(@(x)x(1)~='%', csLines));
+
+% remove comments in the middle
+for i=1:numel(csLines)
+    vcLine1 = csLines{i};
+    iComment = find(vcLine1=='%', 1, 'first');
+    if ~isempty(iComment)
+        vcLine1 = vcLine1(1:iComment-1);
+    end
+    vcLine1 = strrep(vcLine1, '...', '');
+    if ismember(strsplit(vcLine1), {'for', 'end', 'if'})
+        csLines{i} = [strtrim(vcLine1), ', ']; %add blank at the end
+    else
+        csLines{i} = [strtrim(vcLine1), ' ']; %add blank at the end
+    end
 end
-save(vcFile_out, ccScore_prmset_rec);
-fprintf('Saved %s, took %0.1fs\n', vcFile_out, toc(t_fun));
+% csLines = cellfun(@(x)strtrim(x), csLines, 'UniformOutput', 0);
+csLines = csLines(cellfun(@(x)~isempty(x), csLines));
+end %func
+
+
+%--------------------------------------------------------------------------
+% Read a text file and output cell strings separated by new lines
+% 7/24/17 JJJ: Code cleanup
+function csLines = file2lines_(vcFile_file2struct)
+csLines = {};
+if ~exist_file_(vcFile_file2struct, 1), return; end
+
+fid = fopen(vcFile_file2struct, 'r');
+csLines = textscan(fid, '%s', 'Delimiter', '\n');
+fclose(fid);
+
+csLines = csLines{1};
 end %func
 
 
 %--------------------------------------------------------------------------
 function cScore_prmset = score_paramset_(vcDir_in, cName_prm, cVal_prm)
-dimm_prmset = cellfun(@numel, cVal_prm);
-nPrmset = prod(dimm_prmset);
+
+fParfor = 0; % turn off parfor for each file
+nPrmset = permute_prm_(cVal_prm);
 cScore_prmset = cell(nPrmset, 1);
+vcDir_out = fullfile(vcDir_in, 'irc');
+vcFile_true_mda = fullfile(vcDir_in, 'firings_true.mda');
+vcFile_sorted_mda = fullfile(vcDir_out, 'firings.mda');
+P = makeParam_(vcDir_in, vcDir_out, '', fParfor);
+vcFile_prm = P.vcFile_prm;
+clear_(vcFile_prm);
+
 % run the parameters and adjust parameters and call appropriate command
+viPrm_pre = zeros(size(cName_prm));
 for iPrmset = 1:nPrmset
+    [cVal_prm1, viPrm1] = permute_prm_(cVal_prm, iPrmset);
+    vlPrm_update = viPrm1 ~= viPrm_pre;
+    cName_prm1 = cName_prm(vlPrm_update);
+    vcCmd1 = param2cmd_(cName_prm1); 
+    edit_prm_file_(cell2struct(cVal_prm1(vlPrm_update), cName_prm1, 1), vcFile_prm); % edit file
+    irc2(vcCmd1, vcFile_prm);    
+    cScore_prmset{iPrmset} = compare_mda_(vcFile_true_mda, vcFile_sorted_mda, P);
+    viPrm_pre = viPrm1;
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+function [out1, viPrm1] = permute_prm_(cVal_prm, iPrmset)
+% usage
+% -----
+% permute_prm_(cVal_prm)
+% permute_prm_
+
+if nargin<2, iPrmset=[]; end
+viPrm1 = [];
+dimm_prmset = cellfun(@numel, cVal_prm);
+if isempty(iPrmset)
+    out1 = prod(dimm_prmset);
+else    
     viPrm1 = flipud(ind2sub_(flipud(dimm_prmset), iPrmset));
-    cVal_prm1 = cellfun_(@(x,y)x{y}, cVal_prm, arrayfun_(@(x)x, viPrm1));
-    cScore_prmset{iPrmset} = score_param_(vcDir_in, cName_prm, cVal_prm1);
+    out1 = cellfun_(@(x,y)x{y}, cVal_prm, arrayfun_(@(x)x, viPrm1));
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+function vcCmd1 = param2cmd_(cName_prm1)
+csCmd_detect = {'vcFilter', 'freqLim', 'maxDist_site_spk_um', 'maxDist_site_um', ...
+    'vcCommonRef', 'trimmean_pct', 'fWhiten', 'nSites_whiten', 'nChans_min_car', ...
+    'qqFactor', 'nPc_spk', 'spkLim_ms', 'fInterp_fet', 'spkRefrac_ms', 'fft_thresh', ...
+    'blank_thresh', 'blank_period_ms'};
+csCmd_sort = {'nPcPerChan', 'step_sec_drift', 'batch_sec_drift', 'knn'};
+cs_overlap_ = @(x,y)any(cellfun(@(x1)any(ismember(x1,y)), x));
+
+if cs_overlap_(cName_prm1, csCmd_detect)
+    vcCmd1 = 'spikesort';
+elseif cs_overlap_(cName_prm1, csCmd_sort)
+    vcCmd1 = 'sort';
+else
+    vcCmd1 = 'auto';
 end
 end %func
 
@@ -6369,7 +6554,7 @@ for i = numel(siz):-1:2
     ndx = vi;
 end
 vi_out(1) = ndx;
-end
+end% func
 
 
 %--------------------------------------------------------------------------
