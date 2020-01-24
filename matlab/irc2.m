@@ -78,8 +78,9 @@ switch lower(vcCmd)
     case {'which', 'select'}, fprintf('%s\n', vcFile_prm); return;
     case {'export-sf2', 'export-spikeforest2', 'export2spikeforest2'}, export_sf2_(); return;
     case {'export-ws', 'export-workspace', 'export'}, export_workspace_(vcArg1); return;
-    case 'compile-deploy', compile_cuda_(vcArg1, '1'); return
-    case {'compile', 'install'}, compile_cuda_(vcArg1, '0'); return
+    case 'compile-deploy', compile_cuda_(vcArg1, '0'); return
+    case 'compile-system', compile_cuda_(vcArg1, '1'); return
+    case {'compile', 'install'}, compile_cuda_(vcArg1, vcArg2); return
     case 'readmda_header', varargout{1} = readmda_header_(vcArg1); return;
     case 'mcc', irc('mcc'); return; 
     case {'join-mda', 'join_mda', 'joinmda'}
@@ -194,8 +195,8 @@ end %func
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_()
 
-vcVer = 'v5.5.12';
-vcDate = '01/23/2020';
+vcVer = 'v5.5.13';
+vcDate = '01/24/2020';
 vcHash = file2hash_();
 
 if nargout==0
@@ -526,6 +527,8 @@ for iArg = 1:nargin
         % strip non numeric characters
         val1 = val1((val1>='0' & val1<='9') | val1=='.');
         varargout{iArg} = str2num(val1);
+    elseif isnumeric(val1)
+        varargout{iArg} = val1;
     else
         varargout{iArg} = nan;
     end
@@ -6045,14 +6048,21 @@ end %func
 % Compile CUDA codes for IronClust
 % 10/5/17 JJJ: Error messages converted to warning
 % 7/26/17 JJJ: Code cleanup and testing
-function fSuccess = compile_cuda_(csFiles_cu, vcDeploy)
+function fSuccess = compile_cuda_(csFiles_cu, vcSystem)
+% usage
+% -----
+% compile_cuda_(csFiles_cu): compile cuda
+% compile_cuda_(csFiles_cu, '1'): compile cuda for local system
+
+if nargin<2, vcSystem=''; end
+
 S_cfg = read_cfg_();
 if nargin<1 || isempty(csFiles_cu)     
     csFiles_cu = S_cfg.csFiles_cuda; %version 3 cuda
 elseif ischar(csFiles_cu)
     csFiles_cu = {csFiles_cu};
 end
-fDeploy = ifeq_(isempty(vcDeploy), 1, str2num_(vcDeploy));
+fSystem = ifeq_(isempty(vcSystem), 0, str2num_(vcSystem));
 
 t1 = tic;
 disp('Compiling CUDA codes...');
@@ -6062,29 +6072,38 @@ vcPath_nvcc = get_set_(S_cfg, 'vcPath_nvcc', get_nvcc_path_(S_gpu));
 if isempty(vcPath_nvcc), fSuccess = 0; return; end
 if fSuccess
     try % determine compute capability version
-        sm_ver = str2double(S_gpu.ComputeCapability);
-        fprintf('GPU compute capability: %s\n', S_gpu.ComputeCapability);
-        if fDeploy
-            if sm_ver >=3.5
-                vc_sm_ver = '35'; % supports over 4GB GPU memory
-            else
-                vc_sm_ver = '30'; % supports under 4GB GPU memory
-            end
+        vc_cuda_arch_target = get_set_(S_cfg, 'cuda_arch', 'sm_35');
+        sm_ver_target = str2double(strrep(vc_cuda_arch_target, 'sm_', '')) / 10;     
+        sm_ver_system = str2double(S_gpu.ComputeCapability);
+        vc_cuda_arch_system = sprintf('sm_%d', round(sm_ver_system*10));
+        if fSystem
+            vc_cuda_arch = vc_cuda_arch_system;
         else
-           vc_sm_ver = sprintf('%d', round(sm_ver*10));
+            % support less than 4GB GPU memory
+            if sm_ver_system < sm_ver_target
+                vc_cuda_arch = 'sm_30';
+            else
+                vc_cuda_arch = vc_cuda_arch_target;
+            end
         end
     catch
         fSuccess = 0;
     end
     for i=1:numel(csFiles_cu)
         vcFile_ = ircpath_(csFiles_cu{i});
-        vcCmd1 = sprintf('%s -ptx -m 64 -arch sm_%s "%s"', vcPath_nvcc, vc_sm_ver, vcFile_);
-        fprintf('\t%s\n\t', vcCmd1);
-        try          
-            status = system(vcCmd1);
-            fSuccess = fSuccess && (status==0);        
-        catch
-            fprintf('\tWarning: CUDA could not be compiled: %s\n', vcFile_); 
+        for iRetry = 1:2
+            vcCmd1 = sprintf('%s -ptx -m 64 -arch %s "%s"', vcPath_nvcc, vc_cuda_arch, vcFile_);
+            fprintf('\t%s\n\t', vcCmd1);            
+            try          
+                status = system(vcCmd1);
+                fSuccess1 = (status==0);        
+            catch
+                fprintf('\tWarning: CUDA could not be compiled: %s\n', vcFile_); 
+                fSuccess1 = 0;
+            end
+            if fSuccess1, break; end
+            fSuccess = fSuccess && fSuccess1;
+            vc_cuda_arch = vc_cuda_arch_target;
         end
     end
 end
@@ -6144,7 +6163,7 @@ end %func
 %--------------------------------------------------------------------------
 function vcPath_nvcc = get_nvcc_path_(S_gpu)
 if ispc()    
-    csDir = sub_dir_('C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v*');
+    csDir = sub_dir_('C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\');
     if isempty(csDir), vcPath_nvcc=[]; return; end
     vrVer = cellfun(@(x)str2num(x(2:end)), csDir);
     [~,imin] = min(abs(vrVer-S_gpu.ToolkitVersion));    
@@ -6163,7 +6182,7 @@ function csDir = sub_dir_(vc, fFullPath)
 if nargin<2, fFullPath = 0; end
 S_dir = dir(vc);
 [csDir, csDir_up] = deal({S_dir.name}, {S_dir.folder});
-vlKeep = ~contains(csDir, {'.', '..'}) & [S_dir.isdir];
+vlKeep = ~ismember(csDir, {'.', '..'}) & [S_dir.isdir];
 csDir = csDir(vlKeep);
 if fFullPath
     csDir = cellfun_(@(x,y)fullfile(x,y), csDir_up(vlKeep), csDir);
