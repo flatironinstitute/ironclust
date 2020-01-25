@@ -2628,6 +2628,7 @@ if fGpu
     for iRetry = 1:nRetry
         try        
             [vrRho_in, miKnn_in] = search_knn_drift_(vl_in, mrFet_out, viDrift_out, mlDrift1, P);
+            assert(numel(vrRho_in)==sum(vl_in), 'rho_paged_site_: vrRho_in size mismatch');
             break;
         catch
             P.nThreads_rho = round(P.nThreads_rho * .75);
@@ -5261,15 +5262,14 @@ if false
     viSpk_peak(vrDelta(viSpk_peak) > 1e10) = []; % remove super high 
 end
 [vrRho_peak, ix_] = sort(vrRho_spk(viSpk_peak), 'descend'); viSpk_peak = viSpk_peak(ix_);
-miKnn_peak = load_miKnn_spk_(P, viSite_spk, viSpk_peak);    
+miKnn_peak = load_miKnn_spk_(P, viSite_spk, viSpk_peak);   
 
 % check for knn overlap    
 cvi_peak = cell(numel(viSpk_peak), 1);  
 if fParfor
     try
         parfor iPeak = 1:numel(viSpk_peak)
-            viPeak1 = find(any(ismember(miKnn_peak, miKnn_peak(:,iPeak))))';        
-            cvi_peak{iPeak} = [viPeak1; iPeak];
+            cvi_peak{iPeak} = find(any(ismember(miKnn_peak, miKnn_peak(:,iPeak))))';      
         end
     catch
         fParfor = 0;
@@ -5277,8 +5277,7 @@ if fParfor
 end
 if ~fParfor
     for iPeak = 1:numel(viSpk_peak)        
-        viPeak1 = find(any(ismember(miKnn_peak, miKnn_peak(:,iPeak))))';
-        cvi_peak{iPeak} = [viPeak1; iPeak];
+        cvi_peak{iPeak} = find(any(ismember(miKnn_peak, miKnn_peak(:,iPeak))))';
     end
 end
 [viClu_spk(viSpk_peak), viiPeak] = cell2map_(cvi_peak);
@@ -6278,13 +6277,14 @@ end %func
 function optimize_param_(vcDir_rec, vcFile_prmset, vcFile_out)
 % usage
 % -----
+
+[fDebug, fUse_cache, fParfor] = deal(0, 0, 1);
+
 if nargin<3, vcFile_out = ''; end
 if isempty(vcFile_out)
     vcFile_out = fullfile(vcDir_rec, 'param_scores.mat');
 end
-
-fDebug = 0;
-fUse_cache = 0;
+[~,vcPostfix_out] = fileparts(vcFile_prmset); vcPostfix_out = ['irc_', vcPostfix_out];
 
 S = [];
 if exist_file_(vcFile_out) && fUse_cache
@@ -6302,13 +6302,15 @@ if isempty(S)
     nPrmset = prod(cellfun(@numel, cVal_prm));
     ccScore_prmset_rec = cell(nPrmset, nRec);
 
-    if fDebug, [fParfor, nRec] = deal(1, 2); end
+    if fDebug, [fParfor, nRec] = deal(1, 4); end
 
     if fParfor==0, fprintf(2, 'optimize_param_: fParfor=0\n'); end
     if fParfor
         try
             parfor iRec = 1:nRec
-                ccScore_prmset_rec(:,iRec) = score_paramset_(csDir_rec{iRec}, cName_prm, cVal_prm);
+                vcDir_in1 = csDir_rec{iRec};
+                vcDir_out1 = fullfile(vcDir_in1, vcPostfix_out);
+                ccScore_prmset_rec(:,iRec) = score_paramset_(vcDir_in1, vcDir_out1, cName_prm, cVal_prm);
             end
         catch
             fParfor = 0;
@@ -6316,7 +6318,9 @@ if isempty(S)
     end
     if ~fParfor
         for iRec = 1:nRec
-            ccScore_prmset_rec(:,iRec) = score_paramset_(csDir_rec{iRec}, cName_prm, cVal_prm);
+            vcDir_in1 = csDir_rec{iRec};
+            vcDir_out1 = fullfile(vcDir_in1, vcPostfix_out);            
+            ccScore_prmset_rec(:,iRec) = score_paramset_(vcDir_in1, vcDir_out1, cName_prm, cVal_prm);
         end
     end
     t_fun = toc(t_fun);
@@ -6478,12 +6482,11 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function cScore_prmset = score_paramset_(vcDir_in, cName_prm, cVal_prm)
+function cScore_prmset = score_paramset_(vcDir_in, vcDir_out, cName_prm, cVal_prm)
 
 fParfor = 0; % turn off parfor for each file
 nPrmset = permute_prm_(cVal_prm);
 cScore_prmset = cell(nPrmset, 1);
-vcDir_out = fullfile(vcDir_in, 'irc');
 vcFile_true_mda = fullfile(vcDir_in, 'firings_true.mda');
 vcFile_sorted_mda = fullfile(vcDir_out, 'firings.mda');
 P = makeParam_(vcDir_in, vcDir_out, '', fParfor);
