@@ -54,6 +54,7 @@ else
 end
 switch lower(vcCmd)
     % spikeforest2 interface
+    case 'clear-jobs', clear_jobs_(vcArg1); return;
     case {'optimize-param', 'optimize', 'param-optimize'}
         optimize_param_(vcArg1, vcArg2, vcArg3); return;
     case {'run-hs', 'run-herdingspikes', 'run-herdingspikes2'}
@@ -2634,7 +2635,7 @@ if fGpu
         if iRetry == nRetry
             fGpu=0;             
             fprintf(2, 'C');
-            disp(lasterr)
+%             disp(lasterr)
         end      
     end
 end
@@ -6282,8 +6283,8 @@ if isempty(vcFile_out)
     vcFile_out = fullfile(vcDir_rec, 'param_scores.mat');
 end
 
-fDebug = 1;
-fUse_cache = 1;
+fDebug = 0;
+fUse_cache = 0;
 
 S = [];
 if exist_file_(vcFile_out) && fUse_cache
@@ -6301,7 +6302,7 @@ if isempty(S)
     nPrmset = prod(cellfun(@numel, cVal_prm));
     ccScore_prmset_rec = cell(nPrmset, nRec);
 
-    if fDebug, [fParfor, nRec] = deal(1, 4); end
+    if fDebug, [fParfor, nRec] = deal(1, 2); end
 
     if fParfor==0, fprintf(2, 'optimize_param_: fParfor=0\n'); end
     if fParfor
@@ -6555,6 +6556,24 @@ for i = numel(siz):-1:2
 end
 vi_out(1) = ndx;
 end% func
+
+
+%--------------------------------------------------------------------------
+% clear slurm jobs
+function clear_jobs_(vcArg1)
+
+if nargin<1, vcArg1=''; end
+if isempty(vcArg1), vcArg1 = 'local'; end
+myCluster = parcluster(vcArg1);
+Jobs = myCluster.Jobs;
+nJobs = numel(Jobs);
+if nJobs>0
+    delete(Jobs); 
+    fprintf('Cleared %d jobs\n', nJobs);
+else
+    fprintf('No jobs to clear\n');
+end
+end
 
 
 %--------------------------------------------------------------------------
