@@ -2617,7 +2617,6 @@ end %func
 %--------------------------------------------------------------------------
 function vrRho_in = rho_paged_site_(S_page, S_site, iSite)
 
-nRetry = 3;
 vrRho_in=[]; 
 if isempty(S_site.viiSpk_in1), return; end
 
@@ -2625,19 +2624,13 @@ csVar = import_struct_(prepare_page_site_(S_page, S_site, iSite));
 
 fGpu = get_set_(P, 'fGpu', 1);
 if fGpu
-    for iRetry = 1:nRetry
-        try        
-            [vrRho_in, miKnn_in] = search_knn_drift_(vl_in, mrFet_out, viDrift_out, mlDrift1, P);
-            assert(numel(vrRho_in)==sum(vl_in), 'rho_paged_site_: vrRho_in size mismatch');
-            break;
-        catch
-            P.nThreads_rho = round(P.nThreads_rho * .75);
-        end
-        if iRetry == nRetry
-            fGpu=0;             
-            fprintf(2, 'C');
+    try
+        [vrRho_in, miKnn_in] = search_knn_drift_(vl_in, mrFet_out, viDrift_out, mlDrift1, P);
+        assert(numel(vrRho_in)==sum(vl_in), 'rho_paged_site_: vrRho_in size mismatch');
+    catch
+        fGpu=0;             
+        fprintf(2, 'C');
 %             disp(lasterr)
-        end      
     end
 end
 if ~fGpu    
@@ -2673,7 +2666,6 @@ end %func
 %--------------------------------------------------------------------------
 function [vrDelta_in, viNneigh_in] = delta_paged_site_(S_page1, S_site1, vrRho_page1, iSite)
 
-nRetry = 3;
 [vrDelta_in, viNneigh_in] = deal([]);
 if isempty(S_site1.viiSpk_in1), return; end
 SINGLE_INF = 3.402E+38;
@@ -2683,18 +2675,12 @@ vrRho_out = vrRho_page1(viiSpk_out);
 vrRho_in = vrRho_out(vl_in);
 
 fGpu = get_set_(P, 'fGpu', 1);
-if fGpu    
-    for iRetry = 1:nRetry
-        try        
-            [vrDelta_in, viNneigh_in] = search_delta_drift_(vl_in, mrFet_out, vrRho_out, viDrift_out, mlDrift1, P);
-            break;
-        catch
-            P.nThreads_delta = round(P.nThreads_delta * .75);
-        end
-        if iRetry == nRetry
-            fGpu=0; 
-            fprintf(2, 'C');
-        end
+if fGpu  
+    try
+        [vrDelta_in, viNneigh_in] = search_delta_drift_(vl_in, mrFet_out, vrRho_out, viDrift_out, mlDrift1, P);
+    catch
+        fGpu=0; 
+        fprintf(2, 'C');
     end    
 end
 if ~fGpu
@@ -2749,6 +2735,7 @@ if isempty(CK)
 end
 for iRetry = 1:2
     try
+        nThreads = min(nThreads, CK.MaxThreadsPerBlock);
         CK.ThreadBlockSize = [nThreads, 1];          
         CK.SharedMemorySize = 4 * CHUNK * (nC_max + 1); % @TODO: update the size
         break;
@@ -2780,11 +2767,6 @@ for iiAA = 1:numel(viAA)
     [gmrMin1, miKnn1] = sort(gather(gmrMin1));
     vrKnn_in(viiAA1) = gmrMin1(knn,:)';
     miKnn_in(:,viiAA1) = gmiMin1(miKnn1(1:knn,:) + (0:nA1-1)*nThreads);    
-%         disp(iiAA);
-%         fprintf('%s\n', sprintf('%d ', viBB1));
-%         fprintf('%s\n', sprintf('%d ', vnBB1));
-%         disp(limAA1');
-%         fprintf('\n');
 end
 end %func
 
@@ -2816,6 +2798,7 @@ if isempty(CK)
 end
 for iRetry = 1:2
     try
+        nThreads = min(nThreads, CK.MaxThreadsPerBlock);
         CK.ThreadBlockSize = [nThreads, 1];          
         CK.SharedMemorySize = 4 * CHUNK * (nC_max + 2); % @TODO: update the size
         break;
