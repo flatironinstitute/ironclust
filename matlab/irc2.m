@@ -6322,8 +6322,8 @@ if isempty(S_prmset_rec)
     struct_save_(S_prmset_rec, vcFile_out, 1);    
 end
 
-[csDesc, S_max_score] = optimize_param_show_(S_prmset_rec);
-assignWorkspace_(S_prmset_rec, S_max_score);
+[csDesc, S_best_score] = optimize_param_show_(S_prmset_rec);
+assignWorkspace_(S_prmset_rec, S_best_score);
 cellstr2file_(strrep(vcFile_out, '.mat', '.txt'), csDesc, 1);
 end %func
 
@@ -6353,15 +6353,17 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function [csDesc, S_max_score] = optimize_param_show_(S_prmset)
+function [csDesc, S_best_score] = optimize_param_show_(S_prmset)
 
-[MAX_PRMSET, SNR_THRESH] = deal(inf, 6);
+[MAX_PRMSET, SNR_THRESH, vcSnr_mode] = deal(inf, 0, 'vrSnr_min_clu'); 
+% vrVpp_clu, vrVmin_clu, vrSnr_min_clu
 
 csVar_imported = import_struct_(S_prmset);
 
 % get unit amplitudes
-cS_gt = cellfun_(@(x)load_(fullfile(x, 'raw_geom_gt1.mat'), {'vrSnr_min_clu'}), csDir_rec);
-vrSnr_gt = cellfun(@(S)S.vrSnr_min_clu, cS_gt);
+cS_gt = cellfun_(@(x)load_(fullfile(x, 'raw_geom_gt1.mat'), {vcSnr_mode}), csDir_rec);
+vrSnr_gt = cellfun(@(S)S.(vcSnr_mode), cS_gt);
+
 vlPlot_gt = vrSnr_gt>=SNR_THRESH;
 get_score_ = @(vc)cellfun(@(x)nanmean(get_(x, vc)), ccScore_prmset_rec);
 mean_mr_snr_ = @(mr)nanmean(mr_set_col_(mr,~vlPlot_gt,nan),2);
@@ -6379,14 +6381,29 @@ mrRecall_prmset_rec = get_score_('vrRecall_F1_gt'); vrRecall_mean_prmset = mean_
 [vrF1_prmset_srt, viPrmset_srt] = sort(vrF1_mean_prmset, 'descend');
 cell_ = cellfun_(@(x)x(viPrmset_srt), {vrAccuracy_mean_prmset, vrPrecision_mean_prmset, vrRecall_mean_prmset});
 [vrAccuracy_srt, vrPrecision_srt, vrRecall_srt] = deal(cell_{:});
-csName_max_score = {'F1_best', 'Precision_best', 'Recall_best', 'Accuracy_best'};
-get_scores_prmset_ = @(i){mrF1_prmset_rec(i,:), mrPrecision_prmset_rec(i,:), ...
-    mrRecall_prmset_rec(i,:), mrAccuracy_prmset_rec(i,:)};
-cVal_max_score = get_scores_prmset_(iPrmset_best);
-S_max_score = cell2struct(cVal_max_score, csName_max_score, 2);
-S_max_score.vrSnr_gt = vrSnr_gt;
+csName_best_score = {'F1_best', 'Precision_best', 'Recall_best', 'Accuracy_best'};
+cmrScore_prmset_rec = {mrF1_prmset_rec, mrPrecision_prmset_rec, mrRecall_prmset_rec, mrAccuracy_prmset_rec};
+get_scores_prmset_ = @(i)cellfun_(@(x)x(i,:), cmrScore_prmset_rec);
+cVal_best_score = get_scores_prmset_(iPrmset_best);
+S_best_score = cell2struct(cVal_best_score, csName_best_score, 2);
+S_best_score.vrSnr_gt = vrSnr_gt;
+S_best_score.vcSnr_mode = vcSnr_mode;
 nPrmset_show = min(MAX_PRMSET, nPrmset);
 viX = 1:nPrmset_show;
+
+
+figure('Color','w','Name', vcFile_out); hold on;
+vcShapes = 'ox+*';
+calc_mean_snr_ = @(mr)arrayfun_(@(x)max(nanmean(mr(:,vrSnr_gt>=x),2)), vrSnr_gt);
+calc_score_snr_ = @(mr,viPrm1)arrayfun(@(x,y)nanmean(mr(y,vrSnr_gt>=x)), vrSnr_gt, viPrm1);
+for iScore = 1:numel(csName_best_score)
+    [~, viY1] = calc_mean_snr_(cmrScore_prmset_rec{1}); viY1 = cell2mat(viY1);
+    vrY1 = calc_score_snr_(cmrScore_prmset_rec{iScore}, viY1);
+    plot(vrSnr_gt, vrY1, vcShapes(iScore)); 
+    xylabel_(gca, [vcSnr_mode ' threshold'], '<Score> | V>=threshold');
+end
+grid on; set(gca,'YLim', [0 100]); 
+legend({'F1','Precision','Recall','Accuracy'}, 'Location', 'SE');
 
 % create a bar plot
 figure('Color','w','Name', vcFile_out); 
@@ -6394,19 +6411,19 @@ bar([vrF1_prmset_srt(viX), vrPrecision_srt(viX), vrRecall_srt(viX), vrAccuracy_s
 xylabel_(gca, ...
     'prmset # (sorted by F1-score)', ...
     sprintf('Score|SNR>=%0.1f',SNR_THRESH), ...
-    disp_stats_(mrF1_prmset_rec(iPrmset_best,:), sprintf('%s|SNR>=%0.1f', csName_max_score{1}, SNR_THRESH), 0), ...
+    disp_stats_(mrF1_prmset_rec(iPrmset_best,:), sprintf('%s|SNR>=%0.1f', csName_best_score{1}, SNR_THRESH), 0), ...
     1);
 legend({'F1','Precision','Recall','Accuracy'}, 'Location', 'SE');
 
 figure('Color','w','Name', vcFile_out); 
-nScores = numel(csName_max_score);
+nScores = numel(csName_best_score);
 for iScore=1:nScores
     subplot(nScores, 1, iScore);
-    vrScore_ = S_max_score.(csName_max_score{iScore});
+    vrScore_ = S_best_score.(csName_best_score{iScore});
     plot(vrSnr_gt(~vlPlot_gt), vrScore_(~vlPlot_gt), 'r.', ...
         vrSnr_gt(vlPlot_gt), vrScore_(vlPlot_gt), 'b.');
-    xylabel_(gca, 'SNR_min', csName_max_score{iScore}, disp_stats_(vrScore_(vlPlot_gt), ...
-        sprintf('%s|SNR>=%0.1f', csName_max_score{iScore}, SNR_THRESH), 0), 1);
+    xylabel_(gca, vcSnr_mode, csName_best_score{iScore}, disp_stats_(vrScore_(vlPlot_gt), ...
+        sprintf('%s|SNR>=%0.1f', csName_best_score{iScore}, SNR_THRESH), 0), 1);
 end
 
 % output summary text
@@ -6422,9 +6439,9 @@ csDesc{end+1} = sprintf('  # parameter sets:       %d', nPrmset);
 csDesc{end+1} = sprintf('  run-time (s):           %0.1f', t_fun);
 csDesc{end+1} = sprintf('------------------------------');
 csDesc{end+1} = disp_stats_();
-for iScore = 1:numel(cVal_max_score)
-    val_ = cVal_max_score{iScore};
-    csDesc{end+1} = disp_stats_(val_(vlPlot_gt), csName_max_score{iScore});
+for iScore = 1:numel(cVal_best_score)
+    val_ = cVal_best_score{iScore};
+    csDesc{end+1} = disp_stats_(val_(vlPlot_gt), csName_best_score{iScore});
 end
 
 % show prmset
