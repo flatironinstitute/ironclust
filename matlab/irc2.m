@@ -2630,7 +2630,7 @@ if fGpu
     catch
         fGpu=0;             
         fprintf(2, 'C');
-%             disp(lasterr)
+%         disp(lasterr)
     end
 end
 if ~fGpu    
@@ -2748,6 +2748,7 @@ for iiAA = 1:numel(viAA)
     % determine index
     iAA1 = viAA(iiAA);
     viiAA1 = find(viDrift_in == iAA1);
+    if isempty(viiAA1), continue; end
     limAA1 = viiAA1([1, end]) + in_offset;
     viiBB1 = find(ismember(viBB, find(mlDrift1(:,iAA1))));
     [viBB1, vnBB1] = deal(viiBB(viiBB1), vnBB(viiBB1));  
@@ -2812,6 +2813,7 @@ for iiAA = 1:numel(viAA)
     % determine index
     iAA1 = viAA(iiAA);
     viiAA1 = find(viDrift_in == iAA1);
+    if isempty(viiAA1), continue; end
     limAA1 = viiAA1([1, end]) + in_offset;
     viiBB1 = find(ismember(viBB, find(mlDrift1(:,iAA1))));
     [viBB1, vnBB1] = deal(viiBB(viiBB1), vnBB(viiBB1));  
