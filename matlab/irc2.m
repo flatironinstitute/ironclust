@@ -196,7 +196,7 @@ end %func
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_()
 
-vcVer = 'v5.5.13';
+vcVer = 'v5.5.14';
 vcDate = '01/24/2020';
 vcHash = file2hash_();
 
@@ -5268,17 +5268,17 @@ cvi_peak = cell(numel(viSpk_peak), 1);
 if fParfor
     try
         parfor iPeak = 1:numel(viSpk_peak)
-            viPeak1 = find(any(ismember(miKnn_peak(:,1:iPeak-1), miKnn_peak(:,iPeak))));        
-            cvi_peak{iPeak} = [viPeak1(:); iPeak];
+            viPeak1 = find(any(ismember(miKnn_peak, miKnn_peak(:,iPeak))))';        
+            cvi_peak{iPeak} = [viPeak1; iPeak];
         end
     catch
         fParfor = 0;
     end
 end
 if ~fParfor
-    for iPeak = 1:numel(viSpk_peak)
-        viPeak1 = find(any(ismember(miKnn_peak(:,1:iPeak-1), miKnn_peak(:,iPeak))));        
-        cvi_peak{iPeak} = [viPeak1(:); iPeak];
+    for iPeak = 1:numel(viSpk_peak)        
+        viPeak1 = find(any(ismember(miKnn_peak, miKnn_peak(:,iPeak))))';
+        cvi_peak{iPeak} = [viPeak1; iPeak];
     end
 end
 [viClu_spk(viSpk_peak), viiPeak] = cell2map_(cvi_peak);
