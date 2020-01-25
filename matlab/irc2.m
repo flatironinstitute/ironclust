@@ -6263,7 +6263,7 @@ function optimize_param_(vcDir_rec, vcFile_prmset, vcFile_out)
 % optimize_param_(vcDir_rec, vcFile_prmset)
 % optimize_param_(vcDir_rec, vcFile_prmset, vcFile_out)
 
-[fDebug, fUse_cache, fParfor] = deal(0, 0, 1);
+[fDebug, fUse_cache, fParfor] = deal(0, 1, 1);
 
 if nargin<3, vcFile_out = ''; end
 [~,vcPostfix_] = fileparts(vcFile_prmset); 
@@ -6274,14 +6274,15 @@ if isempty(vcFile_out)
     vcFile_out = fullfile(vcDir_rec, sprintf('scores_prmset_%s.mat', vcPostfix_));
 end
 
-S = [];
+S_prmset_rec = [];
 if exist_file_(vcFile_out) && fUse_cache
     try
-        S = load(vcFile_out);
+        S_prmset_rec = load(vcFile_out);
+        S_prmset_rec.vcFile_out = vcFile_out;
     catch
     end
 end
-if isempty(S)
+if isempty(S_prmset_rec)
     t_fun = tic;
     csDir_rec = sub_dir_(vcDir_rec, 1);
     nRec = numel(csDir_rec);
@@ -6314,12 +6315,14 @@ if isempty(S)
     t_fun = toc(t_fun);
     fprintf('took %0.1fs\n', t_fun);
     % display
-    S = makeStruct_(S_prmset, ccScore_prmset_rec, vcFile_prmset, ...
-        csDir_rec, cVal_prm, cName_prm, t_fun, vcDir_rec);
-    struct_save_(S, vcFile_out, 1);    
+    S_prmset_rec = makeStruct_(S_prmset, ccScore_prmset_rec, vcFile_prmset, ...
+        csDir_rec, cVal_prm, cName_prm, t_fun, vcDir_rec, vcFile_out);
+    struct_save_(S_prmset_rec, vcFile_out, 1);    
 end
 
-optimize_param_disp_(S);
+[csDesc, S_max_score] = optimize_param_show_(S_prmset_rec);
+assignWorkspace_(S_prmset_rec, S_max_score);
+cellstr2file_(strrep(vcFile_out, '.mat', '.txt'), csDesc, 1);
 end %func
 
 
@@ -6342,33 +6345,67 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function csDesc = optimize_param_disp_(S_prmset)
+function mr = mr_set_col_(mr, vi, val)
+mr(:,vi) = val;
+end %func
 
-MAX_PRMSET = 10;
-import_struct_(S_prmset);
+
+%--------------------------------------------------------------------------
+function [csDesc, S_max_score] = optimize_param_show_(S_prmset)
+
+[MAX_PRMSET, SNR_THRESH] = deal(inf, 6);
+
+csVar_imported = import_struct_(S_prmset);
+
+% get unit amplitudes
+cS_gt = cellfun_(@(x)load_(fullfile(x, 'raw_geom_gt1.mat'), {'vrSnr_min_clu'}), csDir_rec);
+vrSnr_gt = cellfun(@(S)S.vrSnr_min_clu, cS_gt);
+vlPlot_gt = vrSnr_gt>=SNR_THRESH;
+get_score_ = @(vc)cellfun(@(x)nanmean(get_(x, vc)), ccScore_prmset_rec);
+mean_mr_snr_ = @(mr)nanmean(mr_set_col_(mr,~vlPlot_gt,nan),2);
 
 % display the optimized param
 [nPrm, nRec, nPrmset] = deal(numel(cVal_prm), size(ccScore_prmset_rec,2), size(ccScore_prmset_rec,1));
-mrF1_prmset_rec = cellfun(@(x)mean(get_(x,'vrF1_gt')), ccScore_prmset_rec);
-vrF1_mean_prmset = nanmean(mrF1_prmset_rec,2);
-[~, iPrmset_max] = max(vrF1_mean_prmset);
-mrAccuracy_prmset_rec = cellfun(@(x)mean(get_(x, 'vrAccuracy_gt')), ccScore_prmset_rec);
-mrPrecision_prmset_rec = cellfun(@(x)mean(get_(x, 'vrPrecision_F1_gt')), ccScore_prmset_rec);
-mrRecall_prmset_rec = cellfun(@(x)mean(get_(x, 'vrRecall_F1_gt')), ccScore_prmset_rec);
-vrAccuracy_mean_prmset = nanmean(mrAccuracy_prmset_rec,2);
-vrPrecision_mean_prmset = nanmean(mrPrecision_prmset_rec,2);
-vrRecall_mean_prmset = nanmean(mrRecall_prmset_rec,2);
+mrF1_prmset_rec = get_score_('vrF1_gt'); vrF1_mean_prmset = mean_mr_snr_(mrF1_prmset_rec); 
+[~, iPrmset_best] = max(vrF1_mean_prmset);
+mrAccuracy_prmset_rec = get_score_('vrAccuracy_gt'); vrAccuracy_mean_prmset = mean_mr_snr_(mrAccuracy_prmset_rec);
+mrPrecision_prmset_rec = get_score_('vrPrecision_F1_gt'); vrPrecision_mean_prmset = mean_mr_snr_(mrPrecision_prmset_rec);
+mrRecall_prmset_rec = get_score_('vrRecall_F1_gt'); vrRecall_mean_prmset = mean_mr_snr_(mrRecall_prmset_rec);
+
 
 % do the SNR analysis by recording?
-[vrF1_prmset_srt, viPrmset_srt] = sort(vrF1_mean_prmset,'descend');
+[vrF1_prmset_srt, viPrmset_srt] = sort(vrF1_mean_prmset, 'descend');
 cell_ = cellfun_(@(x)x(viPrmset_srt), {vrAccuracy_mean_prmset, vrPrecision_mean_prmset, vrRecall_mean_prmset});
 [vrAccuracy_srt, vrPrecision_srt, vrRecall_srt] = deal(cell_{:});
-figure('Color','w','Name', vcDir_rec); 
-bar([vrF1_prmset_srt, vrPrecision_srt, vrRecall_srt, vrAccuracy_srt]); 
-grid on; xlabel('prmset # (sorted by F1-score)'); ylabel('Score'); set(gca,'YLim', [0 100]);
-legend({'F1','Precision','Recall','Accuracy'});
-score_prm_ = @(x){mrF1_prmset_rec(x,:), mrPrecision_prmset_rec(x,:), mrRecall_prmset_rec(x,:), mrAccuracy_prmset_rec(x,:)};
-title_(disp_stats_(mrF1_prmset_rec(iPrmset_max,:), 'vrF1_gt_max', 0));
+csName_max_score = {'F1_best', 'Precision_best', 'Recall_best', 'Accuracy_best'};
+get_scores_prmset_ = @(i){mrF1_prmset_rec(i,:), mrPrecision_prmset_rec(i,:), ...
+    mrRecall_prmset_rec(i,:), mrAccuracy_prmset_rec(i,:)};
+cVal_max_score = get_scores_prmset_(iPrmset_best);
+S_max_score = cell2struct(cVal_max_score, csName_max_score, 2);
+S_max_score.vrSnr_gt = vrSnr_gt;
+nPrmset_show = min(MAX_PRMSET, nPrmset);
+viX = 1:nPrmset_show;
+
+% create a bar plot
+figure('Color','w','Name', vcFile_out); 
+bar([vrF1_prmset_srt(viX), vrPrecision_srt(viX), vrRecall_srt(viX), vrAccuracy_srt(viX)]); 
+xylabel_(gca, ...
+    'prmset # (sorted by F1-score)', ...
+    sprintf('Score|SNR>=%0.1f',SNR_THRESH), ...
+    disp_stats_(mrF1_prmset_rec(iPrmset_best,:), sprintf('%s|SNR>=%0.1f', csName_max_score{1}, SNR_THRESH), 0), ...
+    1);
+legend({'F1','Precision','Recall','Accuracy'}, 'Location', 'SE');
+
+figure('Color','w','Name', vcFile_out); 
+nScores = numel(csName_max_score);
+for iScore=1:nScores
+    subplot(nScores, 1, iScore);
+    vrScore_ = S_max_score.(csName_max_score{iScore});
+    plot(vrSnr_gt(~vlPlot_gt), vrScore_(~vlPlot_gt), 'r.', ...
+        vrSnr_gt(vlPlot_gt), vrScore_(vlPlot_gt), 'b.');
+    xylabel_(gca, 'SNR_min', csName_max_score{iScore}, disp_stats_(vrScore_(vlPlot_gt), ...
+        sprintf('%s|SNR>=%0.1f', csName_max_score{iScore}, SNR_THRESH), 0), 1);
+end
 
 % output summary text
 csDesc = {};
@@ -6376,25 +6413,25 @@ csDesc{end+1} = sprintf('');
 csDesc{end+1} = sprintf('------------------------------');    
 csDesc{end+1} = sprintf('  vcDir_rec:              %s', vcDir_rec);
 csDesc{end+1} = sprintf('  vcFile_prmset:          %s', vcFile_prmset);
-csDesc{end+1} = sprintf('  # Files:                %d', nRec);
+csDesc{end+1} = sprintf('  # Recordings:           %d', nRec);
+csDesc{end+1} = sprintf('  # Recordings|SNR>=%0.1f:  %d', sum(vlPlot_gt), SNR_THRESH);
 csDesc{end+1} = sprintf('  # parameters:           %d', nPrm);
 csDesc{end+1} = sprintf('  # parameter sets:       %d', nPrmset);
+csDesc{end+1} = sprintf('  run-time (s):           %0.1f', t_fun);
 csDesc{end+1} = sprintf('------------------------------');
 csDesc{end+1} = disp_stats_();
-cScore1 = score_prm_(iPrmset_max);
-csDesc{end+1} = disp_stats_(cScore1{1}, 'vrF1_gt');
-csDesc{end+1} = disp_stats_(cScore1{2}, 'vrPrecision_gt');
-csDesc{end+1} = disp_stats_(cScore1{3}, 'vrRecall_gt');
-csDesc{end+1} = disp_stats_(cScore1{4}, 'vrAccuracy_gt');
+for iScore = 1:numel(cVal_max_score)
+    val_ = cVal_max_score{iScore};
+    csDesc{end+1} = disp_stats_(val_(vlPlot_gt), csName_max_score{iScore});
+end
 
 % show prmset
-nPrmset_show = min(MAX_PRMSET, nPrmset);
 for iPrmset = 1:nPrmset_show
     iPrmset1 = viPrmset_srt(iPrmset);
     csDesc{end+1} = sprintf('------------------------------');
     csDesc{end+1} = sprintf('  prmset rank #%d (#%d):', iPrmset, iPrmset1);
     csDesc{end+1} = sprintf('    F1:%0.1f Precision:%0.1f Reccall:%0.1f Accuracy:%0.1f', ...
-        cellfun(@nanmean, score_prm_(iPrmset1)));
+        cellfun(@(x)nanmean(x(vlPlot_gt)), get_scores_prmset_(iPrmset1)));
     cVal_prm1 = permute_prm_(cVal_prm, iPrmset1);
     for iPrm = 1:nPrm
         csDesc{end+1} = sprintf('  %s: %s', cName_prm{iPrm}, numstr_(cVal_prm1{iPrm}));
@@ -6403,7 +6440,24 @@ end
 
 csDesc{end+1} = sprintf('');    
 disp_cs_(csDesc);
-assignWorkspace_(S_prmset);
+end %func
+
+
+%--------------------------------------------------------------------------
+% 8/2/17 JJJ: Test and documentation
+function cellstr2file_(vcFile, csLines, fVerbose)
+% Write a cellstring to a text file
+if nargin<3, fVerbose = 0; end
+vcDir = fileparts(vcFile);
+mkdir_(vcDir);
+fid = fopen(vcFile, 'w');
+for i=1:numel(csLines)
+    fprintf(fid, '%s\n', csLines{i});
+end
+fclose(fid);
+if fVerbose
+    fprintf('Wrote to %s\n', vcFile);
+end
 end %func
 
 
