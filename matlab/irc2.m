@@ -5973,7 +5973,7 @@ elseif ischar(vcArg)
 end
 
 % global parameters
-cs_common_double = {'detect_threshold', 'detect_sign', 'adjacency_radius'};
+cs_common_double = {'detect_threshold', 'detect_sign'};
 params = pydict_add_(params, S_arg, cs_common_double, 'double');
 
 % sorter-specific parameters
@@ -5982,18 +5982,18 @@ switch lower(vcSorter)
     case 'ironclust'
         cs_sorter_double = {'freq_min', 'adjacency_radius_out', 'merge_thresh', ...
             'fft_thresh', 'knn', 'min_count', 'delta_cut', 'pc_per_chan', ...
-            'batch_sec_drift', 'step_sec_drift', 'freq_max', 'clip_pre', 'clip_post'};
+            'batch_sec_drift', 'step_sec_drift', 'freq_max', 'clip_pre', 'clip_post', 'adjacency_radius'};
         cs_sorter_char = {'common_ref_type'};
         cs_sorter_logical = {'whiten', 'fGpu', 'filter'};
-    case 'mountainsort'
-        cs_sorter_double = {'freq_min', 'clip_size', 'detect_interval', 'freq_max'};
+    case 'mountainsort4'
+        cs_sorter_double = {'freq_min', 'clip_size', 'detect_interval', 'freq_max', 'adjacency_radius'};
         cs_sorter_logical = {'curation', 'whiten', 'filter'};
     case 'kilosort2'
-        cs_sorter_double = {'freq_min', 'sigmaMask', 'nPCs', 'minFR', 'Nt', 'preclust_threshold'};
+        cs_sorter_double = {'freq_min', 'sigmaMask', 'nPCs', 'minFR', 'Nt', 'preclust_threshold', 'adjacency_radius'};
         cs_sorter_logical = {'car'};
         cs_sorter_pylist = {'projection_threshold'};
     case 'spykingcircus'
-        cs_sorter_double = {'auto_merge', 'template_width_ms', 'whitening_max_elts', 'clustering_max_elts'};
+        cs_sorter_double = {'auto_merge', 'template_width_ms', 'whitening_max_elts', 'clustering_max_elts', 'adjacency_radius'};
         cs_sorter_logical = {'filter', 'merge_spikes'};        
     case 'jrclust'        
     case 'waveclus'        
@@ -6284,7 +6284,8 @@ function optimize_param_(vcDir_rec, vcFile_prmset, vcFile_out)
 
 if nargin<3, vcFile_out = ''; end
 [~,vcPostfix_] = fileparts(vcFile_prmset); 
-vcPostfix_out = ['irc2_', vcPostfix_];
+vcSorter = infer_sorter_(vcPostfix_);
+vcPostfix_out = vcSorter;
 if isempty(vcFile_out)
     %vcFile_out = fullfile(vcDir_rec, 'param_scores.mat');
     vcFile_out = fullfile(vcDir_rec, sprintf('scores_prmset_%s.mat', vcPostfix_));
@@ -6314,7 +6315,7 @@ if isempty(S)
             parfor iRec = 1:nRec
                 vcDir_in1 = csDir_rec{iRec};
                 vcDir_out1 = fullfile(vcDir_in1, vcPostfix_out);
-                ccScore_prmset_rec(:,iRec) = score_paramset_(vcDir_in1, vcDir_out1, cName_prm, cVal_prm);
+                ccScore_prmset_rec(:,iRec) = score_paramset_(vcSorter, vcDir_in1, vcDir_out1, cName_prm, cVal_prm);
             end
         catch
             fParfor = 0;
@@ -6324,7 +6325,7 @@ if isempty(S)
         for iRec = 1:nRec
             vcDir_in1 = csDir_rec{iRec};
             vcDir_out1 = fullfile(vcDir_in1, vcPostfix_out);            
-            ccScore_prmset_rec(:,iRec) = score_paramset_(vcDir_in1, vcDir_out1, cName_prm, cVal_prm);
+            ccScore_prmset_rec(:,iRec) = score_paramset_(vcSorter, vcDir_in1, vcDir_out1, cName_prm, cVal_prm);
         end
     end
     t_fun = toc(t_fun);
@@ -6336,6 +6337,24 @@ if isempty(S)
 end
 
 optimize_param_disp_(S);
+end %func
+
+
+%--------------------------------------------------------------------------
+function vcSorter = infer_sorter_(vcName)
+vcName = lower(vcName);
+if contains(vcName, {'ironclust', 'irc', 'irc2'}), vcSorter = 'ironclust';
+elseif contains(vcName, {'jrclust', 'jrc'}), vcSorter = 'jrclust';
+elseif contains(vcName, {'kilosort2', 'ks2', 'ksort2'}), vcSorter = 'kilosort2';
+elseif contains(vcName, {'kilosort', 'ks', 'ksort'}), vcSorter = 'kilosort';
+elseif contains(vcName, {'mountainsort4', 'mountainsort', 'ms4'}), vcSorter = 'mountainsort4';
+elseif contains(vcName, {'spykingcircus', 'sc'}), vcSorter = 'spykingcircus';    
+elseif contains(vcName, {'herdingspikes', 'hs', 'hs2', 'herdingspikes2'}), vcSorter = 'herdingspikes2';
+elseif contains(vcName, {'klusta', 'klustakwik'}), vcSorter = 'klusta';
+elseif contains(vcName, {'tridesclous', 'tdc'}), vcSorter = 'tridesclous';
+elseif contains(vcName, {'waveclus'}), vcSorter = 'waveclus';
+else, error('infer_sorter_: unsupported sorter %s', vcName);
+end %if
 end %func
 
 
@@ -6486,7 +6505,7 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function cScore_prmset = score_paramset_(vcDir_in, vcDir_out, cName_prm, cVal_prm)
+function cScore_prmset = score_paramset_(vcSorter, vcDir_in, vcDir_out, cName_prm, cVal_prm)
 
 fParfor = 0; % turn off parfor for each file
 nPrmset = permute_prm_(cVal_prm);
@@ -6504,9 +6523,21 @@ for iPrmset = 1:nPrmset
         [cVal_prm1, viPrm1] = permute_prm_(cVal_prm, iPrmset);
         vlPrm_update = viPrm1 ~= viPrm_pre;
         cName_prm1 = cName_prm(vlPrm_update);
-        vcCmd1 = param2cmd_(cName_prm1); 
-        edit_prm_file_(cell2struct(cVal_prm1(vlPrm_update), cName_prm1, 1), vcFile_prm); % edit file
-        irc2(vcCmd1, vcFile_prm);    
+        switch lower(vcSorter)
+            case 'ironclust'
+                vcCmd1 = param2cmd_(cName_prm1); 
+                edit_prm_file_(cell2struct(cVal_prm1(vlPrm_update), cName_prm1, 1), vcFile_prm); % edit file
+                irc2(vcCmd1, vcFile_prm);    
+            case 'kilosort2'
+                struct2meta_(cell2struct(cVal_prm1, cName_prm1, 1), vcParam1);
+                run_ksort2(vcDir_in, vcDir_out, vcParam1);                   
+            case {'mountainsort', 'spykingcircus', 'tridesclous', 'herdingspikes2', 'klusta', 'waveclus'}
+                struct2meta_(cell2struct(cVal_prm1, cName_prm1, 1), vcParam1);
+                run_spikeforest2_(vcSorter, vcDir_in, vcDir_out, vcParam1);    
+%             case {'jrclust', 'kilosort'}
+            otherwise
+                error('unsupported sorters: %s', vcSorter);
+        end
         cScore_prmset{iPrmset} = compare_mda_(vcFile_true_mda, vcFile_sorted_mda, P);
         viPrm_pre = viPrm1;
     catch

@@ -1,0 +1,5 @@
+freq_min = {300};
+freq_max = {6000, 8000};
+clip_size = {30, 45, 60};
+whiten = {0, 1};
+curation = {0, 1};
