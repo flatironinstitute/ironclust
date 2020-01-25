@@ -81,36 +81,32 @@ if nargin<5, vcFile_prb = []; end
     
 S_cfg = read_cfg_();
 if isempty(vcFile_prb), vcFile_prb = S_cfg.vcFile_probe; end
-S_prb = load_prb_(vcFile_prb);
-mrSiteXY = S_prb.mrSiteXY;
-
+[viSite2Chan, mrSiteXY] = get_(load_prb_(vcFile_prb), 'viSite2Chan', 'mrSiteXY');
 if matchFileExt_(vcFile_in, '.rhd')
     [vcFile_dat, vcFile_meta, S_meta1] = rhd2bin_(vcFile_in);
     [nChans, sRateHz, vcDataType, uV_per_bit] = get_(S_meta1, 'nChans', 'sRateHz', 'vcDataType', 'uV_per_bit');
     iChan_int = get_set_(S_cfg, 'iChan_intra', nChans);
-    viChan_ext = S_prb.viSite2Chan;
+    viChan_ext = viSite2Chan;
 elseif matchFileExt_(vcFile_in, '.xml')
     S_xml1 = load_xml_neuroscope_(vcFile_in);
     [nChans, sRateHz, vcDataType, uV_per_bit, vcFile_dat] = ...
         get_(S_xml1, 'nChans', 'sRateHz', 'vcDataType', 'uV_per_bit', 'vcFile_dat');
-    iChan_int = S_xml1.viSite2chan2;    
-    if isempty(iChan_int)
-        fprintf(2, 'Intracellular channel is not defined. Loading from default config.\n');        
-        if nChans == 5 % tetrode
-            iChan_int = 1;
-            viChan_ext = 2:5;
-        else
-            iChan_int = S_cfg.iChan_intra;
-            viChan_ext = S_prb.viSite2Chan;
-        end
-    elseif numel(iChan_int)>1        
-        assert(numel(iChan_int)==1, 'export_spikeforest_english_: second group must be intra');
-    else
-        viChan_ext = S_xml1.viSite2chan1;
-    end    
+    [viChan_ext, iChan_int] = get_(S_xml1, 'viSite2chan1', 'viSite2chan2');
+    if numel(iChan_int) ~= 1        
+        iChan_int = S_cfg.iChan_intra;
+        fprintf(2, 'Intracellular channel is not defined. Set to default (%d)\n', iChan_int);   
+    end
+    if isempty(viChan_ext)
+        viChan_ext = setdiff(1:nChans, iChan_int);
+    end
+    if numel(viChan_ext) ~= numel(viSite2Chan)
+        viChan_ext = setdiff(1:nChans, iChan_int);
+        mrSiteXY = mrSiteXY(1:nChans-1,:); 
+    end
 else
     error('unsupported format: %s', vcFile_in);
 end
+
 viChan_stim = get_set_(S_cfg, 'viChan_stim', 1);
 vcLabel_stim = get_set_(S_cfg, 'vcLabel_stim', 'current injection');
 
@@ -1418,7 +1414,11 @@ function vcFile_tbl = summarize_study_(vcDir_study)
 fUse_cache_gt = read_cfg_('fUse_cache_gt', 1);
 
 nRec = numel(csDir_full);
-[vnSpikes, vr_snr_pp, vr_snr_min, vr_snr_rms, vrVpp, vrVmin, vrNoise, viSite] = deal(nan(nRec,1));
+csName_tbl = {'vnChans', 'vnSpikes', 'vrDuration', 'vrRate', 'vr_snr_pp', ...
+    'vr_snr_min', 'vr_snr_rms', 'vrVpp', 'vrVmin', 'vrNoise', 'viSite'};
+csCaption_tbl = {'Recording', '#chans', 'nSpikes', 'duration_s', 'rate_hz', 'snr_pp', ...
+    'snr_min', 'snr_rms', 'Vpp_uV', 'Vmin_uV', 'noise_uV', 'peak chan#'};
+cVal_tbl = arrayfun_(@(x)nan(nRec,1), 1:numel(csName_tbl));
 % generate a table output
 for iRec = 1:nRec
     vcDir1 = csDir_full{iRec};
@@ -1432,17 +1432,21 @@ for iRec = 1:nRec
     else
         fprintf(2, 'error loading : %s\n', vcDir1);
         continue;
-    end
-    [vpp1, vmin1, snr_rms1, snr_min1, nSpk1, iSite1] = ...
-        struct_get_(S_gt1, 'vrVpp_clu', 'vrVmin_clu', 'vrSnr_sd_clu', 'vrSnr_min_clu', 'vnSpk_clu', 'viSite_clu');
+    end    
+    [vpp1, vmin1, snr_rms1, snr_min1, iSite1, dimm_spk1] = ...
+        struct_get_(S_gt1, 'vrVpp_clu', 'vrVmin_clu', 'vrSnr_sd_clu', 'vrSnr_min_clu', 'viSite_clu', 'dimm_spk');
     snr_pp1 = snr_min1 * vpp1/vmin1;    
-    vnoise1 = mean(S_gt1.vrVrms_site); 
-    [vnSpikes(iRec), vr_snr_pp(iRec), vr_snr_min(iRec), vr_snr_rms(iRec), vrVpp(iRec), vrVmin(iRec), vrNoise(iRec), viSite(iRec)] = ...
-        deal(nSpk1, snr_pp1, snr_min1, snr_rms1, vpp1, vmin1, vnoise1, iSite1);
+    vnoise1 = S_gt1.vrVrms_site(iSite1); 
+    S_params = loadjson_(fullfile(vcDir1, 'params.json'));
+    sRateHz1 = get_(S_params, 'samplerate');
+    dur1 = double(diff(S_gt1.viTime([1,end]))) / sRateHz1;
+    [nChans1, nSpk1] = deal(dimm_spk1(2), dimm_spk1(3));
+    rate1 = nSpk1 / dur1;   
+    cell1 = {nChans1, nSpk1, dur1, rate1, snr_pp1, snr_min1, snr_rms1, vpp1, vmin1, vnoise1, iSite1};
+    for iCell = 1:numel(cVal_tbl), cVal_tbl{iCell}(iRec) =  cell1{iCell}; end
 end %for
-tbl_study = table(csDir_rec(:), vnSpikes, vr_snr_pp, vr_snr_min, vr_snr_rms, vrVpp, vrVmin, vrNoise, viSite, ...
-    'VariableNames', {'Recording', 'nSpikes', 'snr_pp', 'snr_min', 'snr_rms', 'Vpp_uV', 'Vmin_uV', 'noise_uV', 'site_peak'});
-tbl_study = sortrows(tbl_study, 'snr_pp', 'ascend');
+tbl_study = table(csDir_rec(:), cVal_tbl{:}, 'VariableNames', csCaption_tbl);
+% tbl_study = sortrows(tbl_study, 'snr_min', 'descend');
 disp(tbl_study);
 vcFile_tbl = fullfile(vcDir_study, 'summary_study.xlsx');
 writetable(tbl_study, vcFile_tbl);

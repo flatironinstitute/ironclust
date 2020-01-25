@@ -3902,8 +3902,8 @@ else
         try
             tnWav_spk1 = mr2tr_(mrWav, spkLim_wav, viTime_spk11, viSite11);
             trWav_spk(:,:,viiSpk11) = permute(tnWav_spk1, [1,3,2]);
-        catch % GPU failure
-            disperr_('mn2tn_wav_: GPU failed'); 
+        catch
+            disperr_('mr2tr_: failed'); 
         end
     end
 end
@@ -6277,14 +6277,18 @@ end %func
 function optimize_param_(vcDir_rec, vcFile_prmset, vcFile_out)
 % usage
 % -----
+% optimize_param_(vcDir_rec, vcFile_prmset)
+% optimize_param_(vcDir_rec, vcFile_prmset, vcFile_out)
 
 [fDebug, fUse_cache, fParfor] = deal(0, 0, 1);
 
 if nargin<3, vcFile_out = ''; end
+[~,vcPostfix_] = fileparts(vcFile_prmset); 
+vcPostfix_out = ['irc2_', vcPostfix_];
 if isempty(vcFile_out)
-    vcFile_out = fullfile(vcDir_rec, 'param_scores.mat');
+    %vcFile_out = fullfile(vcDir_rec, 'param_scores.mat');
+    vcFile_out = fullfile(vcDir_rec, sprintf('scores_prmset_%s.mat', vcPostfix_));
 end
-[~,vcPostfix_out] = fileparts(vcFile_prmset); vcPostfix_out = ['irc_', vcPostfix_out];
 
 S = [];
 if exist_file_(vcFile_out) && fUse_cache
@@ -6496,14 +6500,18 @@ clear_(vcFile_prm);
 % run the parameters and adjust parameters and call appropriate command
 viPrm_pre = zeros(size(cName_prm));
 for iPrmset = 1:nPrmset
-    [cVal_prm1, viPrm1] = permute_prm_(cVal_prm, iPrmset);
-    vlPrm_update = viPrm1 ~= viPrm_pre;
-    cName_prm1 = cName_prm(vlPrm_update);
-    vcCmd1 = param2cmd_(cName_prm1); 
-    edit_prm_file_(cell2struct(cVal_prm1(vlPrm_update), cName_prm1, 1), vcFile_prm); % edit file
-    irc2(vcCmd1, vcFile_prm);    
-    cScore_prmset{iPrmset} = compare_mda_(vcFile_true_mda, vcFile_sorted_mda, P);
-    viPrm_pre = viPrm1;
+    try
+        [cVal_prm1, viPrm1] = permute_prm_(cVal_prm, iPrmset);
+        vlPrm_update = viPrm1 ~= viPrm_pre;
+        cName_prm1 = cName_prm(vlPrm_update);
+        vcCmd1 = param2cmd_(cName_prm1); 
+        edit_prm_file_(cell2struct(cVal_prm1(vlPrm_update), cName_prm1, 1), vcFile_prm); % edit file
+        irc2(vcCmd1, vcFile_prm);    
+        cScore_prmset{iPrmset} = compare_mda_(vcFile_true_mda, vcFile_sorted_mda, P);
+        viPrm_pre = viPrm1;
+    catch
+        fprintf(2, '%s: paramset#%d failed:\n\t%s\n', vcDir_in, iPrmset, lasterr());
+    end
 end
 end %func
 
