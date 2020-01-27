@@ -123,7 +123,7 @@ switch lower(vcCmd)
         else, varargout{1} = benchmark_(vcArg1, vcArg2, vcArg3); 
         end
         return;
-    case 'plot', irc('plot', vcArg1, vcArg2); return;
+    case 'plot-drift', plot0_('drift', vcArg1, vcArg2); return;
     case 'clear', clear_(); vcFile_prm_=[]; return;
     case 'clear-sort', clear_('sort'); return;     
     case {'test-mcc', 'test_mcc', 'testmcc'}, test_mcc_(vcArg1); return;
@@ -213,6 +213,10 @@ function A = readmda_(fname)
 % Jan 2015; Last revision: 15-Feb-2106
 if ~exist_file_(fname)
     error('File does not exist: %s', fname);
+end
+[~,~,vcExt] = fileparts(fname);
+if ~strcmpi(vcExt, '.mda')
+    error('File does not have .mda extension: %s', fname);
 end
 F=fopen(fname,'r','l');
 
@@ -6740,6 +6744,137 @@ end
 
 
 %--------------------------------------------------------------------------
+function plot0_(vcMode, vcFile_prm, vcArg1)
+
+S0 = load0_(vcFile_prm);
+P = S0.P;
+S_auto = S0.S_auto;
+S_drift = S0.S_clu.S_drift;
+
+nClu = max(S_auto.viClu);
+cviSpk_clu = arrayfun_(@(x)find(S_auto.viClu==x), (1:nClu)');
+mrXY_clu = cell2mat_(cellfun_(@(x)median(S0.mrPos_spk(x,:)), cviSpk_clu));
+if isempty(vcArg1)
+    viClu_plot = [];
+else
+    viClu_plot = str2num(vcArg1);
+    vl_spk = ismember(S_auto.viClu, viClu_plot);
+end
+
+switch lower(vcMode)
+    case 'scatter'
+        hFig = create_figure_([], [0 0 .5 1], P.vcFile, 1, 1);
+        [vrX1, vrY1] = deal(S0.mrPos_spk(:,1), S0.mrPos_spk(:,2));
+        if isempty(viClu_plot)
+            scatter(vrX1, vrY1, 1, S_auto.viClu);
+            text_(mrXY_clu(:,1), mrXY_clu(:,2), arrayfun_(@num2str, 1:nClu), ...
+                'VerticalAlignment', 'bottom', 'HorizontalAlignment', 'left');
+        else
+            plot(vrX1(~vl_spk), vrY1(~vl_spk), '.', 'MarkerSize', 1, 'Color', ones(1,3)*.75); hold on;
+            scatter(vrX1(vl_spk), vrY1(vl_spk), 1, S_auto.viClu(vl_spk));
+            text_(mrXY_clu(viClu_plot,1), mrXY_clu(viClu_plot,2), arrayfun_(@num2str, viClu_plot), ...
+                'VerticalAlignment', 'bottom', 'HorizontalAlignment', 'left');
+        end
+        xylabel_([], 'x pos (um)', 'y pos (um)', P.vcFile); grid on;
+        
+    case 'drift'
+        hFig = create_figure_([], [0 0 .5 1], P.vcFile, 1, 1);
+        [vrX1, vrY1] = deal(double(S0.viTime_spk)/P.sRateHz, S0.mrPos_spk(:,2));
+        if isempty(viClu_plot)
+            vl1 = S_auto.viClu>0;            
+            rand_map = randperm(max(S_auto.viClu));
+            viClu1 = rand_map(S_auto.viClu(vl1));
+            scatter(vrX1(vl1), vrY1(vl1), 1, viClu1);
+            text_(mrXY_clu(:,1), mrXY_clu(:,2), arrayfun_(@num2str, 1:nClu), ...
+                'VerticalAlignment', 'bottom', 'HorizontalAlignment', 'left');
+        else
+            plot(vrX1(~vl_spk), vrY1(~vl_spk), '.', 'MarkerSize', 1, 'Color', ones(1,3)*.75); hold on;
+            scatter(vrX1(vl_spk), vrY1(vl_spk), 1, S_auto.viClu(vl_spk));
+            text_(mrXY_clu(viClu_plot,1), mrXY_clu(viClu_plot,2), arrayfun_(@num2str, viClu_plot), ...
+                'VerticalAlignment', 'bottom', 'HorizontalAlignment', 'left');            
+        end
+        xylabel_([], 'Time (s)', 'y pos (um)', P.vcFile); grid on;
+        colormap jet;
+        
+    case 'drift-clip'
+        ylim1 = str2num(vcArg1);
+        hFig = create_figure_([], [0 0 .5 1], P.vcFile, 1, 1);
+        [vrX1, vrY1] = deal(double(S0.viTime_spk)/P.sRateHz, S0.mrPos_spk(:,2));
+        vl1 = S_auto.viClu>0 & vrY1>=ylim1(1) & vrY1<=ylim1(2); 
+        viClu1 = S_auto.viClu(vl1);
+        viClu_uniq = unique(viClu1);
+        linMap = 1:max(viClu1); linMap(viClu_uniq) = 1:numel(viClu_uniq);
+        rand_map = randperm(max(linMap));
+        viClu1 = rand_map(linMap(viClu1));
+        scatter(vrX1(vl1), vrY1(vl1), 1, viClu1);
+        set(gca, 'XTickLabel',{},'YTickLabel',{},'XTick',[],'YTick',[]);
+        colormap jet;
+        
+    case 'drift-clu'
+        hFig = create_figure_([], [0 0 .5 1], P.vcFile, 1, 1);
+        find_spk_ = @(x,y)intersect(S_auto.cviSpk_clu{x}, S_drift.cviSpk_drift{y});
+        [xx,yy]=meshgrid(1:S_auto.nClu, 1:S_auto.S_drift.nTime_drift);
+        vrY1 = arrayfun(@(x,y)median(S0.mrPos_spk(find_spk_(x,y),2)), xx, yy);
+        vrX1 = (1:S_auto.S_drift.nTime_drift) * P.step_sec_drift;
+        if isempty(viClu_plot)
+            plot(vrX1, vrY1, '.-');
+            text_(zeros(S_auto.nClu,1), mrXY_clu(:,2), arrayfun_(@num2str, 1:nClu), ...
+                'VerticalAlignment', 'bottom', 'HorizontalAlignment', 'left');
+        else
+            plot(vrX1, vrY1(:,viClu_plot), '.-');
+            text_(zeros(numel(viClu_plot),1), mrXY_clu(viClu_plot,2), arrayfun_(@num2str, viClu_plot), ...
+                'VerticalAlignment', 'bottom', 'HorizontalAlignment', 'left');
+        end
+        xylabel_([], 'Time (s)', 'y pos (um)', P.vcFile); grid on;        
+        
+    case 'drift3-clu'
+        hFig = create_figure_([], [0 0 .5 1], P.vcFile, 1, 1);
+        find_spk_ = @(x,y)intersect(S_auto.cviSpk_clu{x}, S_drift.cviSpk_drift{y});
+        [xx,yy]=meshgrid(1:S_auto.nClu, 1:S_auto.S_drift.nTime_drift);
+        vrZ1 = arrayfun(@(x,y)median(S0.mrPos_spk(find_spk_(x,y),1)), xx, yy);
+        vrY1 = arrayfun(@(x,y)median(S0.mrPos_spk(find_spk_(x,y),2)), xx, yy);
+        vrX1 = (1:S_auto.S_drift.nTime_drift) * P.step_sec_drift;
+        if isempty(viClu_plot)
+            plot3(vrX1, vrY1, vrZ1, '.-');
+            text3_(zeros(S_auto.nClu,1), mrXY_clu(:,2), mrXY_clu(:,1), arrayfun_(@num2str, 1:nClu), ...
+                'VerticalAlignment', 'bottom', 'HorizontalAlignment', 'left');
+        else
+            plot3(vrX1, vrY1(:,viClu_plot), vrZ1(:,viClu_plot), '.-');
+            text3_(zeros(numel(viClu_plot),1), mrXY_clu(viClu_plot,2), mrXY_clu(viClu_plot,1), arrayfun_(@num2str, viClu_plot), ...
+                'VerticalAlignment', 'bottom', 'HorizontalAlignment', 'left');
+        end
+        xylabel_([], 'Time (s)', 'y pos (um)', P.vcFile); grid on;       
+        zlabel('x pos (um)');
+        
+    case 'scatter3'
+        hFig = create_figure_([], [0 0 .5 1], P.vcFile, 1, 1);
+        vrLogP_clu = cellfun(@(x)median(log(S0.vrPow_spk(x))), cviSpk_clu);
+        [vrX1, vrY1, vrZ1] = deal(S0.mrPos_spk(:,1), S0.mrPos_spk(:,2), log(S0.vrPow_spk));
+        if isempty(viClu_plot)
+            scatter3(vrX1, vrY1, vrZ1, 1, S_auto.viClu);
+            text3_(vrX1, vrY1, vrZ1, arrayfun_(@num2str, 1:nClu), ...
+                'VerticalAlignment', 'bottom', 'HorizontalAlignment', 'left');
+        else
+            plot3(vrX1(~vl_spk), vrY1(~vl_spk), vrZ1(~vl_spk), '.', 'MarkerSize', 1, 'Color', ones(1,3)*.75); hold on;
+            scatter3(vrX1(vl_spk), vrY1(vl_spk), vrZ1(vl_spk), 1, S_auto.viClu(vl_spk));
+            text3_(mrXY_clu(viClu_plot,1), mrXY_clu(viClu_plot,2), vrZ1(viClu_plot), arrayfun_(@num2str, viClu_plot), ...
+                'VerticalAlignment', 'bottom', 'HorizontalAlignment', 'left');        
+        end
+        xylabel_([], 'x pos (um)', 'y pos (um)', P.vcFile); grid on;
+        zlabel('log power');
+    case 'probe'
+        hFig = create_figure_([], [0 0 .5 1], P.vcFile, 1, 1);
+        plot_probe_(P.mrSiteXY, [12 12], P.viSite2Chan);
+        axis equal;
+    case {'verify', 'validate'}
+        validate_(P);
+    otherwise
+        error('plot0_: invalid option');
+end %switch
+end %func
+
+
+%--------------------------------------------------------------------------
 % Call from irc.m
 % function compile_cuda_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
 function frewind_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
@@ -6747,7 +6882,10 @@ function disperr_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); en
 function edit_prm_file_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
 function delete_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
 function edit_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
+function text_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
+function text3_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
 
+function out1 = create_figure_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = load_prb_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = read_meta_file_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = isTextFile_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
