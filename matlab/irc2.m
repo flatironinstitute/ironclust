@@ -196,8 +196,8 @@ end %func
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_()
 
-vcVer = 'v5.5.14';
-vcDate = '01/24/2020';
+vcVer = 'v5.6.0';
+vcDate = '01/27/2020';
 vcHash = file2hash_();
 
 if nargout==0
@@ -562,7 +562,8 @@ if nargin<2, fPlot_gt = []; end
 
 S_cfg = read_cfg_();
 fPlot_gt = get_(fPlot_gt, 'fPlot_gt');
-P.spkJitter_ms_gt = get_set_(S_cfg, 'spkJitter_ms_gt', 1);
+P.jitter = round(get_set_(S_cfg, 'spkJitter_ms_gt', 1) * P.sRateHz / 1000);
+P.fCompute_snr_mda = 1;
 
 vcFile_gt_mda = get_(P, 'vcFile_gt');
 if ~exist_file_(vcFile_gt_mda), return; end
@@ -836,39 +837,40 @@ end
     
 %--------------------------------------------------------------------------
 function S_score = compare_mda_(vcFile_gt_mda, vcFile_clu_mda, P)
-
-S_cfg = read_cfg_();
-if nargin<3
-    [P.spkJitter_ms_gt, P.freqLim, P.freqLim_width, P.spkLim] = ...
-        struct_get_(S_cfg, 'spkJitter_ms_gt', 'freqLim_gt', 'freqLim_width_gt', 'spkLim_ms_gt');
-    S_json = loadjson_(fullfile(fileparts(vcFile_gt_mda), 'params.json'));
-    P.sRateHz = get_(S_json, 'samplerate');
-    P.vcFile = fullfile(fileparts(vcFile_gt_mda), 'raw.mda'); 
-end
-fCompute_snr = get_(S_cfg, 'fCompute_snr_mda');
-
 % usage
 % -----
+
 nSamples_max = 2^10;
 
-t_fun = tic;
-fprintf('Validating cluster...\n');
+fprintf('Validating cluster...\n'); t_fun = tic;
 
-% determine jitter sample size
-spkJitter_ms_gt = get_set_(P, 'spkJitter_ms_gt', 1);
-jitter = round(spkJitter_ms_gt * P.sRateHz / 1000); %1 ms jitter
+if nargin<3, P=[]; end
+S_cfg = read_cfg_();
+P.sRateHz = get_(P, 'sRateHz');
+if P.sRateHz
+    P.vcFile = fullfile(fileparts(vcFile_gt_mda), 'raw.mda'); 
+    S_json = loadjson_(fullfile(fileparts(vcFile_gt_mda), 'params.json'));
+    P.sRateHz = get_(S_json, 'samplerate');    
+end
+fCompute_snr_mda = get_set_(P, 'fCompute_snr_mda', get_(S_cfg, 'fCompute_snr_mda'));
+if fCompute_snr_mda
+    [P.freqLim, P.freqLim_width, P.spkLim] = get_(S_cfg, 'freqLim_gt', 'freqLim_width_gt', 'spkLim_ms_gt');
+end
+jitter = get_(P, 'jitter');
+if isempty(jitter)
+    jitter = round(get_(S_cfg, 'spkJitter_ms_gt') * P.sRateHz / 1000); %1 ms jitter    
+end
+fParfor = get_set_(P, 'fParfor', 1);
 
 % read from firings.mda files
 mr_gt = readmda_(vcFile_gt_mda); [viTimeGt, viGt] = deal(mr_gt(2,:)', mr_gt(3,:)'); mr_gt = [];
 mr_clu = readmda_(vcFile_clu_mda); [viTimeClu, viClu] = deal(mr_clu(2,:)', mr_clu(3,:)'); mr_clu = [];
 
-[cviSpk_gt, nGt] = vi2cell_(int32(viGt));
-[cviSpk_clu, nClu] = vi2cell_(int32(viClu));
-cviTime_gt = cellfun(@(vi_)unique(int32(viTimeGt(vi_)/jitter)), cviSpk_gt, 'UniformOutput', 0);
-cviTime_clu = cellfun(@(vi_)unique(int32(viTimeClu(vi_)/jitter)), cviSpk_clu, 'UniformOutput', 0);
+% compare cluster
+[S_score, cviSpk_gt, cviSpk_clu] = compare_clu_(viGt, viTimeGt, viClu, viTimeClu, jitter, fParfor);
 
 % compute the SNR
-if fCompute_snr
+if fCompute_snr_mda
     t1=tic;
     vcFile_filt = strrep(P.vcFile, '.mda', '_filt.mda');
     if exist_file_(vcFile_filt)
@@ -893,9 +895,42 @@ else
     [vrSnr_gt, vrSnr_clu, viSite_gt, viSite_clu, vrNoise_site] = deal([]);
 end
 
+S_score = struct_add_(S_score, vcFile_gt_mda, vcFile_clu_mda, P, S_cfg, ...
+    vrSnr_gt, vrSnr_clu, viSite_gt, viSite_clu, vrNoise_site);
+
+if nargout==0
+    S_score_plot_(S_score, S_cfg);
+    vcFile_score = fullfile(fileparts(vcFile_clu_mda), 'raw_geom_score.mat');
+    struct_save_(S_score, vcFile_score, 1);
+end
+fprintf('\tValidation took %0.1fs\n', toc(t_fun));
+end %func
+
+
+%--------------------------------------------------------------------------
+function [S_compare, cviSpk_gt, cviSpk_clu] = compare_clu_(viGt, viTimeGt, viClu, viTimeClu, jitter, fParfor)
+% usage
+% -----
+% [S_compare, cviSpk_gt, cviSpk_clu] = compare_clu_(viGt, viTimeGt, [], [], jitter, fParfor)
+%    self-comparison
+% [S_compare, cviSpk_gt, cviSpk_clu] = compare_clu_(viGt, viTimeGt, viClu, viTimeClu, jitter, fParfor)
+%    cross-comparison
+
+if nargin<4, fParfor = 0; end
+
+[cviSpk_gt, nGt] = vi2cell_(int32(viGt));
+cviTime_gt = cellfun(@(vi_)unique(int32(viTimeGt(vi_)/jitter)), cviSpk_gt, 'UniformOutput', 0);
+
+if isempty(viClu) && isempty(viTimeClu)
+    [cviSpk_clu, nClu, cviTime_clu] = deal(cviSpk_gt, nGt, cviTime_gt);
+else
+    [cviSpk_clu, nClu] = vi2cell_(int32(viClu));
+    cviTime_clu = cellfun(@(vi_)unique(int32(viTimeClu(vi_)/jitter)), cviSpk_clu, 'UniformOutput', 0);
+end
+
 % Compute intersection
 mnIntersect = zeros(nClu, nGt);
-fParfor = get_set_(P, 'fParfor', 1);
+% fParfor = get_set_(P, 'fParfor', 1);
 if fParfor
     try
         parfor iGt=1:nGt
@@ -929,19 +964,12 @@ mrF1 = 2*mnIntersect ./ mrSum_clu_gt * 100;
 [vrF1_clu, viClu_F1_clu, vrPrecision_F1_clu, vrRecall_F1_clu] = ...
     find_best_score_(mrF1', mrPrecision', mrRecall');
 
-S_score = makeStruct_(vrAccuracy_gt, viClu_gt, vrPrecision_gt, vrRecall_gt, ...
+S_compare = makeStruct_(vnSpk_clu, vnSpk_gt, jitter, nGt, nClu, ...
+    mrPrecision, mrRecall, mrAccuracy, mrF1, ...
+    vrAccuracy_gt, viClu_gt, vrPrecision_gt, vrRecall_gt, ...
     vrAccuracy_clu, viClu_clu, vrPrecision_clu, vrRecall_clu, ...
     vrF1_gt, viClu_F1_gt, vrPrecision_F1_gt, vrRecall_F1_gt, ...
-    vrF1_clu, viClu_F1_clu, vrPrecision_F1_clu, vrRecall_F1_clu, ...
-    vrSnr_gt, vrSnr_clu, viSite_gt, viSite_clu, vrNoise_site, ...
-    vcFile_gt_mda, vcFile_clu_mda, P, nGt, nClu, S_cfg);
-
-if nargout==0
-    S_score_plot_(S_score, S_cfg);
-    vcFile_score = fullfile(fileparts(vcFile_clu_mda), 'raw_geom_score.mat');
-    struct_save_(S_score, vcFile_score, 1);
-end
-fprintf('\tValidation took %0.1fs\n', toc(t_fun));
+    vrF1_clu, viClu_F1_clu, vrPrecision_F1_clu, vrRecall_F1_clu);
 end %func
 
 
@@ -1058,8 +1086,21 @@ end %func
 
 %--------------------------------------------------------------------------
 function vnIntersect = compare_mda_gt_(viTime1, cviTime_clu)
-
+% usage
+% ----
+% vnIntersect = compare_mda_gt_(viTime1, cviTime_clu)
+% mnIntersect = compare_mda_gt_(cviTime_gt, cviTime_clu)
 nClu = numel(cviTime_clu);
+
+if iscell(viTime1)
+    cviTime_gt = viTime1;
+    vnIntersect = zeros(nClu, numel(cviTime_gt));
+    for iGt=1:numel(cviTime_gt)
+        vnIntersect(:, iGt) = compare_mda_gt_(cviTime_gt{iGt}, cviTime_clu);
+    end
+    return;
+end
+
 vnIntersect = zeros(nClu,1);
 if isempty(viTime1), return; end
 lim1 = [min(viTime1), max(viTime1)];
@@ -1508,9 +1549,10 @@ function S_auto = auto_(S0, P)
 
 fprintf('\nauto-merging...\n'); runtime_automerge = tic;
 
-% refresh clu, start with fundamentals
+% Merge based on KNN-graph
 S_auto = postCluster_(S0.S_clu, P, S0.viSite_spk); % peak merging
 
+% Merge based on waveform similarity
 maxWavCor = get_set_(P, 'maxWavCor', .99);
 nClu = get_(S_auto, 'nClu');
 if maxWavCor<1 && nClu > 1
@@ -1518,9 +1560,18 @@ if maxWavCor<1 && nClu > 1
     nClu_pre = S_auto.nClu;
     S0.S_auto = S_auto;
     [S_auto, viClu_delete] = wave_similarity_merge_(S0, P);
-    nClu_post = S_auto.nClu;
     fprintf('\tMerged waveforms (%d->%d->%d), took %0.1fs\n', ...
-        nClu_pre, nClu_post+numel(viClu_delete), nClu_post, toc(t_merge));
+        nClu_pre, S_auto.nClu+numel(viClu_delete), S_auto.nClu, toc(t_merge));
+end
+
+% Mege based on cross-correlogram
+P.cc_merge_thresh = get_set_(P, 'cc_merge_thresh', .5);
+if P.cc_merge_thresh > 0 && P.cc_merge_thresh <1 && nClu > 1
+    nClu_pre = S_auto.nClu;
+    fprintf('\tMerging based on cross-correlogram...\n\t'); t_cc=tic;
+    S_auto = wave_cc_merge_(S0, S_auto, P);
+    fprintf('\tMerged clusters cc>=%0.1f (%d->%d), took %0.1fs\n', ...
+        P.cc_merge_thresh, nClu_pre, S_auto.nClu, toc(t_cc));    
 end
 
 S_auto = S_auto_refrac_(S_auto, P, S0.viTime_spk); % refractory violation removal
@@ -1530,6 +1581,23 @@ S_auto.memory_auto = memory_matlab_();
 S_auto.runtime_automerge = toc(runtime_automerge);
 fprintf('\tauto-merging took %0.1fs (fGpu=%d, fParfor=%d)\n', ...
     S_auto.runtime_automerge, P.fGpu, P.fParfor);
+end %func
+
+
+%--------------------------------------------------------------------------
+function S_auto = wave_cc_merge_(S0, S_auto, P)
+
+cc_merge_thresh = get_set_(P, 'cc_merge_thresh', .5);
+jitter = round(get_set_(P,'spkJitter_ms_gt',1) * P.sRateHz / 1000); %1 ms jitter
+S_compare = compare_clu_(S_auto.viClu, S0.viTime_spk, [], [], jitter, get_(P, 'fParfor'));
+mrCC = max(S_compare.mrPrecision, S_compare.mrRecall);
+cviClu_clu = arrayfun_(@(i)find(mrCC(:,i) >= cc_merge_thresh*100), 1:size(mrCC,1));
+
+% remap clusters
+viMapClu_new = cell2map_(cviClu_clu);
+vlUpdate = S_auto.viClu > 0;
+S_auto.viClu(vlUpdate) = viMapClu_new(S_auto.viClu(vlUpdate));
+S_auto.nClu = sum(unique(viMapClu_new)>0);
 end %func
 
 
@@ -1701,6 +1769,9 @@ end %func
 %--------------------------------------------------------------------------
 % keeps trPc in the main memory, not sent out to workers
 function [S_auto, viClu_remove] = wave_similarity_merge_(S0, P)
+
+fDebug = 0;
+
 S_auto = get_(S0, 'S_auto');
 S_clu = get_(S0, 'S_clu');
 t_fun = tic;
@@ -1726,13 +1797,10 @@ S_param = makeStruct_(nClu, nSites, knn, vcFile_prm, nSpk_min, ...
 % compute pairwise distance in parallel by sites
 [cviClu_clu_site, cvlExist_site] = deal(cell(nSites, 1));
 fParfor = get_set_(P, 'fParfor', 1) && nSites > 1;
-if fParfor %&& ~isLargeRecording_(P)
+if fParfor && ~fDebug
     try
         parfor iSite = 1:nSites
-            try
-                [cviClu_clu_site{iSite}, cvlExist_site{iSite}] = wave_similarity_site_(iSite, S_param);
-            catch
-            end
+            [cviClu_clu_site{iSite}, cvlExist_site{iSite}] = wave_similarity_site_(iSite, S_param);
         end
     catch
     end
@@ -1771,11 +1839,8 @@ nDrift = size(mlDrift, 1);
 % fprintf('\twave_similarity_site_pre_: Site%d... ', iSite1); t_fun=tic;
 miKnn1 = load_miKnn_site_(S_auto, iSite1);
 miKnn1 = miKnn1(1:min(NUM_KNN, size(miKnn1,1)), :);
-% [viLim_drift, nDrift, viClu, nClu, nSpk_min, vrThresh_site, mrPv, mlDrift] = ...
-%     get_(S_auto, 'viLim_drift', 'nDrift', 'viClu', 'nClu', 'nSpk_min', 'vrThresh_site', 'mrPv', 'mlDrift');
 thresh1 = vrThresh_site(iSite1);
 [trPc1, viSpk1] = load_fet_site_(S_auto, 1, iSite1);
-% cc1_drift_clu = cell(nDrift, nClu);
 cvii1_drift = vi2cell_(discretize(viSpk1, viLim_drift), nDrift);
 [vrRho1, viClu1] = deal(S_auto.vrRho(viSpk1), viClu(viSpk1));
 vrRho_1 = copy_mask_(S_auto.vrRho, viSpk1);
