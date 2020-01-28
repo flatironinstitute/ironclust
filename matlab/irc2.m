@@ -643,7 +643,7 @@ title_str_ = @(x)sprintf('n=%d, %0.1f/%0.1f, [%0.1f, %0.1f, *%0.1f, %0.1f, %0.1f
 plot_gt_ = @(x){...
     plot(vrSnr_gt, S_score.(x), 'k.', vrSnr_gt(vlGt), S_score.(x)(vlGt), 'b.'), ...
     xylabel_([],vcX_gt,x,title_str_(S_score.(x)(vlGt)),1), ...
-    text_(vrSnr_gt, S_score.(x), csText_gt, 'VerticalAlignment', 'bottom', 'HorizontalAlignment', 'left')};
+    text_(vrSnr_gt, S_score.(x), csText_gt, 'VerticalAlignment', 'top', 'HorizontalAlignment', 'left')};
 plot_clu_ = @(x){...
     plot(vrSnr_clu, S_score.(x), 'k.', vrSnr_clu(vlClu), S_score.(x)(vlClu), 'b.'), ...
     xylabel_([],vcX_clu,x,title_str_(S_score.(x)(vlClu)),1), ...
@@ -937,7 +937,7 @@ else
 end
 viTime_min_clu = cellfun(@min, cviTime_clu);
 viTime_max_clu = cellfun(@max, cviTime_clu);
-miLim_clu = [viTime_min_clu(:), viTime_max_clu(:)]';
+miLim_clu = [viTime_min_clu(:), viTime_max_clu(:)];
 
 % Compute intersection
 mnIntersect = zeros(nClu, nGt);
@@ -1096,32 +1096,33 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function vnIntersect = compare_mda_gt_(viTime1, cviTime_clu, miLim_clu)
+function vnIntersect = compare_mda_gt_(viTimeA, cviTimeB, miLimB)
 % usage
 % ----
 % vnIntersect = compare_mda_gt_(viTime1, cviTime_clu)
 % mnIntersect = compare_mda_gt_(cviTime_gt, cviTime_clu)
-nClu = numel(cviTime_clu);
+nB = numel(cviTimeB);
 
-if iscell(viTime1)
-    cviTime_gt = viTime1;
-    vnIntersect = zeros(nClu, numel(cviTime_gt));
-    for iGt=1:numel(cviTime_gt)
-        vnIntersect(:, iGt) = compare_mda_gt_(cviTime_gt{iGt}, cviTime_clu, miLim_clu);
+if iscell(viTimeA)
+    cviTimeA = viTimeA;
+    vnIntersect = zeros(nB, numel(cviTimeA));
+    for iGt=1:numel(cviTimeA)
+        vnIntersect(:, iGt) = compare_mda_gt_(cviTimeA{iGt}, cviTimeB, miLimB);
     end
     return;
 end
 
-vnIntersect = zeros(nClu,1);
-if isempty(viTime1), return; end
-lim1 = [min(viTime1), max(viTime1)];
-% overlap_ = @(x)sum(ismember(viTime1,x) | ismember(viTime1,x-1) | ismember(viTime1,x+1));
-overlap_ = @(x)sum(ismember(viTime1,x) | ismember(viTime1+1,x) | ismember(viTime1-1,x));
-for iClu=1:nClu        
-    viTime_clu1 = cviTime_clu{iClu};
-    if a_in_b_(lim1, miLim_clu(:,iClu), 1)
-        vnIntersect(iClu) = overlap_(viTime_clu1);
-    end
+vnIntersect = zeros(nB,1);
+if isempty(viTimeA), return; end
+[minA, maxA] = deal(min(viTimeA), max(viTimeA));
+overlap_ = @(x)sum(ismember(viTimeA,x) | ismember(viTimeA+1,x) | ismember(viTimeA-1,x));
+[minB, maxB] = deal(miLimB(:,1), miLimB(:,2));
+viB_update = find(...
+    (minA >= minB & minA <= maxB) | (maxA >= minB & maxA <= maxB) | ...
+    (minB >= minA & minB <= maxA) | (maxB >= minA & maxB <= maxA));
+viB_update = viB_update(:)';
+for iB = viB_update
+    vnIntersect(iB) = overlap_(cviTimeB{iB});
 end
 end %func
 
