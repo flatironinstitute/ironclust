@@ -6214,7 +6214,7 @@ cs_common_double = {'detect_threshold', 'detect_sign'};
 params = pydict_add_(params, S_arg, cs_common_double, 'double');
 
 % sorter-specific parameters
-[cs_sorter_double, cs_sorter_char, cs_sorter_logical, cs_sorter_pylist] = deal({});
+[cs_sorter_double, cs_sorter_char, cs_sorter_logical, cs_sorter_int, cs_sorter_pylist] = deal({});
 switch lower(vcSorter)
     case 'ironclust'
         cs_sorter_double = {'freq_min', 'adjacency_radius_out', 'merge_thresh', ...
@@ -6241,10 +6241,10 @@ switch lower(vcSorter)
         
     otherwise, error('unsupported sorter');
 end
-params = pydict_add_(params, S_arg, cs_sorter_int, 'int32');
 params = pydict_add_(params, S_arg, cs_sorter_double, 'double');
 params = pydict_add_(params, S_arg, cs_sorter_char, 'char');
 params = pydict_add_(params, S_arg, cs_sorter_logical, @(x)logical_(x));
+params = pydict_add_(params, S_arg, cs_sorter_int, 'int32');
 params = pydict_add_(params, S_arg, cs_sorter_pylist, @(x)py.list(x));
 end %func
 
@@ -6519,7 +6519,7 @@ function optimize_param_(vcDir_rec, vcFile_prmset, vcFile_out)
 % optimize_param_(vcDir_rec, vcFile_prmset)
 % optimize_param_(vcDir_rec, vcFile_prmset, vcFile_out)
 
-[fDebug, fUse_cache, fParfor] = deal(1, 0, 1);
+[fDebug, fUse_cache, fParfor] = deal(0, 0, 1);
 
 if nargin<3, vcFile_out = ''; end
 [~,vcPostfix_] = fileparts(vcFile_prmset); 
@@ -6585,15 +6585,15 @@ end %func
 %--------------------------------------------------------------------------
 function vcSorter = infer_sorter_(vcName)
 vcName = lower(vcName);
-if contains(vcName, {'ironclust', 'irc', 'irc2'}), vcSorter = 'ironclust';
-elseif contains(vcName, {'jrclust', 'jrc'}), vcSorter = 'jrclust';
-elseif contains(vcName, {'kilosort2', 'ks2', 'ksort2'}), vcSorter = 'kilosort2';
-elseif contains(vcName, {'kilosort', 'ks', 'ksort'}), vcSorter = 'kilosort';
+if contains(vcName, {'ironclust','irc2'}), vcSorter = 'ironclust';
+elseif contains(vcName, {'jrclust'}), vcSorter = 'jrclust';
+elseif contains(vcName, {'kilosort2', 'ksort2'}), vcSorter = 'kilosort2';
+elseif contains(vcName, {'kilosort', 'ksort'}), vcSorter = 'kilosort';
 elseif contains(vcName, {'mountainsort4', 'mountainsort', 'ms4'}), vcSorter = 'mountainsort4';
-elseif contains(vcName, {'spykingcircus', 'sc'}), vcSorter = 'spykingcircus';    
-elseif contains(vcName, {'herdingspikes', 'hs', 'hs2', 'herdingspikes2'}), vcSorter = 'herdingspikes2';
+elseif contains(vcName, {'spykingcircus'}), vcSorter = 'spykingcircus';    
+elseif contains(vcName, {'herdingspikes2'}), vcSorter = 'herdingspikes2';
 elseif contains(vcName, {'klusta', 'klustakwik'}), vcSorter = 'klusta';
-elseif contains(vcName, {'tridesclous', 'tdc'}), vcSorter = 'tridesclous';
+elseif contains(vcName, {'tridesclous'}), vcSorter = 'tridesclous';
 elseif contains(vcName, {'waveclus'}), vcSorter = 'waveclus';
 else, error('infer_sorter_: unsupported sorter %s', vcName);
 end %if
@@ -6609,7 +6609,7 @@ end %func
 %--------------------------------------------------------------------------
 function [csDesc, S_best_score] = optimize_param_show_(S_prmset)
 
-[MAX_PRMSET, SNR_THRESH, vcSnr_mode] = deal(inf, 6, 'vrSnr_min_clu'); 
+[MAX_PRMSET, SNR_THRESH, vcSnr_mode] = deal(inf, 0, 'vrSnr_min_clu'); 
 % vrVpp_clu, vrVmin_clu, vrSnr_min_clu
 
 csVar_imported = import_struct_(S_prmset);
@@ -6833,7 +6833,7 @@ for iPrmset = 1:nPrmset
         [cVal_prm1, viPrm1] = permute_prm_(cVal_prm, iPrmset);
         vlPrm_update = viPrm1 ~= viPrm_pre;
         cName_prm1 = cName_prm(vlPrm_update);
-        S_prm1 = cell2struct(cVal_prm1, cName_prm1, 1);
+        S_prm1 = cell2struct(cVal_prm1, cName_prm, 1);
         switch lower(vcSorter)
             case 'ironclust'
                 vcCmd1 = param2cmd_(cName_prm1); 
