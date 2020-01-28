@@ -5781,11 +5781,11 @@ function export_sf2_()
 irc2('compile');
 irc2('mcc');
 S_cfg = read_cfg_();
-[sf2_path, sf2_test_path, sf2_test_script] = ...
-    get_(S_cfg, 'spikeforest2_irc_path', 'spikeforest2_test_path', 'spikeforest2_test_script');
+[sf2_path, sf2_test_path, sf2_python_path, sf2_test_script] = get_(S_cfg, ...
+    'spikeforest2_irc_path', 'spikeforest2_test_path', 'spikeforest2_python_path', 'spikeforest2_test_script');
 copyfile('run_irc', sf2_path);
 system(sprintf('(cd %s && ./build_docker.sh && ./push_docker.sh)', sf2_path), '-echo');
-system(sprintf('(cd %s && python %s)', sf2_test_path, sf2_test_script), '-echo');
+system(sprintf('(cd %s && %s %s)', sf2_test_path, sf2_python_path, sf2_test_script), '-echo');
 end %func
 
 
