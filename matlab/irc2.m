@@ -855,7 +855,7 @@ fprintf('Validating cluster...\n'); t_fun = tic;
 if nargin<3, P=[]; end
 S_cfg = read_cfg_();
 P.sRateHz = get_(P, 'sRateHz');
-if P.sRateHz
+if isempty(P.sRateHz)
     P.vcFile = fullfile(fileparts(vcFile_gt_mda), 'raw.mda'); 
     S_json = loadjson_(fullfile(fileparts(vcFile_gt_mda), 'params.json'));
     P.sRateHz = get_(S_json, 'samplerate');    
@@ -930,11 +930,13 @@ if nargin<4, fParfor = 0; end
 cviTime_gt = cellfun(@(vi_)unique(int32(viTimeGt(vi_)/jitter)), cviSpk_gt, 'UniformOutput', 0);
 
 if isempty(viClu) && isempty(viTimeClu)
-    [cviSpk_clu, nClu, cviTime_clu] = deal(cviSpk_gt, nGt, cviTime_gt);
+    [cviSpk_clu, ~, cviTime_clu] = deal(cviSpk_gt, nGt, cviTime_gt);
 else
-    [cviSpk_clu, nClu] = vi2cell_(int32(viClu));
+    [cviSpk_clu, ~] = vi2cell_(int32(viClu));
     cviTime_clu = cellfun(@(vi_)unique(int32(viTimeClu(vi_)/jitter)), cviSpk_clu, 'UniformOutput', 0);
 end
+cviTime_clu = cviTime_clu(~cellfun(@isempty, cviTime_clu));
+nClu = numel(cviTime_clu);
 viTime_min_clu = cellfun(@min, cviTime_clu);
 viTime_max_clu = cellfun(@max, cviTime_clu);
 miLim_clu = [viTime_min_clu(:), viTime_max_clu(:)];
@@ -5554,7 +5556,7 @@ for iRepeat = 1:nRepeat
         viClu1 = cat(1, viClu1(:), cvi_clu{viClu1});
         cvi_clu1(viClu1) = {int32(viClu1)};
     end    
-    cvi_clu1 = func_parfor_(@unique, cvi_clu1, fParfor);
+    cvi_clu1 = func_parfor_(@unique, cvi_clu1, 0);    
     if all(cellfun(@numel, cvi_clu1) == cellfun(@numel, cvi_clu))
         break;
     else
@@ -6221,8 +6223,9 @@ switch lower(vcSorter)
         cs_sorter_char = {'common_ref_type'};
         cs_sorter_logical = {'whiten', 'fGpu', 'filter'};
     case 'mountainsort4'
-        cs_sorter_double = {'freq_min', 'clip_size', 'detect_interval', 'freq_max', 'adjacency_radius'};
+        cs_sorter_double = {'freq_min', 'detect_interval', 'freq_max', 'adjacency_radius'};
         cs_sorter_logical = {'curation', 'whiten', 'filter'};
+        cs_sorter_int = {'clip_size'};
     case 'kilosort2'
         cs_sorter_double = {'freq_min', 'sigmaMask', 'nPCs', 'minFR', 'Nt', 'preclust_threshold', 'adjacency_radius'};
         cs_sorter_logical = {'car'};
@@ -6238,6 +6241,7 @@ switch lower(vcSorter)
         
     otherwise, error('unsupported sorter');
 end
+params = pydict_add_(params, S_arg, cs_sorter_int, 'int32');
 params = pydict_add_(params, S_arg, cs_sorter_double, 'double');
 params = pydict_add_(params, S_arg, cs_sorter_char, 'char');
 params = pydict_add_(params, S_arg, cs_sorter_logical, @(x)logical_(x));
@@ -6515,7 +6519,7 @@ function optimize_param_(vcDir_rec, vcFile_prmset, vcFile_out)
 % optimize_param_(vcDir_rec, vcFile_prmset)
 % optimize_param_(vcDir_rec, vcFile_prmset, vcFile_out)
 
-[fDebug, fUse_cache, fParfor] = deal(0, 1, 1);
+[fDebug, fUse_cache, fParfor] = deal(1, 0, 1);
 
 if nargin<3, vcFile_out = ''; end
 [~,vcPostfix_] = fileparts(vcFile_prmset); 
@@ -6543,7 +6547,7 @@ if isempty(S_prmset_rec)
     nPrmset = prod(cellfun(@numel, cVal_prm));
     ccScore_prmset_rec = cell(nPrmset, nRec);
 
-    if fDebug, [fParfor, nRec] = deal(1, 4); end
+    if fDebug, [fParfor, nRec] = deal(0, 4); end
 
     if fParfor==0, fprintf(2, 'optimize_param_: fParfor=0\n'); end
     if fParfor
@@ -6829,17 +6833,16 @@ for iPrmset = 1:nPrmset
         [cVal_prm1, viPrm1] = permute_prm_(cVal_prm, iPrmset);
         vlPrm_update = viPrm1 ~= viPrm_pre;
         cName_prm1 = cName_prm(vlPrm_update);
+        S_prm1 = cell2struct(cVal_prm1, cName_prm1, 1);
         switch lower(vcSorter)
             case 'ironclust'
                 vcCmd1 = param2cmd_(cName_prm1); 
                 edit_prm_file_(cell2struct(cVal_prm1(vlPrm_update), cName_prm1, 1), vcFile_prm); % edit file
                 irc2(vcCmd1, vcFile_prm);    
-            case 'kilosort2'
-                struct2meta_(cell2struct(cVal_prm1, cName_prm1, 1), vcParam1);
-                run_ksort2(vcDir_in, vcDir_out, vcParam1);                   
-            case {'mountainsort', 'spykingcircus', 'tridesclous', 'herdingspikes2', 'klusta', 'waveclus'}
-                struct2meta_(cell2struct(cVal_prm1, cName_prm1, 1), vcParam1);
-                run_spikeforest2_(vcSorter, vcDir_in, vcDir_out, vcParam1);    
+%             case 'kilosort2'
+%                 run_ksort2(vcDir_in, vcDir_out, S_prm1);                   
+            case {'kilosort2', 'mountainsort4', 'spykingcircus', 'tridesclous', 'herdingspikes2', 'klusta', 'waveclus'}
+                run_spikeforest2_(vcSorter, vcDir_in, vcDir_out, S_prm1);    
 %             case {'jrclust', 'kilosort'}
             otherwise
                 error('unsupported sorters: %s', vcSorter);
