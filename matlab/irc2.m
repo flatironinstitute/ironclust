@@ -5780,7 +5780,9 @@ end %func
 function export_sf2_()
 irc2('compile');
 irc2('mcc');
-copyfile('run_irc', read_cfg_('spikeforest2_irc_path'));
+sf2_path = read_cfg_('spikeforest2_irc_path');
+copyfile('run_irc', sf2_path);
+system(sprintf('(cd %s && ./build_docker.sh && ./push_docker.sh)', sf2_path));
 end %func
 
 
