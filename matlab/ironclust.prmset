@@ -1,6 +1,6 @@
 % filter
-freqLim = {[300,6000], [300,8000]};
-qqFactor = {3.5, 4, 4.5};
+freqLim = {[300,8000]};
+qqFactor = {4};
 
 % fft_thresh = {0, 8, 10, 12};
 % detect (disable filter)
@@ -10,4 +10,4 @@ qqFactor = {3.5, 4, 4.5};
 
 
 % merge
-maxWavCor = {.985, .99, .995, 1};
+maxWavCor = {.99};

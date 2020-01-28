@@ -49,12 +49,12 @@ end %func
 %--------------------------------------------------------------------------
 function plot_FigWav_(S0)
 
-P = S0.P; S_clu = S0.S_clu;
+[P, S_auto] = get_(S0, 'P', 'S_auto');
 [hFig, S_fig] = get_fig_cache_('FigWav'); 
 
 % Show number of spikes per clusters
 P.LineWidth = 1; %plot a thicker line
-P.viSite_clu = S_clu.viSite_clu;
+P.viSite_clu = S_auto.viSite_clu;
 nSites = numel(P.viSite2Chan);
 if isempty(S_fig) % initialize
     S_fig.maxAmp = P.maxAmp;
@@ -65,12 +65,12 @@ if isempty(S_fig) % initialize
     xylabel_(S_fig.hAx, 'Cluster #', 'Site #', sprintf(S_fig.vcTitle, S_fig.maxAmp));
 
     set(hFig, 'KeyPressFcn', @keyPressFcn_FigWav_, 'CloseRequestFcn', @exit_manual_, 'BusyAction', 'cancel');
-    axis(S_fig.hAx, [0, S_clu.nClu + 1, 0, nSites + 1]);
+    axis(S_fig.hAx, [0, S_auto.nClu + 1, 0, nSites + 1]);
     add_menu_(hFig, P);      
 %     vrPos_ = get(hFig, 'OuterPosition');
     mouse_figure(hFig, S_fig.hAx, @button_CluWav_);
     S_fig = plot_spkwav_(S_fig, S0); %plot spikes
-    S_fig = plot_tnWav_clu_(S_fig, P); %do this after plotSpk_
+    S_fig = plot_tnWav_clu_(S_fig, P, S0); %do this after plotSpk_
     S_fig.cvhHide_mouse = mouse_hide_(hFig, S_fig.hSpkAll, S_fig);
 %     set(hFig, 'OuterPosition', vrPos_);
 else
@@ -78,14 +78,14 @@ else
     S_fig = plot_spkwav_(S_fig, S0); %plot spikes
     try delete(S_fig.vhPlot); catch; end %delete old text
     S_fig = rmfield_(S_fig, 'vhPlot');
-    S_fig = plot_tnWav_clu_(S_fig, P); %do this after plotSpk_
+    S_fig = plot_tnWav_clu_(S_fig, P, S0); %do this after plotSpk_
 %     xylabel_(S_fig.hAx, 'Cluster #', 'Site #');
 end
 
 % create text
 % S0 = set0_(mh_info);
 fText = get_set_(S_fig, 'fText', get_set_(P, 'Text', 1));
-S_fig = figWav_clu_count_(S_fig, S_clu, fText);
+S_fig = figWav_clu_count_(S_fig, S_auto, fText);
 S_fig.csHelp = { ...            
     '[Left-click] Cluter select/unselect (point at blank)', ...
     '[Right-click] Second cluster select (point at blank)', ...
@@ -124,12 +124,181 @@ end %func
 
 
 %--------------------------------------------------------------------------
+function S_fig = figWav_clu_count_(S_fig, S_clu, fText)
+if nargin==0, [hFig, S_fig] = get_fig_cache_('FigWav'); end
+if nargin<3, fText = 1; end
+
+if fText
+    csText_clu = arrayfun(@(i)sprintf('%d(%d)', i, S_clu.vnSpk_clu(i)), 1:S_clu.nClu, 'UniformOutput', 0);
+else
+    csText_clu = arrayfun(@(i)sprintf('%d', i), 1:S_clu.nClu, 'UniformOutput', 0);
+end
+set(S_fig.hAx, 'Xtick', 1:S_clu.nClu, 'XTickLabel', csText_clu, 'FontSize', 8);
+try
+    if fText
+        xtickangle(S_fig.hAx, -20); 
+    else
+        xtickangle(S_fig.hAx, 0); 
+    end
+catch; 
+end
+
+S_fig.fText = fText;
+if nargout==0
+    hFig = get_fig_cache_('FigWav');
+    set(hFig, 'UserData', S_fig);
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+function cvhHide_mouse = mouse_hide_(hFig, hObj_hide, S_fig)
+% hide during mouse pan to speed up     
+if nargin<3, S_fig = get(hFig, 'UserData'); end
+% if nargin<3, S0 = get(0, 'UserData'); end
+if nargin == 0 %clear field
+%     try S_fig = rmfield(S_fig, 'vhFig_mouse'); catch; end
+    try S_fig = rmfield(S_fig, 'cvhHide_mouse'); catch; end
+else
+    if ~isfield(S_fig, 'vhFig_mouse') && ~isfield(S_fig, 'cvhHide_mouse')
+%         S_fig.vhFig_mouse = hFig;
+        S_fig.cvhHide_mouse = {hObj_hide};    
+    else
+%         S_fig.vhFig_mouse(end+1) = hFig;
+        S_fig.cvhHide_mouse{end+1} = hObj_hide;
+    end
+end
+cvhHide_mouse = S_fig.cvhHide_mouse;
+if nargout==0, set(hFig, 'UserData', S_fig); end
+end %func
+
+
+%--------------------------------------------------------------------------
+function S_fig = plot_spkwav_(S_fig, S0)
+% fPlot_raw = 0;
+if nargin<2, S0 = []; end
+if isempty(S0), S0 = get(0, 'UserData'); end
+[P, viSite_spk, S_auto] = deal(S0.P, S0.viSite_spk, S0.S_auto);
+
+[cvrX, cvrY, cviSite] = deal(cell(S_auto.nClu, 1));
+vnSpk = zeros(S_auto.nClu, 1);
+miSites_clu = P.miSites(:, S_auto.viSite_clu);
+if isfield(S_fig, 'maxAmp')
+    maxAmp = S_fig.maxAmp;
+else
+    maxAmp = P.maxAmp;
+end
+
+for iClu = 1:S_auto.nClu        
+    try   
+        viSpk_show = randomSelect_(S_clu_viSpk_(S_auto, iClu, viSite_spk), P.nSpk_show);
+        trWav1 = pc2wav_(S0.mrPv_global, S0.trPc_spk(:,:,viSpk_show));
+        viSite_show = miSites_clu(:, iClu);
+        [cvrY{iClu}, cvrX{iClu}] = tr2plot_(trWav1, iClu, viSite_show, maxAmp, P);
+        cviSite{iClu} = viSite_show;
+        vnSpk(iClu) = size(trWav1, 3); %subsample 
+    catch
+        disperr_();
+    end
+end
+S = makeStruct_(cvrY, cviSite, vnSpk);
+try
+    set(S_fig.hSpkAll, 'XData', cell2mat_(cvrX), 'YData', cell2mat_(cvrY), 'UserData', S);
+catch
+    S_fig.hSpkAll = plot_(S_fig.hAx, cell2mat_(cvrX), cell2mat_(cvrY), 'Color', [.5 .5 .5], 'LineWidth', .5); %, P.LineStyle); 
+    set(S_fig.hSpkAll, 'UserData', S);
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+function S = rmfield_(S, varargin)
+% varargin: list of fields to remove
+for i=1:numel(varargin)
+    if isfield(S, varargin{i})
+        S = rmfield(S, varargin{i});
+    end
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+function auto_split_(fMulti, S0)
+% Auto-split feature that calls Hidehiko Inagaki's code
+% 20160426
+if nargin<1, fMulti = 0; end
+if nargin<2, S0 = []; end
+if isempty(S0), S0 = get(0, 'UserData'); end
+[P, S_clu] = deal(S0.P, S0.S_clu);
+
+if ~isempty(S0.iCluPaste), msgbox_('Select one cluster', 1); return; end
+if S_clu.vnSpk_clu(S0.iCluCopy)<3
+    msgbox_('At least three spikes required for splitting', 1); return; 
+end
+    
+hMsg = msgbox_('Splitting... (this closes automatically)');
+iClu1 = S0.iCluCopy;
+iSite1 = S_clu.viSite_clu(iClu1);
+if fMulti
+    viSites1 = P.miSites(1:P.nSites_fet, iSite1);
+else
+    viSites1 = iSite1;
+end
+% mrSpkWav1 = tnWav2uV_(tnWav_sites_(tnWav_spk, S_clu.cviSpk_clu{iClu1}, viSites1));
+trSpkWav1 = tnWav2uV_(tnWav_spk_sites_(S_clu.cviSpk_clu{iClu1}, viSites1, S0), P, 0);
+% mrSpkWav1 = tnWav2uV_(tnWav_spk_sites_(find(S_clu.viClu==iClu1), viSites1, S0), P);
+[vlSpkIn, mrFet_split, vhAx, hFigTemp] = auto_split_wav_(trSpkWav1, [], 2, viSites1);
+[hPoly, hFig_wav] = deal([]);
+try 
+    drawnow_(); 
+    close(hMsg); 
+catch
+    ;
+end
+while 1
+    vcAns = questdlg_('Split?', 'confirmation', 'Yes', 'No', 'Manual', 'Yes');
+    close_(hFig_wav, hPoly); 
+    switch lower(vcAns)        
+        case 'yes', close_(hFigTemp); break;
+        case {'no', ''}, close(hFigTemp); return;            
+        case 'manual'
+            %vcAns = questdlg_('Select projection', '', 'PC1 vs PC2', 'PC3 vs PC2', 'PC1 vs PC3', 'PC1 vs PC2');
+            csAns_opt = {'PC1 vs PC2', 'PC3 vs PC2', 'PC1 vs PC3', 'Waveform'};
+            [iAns, fSelected] = listdlg('PromptString', 'Select a projection', ...
+                'SelectionMode', 'single', 'ListString', csAns_opt);
+            if ~fSelected, close_(hFigTemp); return; end
+            vcAns = csAns_opt{iAns};                
+            switch vcAns
+                case 'PC1 vs PC2', [hAx_, iAx1, iAx2] = deal(vhAx(1), 1, 2);
+                case 'PC3 vs PC2', [hAx_, iAx1, iAx2] = deal(vhAx(2), 3, 2);
+                case 'PC1 vs PC3', [hAx_, iAx1, iAx2] = deal(vhAx(3), 1, 3);
+                case 'Waveform', [vlSpkIn, hFig_wav] = wave_split_manual_(trSpkWav1, viSites1, P);
+                otherwise, close_(hFigTemp); return; 
+            end              
+            if ~strcmpi(vcAns, 'Waveform')                
+                axes(hAx_); 
+                cla(hAx_);
+                [vrX1, vrY1] = deal(mrFet_split(:,iAx1), mrFet_split(:,iAx2));
+                plot_(hAx_, vrX1, vrY1, 'k.');                
+                hPoly = impoly_();
+                if isempty(hPoly), close_(hFigTemp); return; end 
+                mrPolyPos = getPosition(hPoly);              
+                vlSpkIn = inpolygon(vrX1, vrY1, mrPolyPos(:,1), mrPolyPos(:,2));
+                plot_(hAx_, vrX1(vlSpkIn), vrY1(vlSpkIn), 'b.', vrX1(~vlSpkIn), vrY1(~vlSpkIn), 'r.');
+            end            
+    end %switch
+end
+split_clu_(iClu1, vlSpkIn);
+end %func
+
+
+%--------------------------------------------------------------------------
 function S0 = keyPressFcn_FigWav_(hObject, event, S0) %amp dist
 global fDebug_ui
 if isempty(fDebug_ui), fDebug_ui = false; end
 
 if nargin<3, S0 = get(0, 'UserData'); end
-P = S0.P; S_clu = S0.S_clu;
+[P, S_auto] = get_(S0, 'P', 'S_clu');
 P.LineStyle=[];
 nSites = numel(P.viSite2Chan);
 hFig = hObject;
@@ -145,13 +314,13 @@ switch lower(event.Key)
         if strcmpi(event.Key, 'home')
             S0.iCluCopy = 1;
         elseif strcmpi(event.Key, 'end')
-            S0.iCluCopy = S_clu.nClu;
+            S0.iCluCopy = S_auto.nClu;
         elseif ~key_modifier_(event, 'shift');
             if strcmpi(event.Key, 'leftarrow')
                 if S0.iCluCopy == 1, return; end
                 S0.iCluCopy = S0.iCluCopy - 1;
             else
-                if S0.iCluCopy == S_clu.nClu, return; end
+                if S0.iCluCopy == S_auto.nClu, return; end
                 S0.iCluCopy = S0.iCluCopy + 1;
             end
         else
@@ -162,7 +331,7 @@ switch lower(event.Key)
                 if S0.iCluPaste == 1, return; end
                 S0.iCluPaste = S0.iCluPaste - 1;
             else
-                if S0.iCluPaste == S_clu.nClu, return; end
+                if S0.iCluPaste == S_auto.nClu, return; end
                 S0.iCluPaste = S0.iCluPaste + 1;
             end
         end
@@ -174,7 +343,7 @@ switch lower(event.Key)
     case 'space'
         ui_zoom_(S0, hFig);
         % auto-select nearest cluster for black
-        mrWavCor = S_clu.mrWavCor;
+        mrWavCor = S_auto.mrWavCor;
         mrWavCor(S0.iCluCopy,S0.iCluCopy) = -inf;
         [~,S0.iCluPaste] = max(mrWavCor(:,S0.iCluCopy));
         set(0, 'UserData', S0);
@@ -197,7 +366,7 @@ switch lower(event.Key)
     case 'j', plot_FigProj_(S0); %projection view        
     case 'n'
         fText = get_set_(S_fig, 'fText', get_set_(P, 'fText', 1));
-        figWav_clu_count_(S_fig, S_clu, ~fText);          
+        figWav_clu_count_(S_fig, S_auto, ~fText);          
     case 'i', plot_FigHist_(S0); %ISI histogram               
     case 'e', plot_FigMap_(S0);        
     case 'u', update_FigCor_(S0);        
@@ -727,42 +896,446 @@ end %func
 
 
 %--------------------------------------------------------------------------
-% irc2.m
-%--------------------------------------------------------------------------
-function varargout = load0_(varargin), fn=dbstack(); [varargout{1}] = irc2('call', fn(1).name, varargin); end
-function varargout = is_sorted_(varargin), fn=dbstack(); [varargout{1}] = irc2('call', fn(1).name, varargin); end
-function varargout = load_fet_(varargin), fn=dbstack(); [varargout{1}] = irc2('call', fn(1).name, varargin); end
-function varargout = get_set_(varargin), fn=dbstack(); [varargout{1}] = irc2('call', fn(1).name, varargin); end
-function varargout = xylabel_(varargin), fn=dbstack(); [varargout{1}] = irc('call', fn(1).name, varargin); end
-function varargout = cell2mat_(varargin), fn=dbstack(); [varargout{1}] = irc('call', fn(1).name, varargin); end
+function drawnow_()
+try
+    drawnow limitrate;
+catch
+    drawnow();
+end
+end %func
 
-function varargout = load_fet_site_(varargin), fn=dbstack(); [varargout{1}, varargout{2}] = irc2('call', fn(1).name, varargin); end
-function varargout = validate_(varargin), fn=dbstack(); [varargout{1}, varargout{2}] = irc2('call', fn(1).name, varargin); end
+
+%--------------------------------------------------------------------------
+function auto_scale_proj_time_(S0, fPlot)
+% auto-scale and refgresh
+if nargin<1, S0 = get(0, 'UserData'); end
+if nargin<2, fPlot = 0; end
+
+autoscale_pct = get_set_(S0.P, 'autoscale_pct', 99.5);
+[hFig_proj, S_fig_proj] = get_fig_cache_('FigProj');
+[mrMin0, mrMax0, mrMin1, mrMax1, mrMin2, mrMax2] = fet2proj_(S0, S_fig_proj.viSites_show);
+if isempty(mrMin2) || isempty(mrMax2)
+    cmrAmp = {mrMin1, mrMax1};
+else
+    cmrAmp = {mrMin1, mrMax1, mrMin2, mrMax2};
+end
+S_fig_proj.maxAmp = max(cellfun(@(x)quantile(x(:), autoscale_pct/100), cmrAmp));
+set(hFig_proj, 'UserData', S_fig_proj);
+
+
+% Update time
+[hFig_time, S_fig_time] = get_fig_cache_('FigTime');
+iSite = S0.S_clu.viSite_clu(S0.iCluCopy);
+% [vrFet0, vrTime0] = getFet_site_(iSite, [], S0);    % plot background    
+[vrFet1, vrTime1, vcYlabel, viSpk1] = getFet_site_(iSite, S0.iCluCopy, S0); % plot iCluCopy
+if isempty(S0.iCluPaste)
+%     vrFet = [vrFet0(:); vrFet1(:)];
+    cvrFet = {vrFet1};
+else
+    [vrFet2, vrTime2, vcYlabel, viSpk2] = getFet_site_(iSite, S0.iCluPaste, S0); % plot iCluCopy
+%     vrFet = [vrFet0(:); vrFet1(:); vrFet2(:)];
+    cvrFet = {vrFet1, vrFet2};
+end
+% S_fig_time.maxAmp = quantile(vrFet, autoscale_pct/100);
+S_fig_time.maxAmp = max(cellfun(@(x)quantile(x(:), autoscale_pct/100), cvrFet));
+set(hFig_time, 'UserData', S_fig_time);
+
+% plot
+if fPlot
+    keyPressFcn_cell_(get_fig_cache_('FigWav'), {'j', 't'}, S0); 
+else
+    rescale_FigProj_(S_fig_proj.maxAmp, hFig_proj, S_fig_proj, S0);    
+    rescale_FigTime_(S_fig_time.maxAmp, S0, S0.P);
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+function [hFig, S_fig] = plot_FigWavCor_(S0)
+if nargin<1, S0 = get(0, 'UserData'); end
+S_clu = S0.S_clu; P = S0.P;
+[hFig, S_fig] = get_fig_cache_('FigWavCor'); 
+
+figure_wait_(1, hFig);
+nClu = S_clu.nClu;
+% Plot
+if isempty(S_fig)
+    S_fig.hAx = axes_new_(hFig);
+    set(S_fig.hAx, 'Position', [.1 .1 .8 .8], 'XLimMode', 'manual', 'YLimMode', 'manual', 'Layer', 'top');
+    set(S_fig.hAx, {'XTick', 'YTick'}, {1:nClu, 1:nClu});
+    axis_(S_fig.hAx, [0 nClu 0 nClu]+.5);
+    axis(S_fig.hAx, 'xy');
+    grid(S_fig.hAx, 'on');
+    xlabel(S_fig.hAx, 'Clu#'); 
+    ylabel(S_fig.hAx, 'Clu#');
+    S_fig.hImWavCor = imagesc(S_clu.mrWavCor, P.corrLim);  %clears title and current figure
+    S_fig.hCursorV = line([1 1], [.5 nClu+.5], 'Color', [0 0 0], 'LineWidth', 1.5); 
+    S_fig.hCursorH = line([.5 nClu+.5], [1 1], 'Color', [1 0 0], 'LineWidth', 1.5);             
+    colorbar(S_fig.hAx);
+    S_fig.vcTitle = '[S]plit; [M]erge; [D]elete';
+    set(hFig, 'KeyPressFcn', @keyPressFcn_FigWavCor_);
+    mouse_figure(hFig, S_fig.hAx, @button_FigWavCor_);
+    S_fig.hDiag = plotDiag_([0, nClu, .5], 'Color', [0 0 0], 'LineWidth', 1.5);
+else
+    set(S_fig.hImWavCor, 'CData', S_clu.mrWavCor);
+    set(S_fig.hCursorV, 'xdata', [1 1], 'ydata', [.5 nClu+.5]);
+    set(S_fig.hCursorH, 'xdata', .5+[0 nClu], 'ydata', [1 1]);
+end
+% output
+set(hFig, 'UserData', S_fig);
+figure_wait_(0, hFig);
+end %func
+
+
+%--------------------------------------------------------------------------
+function S0 = button_CluWav_simulate_(iCluCopy, iCluPaste, S0)
+if nargin<3,  S0 = get(0, 'UserData'); end
+if nargin<2, iCluPaste = []; end
+if iCluCopy == iCluPaste, iCluPaste = []; end
+hFig_wait = figure_wait_(1);
+
+S0 = update_cursor_(S0, iCluCopy, 0);
+S0 = update_cursor_(S0, iCluPaste, 1);
+S0 = keyPressFcn_cell_(get_fig_cache_('FigWav'), {'j','t','c','i','v','e','f'}, S0); %'z' to recenter
+set(0, 'UserData', S0);
+
+auto_scale_proj_time_(S0);
+figure_wait_(0, hFig_wait);
+
+plot_raster_(S0); %psth
+ui_show_elective_();
+end
+
+
+%--------------------------------------------------------------------------
+function button_CluWav_(xyPos, vcButton)
+if strcmpi(vcButton, 'normal')
+    event.Button = 1;
+elseif strcmpi(vcButton, 'alt')
+    event.Button = 3;
+else
+    return;
+end
+xPos = round(xyPos(1));
+S0 = get(0, 'UserData');
+switch(event.Button)
+    case 1 %left click. copy clu and delete existing one
+        S0 = update_cursor_(S0, xPos, 0);
+    case 2 %middle, ignore
+        return; 
+    case 3 %right click. paste clu
+        S0 = update_cursor_(S0, xPos, 1);
+end
+hFig_wait = figure_wait_(1);
+S0 = keyPressFcn_cell_(get_fig_cache_('FigWav'), {'j','t','c','i','v','e','f'}, S0); %'z'
+auto_scale_proj_time_(S0);
+set(0, 'UserData', S0);
+plot_raster_(S0);
+ui_show_elective_();
+figure_wait_(0, hFig_wait);
+end %func
+
+
+%--------------------------------------------------------------------------
+function trWav_clu = S0_trWav_clu_(S0)
+nSamples_max = 2^10;
+
+cviSite_spk_clu = cellfun_(@(x)S0.viSite_spk(x), S0.S_auto.cviSpk_clu);
+cviSite_clu = arrayfun_(@(x)x,S0.S_auto.viSite_clu);
+cviSpk_clu = cellfun_(@(x,y,z)x(y==z), S0.S_auto.cviSpk_clu, cviSite_spk_clu, cviSite_clu);
+
+trWav_clu = cellfun_(@(x)mean(...
+    pc2wav_(S0.mrPv_global, S0.trPc_spk(:,:,subsample_vr_(x,nSamples_max))),3), ...
+        cviSpk_clu);
+trWav_clu = cat(3, trWav_clu{:});
+end %func
+
+
+%--------------------------------------------------------------------------
+function S_fig = plot_tnWav_clu_(S_fig, P, S0)
+% Substituting plot_spk_
+% S0 = get(0, 'UserData'); 
+S_auto = S0.S_auto;
+if ~isfield(P, 'LineWidth'), P.LineWidth=1; end
+% trWav_clu = ifeq_(P.fWav_raw_show, S_auto.trWav_raw_clu, S_auto.trWav_spk_clu);
+trWav_clu = S0_trWav_clu_(S0);
+[nSamples, nSites, nClu] = size(trWav_clu);
+nChans_show = size(P.miSites, 1);
+miSites_clu = P.miSites(:, S_auto.viSite_clu);
+% nSites = numel(P.viSite2Chan);
+
+% determine x
+x_offset = P.spkLim(2) / (diff(P.spkLim)+1); %same for raw and filt
+vrX = (1:nSamples*nClu)/nSamples + x_offset;
+vrX(1:nSamples:end) = nan;
+vrX(nSamples:nSamples:end) = nan;
+trWav_clu = trWav_clu / S_fig.maxAmp;
+
+% nChans_show = size(P.miSites,1);
+mrX = repmat(vrX(:), [1, nChans_show]);
+mrX = reshape(mrX, [nSamples, nClu, nChans_show]);
+mrX = reshape(permute(mrX, [1 3 2]), [nSamples*nChans_show, nClu]);
+
+mrY = zeros(nSamples * nChans_show, nClu, 'single');
+for iClu=1:nClu
+    viSites1 = miSites_clu(:,iClu);
+    mrY1 = trWav_clu(:,:,iClu);
+    mrY1 = bsxfun(@plus, mrY1, single(viSites1'));
+    mrY(:,iClu) = mrY1(:);
+end
+    
+% if isempty(P.LineStyle)
+if isfield(S_fig, 'vhPlot')
+    plot_update_(S_fig.vhPlot, mrX, mrY); 
+else
+    S_fig.vhPlot = plot_group_(S_fig.hAx, mrX, mrY, 'LineWidth', P.LineWidth); 
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+% 11/19/2018 JJJ: version-neutral uimenu
+function h = uimenu_(varargin)
+cell_args = varargin;
+hFig = varargin{1};
+position0 = [];
+try
+    if isa(hFig, 'matlab.ui.Figure')
+        position0 = hFig.OuterPosition;
+    end
+catch
+    ;
+end
+% csFields = varargin(2:2:end);
+if version_matlab_() >= 2017.5 % new version calls Label as Text
+    cell_args = cellstr_subs_(cell_args, 'Label', 'Text', 1);
+else
+    cell_args = cellstr_subs_(cell_args, 'Text', 'Label', 1);
+end
+h = uimenu(cell_args{:});
+if ~isempty(position0)
+    drawnow;
+    hFig.OuterPosition = position0;
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+function S_userdata = set_userdata_(varargin)
+% Usage
+% -----
+% S_userdata = set_userdata_(h, val)
+% S_userdata = set_userdata_(h, name1, val1, name2, val2, ...)
+h = varargin{1};
+S_userdata = get(h, 'UserData');
+if nargin==2
+    [val, vcName] = deal(varargin{2}, inputname(2));
+    try
+        S_userdata.(vcName) = val;
+    catch
+        disp(lasterr());
+    end
+elseif nargin>2
+    
+    for iArg_in = 2:2:nargin
+        [vcName1, val1] = deal(varargin{iArg_in}, varargin{iArg_in+1});
+        S_userdata.(vcName1) = val1;
+    end %for
+else
+    return;
+end
+set(h, 'UserData', S_userdata);
+end %func
+
+
+%--------------------------------------------------------------------------
+function vc = if_on_off_(vc, cs)
+if ischar(cs), cs = {cs}; end
+vc = ifeq_(ismember(vc, cs), 'on', 'off');
+end %func
+
+
+%---------------------------------------------------------------------------
+function out = ifeq_(if_, true_, false_)
+if (if_)
+    out = true_;
+else
+    out = false_;
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+% 12/21/17 JJJ: Get the tag by name which is cached (like hash table)
+function hObj = get_tag_(vcTag, vcType)
+% clear before starting manual
+% Return from persistent cache
+% Create a new figure if Tag doesn't exist
+
+persistent S_tag_cache_
+if nargin<2, vcType = []; end
+if isempty(S_tag_cache_)
+    S_tag_cache_ = struct(); 
+else
+    if isfield(S_tag_cache_, vcTag)
+        hObj = S_tag_cache_.(vcTag);
+        if isvalid_(hObj), return; end
+    end
+end
+hObj = findobj('Tag', vcTag, 'Type', vcType);
+S_tag_cache_.(vcTag) = hObj;
+end %func
+
+
+%--------------------------------------------------------------------------
+function [viSpk_clu1, viiSpk_clu1] = S_clu_viSpk_(S_clu, iClu1, viSite_spk)
+% get a subset of cluster that is centered
+% return only centered spikes
+% if nargin<2, S0 = get(0, 'UserData'); end
+% S_clu = S0.S_clu;
+if nargin<3, viSite_spk = get0_('viSite_spk'); end
+iSite_clu1 = S_clu.viSite_clu(iClu1);
+viSpk_clu1 = S_clu.cviSpk_clu{iClu1};
+viSite_clu1 = viSite_spk(viSpk_clu1);
+viiSpk_clu1 = find(viSite_clu1 == iSite_clu1);
+viSpk_clu1 = viSpk_clu1(viiSpk_clu1);
+end %func
+
+
+%--------------------------------------------------------------------------
+function cell_out = call_irc2_(dbstack1, cell_input, nargout)
+vcFunc = dbstack1(1).name;
+try
+    switch nargout
+        case 0, cell_out{1} = []; irc2('call', vcFunc, cell_input);
+        case 1, cell_out{1} = irc2('call', vcFunc, cell_input);
+        case 2, [cell_out{1}, cell_out{2}] = irc2('call', vcFunc, cell_input);
+        case 3, [cell_out{1}, cell_out{2}, cell_out{3}] = irc2('call', vcFunc, cell_input);
+        case 4, [cell_out{1}, cell_out{2}, cell_out{3}, cell_out{4}] = irc2('call', vcFunc, cell_input);
+        otherwise, error('call_irc2_: undefined func: %s', vcFunc);
+    end
+catch ME
+    fprintf(2, 'call_irc2_: %s\n', ME.message);
+    rethrow ME;
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+function cell_out = call_irc_(dbstack1, cell_input, nargout)
+vcFunc = dbstack1(1).name;
+try
+    switch nargout
+        case 0, cell_out{1} = []; irc('call', vcFunc, cell_input);
+        case 1, cell_out{1} = irc('call', vcFunc, cell_input);
+        case 2, [cell_out{1}, cell_out{2}] = irc('call', vcFunc, cell_input);
+        case 3, [cell_out{1}, cell_out{2}, cell_out{3}] = irc('call', vcFunc, cell_input);
+        case 4, [cell_out{1}, cell_out{2}, cell_out{3}, cell_out{4}] = irc('call', vcFunc, cell_input);
+        otherwise, error('call_irc_: undefined func: %s', vcFunc);
+    end
+catch ME
+    fprintf(2, 'call_irc_: %s\n', ME.message);
+    rethrow ME;
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+function viTime1 = randomSelect_(viTime1, nShow)
+if isempty(viTime1), return; end
+if numel(viTime1) > nShow
+    viTime1 = viTime1(randperm(numel(viTime1), nShow));
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+function S = makeStruct_(varargin)
+%MAKESTRUCT all the inputs must be a variable. 
+%don't pass function of variables. ie: abs(X)
+%instead create a var AbsX an dpass that name
+S = struct();
+for i=1:nargin, S.(inputname(i)) =  varargin{i}; end
+end %func
+
+
+%--------------------------------------------------------------------------
+function vi = subsample_vr_(vi, nMax)
+if numel(vi)>nMax
+    nSkip = floor(numel(vi)/nMax);
+    if nSkip>1, vi = vi(1:nSkip:end); end
+    if numel(vi)>nMax
+        try
+            nRemove = numel(vi) - nMax;
+            viRemove = round(linspace(1, numel(vi), nRemove));
+            viRemove = min(max(viRemove, 1), numel(vi));
+            vi(viRemove) = [];
+        catch
+            vi = vi(1:nMax);
+        end
+    end
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+function vhFig = figure_wait_(fWait, vhFig)
+% set all figures pointers to watch
+if nargin<2, vhFig = gcf; end
+fWait_prev = strcmpi(get_(vhFig(1), 'Pointer'), 'watch');
+if fWait && ~fWait_prev      
+    set_(vhFig, 'Pointer', 'watch'); 
+    drawnow_();
+else
+    set_(vhFig, 'Pointer', 'arrow');
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+% irc2.m
+function varargout = load0_(varargin), cell_out = call_irc2_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = is_sorted_(varargin), cell_out = call_irc2_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = load_fet_(varargin), cell_out = call_irc2_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = get_set_(varargin), cell_out = call_irc2_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = xylabel_(varargin), cell_out = call_irc2_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = cell2mat_(varargin), cell_out = call_irc2_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = version_matlab_(varargin), cell_out = call_irc2_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = load_fet_site_(varargin), cell_out = call_irc2_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = validate_(varargin), cell_out = call_irc2_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = pc2wav_(varargin), cell_out = call_irc2_(dbstack(), varargin, nargout); varargout = cell_out; end
+
 
 %--------------------------------------------------------------------------
 % irc.m
-%--------------------------------------------------------------------------
-function varargout = create_figure_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
-function varargout = close_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
-function varargout = save_log_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
-function varargout = text3_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
-function varargout = text_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
-
-function varargout = plot_probe_(varargin), fn=dbstack(); varargout{1} = irc('call', fn(1).name, varargin); end
-function varargout = get_tag_(varargin), fn=dbstack(); varargout{1} = irc('call', fn(1).name, varargin); end
-function varargout = S_clu_position_(varargin), fn=dbstack(); varargout{1} = irc('call', fn(1).name, varargin); end
-function varargout = S_clu_quality_(varargin), fn=dbstack(); varargout{1} = irc('call', fn(1).name, varargin); end
-function varargout = exist_file_(varargin), fn=dbstack(); varargout{1} = irc('call', fn(1).name, varargin); end
-function varargout = questdlg_(varargin), fn=dbstack(); varargout{1} = irc('call', fn(1).name, varargin); end
-function varargout = get_fig_(varargin), fn=dbstack(); varargout{1} = irc('call', fn(1).name, varargin); end
-function varargout = struct_merge_(varargin), fn=dbstack(); varargout{1} = irc('call', fn(1).name, varargin); end
-function varargout = delete_clu_(varargin), fn=dbstack(); varargout{1} = irc('call', fn(1).name, varargin); end
-function varargout = msgbox_(varargin), fn=dbstack(); varargout{1} = irc('call', fn(1).name, varargin); end
-% function varargout = figures_manual_(varargin), fn=dbstack(); varargout{1} = irc('call', fn(1).name, varargin); end
-function varargout = correlogram_(varargin), fn=dbstack(); varargout{1} = irc('call', fn(1).name, varargin); end
-function varargout = keyPressFcn_cell_(varargin), fn=dbstack(); varargout{1} = irc('call', fn(1).name, varargin); end
-function varargout = button_CluWav_simulate_(varargin), fn=dbstack(); varargout{1} = irc('call', fn(1).name, varargin); end
-function varargout = S_clu_prune_icl_(varargin), fn=dbstack(); varargout{1} = irc('call', fn(1).name, varargin); end
-
-function varargout = get_fig_cache_(varargin), fn=dbstack(); [varargout{1}, varargout{2}] = irc('call', fn(1).name, varargin); end
-
+function varargout = plot_update_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = plot_group_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = impoly_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = split_clu_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = tnWav2uV_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = tnWav_spk_sites_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = wave_split_manual_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = auto_split_wav_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = plot_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = tr2plot_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = disperr_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = update_menu_trials_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = create_figure_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = close_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = save_log_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = text3_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = text_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = cellstr_subs_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = plot_probe_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = S_clu_position_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = S_clu_quality_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = exist_file_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = questdlg_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = get_fig_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = struct_merge_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = delete_clu_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = msgbox_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = correlogram_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = keyPressFcn_cell_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = S_clu_prune_icl_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = get_fig_cache_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end

@@ -4725,14 +4725,14 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function text_(varargin)
+function vh = text_(varargin)
 %         text_(vrX1, vrY1, csTxt1, ...)
 [vrX1, vrY1, csTxt1] = ...
     deal(double(varargin{1}), double(varargin{2}), varargin{3});
 if nargin>3
-    arrayfun(@(x)text(vrX1(x), vrY1(x), csTxt1{x}, varargin{4:end}), 1:numel(vrX1));
+    vh = arrayfun(@(x)text(vrX1(x), vrY1(x), csTxt1{x}, varargin{4:end}), 1:numel(vrX1));
 else
-    arrayfun(@(x)text(vrX1(x), vrY1(x), csTxt1{x}), 1:numel(vrX1));
+    vh = arrayfun(@(x)text(vrX1(x), vrY1(x), csTxt1{x}), 1:numel(vrX1));
 end
 end %func
 
