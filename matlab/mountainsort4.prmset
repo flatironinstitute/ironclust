@@ -1,6 +1,6 @@
 freq_min = {300};
-freq_max = {6000, 8000};
+freq_max = {4000, 6000, 8000};
 clip_size = {40, 50, 60};
-detect_threshold = {3, 3.5, 4};
-whiten = {1};
+detect_threshold = {3, 3.5, 4, 4.5};
+whiten = {0, 1};
 curation = {0};

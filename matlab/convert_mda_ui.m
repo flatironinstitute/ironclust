@@ -840,8 +840,8 @@ hText  = uicontrol(hFig, 'Style','text','String','',...
 hText.String = {'Click on a file name to plot'}; % display meta
 
 % create axes
-hAx1 = axes(hFig, 'OuterPosition', [0 .7 1 .1]); xylabel_(hAx1, 't','V_int','V_int'); % all subsampled
-hAx2 = axes(hFig, 'OuterPosition', [0 .6 1 .1]); xylabel_(hAx2, 't','dV_int/dt','dV_int/dt');    
+hAx1 = axes(hFig, 'OuterPosition', [0 .7 1 .1]); xylabel_(hAx1, 't','V_int raw',''); % all subsampled
+hAx2 = axes(hFig, 'OuterPosition', [0 .6 1 .1]); xylabel_(hAx2, 't','V_int filtered','');    
 hAx3 = axes(hFig, 'OuterPosition', [0 .5 1 .1]); xylabel_(hAx3, 't','I_int', 'I_int');
 hAx4 = axes(hFig, 'OuterPosition', [0 0 1 .5]); xylabel_(hAx4, 'Time (adc)','V_ext','V_ext (Change scale using UP/DOWN arrows)');
 linkaxes([hAx1,hAx2,hAx3,hAx4], 'x');
