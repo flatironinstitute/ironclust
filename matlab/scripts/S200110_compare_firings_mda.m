@@ -16,3 +16,6 @@ irc2 auto D:\Globus\recordings\kf19_nt27\irc2\raw_geom.prm
 vcFile_gt_mda = 'D:\Globus\recordings\kf19_nt27\kf19_nt27.firings_orig.mda';
 vcFile_clu_mda = 'D:\Globus\recordings\kf19_nt27\irc2\firings.mda';
 irc2('compare-mda', vcFile_gt_mda, vcFile_clu_mda); % 3 hours
+
+irc2('describe-mda', vcFile_gt_mda);
+irc2('describe-mda', vcFile_clu_mda);

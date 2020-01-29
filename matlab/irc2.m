@@ -791,7 +791,12 @@ if isempty(vcFile_raw_mda)
     % find out about the duration
     vcDir = fileparts(fileparts(vcFile_clu_mda));
     vcFile_raw_mda = fullfile(vcDir, 'raw.mda');
-    if ~exist_file_(vcFile_raw_mda), vcFile_raw_mda = ''; end
+    if ~exist_file_(vcFile_raw_mda)
+        vcFile_raw_mda = fullfile(fileparts(vcFile_clu_mda), 'raw.mda');
+    end
+    if ~exist_file_(vcFile_raw_mda)
+        vcFile_raw_mda = ''; 
+    end
 end
 if ~isempty(vcFile_raw_mda)
     vcFile_json = fullfile(fileparts(vcFile_raw_mda), 'params.json');
@@ -810,9 +815,16 @@ mr_clu = readmda_(vcFile_clu_mda)';
     deal(int32(mr_clu(:,1)), int64(mr_clu(:,2)), int32(mr_clu(:,3))); 
 mr_clu = [];
 
-[cviSpk_clu, nClu] = vi2cell_(viClu_spk);
-[cviSpk_site, nSites] = vi2cell_(viSite_spk);
+cviSpk_clu = vi2cell_(viClu_spk);
 vnSpk_clu = cellfun(@numel, cviSpk_clu);
+
+% exclude zero-member clusters
+viClu_keep = find(vnSpk_clu>0);
+[nClu, cviSpk_clu, vnSpk_clu] = ...
+    deal(numel(viClu_keep), cviSpk_clu(viClu_keep), vnSpk_clu(viClu_keep));
+
+
+[cviSpk_site, nSites] = vi2cell_(viSite_spk);
 vnSpk_site = cellfun(@numel, cviSpk_site);
 vnDur_clu = cellfun(@(x)diff(viTime_spk([min(x), max(x)])), cviSpk_clu);
 nDuration = max(viTime_spk) - min(viTime_spk);
