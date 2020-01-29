@@ -196,8 +196,8 @@ end %func
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_()
 
-vcVer = 'v5.6.1';
-vcDate = '01/27/2020';
+vcVer = 'v5.6.2';
+vcDate = '01/28/2020';
 vcHash = file2hash_();
 
 if nargout==0
@@ -1103,6 +1103,8 @@ function vnIntersect = compare_mda_gt_(viTimeA, cviTimeB, miLimB)
 % ----
 % vnIntersect = compare_mda_gt_(viTime1, cviTime_clu)
 % mnIntersect = compare_mda_gt_(cviTime_gt, cviTime_clu)
+% viTimeA and cviTimeB must be sorted (satisfied when unique() used)
+
 nB = numel(cviTimeB);
 
 if iscell(viTimeA)
@@ -1116,16 +1118,14 @@ end
 
 vnIntersect = zeros(nB,1);
 if isempty(viTimeA), return; end
-[minA, maxA] = deal(min(viTimeA), max(viTimeA));
-overlap_ = @(x)sum(ismember(viTimeA,x) | ismember(viTimeA+1,x) | ismember(viTimeA-1,x));
+% viTimeA = sort(viTimeA);
+[minA, maxA] = deal(viTimeA(1), viTimeA(end)); 
+overlap_ = @(x)sum(ismembc(x,viTimeA) | ismembc(x,viTimeA+1) | ismembc(x,viTimeA-1));
 [minB, maxB] = deal(miLimB(:,1), miLimB(:,2));
 viB_update = find(...
     (minA >= minB & minA <= maxB) | (maxA >= minB & maxA <= maxB) | ...
     (minB >= minA & minB <= maxA) | (maxB >= minA & maxB <= maxA));
-viB_update = viB_update(:)';
-for iB = viB_update
-    vnIntersect(iB) = overlap_(cviTimeB{iB});
-end
+vnIntersect(viB_update) = arrayfun(@(x)overlap_(cviTimeB{x}), viB_update);
 end %func
 
 
@@ -1600,11 +1600,8 @@ end %func
 %--------------------------------------------------------------------------
 function S_auto = wave_cc_merge_(S0, S_auto, P)
 
-cc_merge_thresh = get_set_(P, 'cc_merge_thresh', .5) * 100;
-jitter = round(get_set_(P,'spkJitter_ms_gt',1) * P.sRateHz / 1000); %1 ms jitter
-S_compare = compare_clu_(S_auto.viClu, S0.viTime_spk, [], [], jitter, get_(P, 'fParfor'));
-mlCC = S_compare.mrRecall >= cc_merge_thresh | S_compare.mrPrecision >= cc_merge_thresh;
-cviClu_clu = arrayfun_(@(i)find(mlCC(:,i)), 1:size(mlCC,1));
+% calculate cross-correlogram
+cviClu_clu = calc_cc_(S_auto.viClu, S0.viTime_spk, P);
 
 % remap clusters
 fParfor = get_set_(P, 'fParfor', 1);
@@ -1613,6 +1610,44 @@ vlUpdate = S_auto.viClu > 0;
 S_auto.viClu(vlUpdate) = viMapClu_new(S_auto.viClu(vlUpdate));
 S_auto.nClu = sum(unique(viMapClu_new)>0);
 end %func
+
+
+%--------------------------------------------------------------------------
+% calculate cross-correlogram
+function cviClu_clu = calc_cc_(viClu_spk, viTime_spk, P)
+
+cc_merge_thresh = get_set_(P, 'cc_merge_thresh', .5);
+jitter = round(get_set_(P,'spkJitter_ms_gt',1) * P.sRateHz / 1000); %1 ms jitter
+
+[cviSpk_clu, nClu] = vi2cell_(int32(viClu_spk));
+cviTime_clu = cellfun(@(vi_)unique(int32(viTime_spk(vi_)/jitter)), cviSpk_clu, 'UniformOutput', 0);
+viTime_min_clu = cellfun(@min, cviTime_clu);
+viTime_max_clu = cellfun(@max, cviTime_clu);
+miLim_clu = [viTime_min_clu(:), viTime_max_clu(:)];
+cviClu_clu = cell(nClu, 1);
+vnSpk_clu = cellfun(@numel, cviSpk_clu); vnSpk_clu = vnSpk_clu(:);
+
+% Compute intersection
+fParfor = get_set_(P, 'fParfor', 1);
+if fParfor
+    try
+        parfor iClu = 1:nClu
+            vnIntersect1 = compare_mda_gt_(cviTime_clu{iClu}, cviTime_clu, miLim_clu);
+            vrCC1 = max(vnIntersect1 ./ vnSpk_clu, vnIntersect1 / vnSpk_clu(iClu));
+            cviClu_clu{iClu} = find(vrCC1 >= cc_merge_thresh);
+        end
+    catch
+        fParfor = 0;
+    end
+end
+if ~fParfor
+    for iClu = 1:nClu
+        vnIntersect1 = compare_mda_gt_(cviTime_clu{iClu}, cviTime_clu, miLim_clu);
+        vrCC1 = max(vnIntersect1 ./ vnSpk_clu, vnIntersect1 / vnSpk_clu(iClu));
+        cviClu_clu{iClu} = find(vrCC1 >= cc_merge_thresh);
+    end
+end
+end
 
 
 %--------------------------------------------------------------------------
@@ -5554,9 +5589,9 @@ for iRepeat = 1:nRepeat
     for iClu = viClu_update
         viClu1 = cvi_clu{iClu};
         viClu1 = cat(1, viClu1(:), cvi_clu{viClu1});
-        cvi_clu1(viClu1) = {int32(viClu1)};
+        viClu1 = int32(unique(viClu1));
+        cvi_clu1(viClu1) = {viClu1};
     end    
-    cvi_clu1 = func_parfor_(@unique, cvi_clu1, 0);    
     if all(cellfun(@numel, cvi_clu1) == cellfun(@numel, cvi_clu))
         break;
     else
