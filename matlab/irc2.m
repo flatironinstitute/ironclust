@@ -7044,7 +7044,7 @@ function [nChans, nSamples] = mda2bin_(vcFile_raw, vcFile_bin, detect_sign)
 
 if exist_file_(vcFile_bin)
     S_mda = readmda_header_(vcFile_raw);
-    [nChans, nSamples] = deal(dimm(1), dimm(2));
+    [nChans, nSamples] = deal(S_mda.dimm(1), S_mda.dimm(2));
     return;
 else
     mr = readmda_(vcFile_raw);
