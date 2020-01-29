@@ -1465,7 +1465,8 @@ try
 %     csDesc{end+1} = sprintf('    nTime_batch:            %d', P.nTime_batch);
     csDesc{end+1} = sprintf('Auto-merge');   
     csDesc{end+1} = sprintf('    delta_cut:              %0.3f', get_set_(P, 'delta_cut', 1));
-    csDesc{end+1} = sprintf('    maxWavCor:              %0.3f', P.maxWavCor);
+    csDesc{end+1} = sprintf('    maxWavCor:              %0.3f', get_(P, 'maxWavCor'));
+    csDesc{end+1} = sprintf('    cc_merge_thresh:        %0.3f', get_(P, 'cc_merge_thresh'));
 catch
 end
 try
