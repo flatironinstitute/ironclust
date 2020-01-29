@@ -1578,7 +1578,7 @@ if P.maxWavCor<1 && S_auto.nClu > 1
 end
 
 % Mege based on cross-correlogram
-P.cc_merge_thresh = get_set_(P, 'cc_merge_thresh', .5);
+P.cc_merge_thresh = get_set_(P, 'cc_merge_thresh', .9);
 if P.cc_merge_thresh > 0 && P.cc_merge_thresh <1 && S_auto.nClu > 1
     nClu_pre = S_auto.nClu;
     fprintf('\tMerging based on cross-correlogram...\n\t'); t_cc=tic;
@@ -6554,7 +6554,10 @@ function optimize_param_(vcDir_rec, vcFile_prmset, vcFile_out)
 % optimize_param_(vcDir_rec, vcFile_prmset)
 % optimize_param_(vcDir_rec, vcFile_prmset, vcFile_out)
 
-[fDebug, fUse_cache, fParfor] = deal(0, 0, 1);
+[fDebug, fParfor] = deal(0, 1);
+
+S_cfg = read_cfg_();
+fUse_cache = get_set_(S_cfg, 'fUse_cache_optimize', 0);
 
 if nargin<3, vcFile_out = ''; end
 [~,vcPostfix_] = fileparts(vcFile_prmset); 
@@ -6874,9 +6877,9 @@ for iPrmset = 1:nPrmset
                 vcCmd1 = param2cmd_(cName_prm1); 
                 edit_prm_file_(cell2struct(cVal_prm1(vlPrm_update), cName_prm1, 1), vcFile_prm); % edit file
                 irc2(vcCmd1, vcFile_prm);    
-%             case 'kilosort2'
-%                 run_ksort2(vcDir_in, vcDir_out, S_prm1);                   
-            case {'kilosort2', 'mountainsort4', 'spykingcircus', 'tridesclous', 'herdingspikes2', 'klusta', 'waveclus'}
+            case 'kilosort2'
+                run_ksort2(vcDir_in, vcDir_out, S_prm1);                   
+            case {'mountainsort4', 'spykingcircus', 'tridesclous', 'herdingspikes2', 'klusta', 'waveclus'}
                 run_spikeforest2_(vcSorter, vcDir_in, vcDir_out, S_prm1);    
 %             case {'jrclust', 'kilosort'}
             otherwise
