@@ -6263,7 +6263,7 @@ switch lower(vcSorter)
         cs_sorter_logical = {'curation', 'whiten', 'filter'};
         cs_sorter_int = {'clip_size'};
     case 'kilosort2'
-        cs_sorter_double = {'freq_min', 'sigmaMask', 'nPCs', 'minFR', 'Nt', 'preclust_threshold', 'adjacency_radius'};
+        cs_sorter_double = {'freq_min', 'sigmaMask', 'nPCs', 'minFR', 'Nt', 'preclust_threshold'};
         cs_sorter_logical = {'car'};
         cs_sorter_pylist = {'projection_threshold'};
     case 'spykingcircus'
@@ -6565,7 +6565,6 @@ if nargin<3, vcFile_out = ''; end
 vcSorter = infer_sorter_(vcPostfix_);
 vcPostfix_out = vcSorter;
 if isempty(vcFile_out)
-    %vcFile_out = fullfile(vcDir_rec, 'param_scores.mat');
     vcFile_out = fullfile(vcDir_rec, sprintf('scores_prmset_%s.mat', vcPostfix_));
 end
 
@@ -6586,7 +6585,7 @@ if isempty(S_prmset_rec)
     nPrmset = prod(cellfun(@numel, cVal_prm));
     ccScore_prmset_rec = cell(nPrmset, nRec);
 
-    if fDebug, [fParfor, nRec] = deal(0, 4); end
+    if fDebug, [fParfor, nRec] = deal(0, 2); end
 
     if fParfor==0, fprintf(2, 'optimize_param_: fParfor=0\n'); end
     if fParfor
@@ -6878,8 +6877,7 @@ for iPrmset = 1:nPrmset
                 vcCmd1 = param2cmd_(cName_prm1); 
                 edit_prm_file_(cell2struct(cVal_prm1(vlPrm_update), cName_prm1, 1), vcFile_prm); % edit file
                 irc2(vcCmd1, vcFile_prm);    
-            case 'kilosort2'
-                run_ksort2(vcDir_in, vcDir_out, S_prm1);                   
+            case 'kilosort2', kilosort2_(vcDir_in, vcDir_out, S_prm1);                   
             case {'mountainsort4', 'spykingcircus', 'tridesclous', 'herdingspikes2', 'klusta', 'waveclus'}
                 run_spikeforest2_(vcSorter, vcDir_in, vcDir_out, S_prm1);    
 %             case {'jrclust', 'kilosort'}
@@ -6892,6 +6890,183 @@ for iPrmset = 1:nPrmset
         fprintf(2, '%s: paramset#%d failed:\n\t%s\n', vcDir_in, iPrmset, lasterr());
     end
 end
+end %func
+
+
+%--------------------------------------------------------------------------
+function kilosort2_(vcDir_in, vcDir_out, S_prm)
+
+fprintf('Running kilosort2: %s\n', vcDir_in); t_fun = tic;
+
+% add path
+S_cfg = read_cfg_();
+kilosort_src = S_cfg.path_ksort2;
+ironclust_src = fileparts(mfilename('fullpath'));
+addpath(genpath(ironclust_src));
+addpath(genpath(kilosort_src));
+
+% convert input path
+vcFile_raw = fullfile(vcDir_in, 'raw.mda');
+vcFile_firings = fullfile(vcDir_out, 'firings.mda');
+ops = import_ksort2_(vcFile_raw, vcFile_firings, S_prm);
+
+%-----
+% call kilosort2 functions
+
+% preprocess data to create temp_wh.dat
+rez = preprocessDataSub(ops);
+
+% time-reordering as a function of drift
+rez = clusterSingleBatches(rez);
+% save(fullfile(rootZ, 'rez.mat'), 'rez', '-v7.3');
+
+% main tracking and template matching algorithm
+rez = learnAndSolve8b(rez);
+
+% final merges
+rez = find_merges(rez, 1);
+
+% final splits by SVD
+rez = splitAllClusters(rez, 1);
+
+% final splits by amplitudes
+rez = splitAllClusters(rez, 0);
+
+% decide on cutoff
+rez = set_cutoff(rez);
+
+% discard features in final rez file (too slow to save)
+rez.cProj = [];
+rez.cProjPC = [];
+close all; % close all open figures
+fprintf('\n\tfound %d good units \n', sum(rez.good>0))
+%-----
+
+% Export kilosort
+export_ksort2_(rez, vcFile_firings);
+fprintf('kilosort2 finished (took %0.1fs): %s\n', toc(t_fun), vcFile_firings);
+
+end %func
+
+
+%--------------------------------------------------------------------------
+function ops = import_ksort2_(vcFile_raw, vcFile_firings, S_prm)
+
+vcDir_in = fileparts(vcFile_raw);
+vcDir_out = fileparts(vcFile_firings);
+mkdir_(vcDir_out); % create dir if doesn't exist
+
+% convert .bin file
+S_json = loadjson_(fullfile(vcDir_in, 'params.json'));
+[sRateHz, detect_sign] = get_(S_json, 'samplerate', 'spike_sign');
+vcFile_bin = strrep(vcFile_raw, '.mda', '.bin');
+[nChans, ~] = mda2bin_(vcFile_raw, vcFile_bin, detect_sign);
+
+% create a probe file
+mrXY_site = csvread(fullfile(vcDir_in, 'geom.csv'));
+vcFile_chanMap = fullfile(vcDir_out, 'chanMap.mat');
+createChannelMapFile_(vcFile_chanMap, nChans, mrXY_site(:,1), mrXY_site(:,2));
+
+% copy from S_prm struct
+detect_threshold = get_set_(S_prm, 'detect_threshold', 6);
+freq_min = get_set_(S_prm, 'freq_min', 150);
+nPCs = get_set_(S_prm, 'nPCs', 3);
+sigmaMask = get_set_(S_prm, 'sigmaMask', 30);
+minFR = get_set_(S_prm, 'minFR', 1/50);
+preclust_threshold = get_set_(S_prm, 'preclust_threshold', 8);
+projection_threshold = get_set_(S_prm, 'projection_threshold', [10, 4]);
+car = get_set_(S_prm, 'car', 1);
+Nt = get_set_(S_prm, 'Nt', 128 * 1024 * 5 + 64);
+
+%-----
+% assign kilosort2 parameters
+ops.fpath = vcDir_out;
+ops.fproc = fullfile(vcDir_out, 'temp_wh.dat'); % proc file on a fast SSD  ;
+ops.trange = [0 Inf]; % time range to sort
+ops.NchanTOT = nChans; % total number of channels in your recording
+ops.fbinary = vcFile_bin;   % the binary file is in this folder
+ops.chanMap = vcFile_chanMap;
+% ops.chanMap = 1:ops.Nchan; % treated as linear probe if no chanMap file
+ops.fs = sRateHz;           % sample rate
+ops.fshigh = freq_min;      % frequency for high pass filtering (150)
+ops.minfr_goodchannels = 0.1; % minimum firing rate on a "good" channel (0 to skip)d
+ops.Th = projection_threshold;           % threshold on projections (like in Kilosort1, can be different for last pass like [10 4])
+ops.lam = 10;               % how important is the amplitude penalty (like in Kilosort1, 0 means not used, 10 is average, 50 is a lot) 
+ops.AUCsplit = 0.9;         % splitting a cluster at the end requires at least this much isolation for each sub-cluster (max = 1)
+ops.minFR = minFR;           % minimum spike rate (Hz), if a cluster falls below this for too long it gets removed
+ops.momentum = [20 400];    % number of samples to average over (annealed from first to second value) 
+ops.sigmaMask = sigmaMask;         % spatial constant in um for computing residual variance of spike
+ops.ThPre = preclust_threshold;              % threshold crossings for pre-clustering (in PCA projection space)
+
+% danger, changing these settings can lead to fatal errors
+% options for determining PCs
+ops.spkTh = -abs(detect_threshold);      % spike threshold in standard deviations (-6)
+ops.reorder = 1;            % whether to reorder batches for drift correction. 
+ops.nskip = 25;             % how many batches to skip for determining spike PCs
+ops.GPU = 1;                % has to be 1, no CPU version yet, sorry
+% ops.Nfilt               = 1024; % max number of clusters
+ops.nfilt_factor = 4;       % max number of clusters per good channel (even temporary ones)
+ops.ntbuff = 64;            % samples of symmetrical buffer for whitening and spike detection
+ops.NT = Nt;                % must be multiple of 32 + ntbuff. This is the batch size (try decreasing if out of memory). 
+ops.whiteningRange = 32;    % number of channels to use for whitening each channel
+ops.nSkipCov = 25;          % compute whitening matrix from every N-th batch
+ops.scaleproc = 200;        % int16 scaling of whitened data
+ops.nPCs = nPCs;            % how many PCs to project the spikes into
+ops.useRAM = 0;             % not yet available
+ops.CAR = car;              % perform CAR
+end %func
+
+
+%--------------------------------------------------------------------------
+function S_chanMap = createChannelMapFile_(vcFile_channelMap, Nchannels, xcoords, ycoords, shankInd)
+if nargin<6, shankInd = []; end
+
+connected = true(Nchannels, 1);
+chanMap   = 1:Nchannels;
+chanMap0ind = chanMap - 1;
+
+xcoords   = xcoords(:);
+ycoords   = ycoords(:);
+
+if isempty(shankInd)
+    shankInd   = ones(Nchannels,1); % grouping of channels (i.e. tetrode groups)
+end
+[~, name, ~] = fileparts(vcFile_channelMap);
+S_chanMap = makeStruct_(chanMap, connected, xcoords, ycoords, shankInd, chanMap0ind, name);
+save(vcFile_channelMap, '-struct', 'S_chanMap')
+end %func
+
+
+%--------------------------------------------------------------------------
+% convert mda to int16 binary format, flip polarity if detect sign is
+% positive
+function [nChans, nSamples] = mda2bin_(vcFile_raw, vcFile_bin, detect_sign)
+
+if exist_file_(vcFile_bin)
+    S_mda = readmda_header_(vcFile_raw);
+    [nChans, nSamples] = deal(dimm(1), dimm(2));
+    return;
+else
+    mr = readmda_(vcFile_raw);
+    % adjust scale to fit int16 range with a margin
+    if isa(mr,'single') || isa(mr,'double')
+        uV_per_bit = 2^14 / max(abs(mr(:)));
+        mr = int16(mr * uV_per_bit);
+    end
+    [nChans, nSamples] = size(mr);
+    if detect_sign > 0, mr = -mr; end % force negative detection
+    write_bin_(vcFile_bin, mr);
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+function export_ksort2_(rez, firings_out_fname)
+
+mr_out = zeros(size(rez.st3,1), 3, 'double'); 
+mr_out(:,2) = rez.st3(:,1); %time
+mr_out(:,3) = rez.st3(:,2); %cluster
+writemda_(firings_out_fname, mr_out');
 end %func
 
 
