@@ -23,6 +23,7 @@ spkRefrac_ms = .25;         % reject spikes occcuring closer than this
 fft_thresh = 8;             % Reject outlier frequency peaks (unit in MAD)
 blank_thresh = 0;           % Reject motion artifacts (unit in MAD)
 blank_period_ms = 5;        % (miliseconds) Duration of blanking when the common mean exceeds a threhold (blank_thresh)
+fMatchedFilter_detect = 1;  % Use matched filter during detection using PC1
 
 % [Cluster stage: apply drift-detection and KNN-graph density-peak clustering]
 nPcPerChan = 0;             % #PC/chan. Set to `0` to use a variable # as a function of distance from the center

@@ -196,8 +196,8 @@ end %func
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_()
 
-vcVer = 'v5.6.4';
-vcDate = '01/31/2020';
+vcVer = 'v5.6.5';
+vcDate = '02/01/2020';
 vcHash = file2hash_();
 
 if nargout==0
@@ -1452,6 +1452,7 @@ try
     csDesc{end+1} = sprintf('Pre-processing');
     csDesc{end+1} = sprintf('    Filter type:            %s', P.vcFilter);
     csDesc{end+1} = sprintf('    Filter range (Hz):      [%0.1f, %0.1f]', P.freqLim);
+    csDesc{end+1} = sprintf('    Matched Filter:         %d', get_set_(P, 'fMatchedFilter_detect', 0));    
     csDesc{end+1} = sprintf('    Common ref:             %s', P.vcCommonRef);
     csDesc{end+1} = sprintf('    Whiten:                 %d', get_set_(P, 'fWhiten', 0));
     csDesc{end+1} = sprintf('    FFT threshold:          %d', get_set_(P, 'fft_thresh', 0));
@@ -3860,7 +3861,7 @@ else
     vlKeep_ref = [];
 end
 
-if get_set_(P, 'fDenoise_detect', 1)
+if get_set_(P, 'fMatchedFilter_detect', 0)
     if isempty(mrPv_global)
         [viTime_spk, vrAmp_spk, viSite_spk, vrThresh_site] = detect_spikes_(mrWav_filt, vrThresh_site, vlKeep_ref, nlim_wav1, P);
         trWav_spk = get_spkwav_(mrWav_filt, viSite_spk, viTime_spk, P);
@@ -6534,39 +6535,6 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function describe_firings_(S_firings)
-
-S = S_firings;
-nSites = numel(unique(S.viSite_spk));
-nClu = numel(unique(S.viClu_spk));
-nClu_exist = numel(unique(S.viClu_spk));
-
-csDesc = {};
-csDesc{end+1} = sprintf('');    
-csDesc{end+1} = sprintf('------------------------------');    
-csDesc{end+1} = sprintf('Summary of %s', S.vcFile);
-csDesc{end+1} = sprintf('------------------------------');    
-csDesc{end+1} = sprintf('    #Sites:                 %d', nSites);
-csDesc{end+1} = sprintf('Pre-processing');
-csDesc{end+1} = sprintf('    Filter type:            %s', P.vcFilter);
-csDesc{end+1} = sprintf('    Filter range (Hz):      [%0.1f, %0.1f]', P.freqLim);
-csDesc{end+1} = sprintf('    Common ref:             %s', P.vcCommonRef);
-csDesc{end+1} = sprintf('    Whiten:                 %d', get_set_(P, 'fWhiten', 0));
-csDesc{end+1} = sprintf('    FFT threshold:          %d', get_set_(P, 'fft_thresh', 0));
-csDesc{end+1} = sprintf('    blank threshold:        %d', get_set_(P, 'blank_thresh', 0));    
-csDesc{end+1} = sprintf('Events');
-csDesc{end+1} = sprintf('    #Spikes:                %d', nSpk);
-csDesc{end+1} = sprintf('    Feature extracted:      %s', P.vcFet);    
-csDesc{end+1} = sprintf('    #Sites/event:           %d', nSites_spk);
-csDesc{end+1} = sprintf('    maxDist_site_um:        %0.0f', P.maxDist_site_um);    
-csDesc{end+1} = sprintf('    maxDist_site_spk_um:    %0.0f', P.maxDist_site_spk_um);
-csDesc{end+1} = sprintf('    spkLim_ms:              [%0.3f, %0.3f]', P.spkLim_ms);
-csDesc{end+1} = sprintf('    #Features/event:        %d', nFeatures);    
-csDesc{end+1} = sprintf('    #PC/chan:               %d', nPcPerChan);
-end %func
-
-
-%--------------------------------------------------------------------------
 % 2020/jan/23, run parameter optimizer for ironclust
 function optimize_param_(vcDir_rec, vcFile_prmset, vcFile_out)
 % usage
@@ -6613,7 +6581,8 @@ if isempty(S_prmset_rec)
             parfor iRec = 1:nRec
                 vcDir_in1 = csDir_rec{iRec};
                 vcDir_out1 = fullfile(vcDir_in1, vcPostfix_out);
-                ccScore_prmset_rec(:,iRec) = score_paramset_(vcSorter, vcDir_in1, vcDir_out1, cName_prm, cVal_prm);
+                ccScore_prmset_rec(:,iRec) = ...
+                    score_paramset_(vcSorter, vcDir_in1, vcDir_out1, cName_prm, cVal_prm, S_cfg);
             end
         catch
             fParfor = 0;
@@ -6623,7 +6592,8 @@ if isempty(S_prmset_rec)
         for iRec = 1:nRec
             vcDir_in1 = csDir_rec{iRec};
             vcDir_out1 = fullfile(vcDir_in1, vcPostfix_out);            
-            ccScore_prmset_rec(:,iRec) = score_paramset_(vcSorter, vcDir_in1, vcDir_out1, cName_prm, cVal_prm);
+            ccScore_prmset_rec(:,iRec) = ...
+                score_paramset_(vcSorter, vcDir_in1, vcDir_out1, cName_prm, cVal_prm, S_cfg);
         end
     end
     t_fun = toc(t_fun);
@@ -6728,7 +6698,7 @@ plot(ax1, vrSnr_gt_srt, vrY1_L1, [cColor, 'o-'], vrSnr_gt_srt, vrY1_L2, [cColor,
 xylabel_(ax1, 'SNR threshold (=x)', '<F1-score> | SNR>=x');
 yyaxis(ax1, 'right'); 
 plot(ax1, vrSnr_gt_srt, abs(vrY1_L1 - vrY1_L2), [cColor,':']); ylabel(ax1, '|F1.best - F1.worst|');
-grid(ax1,'on'); set(ax1,'YLim', [0 100]); 
+grid(ax1,'on'); arrayfun(@(x)set(ax1.YAxis(x), 'Limits', [0,100]),1:2);
 legend(ax1,{'best','worst'}, 'Location', 'SE');
 
 ax2=axes(fig_()); hold(ax2,'on');
@@ -6742,7 +6712,7 @@ xylabel_(ax2, 'F1 threshold (=x)', '# GT-units | F1>=x');
 yyaxis(ax2, 'right'); 
 vrY2_R = abs(interp1(vrX2_L1, vrY2_L1, vrX2_R, 'linear') - interp1(vrX2_L2, vrY2_L2, vrX2_R, 'linear'));
 plot(ax2, vrX2_R, vrY2_R, [cColor,':']); ylabel(ax2, '|F1.best - F1.worst|');
-grid(ax2,'on'); ylim(ax2, [0, nRec]);
+grid(ax2,'on'); arrayfun(@(x)set(ax2.YAxis(x), 'Limits', [0,nRec]),1:2);
 legend(ax2,{'best','worst'}, 'Location', 'NE');
 
 % create a bar plot
@@ -6907,7 +6877,8 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function cScore_prmset = score_paramset_(vcSorter, vcDir_in, vcDir_out, cName_prm, cVal_prm)
+function cScore_prmset = score_paramset_(vcSorter, vcDir_in, vcDir_out, cName_prm, cVal_prm, S_cfg)
+if nargin<6, S_cfg=[]; end
 
 fParfor = 0; % turn off parfor for each file
 nPrmset = permute_prm_(cVal_prm);
@@ -6917,31 +6888,36 @@ vcFile_sorted_mda = fullfile(vcDir_out, 'firings.mda');
 P = makeParam_(vcDir_in, vcDir_out, '', fParfor);
 vcFile_prm = P.vcFile_prm;
 clear_(vcFile_prm);
+fUse_cache = get_set_(S_cfg, 'fUse_cache_optimize', 1);
 
 % run the parameters and adjust parameters and call appropriate command
 viPrm_pre = zeros(size(cName_prm));
 for iPrmset = 1:nPrmset
     try
-        [cVal_prm1, viPrm1] = permute_prm_(cVal_prm, iPrmset);
-        vlPrm_update = viPrm1 ~= viPrm_pre;
-        cName_prm1 = cName_prm(vlPrm_update);
-        S_prm1 = cell2struct(cVal_prm1, cName_prm, 1);
-        switch lower(vcSorter)
-            case 'ironclust'
-                vcCmd1 = param2cmd_(cName_prm1); 
-                edit_prm_file_(cell2struct(cVal_prm1(vlPrm_update), cName_prm1, 1), vcFile_prm); % edit file
-                irc2(vcCmd1, vcFile_prm);    
-            case 'kilosort2', kilosort2_(vcDir_in, vcDir_out, S_prm1);                   
-            case {'mountainsort4', 'spykingcircus', 'tridesclous', 'herdingspikes2', 'klusta', 'waveclus'}
-                run_spikeforest2_(vcSorter, vcDir_in, vcDir_out, S_prm1);    
-%             case {'jrclust', 'kilosort'}
-            otherwise
-                error('unsupported sorters: %s', vcSorter);
+        vcFile_sorted_mda1 = strrep(vcFile_sorted_mda, '.mda', sprintf('_p%d.mda', iPrmset));
+        if exist_file_(vcFile_sorted_mda1) && fUse_cache
+            fprintf('Loaded from cache: %s\n', vcFile_sorted_mda1);
+        else
+            [cVal_prm1, viPrm1] = permute_prm_(cVal_prm, iPrmset);
+            vlPrm_update = viPrm1 ~= viPrm_pre;
+            cName_prm1 = cName_prm(vlPrm_update);
+            S_prm1 = cell2struct(cVal_prm1, cName_prm, 1);
+            switch lower(vcSorter)
+                case 'ironclust'
+                    vcCmd1 = param2cmd_(cName_prm1); 
+                    edit_prm_file_(cell2struct(cVal_prm1(vlPrm_update), cName_prm1, 1), vcFile_prm); % edit file
+                    irc2(vcCmd1, vcFile_prm);    
+                case 'kilosort2', kilosort2_(vcDir_in, vcDir_out, S_prm1);                   
+                case {'mountainsort4', 'spykingcircus', 'tridesclous', 'herdingspikes2', 'klusta', 'waveclus'}
+                    run_spikeforest2_(vcSorter, vcDir_in, vcDir_out, S_prm1);    
+    %             case {'jrclust', 'kilosort'}
+                otherwise
+                    error('unsupported sorters: %s', vcSorter);
+            end
         end
         cScore_prmset{iPrmset} = compare_mda_(vcFile_true_mda, vcFile_sorted_mda, P);
-        viPrm_pre = viPrm1;
-        vcFile_sorted_mda1 = strrep(vcFile_sorted_mda, '.mda', sprintf('_p%d.mda', iPrmset));
-        copyfile(vcFile_sorted_mda, vcFile_sorted_mda1);
+        viPrm_pre = viPrm1;        
+        movefile(vcFile_sorted_mda, vcFile_sorted_mda1, 'f');
         fprintf('Wrote to %s\n', vcFile_sorted_mda1);
     catch
         fprintf(2, '%s: paramset#%d failed:\n\t%s\n', vcDir_in, iPrmset, lasterr());
