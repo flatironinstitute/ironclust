@@ -53,6 +53,7 @@ else
     vcFile_prm_ = vcFile_prm;
 end
 switch lower(vcCmd)
+    case 'push-readme', push_readme_(); return;
     case 'edit-readme', edit_readme_(); return;
     % spikeforest2 interface
     case 'clear-jobs', clear_jobs_(vcArg1); return;
@@ -131,7 +132,7 @@ switch lower(vcCmd)
     case {'test-static', 'test-drift', 'test-tetrode', 'test-tetrode2', 'test-tetrode3', ...
             'test-bionet', 'test-bionet1', 'test-monotrode', ...
             'test-monotrode1', 'test-monotrode2', 'test-monotrode3', ...
-            'test-boyden', 'test-boyden2'}
+            'test-boyden', 'test-boyden2', 'test-neuropix'}
         vcDir_in = get_test_data_(strsplit_get_(vcCmd,'-',2));
         [fDetect, fSort, fValidate] = deal(1, 1, 1);
     case 'test-all', test_all_(); return;
@@ -4435,7 +4436,6 @@ else
         out = fread_(fid, dimm1, S_mda.vcDataType);  % transpose MDA
         if ~isempty(viSite2Chan_), out = out(P_.viSite2Chan,:); end
         t_dur1 = toc(t1);
-%         out = out'; % transpose
         mb_loaded1 = prod(dimm1) * bytesPerSample_(S_mda.vcDataType) / 1e6;
         fprintf('Read %s (%d/%d), took %0.1fs (%0.1f MB/s, %0.1f MB)\n', ...
             vcFile, iLoad, nLoads, t_dur1, mb_loaded1/t_dur1, mb_loaded1);
@@ -4503,18 +4503,20 @@ switch vcMode
     case 'monotrode3', vcDir_in = 'groundtruth/waveclus_synth/sim2_2K10/simulation_94';
     case 'boyden', vcDir_in = 'groundtruth/paired_recordings/boyden32c/915_10_1';
     case 'boyden2', vcDir_in = 'groundtruth/paired_recordings/boyden32c/509_1_1';
+    case 'neuropix', vcDir_in = read_cfg_('path_neuropix_sample');
     otherwise, error('unsupported test mode');
 end
-if ispc()
-    vcDir_in = strrep(vcDir_in, '/', '\');    
-    vcDir_in = fullfile('D:\Globus', vcDir_in); % RAID5
-%     vcDir_in = fullfile('c:\tmp', vcDir_in); % SSD
-elseif isunix()
-    vcDir_in = fullfile('~/ceph', vcDir_in);
-elseif ismac()
-    vcDir_in = fullfile('~/ceph', vcDir_in);
-else
-    error('get_test_data_: unsupported OS');
+if ~exist_dir_(vcDir_in) && ~exist_file_(vcDir_in)
+    if ispc()
+        vcDir_in = strrep(vcDir_in, '/', '\');    
+        vcDir_in = fullfile('D:\Globus', vcDir_in); % RAID5
+    elseif isunix()
+        vcDir_in = fullfile('/mnt/ceph/users/jjun', vcDir_in);
+    elseif ismac()
+        vcDir_in = fullfile('~/ceph', vcDir_in);
+    else
+        error('get_test_data_: unsupported OS');
+    end
 end
 end %func
 
@@ -4571,14 +4573,10 @@ switch recording_type_(vcFile_raw)
         P.fInverse_file = get_set_(S_json, 'spike_sign', -1) == -1;
         P.viShank_site = deal([]);
     case 'spikeglx'
-        S_meta = read_meta_file_(strrep(vcFile_raw, '.bin', '.meta'));
-        P.probe_file = fullfile([S_meta.Smeta.vcProbe, '.prb']);
+        S_meta = read_meta_spikeglx_(strrep(vcFile_raw, '.bin', '.meta'));
+        P.probe_file = fullfile([S_meta.vcProbe, '.prb']);
         [P.sRateHz, P.uV_per_bit, P.vcDataType] = deal(S_meta.sRateHz, S_meta.uV_per_bit, S_meta.vcDataType);
-        if contains(vcFile_raw, '.imec.')
-            P.nChans = (S_meta.nChans+1)/2;
-        else
-            P.nChans = S_meta.nChans;
-        end
+        P.nChans = S_meta.nChans;
         S_prb = load_prb_(P.probe_file);
         [P.mrSiteXY, P.vrSiteHW, P.viShank_site, P.viSite2Chan] = ...
             struct_get_(S_prb, 'mrSiteXY', 'vrSiteHW', 'viShank_site', 'viSite2Chan');
@@ -4717,21 +4715,106 @@ end %func
 
 %--------------------------------------------------------------------------
 function [S_mda, fid_r] = spikeglx_header_(fname)
-S_meta = read_meta_file_(strrep(fname, '.bin', '.meta'));
+S_meta = read_meta_spikeglx_(strrep(fname, '.bin', '.meta'));
 vcDataType = S_meta.vcDataType;
 nBytes_sample = bytesPerSample_(S_meta.vcDataType);
 nBytes_data = filesize_(fname);
 nSamples = nBytes_data / nBytes_sample;
 nChans = S_meta.nChans;
-if contains(fname, '.imec.')
-    nChans = (nChans+1)/2;
-end
 dimm = [nChans, floor(nSamples/nChans)];
 S_mda = struct('dimm', dimm, 'vcDataType', vcDataType, ...
     'nBytes_header', 0, 'nBytes_sample', nBytes_sample, ...
     'nBytes_missing', 0, 'nBytes_data', nBytes_data);
 
 if nargout>=2, fid_r = fopen(fname,'rb'); end
+end %func
+
+
+%--------------------------------------------------------------------------
+% 8/2/17 JJJ: Documentation and test
+function S_meta = read_meta_spikeglx_(vcFile_meta)
+% Import SpikeGLX meta file format
+
+S_meta = [];
+assert(exist_file_(vcFile_meta), sprintf('%s does not exist\n', vcFile_meta));
+try
+    %Read Meta
+    S_sglx = meta2struct_(vcFile_meta);
+    S_meta.vcDataType = get_set_(S_sglx, 'vcDataType', 'int16');
+    S_meta.ADC_bits = bytesPerSample_(S_meta.vcDataType) * 8;    
+    
+    %convert new fields to old fields   
+    if isfield(S_sglx, 'niSampRate')        
+        % SpikeGLX
+        S_meta.nChans = S_sglx.nSavedChans;
+        S_meta.sRateHz = S_sglx.niSampRate;
+        S_meta.rangeMax = S_sglx.niAiRangeMax;
+        S_meta.rangeMin = S_sglx.niAiRangeMin;
+        S_meta.auxGain = S_sglx.niMNGain;
+        try
+            S_meta.outputFile = S_sglx.fileName;
+            S_meta.sha1 = S_sglx.fileSHA1;      
+            S_meta.vcProbe = 'imec2';
+        catch
+            S_meta.outputFile = '';
+            S_meta.sha1 = [];      
+        end
+    elseif isfield(S_sglx, 'imSampRate')
+        % IMECIII
+%         S_meta.nChans = S_sglx.nSavedChans;
+        S_meta.sRateHz = S_sglx.imSampRate;
+        S_meta.rangeMax = S_sglx.imAiRangeMax;
+        S_meta.rangeMin = S_sglx.imAiRangeMin;
+        S_meta.ADC_bits = 10;  %10 bit adc but 16 bit saved
+        vnIMRO = textscan(S_sglx.imroTbl, '%d', 'Delimiter', '( ),');
+        vnIMRO = double(vnIMRO{1});
+        S_meta.auxGain = vnIMRO(9); %hard code for now;
+        S_meta.auxGain_lfp = vnIMRO(10); %hard code for now;
+        S_meta.vcProbe = sprintf('imec3_opt%d', vnIMRO(3));
+        S_meta.nSites = vnIMRO(4);
+        S_meta.nChans = S_meta.nSites + 1; % add one 16-bit sync channel
+    else
+        error('unsupported format');
+    end
+    
+     %number of bits of ADC [was 16 in Chongxi original]
+    try
+        S_meta.uV_per_bit = ((S_meta.rangeMax-S_meta.rangeMin)/(2^S_meta.ADC_bits))/S_meta.auxGain * 1e6;  %uVolts
+    catch
+        S_meta.uV_per_bit = 1;
+    end    
+catch
+    error('Parsing error: %s\n\t%s\n', vcFile_meta, lasterr());
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+% 8/2/17 JJJ: Documentation and test
+function S = meta2struct_(vcFile)
+% Convert text file to struct
+S = struct();
+if ~exist_file_(vcFile, 1), return; end
+
+fid = fopen(vcFile, 'r');
+mcFileMeta = textscan(fid, '%s%s', 'Delimiter', '=',  'ReturnOnError', false);
+fclose(fid);
+csName = mcFileMeta{1};
+csValue = mcFileMeta{2};
+for i=1:numel(csName)
+    vcName1 = csName{i};
+    if vcName1(1) == '~', vcName1(1) = []; end
+    try         
+        eval(sprintf('%s = ''%s'';', vcName1, csValue{i}));
+        eval(sprintf('num = str2double(%s);', vcName1));
+        if ~isnan(num)
+            eval(sprintf('%s = num;', vcName1));
+        end
+        eval(sprintf('S = setfield(S, ''%s'', %s);', vcName1, vcName1));
+    catch
+        fprintf('%s = %s error\n', csName{i}, csValue{i});
+    end
+end
 end %func
 
 
@@ -7367,6 +7450,38 @@ end %func
 
 
 %--------------------------------------------------------------------------
+function push_readme_()
+system('git add ../README.md');
+system('git commit -m "README.md updated"');
+system('git push');
+end %func
+
+
+%--------------------------------------------------------------------------
+% 7/21/2018 JJJ: rejecting directories, strictly search for flies
+% 9/26/17 JJJ: Created and tested
+function flag = exist_file_(vcFile, fVerbose)
+if nargin<2, fVerbose = 0; end
+if isempty(vcFile)
+    flag = false; 
+elseif iscell(vcFile)
+    flag = cellfun(@(x)exist_file_(x, fVerbose), vcFile);
+    return;
+else
+    S_dir = dir(vcFile);
+    if numel(S_dir) == 1
+        flag = ~S_dir.isdir;
+    else
+        flag = false;
+    end
+end
+if fVerbose && ~flag
+    fprintf(2, 'File does not exist: %s\n', vcFile);
+end
+end %func
+
+
+%--------------------------------------------------------------------------
 % Call from irc.m
 % function compile_cuda_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
 function varargout = frewind_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
@@ -7378,15 +7493,15 @@ function varargout = text3_(varargin), cell_out = call_irc_(dbstack(), varargin,
 function varargout = text_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = create_figure_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = load_prb_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
-function varargout = read_meta_file_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
+% function varargout = read_meta_file_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = isTextFile_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = load_batch_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = list_files_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
-function varargout = meta2struct_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
+% function varargout = meta2struct_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = struct_merge_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = read_cfg_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = file2struct_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
-function varargout = exist_file_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
+% function varargout = exist_file_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = loadjson_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = filesize_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = car_reject_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
