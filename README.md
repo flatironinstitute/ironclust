@@ -1,4 +1,4 @@
-# IronClust
+# IronClust1
 
 Terabyte-scale, drift-resistant spike sorter for multi-day recordings from [high-channel-count probes](https://www.nature.com/articles/nature24636)
 
