@@ -79,11 +79,15 @@ Please read [CONTRIBUTING.md](https://gist.github.com/PurpleBooth/b24679402957c6
 
 ## Versioning
 
-- Run `irc2
+To display the current version, run
+```
+irc2 version
+```
 
 ## Authors
 
 - James Jun, Center for Computational Mathematics, Flatiron Institute
+- Jeremy Magland, Center for Computational Mathematics, Flatiron Institute
 
 ## License
 
