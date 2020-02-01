@@ -53,6 +53,7 @@ else
     vcFile_prm_ = vcFile_prm;
 end
 switch lower(vcCmd)
+    case 'edit-readme', edit_readme_(); return;
     % spikeforest2 interface
     case 'clear-jobs', clear_jobs_(vcArg1); return;
     case {'optimize-param', 'optimize', 'param-optimize'}
@@ -76,7 +77,7 @@ switch lower(vcCmd)
     case 'describe-mda', describe_mda_(vcArg1, vcArg2); return;
     case 'compare-mda', compare_mda_(vcArg1, vcArg2); return;
     case 'export-mda', save_firings_mda_(vcFile_prm); return;
-    case {'which', 'select'}, fprintf('%s\n', vcFile_prm); return;
+    case {'which', 'select'}, fprintf('Selected %s\n', vcFile_prm); return;
     case {'export-sf2', 'export-spikeforest2', 'export2spikeforest2'}, export_sf2_(); return;
     case {'export-ws', 'export-workspace', 'export'}, export_workspace_(vcArg1); return;
     case 'compile-deploy', compile_cuda_(vcArg1, '0'); return
@@ -124,7 +125,7 @@ switch lower(vcCmd)
         end
         return;
     case 'plot-drift', plot0_('drift', vcArg1, vcArg2); return;
-    case 'clear', clear_(); vcFile_prm_=[]; return;
+    case 'clear', clear_(vcArg1); vcFile_prm_=[]; return;
     case 'clear-sort', clear_('sort'); return;     
     case {'test-mcc', 'test_mcc', 'testmcc'}, test_mcc_(vcArg1); return;
     case {'test-static', 'test-drift', 'test-tetrode', 'test-tetrode2', 'test-tetrode3', ...
@@ -1349,16 +1350,17 @@ end %func
 
 %--------------------------------------------------------------------------
 function vcDir_in = clear_(vcMode)
-if nargin<1, vcMode = 'all'; end
+if nargin<1, vcMode=''; end
 
 switch vcMode
-    case 'all'
-        set(0, 'UserData', []);
+    case {'all', ''}
+        set(0, 'UserData', []); % unused
         disp('irc2: cleared all');
         vcDir_in = '';
     case 'sort'
-        S0 = get(0, 'UserData');
+        S0 = get(0, 'UserData'); % unused
         S0.S_clu = [];
+        S0.S_auto = [];
         set(0,'UserData',S0);
         disp('irc2: cleared sort');
         try
@@ -1367,12 +1369,31 @@ switch vcMode
             vcDir_in = '';
         end
     otherwise
-        if exist_file_(vcMode)
-            vcFile_prm_ = strrep(vcMode, '.prm', '');
+        % clear specified recording
+        dir_prm_ = @(x)dir(fullfile(x, '*.prm'));
+        vcFile_prm = vcMode;        
+        try
+            if exist_dir_(vcFile_prm) 
+                % directory is passed
+                vcDir = vcFile_prm;
+                if exist_dir_(fullfile(vcDir, 'irc2'))
+                    % output dir passed
+                    vcDir = fullfile(vcDir, 'irc2');
+                    S_dir = dir_prm_(vcDir);
+                    vcFile_prm = fullfile(vcDir, S_dir(1).name);
+                else
+                    % input dir passed
+                    S_dir = dir_prm_(vcDir);
+                    vcFile_prm = fullfile(vcDir, S_dir(1).name);
+                end
+            end
+            [vcDir, vcFile, vcExt] = fileparts(vcFile_prm);
+            vcFile_prm_ = fullfile(vcDir, vcFile);
             delete([vcFile_prm_, '*.irc']);
             delete([vcFile_prm_, '*_irc.mat']);
-        else
-            error('pass a parameter file');
+            fprintf('Cleared %s\n', vcFile_prm);
+        catch
+            fprintf(2, 'Nothing is cleared.\n');
         end
 end
 end
@@ -1396,6 +1417,9 @@ if ischar(S0)
     vcFile_auto_mat = strrep(vcFile_prm, '.prm', '_auto_irc.mat');
     if exist_file_(vcFile_mat)
         S0 = load(vcFile_mat, csFields{:});
+    else
+        fprintf(2, 'File does not exist: %s\n\tSort the file first.\n', vcFile_mat);
+        return;
     end
     S0.S_clu = load_(vcFile_clu_mat, csFields_clu);
     S0.S_auto = load_(vcFile_auto_mat, csFields_auto);    
@@ -7321,6 +7345,24 @@ catch ME
     fprintf(2, 'call_irc_: %s\n', ME.message);
     rethrow ME;
 end
+end %func
+
+
+%--------------------------------------------------------------------------
+function edit_readme_()
+S_cfg = read_cfg_();
+if ispc()
+    path_code = ['"', get_(S_cfg, 'path_vscode_win'), '"'];
+elseif ismac()
+    path_code = get_(S_cfg, 'path_vscode_mac');
+elseif isunix()
+    path_code = get_(S_cfg, 'path_vscode_lin');
+else
+    path_code = 'code';
+end
+path_irc = fileparts(fileparts(mfilename('fullpath')));
+path_readme = fullfile(path_irc, 'README.md');
+system(sprintf('%s "%s"', path_code, path_readme));
 end %func
 
 
