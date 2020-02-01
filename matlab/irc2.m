@@ -53,13 +53,16 @@ else
     vcFile_prm_ = vcFile_prm;
 end
 switch lower(vcCmd)
+    % Git functions
+    case 'push-readme', push_readme_(); return;    
+    case 'git-push', git_push_(vcArg1); return;
+        
     % optimize
     case 'optimize-clear', optimize_clear_(vcArg1, vcArg2); return;
     case 'optimize-status', optimize_status_(vcArg1, vcArg2); return;
     case {'optimize-param', 'optimize', 'param-optimize'}
         optimize_param_(vcArg1, vcArg2, vcArg3); return;
         
-    case 'push-readme', push_readme_(); return;
     case 'edit-readme', edit_readme_(); return;
     % spikeforest2 interface
     case 'clear-jobs', clear_jobs_(vcArg1); return;
@@ -6676,6 +6679,7 @@ if exist_file_(vcFile_out) && fUse_cache
     catch
     end
 end
+if ~fUse_cache, optimize_clear_(vcDir_rec,vcFile_prmset); end
 if isempty(S_prmset_rec)
     t_fun = tic;
     csDir_rec = sub_dir_(vcDir_rec, 1);
@@ -7001,11 +7005,6 @@ P = makeParam_(vcDir_in, vcDir_out, '', fParfor);
 vcFile_prm = P.vcFile_prm;
 clear_(vcFile_prm);
 fUse_cache = get_set_(S_cfg, 'fUse_cache_optimize', 1);
-if ~fUse_cache
-    vS_dir = dir(fullfile(vcDir_out, '*_p*.mda'));
-    arrayfun_(@(x)delete(fullfile(vcDir_out, x.name)), vS_dir);
-    fprintf('Deleted %d previous output\n', numel(vS_dir));
-end
 
 % run the parameters and adjust parameters and call appropriate command
 viPrm_pre = zeros(size(cName_prm));
@@ -7468,6 +7467,14 @@ end %func
 
 
 %--------------------------------------------------------------------------
+function git_push_(vcArg1)
+system('git add -u .');
+system(sprintf('git commit -m "%s"', vcArg1));
+system('git push');
+end %func
+
+
+%--------------------------------------------------------------------------
 function optimize_status_(vcDir_rec, vcFile_prmset)
 
 assert(exist_file_(vcFile_prmset) && exist_dir_(vcDir_rec), 'file or dir does not exist');
@@ -7502,7 +7509,7 @@ assert(exist_file_(vcFile_prmset) && exist_dir_(vcDir_rec), 'file or dir does no
 vcSorter = lower(strrep(vcFile_prmset, '.prmset', ''));
 vS_dir = dir(fullfile(vcDir_rec, '*', vcSorter, '*_p*.mda'));
 arrayfun_(@(x)delete(fullfile(x.folder, x.name)), vS_dir);
-fprintf('Deleted %d previous outputs\n', numel(vS_dir));
+fprintf(2, 'Deleted %d previous outputs\n', numel(vS_dir));
 end %func
 
 
