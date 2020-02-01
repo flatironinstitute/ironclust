@@ -6592,6 +6592,7 @@ if exist_file_(vcFile_out) && fUse_cache
     try
         S_prmset_rec = load(vcFile_out);
         S_prmset_rec.vcFile_out = vcFile_out;
+        fprintf(2, 'Results loaded from cache: %s\n', vcFile_out);
     catch
     end
 end
@@ -6721,19 +6722,28 @@ fig_ = @()figure('Color','w','Name', vcSorter, 'NumberTitle', 'off');
 ax1=axes(fig_()); hold(ax1,'on'); 
 % vcShapes = 'ox+*';
 calc_mean_snr_ = @(vr)arrayfun(@(x)nanmean(vr(vrSnr_gt>=x)), vrSnr_gt_srt);
-plot(ax1, vrSnr_gt_srt, calc_mean_snr_(S_best_score.F1), [cColor, 'o-'], ...
-          vrSnr_gt_srt, calc_mean_snr_(S_worst_score.F1), [cColor, 'o--']); 
-xylabel_(ax1, ['SNR threshold (=x)'], '<F1-score> | SNR>=x');
+yyaxis(ax1, 'left');
+[vrY1_L1, vrY1_L2] = deal(calc_mean_snr_(S_best_score.F1), calc_mean_snr_(S_worst_score.F1));
+plot(ax1, vrSnr_gt_srt, vrY1_L1, [cColor, 'o-'], vrSnr_gt_srt, vrY1_L2, [cColor, 'o--']); 
+xylabel_(ax1, 'SNR threshold (=x)', '<F1-score> | SNR>=x');
+yyaxis(ax1, 'right'); 
+plot(ax1, vrSnr_gt_srt, abs(vrY1_L1 - vrY1_L2), [cColor,':']); ylabel(ax1, '|F1.best - F1.worst|');
 grid(ax1,'on'); set(ax1,'YLim', [0 100]); 
-legend(ax1,{'best','worst'}, 'Location', 'SW');
+legend(ax1,{'best','worst'}, 'Location', 'SE');
 
 ax2=axes(fig_()); hold(ax2,'on');
 excl_nan_ = @(x)x(~isnan(x));
 [vrY2, vrY3] = deal(excl_nan_(S_best_score.F1), excl_nan_(S_worst_score.F1));
-plot(ax2, sort(vrY2), numel(vrY2):-1:1, [cColor,'o-'], sort(vrY3), numel(vrY3):-1:1, [cColor,'o--']);
-xylabel_(ax2, ['F1 threshold (=x)'], '# GT-units | F1>=x');    
+[vrX2_L1, vrX2_L2, vrY2_L1, vrY2_L2] = deal(sort(vrY2), sort(vrY3), numel(vrY2):-1:1, numel(vrY3):-1:1);
+vrX2_R = linspace(max(vrX2_L1(1),vrX2_L2(1)), min(vrX2_L1(end),vrX2_L2(end)), 100);
+yyaxis(ax2, 'left');
+plot(ax2, vrX2_L1, vrY2_L1, [cColor,'o-'], vrX2_L2, vrY2_L2, [cColor,'o--']);
+xylabel_(ax2, 'F1 threshold (=x)', '# GT-units | F1>=x');    
+yyaxis(ax2, 'right'); 
+vrY2_R = abs(interp1(vrX2_L1, vrY2_L1, vrX2_R, 'linear') - interp1(vrX2_L2, vrY2_L2, vrX2_R, 'linear'));
+plot(ax2, vrX2_R, vrY2_R, [cColor,':']); ylabel(ax2, '|F1.best - F1.worst|');
 grid(ax2,'on'); ylim(ax2, [0, nRec]);
-legend(ax2,{'best','worst'}, 'Location', 'SW');
+legend(ax2,{'best','worst'}, 'Location', 'NE');
 
 % create a bar plot
 ax3 = axes(fig_());
@@ -6782,7 +6792,7 @@ end
 for iPrmset = 1:nPrmset_show
     iPrmset1 = viPrmset_srt(iPrmset);
     csDesc{end+1} = sprintf('------------------------------');
-    csDesc{end+1} = sprintf('  prmset rank #%d (#%d):', iPrmset, iPrmset1);
+    csDesc{end+1} = sprintf('  prmset rank #%d (p#%d):', iPrmset, iPrmset1);
     csDesc{end+1} = sprintf('    F1:%0.1f Precision:%0.1f Reccall:%0.1f Accuracy:%0.1f', ...
         cellfun(@(x)nanmean(x(vlPlot_gt)), get_scores_prmset_(iPrmset1)));
     cVal_prm1 = permute_prm_(cVal_prm, iPrmset1);
@@ -6930,6 +6940,9 @@ for iPrmset = 1:nPrmset
         end
         cScore_prmset{iPrmset} = compare_mda_(vcFile_true_mda, vcFile_sorted_mda, P);
         viPrm_pre = viPrm1;
+        vcFile_sorted_mda1 = strrep(vcFile_sorted_mda, '.mda', sprintf('_p%d.mda', iPrmset));
+        copyfile(vcFile_sorted_mda, vcFile_sorted_mda1);
+        fprintf('Wrote to %s\n', vcFile_sorted_mda1);
     catch
         fprintf(2, '%s: paramset#%d failed:\n\t%s\n', vcDir_in, iPrmset, lasterr());
     end
