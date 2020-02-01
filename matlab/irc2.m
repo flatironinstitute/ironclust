@@ -53,13 +53,17 @@ else
     vcFile_prm_ = vcFile_prm;
 end
 switch lower(vcCmd)
+    % optimize
+    case 'optimize-clear', optimize_clear_(vcArg1, vcArg2); return;
     case 'optimize-status', optimize_status_(vcArg1, vcArg2); return;
+    case {'optimize-param', 'optimize', 'param-optimize'}
+        optimize_param_(vcArg1, vcArg2, vcArg3); return;
+        
     case 'push-readme', push_readme_(); return;
     case 'edit-readme', edit_readme_(); return;
     % spikeforest2 interface
     case 'clear-jobs', clear_jobs_(vcArg1); return;
-    case {'optimize-param', 'optimize', 'param-optimize'}
-        optimize_param_(vcArg1, vcArg2, vcArg3); return;
+        
     case {'run-hs', 'run-herdingspikes', 'run-herdingspikes2'}
         run_spikeforest2_('herdingspikes2', vcArg1, vcArg2, vcArg3); return;
     case {'run-sc', 'run-spykingcircus'}
@@ -7487,6 +7491,18 @@ try
 catch
     fprintf(2, '%s\n', lasterr());
 end
+end %func
+
+
+%--------------------------------------------------------------------------
+function optimize_clear_(vcDir_rec, vcFile_prmset)
+
+assert(exist_file_(vcFile_prmset) && exist_dir_(vcDir_rec), 'file or dir does not exist');
+
+vcSorter = lower(strrep(vcFile_prmset, '.prmset', ''));
+vS_dir = dir(fullfile(vcDir_rec, '*', vcSorter, '*_p*.mda'));
+arrayfun_(@(x)delete(fullfile(x.folder, x.name)), vS_dir);
+fprintf('Deleted %d previous outputs\n', numel(vS_dir));
 end %func
 
 
