@@ -6914,10 +6914,10 @@ for iPrmset = 1:nPrmset
                 otherwise
                     error('unsupported sorters: %s', vcSorter);
             end
+            movefile(vcFile_sorted_mda, vcFile_sorted_mda1, 'f');
         end
-        cScore_prmset{iPrmset} = compare_mda_(vcFile_true_mda, vcFile_sorted_mda, P);
-        viPrm_pre = viPrm1;        
-        movefile(vcFile_sorted_mda, vcFile_sorted_mda1, 'f');
+        cScore_prmset{iPrmset} = compare_mda_(vcFile_true_mda, vcFile_sorted_mda1, P);
+        viPrm_pre = viPrm1;                
         fprintf('Wrote to %s\n', vcFile_sorted_mda1);
     catch
         fprintf(2, '%s: paramset#%d failed:\n\t%s\n', vcDir_in, iPrmset, lasterr());
