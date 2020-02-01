@@ -6997,6 +6997,11 @@ P = makeParam_(vcDir_in, vcDir_out, '', fParfor);
 vcFile_prm = P.vcFile_prm;
 clear_(vcFile_prm);
 fUse_cache = get_set_(S_cfg, 'fUse_cache_optimize', 1);
+if ~fUse_cache
+    vS_dir = dir(fullfile(vcDir_out, '*_p*.mda'));
+    arrayfun_(@(x)delete(fullfile(vcDir_out, x.name)), vS_dir);
+    fprintf('Deleted %d previous output\n', numel(vS_dir));
+end
 
 % run the parameters and adjust parameters and call appropriate command
 viPrm_pre = zeros(size(cName_prm));
@@ -7023,9 +7028,9 @@ for iPrmset = 1:nPrmset
                     error('unsupported sorters: %s', vcSorter);
             end
             movefile(vcFile_sorted_mda, vcFile_sorted_mda1, 'f');
+            viPrm_pre = viPrm1;
         end
-        cScore_prmset{iPrmset} = compare_mda_(vcFile_true_mda, vcFile_sorted_mda1, P);
-        viPrm_pre = viPrm1;                
+        cScore_prmset{iPrmset} = compare_mda_(vcFile_true_mda, vcFile_sorted_mda1, P);                        
         fprintf('Wrote to %s\n', vcFile_sorted_mda1);
     catch
         fprintf(2, '%s: paramset#%d failed:\n\t%s\n', vcDir_in, iPrmset, lasterr());
