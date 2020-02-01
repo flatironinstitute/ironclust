@@ -196,8 +196,8 @@ end %func
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_()
 
-vcVer = 'v5.6.2';
-vcDate = '01/28/2020';
+vcVer = 'v5.6.4';
+vcDate = '01/31/2020';
 vcHash = file2hash_();
 
 if nargout==0
@@ -636,18 +636,23 @@ disp_stats_(S_score.vrPrecision_clu(vlClu), ['vrPrecision_clu', vcSnr_clu]);
 disp_stats_(S_score.vrRecall_clu(vlClu), ['vrRecall_clu', vcSnr_clu]);
 fprintf('\n');
 
-csText_gt = arrayfun_(@(x,y)sprintf('%d',x), 1:numel(vrSnr_gt))';  
-csText_clu = arrayfun_(@(x,y)sprintf('%d',x), 1:numel(vrSnr_clu))';  
+if false
+    csText_gt = arrayfun_(@(x)sprintf('%d',x), 1:numel(vrSnr_gt))';  
+    csText_clu = arrayfun_(@(x)sprintf('%d',x), 1:numel(vrSnr_clu))';
+    text_gt_(x) = @(x)text_(vrSnr_gt, S_score.(x), csText_gt, 'VerticalAlignment', 'top', 'HorizontalAlignment', 'left')
+    text_clu_(x) = @(x)text_(vrSnr_clu, S_score.(x), csText_clu, 'VerticalAlignment', 'top', 'HorizontalAlignment', 'left')
+else
+    text_gt_ = @(x)'';
+    text_clu_ = @(x)'';
+end
 title_str_ = @(x)sprintf('n=%d, %0.1f/%0.1f, [%0.1f, %0.1f, *%0.1f, %0.1f, %0.1f]', ...
     numel(x), nanmean(x), nanstd(x), quantile(x, [.1,.25,.5,.75,.9]));
 plot_gt_ = @(x){...
     plot(vrSnr_gt, S_score.(x), 'k.', vrSnr_gt(vlGt), S_score.(x)(vlGt), 'b.'), ...
-    xylabel_([],vcX_gt,x,title_str_(S_score.(x)(vlGt)),1), ...
-    text_(vrSnr_gt, S_score.(x), csText_gt, 'VerticalAlignment', 'top', 'HorizontalAlignment', 'left')};
+    xylabel_([], vcX_gt, x, title_str_(S_score.(x)(vlGt)),1), text_gt_(x)};
 plot_clu_ = @(x){...
     plot(vrSnr_clu, S_score.(x), 'k.', vrSnr_clu(vlClu), S_score.(x)(vlClu), 'b.'), ...
-    xylabel_([],vcX_clu,x,title_str_(S_score.(x)(vlClu)),1), ...
-    text_(vrSnr_clu, S_score.(x), csText_clu, 'VerticalAlignment', 'top', 'HorizontalAlignment', 'left')};
+    xylabel_([], vcX_clu, x, title_str_(S_score.(x)(vlClu)),1), text_clu_(x)};
 
 figure('Color','w', 'Name', ...
     sprintf('Groundtruth: %s, Sorted: %s', ...
@@ -1132,7 +1137,7 @@ vnIntersect = zeros(nB,1);
 if isempty(viTimeA), return; end
 % viTimeA = sort(viTimeA);
 [minA, maxA] = deal(viTimeA(1), viTimeA(end)); 
-overlap_ = @(x)sum(ismembc(x,viTimeA) | ismembc(x,viTimeA+1) | ismembc(x,viTimeA-1));
+overlap_ = @(x)sum(ismembc(viTimeA,x) | ismembc(viTimeA+1,x) | ismembc(viTimeA-1,x));
 [minB, maxB] = deal(miLimB(:,1), miLimB(:,2));
 viB_update = find(...
     (minA >= minB & minA <= maxB) | (maxA >= minB & maxA <= maxB) | ...
@@ -1857,7 +1862,7 @@ S_param = makeStruct_(nClu, nSites, knn, vcFile_prm, nSpk_min, ...
 % compute pairwise distance in parallel by sites
 [cviClu_clu_site, cvlExist_site] = deal(cell(nSites, 1));
 fParfor = get_set_(P, 'fParfor', 1) && nSites > 1;
-if fParfor
+if fParfor && nSites>1
     try
         parfor iSite = 1:nSites
             [cviClu_clu_site{iSite}, cvlExist_site{iSite}] = wave_similarity_site_(iSite, S_param);
@@ -1890,114 +1895,6 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function [cviClu_clu, vlExist_clu] = wave_similarity_site_(iSite1, S_auto)
-switch 2
-    case 1, [cviClu_clu, vlExist_clu] = wave_similarity_site1_(iSite1, S_auto);
-    case 2, [cviClu_clu, vlExist_clu] = wave_similarity_site2_(iSite1, S_auto);
-end
-end %func
-
-
-%--------------------------------------------------------------------------
-function [cviClu_clu, vlExist_clu] = wave_similarity_site1_(iSite1, S_auto)
-
-NUM_KNN = 10;
-fUseSecondSite = 1;
-
-import_struct_(S_auto);
-nDrift = size(mlDrift, 1);
-% fprintf('\twave_similarity_site_pre_: Site%d... ', iSite1); t_fun=tic;
-miKnn1 = load_miKnn_site_(S_auto, iSite1);
-miKnn1 = miKnn1(1:min(NUM_KNN, size(miKnn1,1)), :);
-thresh1 = vrThresh_site(iSite1);
-[trPc1, viSpk1] = load_fet_site_(S_auto, 1, iSite1);
-cvii1_drift = vi2cell_(discretize(viSpk1, viLim_drift), nDrift);
-[vrRho1, viClu1] = deal(S_auto.vrRho(viSpk1), viClu(viSpk1));
-vrRho_1 = copy_mask_(S_auto.vrRho, viSpk1);
-[~, miiKnn1] = ismember(miKnn1, viSpk1);
-
-if fUseSecondSite
-    [trPc2, viSpk2] = load_fet_site_(S_auto, 2, iSite1);
-else
-    trPc2 = [];
-end
-fSecondSite = ~isempty(trPc2);
-if fSecondSite   
-    vrRho_2 = copy_mask_(S_auto.vrRho, viSpk2);
-    [~, miiKnn2] = ismember(miKnn1, viSpk2);
-end
-% cc2_drift_clu = cell(nDrift, nClu);
-cviClu_drift = cell(nDrift,1);
-ctrPc_drift = cell(nDrift,1);
-
-for iDrift = 1:nDrift    
-    vii1 = cvii1_drift{iDrift};
-    if isempty(vii1), continue; end
-    [vrRho11, viClu11, miKnn11, miiKnn11] = ...
-        deal(vrRho1(vii1), viClu1(vii1), miKnn1(:,vii1), miiKnn1(:,vii1));
-    [cviiSpk_clu_, ~, viClu_uniq] = vi2cell_(viClu11, nClu);
-    if fSecondSite, miiKnn21 = miiKnn2(:,vii1); end
-    [viClu_drift1, cmrPc_drift1] = deal([], {}); 
-    for iClu = viClu_uniq
-        vii_ = cviiSpk_clu_{iClu};
-        [miKnn11_, miiKnn11_] = deal(miKnn11(:,vii_), miiKnn11(:,vii_));
-        vrRho11_T = vrRho11(vii_)';
-        vii1_ = miiKnn11_(vrRho_1(miKnn11_) >= vrRho11_T); 
-        if numel(vii1_) >= nSpk_min
-            mrPc1 = mean(trPc1(:,:,vii1_),3);
-            if abs(min(mrPv * mrPc1(:,1))) >= thresh1
-                viClu_drift1(end+1) = iClu;
-                cmrPc_drift1{end+1} = mrPc1;
-            end
-        end        
-        if fSecondSite
-            miiKnn21_ = miiKnn21(:,vii_);
-            vii2_ = miiKnn21_(vrRho_2(miKnn11_) >= vrRho11_T);
-            if numel(vii2_) >= nSpk_min
-                mrPc2 = mean(trPc2(:,:,vii2_),3);
-                if abs(min(mrPv * mrPc2(:,1))) >= thresh1
-                    viClu_drift1(end+1) = iClu;
-                    cmrPc_drift1{end+1} = mrPc2;
-                end
-            end
-        end         
-    end
-    cviClu_drift{iDrift} = viClu_drift1;
-    ctrPc_drift{iDrift} = cat(3, cmrPc_drift1{:});
-end
-[trPc1, trPc2, miKnn1, miiKnn1, miiKnn2] = deal([]); % clear memory
-
-vlExist_clu = false(1, nClu);
-vlExist_clu([cviClu_drift{:}]) = true;
-cviClu_clu = arrayfun_(@(x)x, (1:nClu)'); %start with self-containing cell
-norm_mr_ = @(mr)mr ./ sqrt(sum(mr.^2,1)); 
-tr2mr_pv_norm_ = @(tr,mr)norm_mr_(reshape(mr*reshape(tr,size(tr,1),[]),[],size(tr,3))); 
-
-% distance calculation
-for iDrift = 1:nDrift
-    viDrift1 = find(mlDrift(:,iDrift));
-    viClu1 = cviClu_drift{iDrift};
-    if isempty(viClu1), continue; end
-    trPc_clu1 = cat(3, ctrPc_drift{iDrift});
-    if isempty(trPc_clu1), continue; end
-    viClu2 = [cviClu_drift{viDrift1}];
-    trPc_clu2  = cat(3, ctrPc_drift{viDrift1});
-    if isempty(trPc_clu2), continue; end
-    mrWav_clu2 = tr2mr_pv_norm_(trPc_clu2, mrPv);
-    for iiClu1 = 1:numel(viClu1)
-        iClu1 = viClu1(iiClu1);
-        mrWav11 = pc2wav_shift_(trPc_clu1(:,:,iiClu1), mrPv, viShift);
-        viClu2_ = viClu2(max(mrWav11' * mrWav_clu2, [], 1) >= maxWavCor);
-        if isempty(viClu2_), continue; end
-        viClu2_ = unique(viClu2_(:));
-        cviClu_clu{iClu1} = [cviClu_clu{iClu1}; viClu2_];
-    end
-end    
-fprintf('.');
-end %func
-
-
-%--------------------------------------------------------------------------
 function viSpk1 = get_viSpk_site_(S_fet, iFet, iSite)
 switch iFet
     case 1, cviSpk_load = cellfun_(@(x)x{iSite}, S_fet.ccviSpk_site_load);
@@ -2008,7 +1905,7 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function [cviClu_clu, vlExist_clu] = wave_similarity_site2_(iSite1, S_auto)
+function [cviClu_clu, vlExist_clu] = wave_similarity_site_(iSite1, S_auto)
 
 NUM_KNN = 10;
 fUseSecondSite = 1;
@@ -2075,7 +1972,7 @@ end
 % load trPc1 and trPc2
 [cviClu_drift, ctrPc_drift] = deal(cell(nDrift,1));
 for iFet = 1:2
-    if ~fSecondSite, break; end    
+    if iFet==2 && ~fSecondSite, break; end    
     trPc = load_fet_site_(S_auto, iFet, iSite1);
     for iDrift = 1:nDrift
         [viClu_drift2, cmrPc_drift2] = deal([], {});
@@ -3963,48 +3860,149 @@ else
     vlKeep_ref = [];
 end
 
-% detect spikes or use the one passed from the input (importing)
-if isempty(vrThresh_site), [vrThresh_site, fGpu] = mr2thresh_(mrWav_filt, P); end
-[viTime_spk, vrAmp_spk, viSite_spk] = detect_spikes_(mrWav_filt, vrThresh_site, vlKeep_ref, P);
-[viTime_spk, vrAmp_spk, viSite_spk] = multifun_(@(x)gather_(x), viTime_spk, vrAmp_spk, viSite_spk);    
+if get_set_(P, 'fDenoise_detect', 1)
+    if isempty(mrPv_global)
+        [viTime_spk, vrAmp_spk, viSite_spk, vrThresh_site] = detect_spikes_(mrWav_filt, vrThresh_site, vlKeep_ref, nlim_wav1, P);
+        trWav_spk = get_spkwav_(mrWav_filt, viSite_spk, viTime_spk, P);
+        [mrPv_global, vrD_global] = get_prinvec_(trWav_spk, P); 
+    end
+    S_detect = denoise_detect_(mrWav_filt, mrPv_global, nlim_wav1, vlKeep_ref, P);
+    S_detect = struct_add_(S_detect, vrThresh_site, mrPv_global, vrD_global);
+else
+    % detect spikes or use the one passed from the input (importing)
+    [viTime_spk, vrAmp_spk, viSite_spk, vrThresh_site] = detect_spikes_(mrWav_filt, vrThresh_site, vlKeep_ref, nlim_wav1, P);
+    trWav_spk = get_spkwav_(mrWav_filt, viSite_spk, viTime_spk, P);
+    % extract spike feaures
+    if isempty(mrPv_global)
+        [mrPv_global, vrD_global] = get_prinvec_(trWav_spk, P); 
+    end    
+    trPc_spk = gather_(project_pc_(trWav_spk, mrPv_global, P));
+    if get_set_(P, 'sort_mode', 1) == 1 && size(trWav_spk,2) > 1
+        viSite2_spk = find_site_spk23_(trWav_spk, viSite_spk, P); trWav_spk = [];
+        trWav2_spk = mr2tr_wav_spk2_(mrWav_filt, viSite2_spk, viTime_spk, P);
+        trPc2_spk = project_pc_(trWav2_spk, mrPv_global, P);
+    else
+        [viSite2_spk, trPc2_spk] = deal([]);
+    end
+    % return struct
+    if nPad_pre > 0, viTime_spk = viTime_spk - nPad_pre; end
+    [mrPos_spk, vrPow_spk] = calc_pos_spk_(trPc_spk, viSite_spk, P); 
+    mrVp_spk = [];
+    S_detect = makeStruct_(trPc_spk, mrPv_global, viTime_spk, vrAmp_spk, viSite_spk, ...
+        mrVp_spk, trPc2_spk, viSite2_spk, vrThresh_site, mrPos_spk, vrPow_spk, vrD_global);
+end
+end %func
 
-% reject spikes within the overlap region
-if ~isempty(nlim_wav1)
-    viKeep_spk = find(viTime_spk >= nlim_wav1(1) & viTime_spk <= nlim_wav1(2));
-    [viTime_spk, vrAmp_spk, viSite_spk] = multifun_(@(x)x(viKeep_spk), viTime_spk, vrAmp_spk, viSite_spk);    
+
+%--------------------------------------------------------------------------
+function trWav_spk1 = mr2tr_wav_spk2_(mrWav_filt, viSite_spk, viTime_spk, P, mrWav_detect)
+
+if nargin<5, mrWav_detect=[]; end
+if isempty(mrWav_detect)
+    nTime_search = 0;
+else
+    nTime_search = 2;
+    % nTime_search = round(P.spkRefrac_ms/2/1000*P.sRateHz);
+end
+
+nSpks = numel(viSite_spk);
+nSites = numel(P.viSite2Chan);
+spkLim_wav = P.spkLim;
+nSites_spk = size(P.miSites,1);
+trWav_spk1 = zeros(diff(spkLim_wav) + 1, nSites_spk, nSpks, 'like', mrWav_filt);
+% nTime_search = 2;
+for iSite = 1:nSites
+    viiSpk1 = find(viSite_spk == iSite);
+    if isempty(viiSpk1), continue; end
+    viTime_spk1 = viTime_spk(viiSpk1); %already sorted by time
+    viSite1 = P.miSites(:,iSite);        
+    if nTime_search > 0 % deal with single sample shift
+        viTime_spk1 = search_local_min_(mrWav_detect(:,iSite), viTime_spk1, nTime_search);
+    end
+    trWav_spk1(:,:,viiSpk1) = permute(mr2tr_(mrWav_filt, spkLim_wav, viTime_spk1, viSite1), [1,3,2]); %raw    
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+% 6/20/2018 JJJ
+% Search the min time from the range started
+function [viSpk, viUpdated, viShifted] = search_local_min_(vrWav, viSpk, nSearch)
+% center the wave at the min
+
+nSearch = cast(nSearch, 'like', viSpk);
+mi_ = viSpk(:)' + (-nSearch:nSearch)';
+mi_(mi_<1) = 1;
+mi_(mi_>numel(vrWav)) = numel(vrWav);
+[~, viShift_spk1] = min(vrWav(mi_));
+viShift_spk1 = cast(viShift_spk1, 'like', viSpk);
+iTime0 = nSearch + 1;
+viUpdated = find(viShift_spk1 ~= iTime0);
+viShifted = viShift_spk1(viUpdated) - iTime0;
+viSpk(viUpdated) = viSpk(viUpdated) + viShifted(:);
+end %func
+
+
+%--------------------------------------------------------------------------
+function S_detect = denoise_detect_(mrWav_filt, mrPv_global, nlim_wav, vlKeep_wav, P)
+if nargin<3, nlim_wav=[]; end
+if nargin<4, vlKeep_wav=[]; end
+
+% error('denoise_detect_: not implemented');
+[nT, nSite] = size(mrWav_filt);
+nPc = size(mrPv_global,2);
+mad_ = @(x)x./median(abs(x),1);
+
+% convolve with the first PC component and detect
+nShift = round(mean(P.spkLim));
+vrConv = mrPv_global(end:-1:1,1); % time-inverse
+switch 2
+    case 1
+        mrWav_detect = zeros(size(mrWav_filt), 'like', mrWav_filt);
+        for iSite=1:nSite
+            mrWav_detect(:,iSite) = conv(mrWav_filt(:,iSite), vrConv,'same');
+        end
+        detect_single_ = @(x)spikeDetectSingle_fast_(mrWav_detect(:,x),P);
+        [cviSpk_site, cvrSpk_site] = arrayfun_(@(i)detect_single_(i), (1:nSite)');
+    case 2 % do not allow time shift for the secondary peak
+        mrWav_detect = [];
+        conv_detect_ = @(i)spikeDetectSingle_fast_(conv(mrWav_filt(:,i), vrConv,'same'), P);
+        [cviSpk_site, cvrSpk_site] = arrayfun_(@(i)conv_detect_(i), (1:nSite)');
+end
+[viTime_spk, vrAmp_spk, viSite_spk] = spikeMerge_(cviSpk_site, cvrSpk_site, P);
+[cviSpk_site, cvrSpk_site] = deal([]); % free memory
+viTime_spk = viTime_spk - nShift+1; % apply shift for PC projection
+% figure; plot(mad_(mrWav_filt(1:1e5,1)),'k'); hold on;
+% plot(mad_(conv(mrWav_filt(nShift:1e5,1),vrConv_detect,'same')));
+
+% exclude edge cases adn motion detection
+if ~isempty(vlKeep_wav)
+    [viTime_spk, vrAmp_spk] = select_vr_(viTime_spk, vrAmp_spk, find(vlKeep_wav(viTime_spk)));
+end
+if ~isempty(nlim_wav)
+    vi_ = find(viTime_spk >= nlim_wav(1) & viTime_spk <= nlim_wav(2));
+    [viTime_spk, vrAmp_spk, viSite_spk] = deal(viTime_spk(vi_), vrAmp_spk(vi_), viSite_spk(vi_));    
 end%if
 
-% extract spike waveforms
+% extract waveforms and PC
 trWav_spk = get_spkwav_(mrWav_filt, viSite_spk, viTime_spk, P);
-mrVp_spk = [];
+trPc_spk = project_pc_(trWav_spk, mrPv_global, P);
 
-% extract spike feaures
-if isempty(mrPv_global)
-    [mrPv_global, vrD_global] = get_prinvec_(trWav_spk, P); 
-end
-trPc_spk = gather_(project_pc_(trWav_spk, mrPv_global, P));
-
+% extract secondary PC
 if get_set_(P, 'sort_mode', 1) == 1 && size(trWav_spk,2) > 1
-    viSite2_spk = find_site_spk23_(trWav_spk, viSite_spk, P);
-    trWav_spk = []; %clear memory
-    trWav2_spk = mn2tn_wav_spk2_(mrWav_filt, viSite2_spk, viTime_spk, P);
-    trPc2_spk = gather_(project_pc_(trWav2_spk, mrPv_global, P));
+    viSite2_spk = find_site_spk23_(trWav_spk, viSite_spk, P); trWav_spk = []; %clear memory
+    trWav2_spk = mr2tr_wav_spk2_(mrWav_filt, viSite2_spk, viTime_spk, P, mrWav_detect);
+    trPc2_spk = project_pc_(trWav2_spk, mrPv_global, P);
 else
     [viSite2_spk, trPc2_spk] = deal([]);
 end
 
-% return struct
-if nPad_pre > 0, viTime_spk = viTime_spk - nPad_pre; end
-[mrPos_spk, vrPow_spk] = calc_pos_spk_(trPc_spk, viSite_spk, P); 
-if false % average the first and second peak locations
-    if ~isempty(trPc2_spk) && ~isempty(viSite2_spk)
-        [mrPos2_spk, vrPow2_spk] = calc_pos_spk_(trPc2_spk, viSite2_spk, P);
-        mrPos_spk = (mrPos_spk+mrPos2_spk)/2;
-        vrPow_spk = (vrPow_spk+vrPow2_spk)/2;
-    end
-end
-S_detect = makeStruct_(trPc_spk, mrPv_global, viTime_spk, vrAmp_spk, viSite_spk, ...
-    mrVp_spk, trPc2_spk, viSite2_spk, vrThresh_site, mrPos_spk, vrPow_spk, vrD_global);
+% output
+if ~isempty(nlim_wav), viTime_spk = viTime_spk - (nlim_wav(1)-1); end
+[mrPos_spk, vrPow_spk] = calc_pos_spk_(trPc_spk, viSite_spk, P);
+mrVp_spk = [];
+S_detect = makeStruct_(viTime_spk, viSite_spk, vrAmp_spk, trPc_spk, ...
+    viSite2_spk, trPc2_spk, mrPos_spk, vrPow_spk, mrVp_spk);   
 end %func
 
 
@@ -5912,25 +5910,27 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function [viTime_spk, vrAmp_spk, viSite_spk] = detect_spikes_(mnWav3, vnThresh_site, vlKeep_ref, P)
+function [viTime_spk, vrAmp_spk, viSite_spk, vrThresh_site] = ...
+    detect_spikes_(mrWav_filt, vrThresh_site, vlKeep_wav, nlim_wav, P)
+
 % fMerge_spk = 1;
 fMerge_spk = get_set_(P, 'fMerge_spk', 1);
 
-[n1, nSites, ~] = size(mnWav3);
+[n1, nSites, ~] = size(mrWav_filt);
 [cviSpk_site, cvrSpk_site] = deal(cell(nSites,1));
-if isempty(vnThresh_site)    
-    vnThresh_site = mr2thresh_(mnWav3, P);
+if isempty(vrThresh_site)    
+    vrThresh_site = mr2thresh_(mrWav_filt, P);
 end
 
 for iSite = 1:nSites
-    [viSpk11, vrSpk11] = spikeDetectSingle_fast_(mnWav3(:,iSite), P, vnThresh_site(iSite));
+    [viSpk1, vrSpk1] = spikeDetectSingle_fast_(mrWav_filt(:,iSite), P, vrThresh_site(iSite));   
     
     % Reject global mean
-    if isempty(vlKeep_ref)
-        cviSpk_site{iSite} = viSpk11;
-        cvrSpk_site{iSite} = vrSpk11;        
+    if isempty(vlKeep_wav)
+        cviSpk_site{iSite} = viSpk1;
+        cvrSpk_site{iSite} = vrSpk1;        
     else
-        [cviSpk_site{iSite}, cvrSpk_site{iSite}] = select_vr_(viSpk11, vrSpk11, find(vlKeep_ref(viSpk11)));
+        [cviSpk_site{iSite}, cvrSpk_site{iSite}] = select_vr_(viSpk1, vrSpk1, find(vlKeep_wav(viSpk1)));
     end
 end
 
@@ -5947,6 +5947,11 @@ else
 end
 vrAmp_spk = gather_(vrAmp_spk);
 
+% reject spikes within the overlap region
+if ~isempty(nlim_wav)
+    viiKeep_spk = find(viTime_spk >= nlim_wav(1) & viTime_spk <= nlim_wav(2));
+    [viTime_spk, vrAmp_spk, viSite_spk] = multifun_(@(x)x(viiKeep_spk), viTime_spk, vrAmp_spk, viSite_spk);    
+end%if
 end %func
 
 
@@ -6082,15 +6087,17 @@ function [viSpk1, vrSpk1, thresh1] = spikeDetectSingle_fast_(vrWav1, P, thresh1)
 % 6/27/17 JJJ: bugfix: hard set threshold is applied
 
 % Determine threshold
-MAX_SAMPLE_QQ = 300000; 
+MAX_SAMPLE_QQ = 2^16; %300000; 
 % fSpikeRefrac_site = 0;
 if nargin < 3, thresh1 = []; end
 if nargin < 2, P = struct('spkThresh', [], 'qqFactor', 5); end
 if ~isempty(get_(P, 'spkThresh')), thresh1 = P.spkThresh; end
 
 if thresh1==0, [viSpk1, vrSpk1] = deal([]); return; end % bad site
-if isempty(thresh1)    
-    thresh1 = median(abs(subsample_vr_(vrWav1, MAX_SAMPLE_QQ)));
+if isempty(thresh1)  
+    vr_ = subsample_vr_(vrWav1, MAX_SAMPLE_QQ);
+    thresh1 = median(abs(vr_ - median(vr_))); vr_=[];
+%     thresh1 = median(abs(subsample_vr_(vrWav1, MAX_SAMPLE_QQ)));
     thresh1 = single(thresh1)* P.qqFactor / 0.6745;
 end
 thresh1 = cast(thresh1, 'like', vrWav1); % JJJ 11/5/17
@@ -7362,7 +7369,7 @@ function varargout = recording_duration_(varargin), cell_out = call_irc_(dbstack
 function varargout = squeeze_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = struct_set_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = find_site_spk23_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
-function varargout = mn2tn_wav_spk2_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
+% function varargout = mn2tn_wav_spk2_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = matchFileExt_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = struct_copyas_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = set_bool_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
