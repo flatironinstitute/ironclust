@@ -6658,7 +6658,7 @@ function optimize_prmset_(vcDir_rec, vcFile_prmset, vcFile_out)
 % optimize_prmset_(vcDir_rec, vcFile_prmset)
 % optimize_prmset_(vcDir_rec, vcFile_prmset, vcFile_out)
 
-[fDebug, fParfor] = deal(1, 1);
+[fDebug, fParfor] = deal(0, 1);
 
 % if fDebug, fParfor = 0; end
 S_cfg = read_cfg_();
@@ -6699,6 +6699,7 @@ if isempty(S_prmset_rec)
     end
 
     if fParfor==0, fprintf(2, 'optimize_param_: fParfor=0\n'); end
+    fParfor = fParfor && nRec>1;
     if fParfor
         try
             parfor iRec = 1:nRec
