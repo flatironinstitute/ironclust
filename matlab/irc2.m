@@ -7530,17 +7530,23 @@ try
     csName_file = {S_dir.name};
     viPrmset = cellfun(@(x)str2num(strrep(strrep(x,'firings_p',''), '.mda','')), csName_file);
     vlSelect = viPrmset >= 1 & viPrmset <= nPrmset; 
-    vrDatenum_file = [S_dir.datenum];
-    
-    t_passed = range(vrDatenum_file(vlSelect)) * 24;
     nOutput = sum(vlSelect);
+    vrDatenum_file = [S_dir.datenum];
+    vrDatenum_file = sort(vrDatenum_file(vlSelect));
     
+    t_passed = range(vrDatenum_file) * 24;
     csDir_rec = sub_dir_(vcDir_rec, 1);
     nRec = numel(csDir_rec);
     nOutput_total = nRec * nPrmset;   
     t_left = t_passed * nOutput_total / nOutput - t_passed;
     fprintf('%s on %s:\n\t%d recordings, %d parameters\n\t%d/%d (%0.1f%%) completed (%0.1f hr passed, %0.1f hr remaining)\n', ...
         vcDir_rec, vcFile_prmset, nRec, nPrmset, nOutput, nOutput_total, nOutput/nOutput_total*100, t_passed, t_left);
+    
+    % plot
+    figure; plot((vrDatenum_file - vrDatenum_file(end))*24, nOutput_total - (1:nOutput), '.-'); 
+    xlabel('Time (hour)'); ylabel('# param left'); 
+    grid on; axis tight;
+    ylim([0, nOutput_total]);
 catch
     fprintf(2, '%s\n', lasterr());
 end
