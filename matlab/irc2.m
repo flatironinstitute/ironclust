@@ -7518,25 +7518,29 @@ end %func
 
 %--------------------------------------------------------------------------
 function optimize_status_(vcDir_rec, vcFile_prmset)
-
-assert(exist_file_(vcFile_prmset) && exist_dir_(vcDir_rec), 'file or dir does not exist');
-
-vcSorter = lower(strrep(vcFile_prmset, '.prmset', ''));
-S_dir = dir(fullfile(vcDir_rec, '*', vcSorter, '*_p*.mda'));
-vrDatenum_files = [S_dir.datenum];
-t_passed = range(vrDatenum_files) * 24;
 try
-    nOutput = numel(S_dir);
-    
-    csDir_rec = sub_dir_(vcDir_rec, 1);
-    nRec = numel(csDir_rec);
+    assert(exist_file_(vcFile_prmset) && exist_dir_(vcDir_rec), 'file or dir does not exist');
+
     S_prmset = file2struct_ordered_(vcFile_prmset);
     [cName_prm, cVal_prm] = deal(fieldnames(S_prmset), struct2cell(S_prmset));
     nPrmset = prod(cellfun(@numel, cVal_prm));    
+    
+    vcSorter = lower(strrep(vcFile_prmset, '.prmset', ''));
+    S_dir = dir(fullfile(vcDir_rec, '*', vcSorter, '*_p*.mda'));
+    csName_file = {S_dir.name};
+    viPrmset = cellfun(@(x)str2num(strrep(strrep(x,'firings_p',''), '.mda','')), csName_file);
+    vlSelect = viPrmset >= 1 & viPrmset <= nPrmset; 
+    vrDatenum_file = [S_dir.datenum];
+    
+    t_passed = range(vrDatenum_file(vlSelect)) * 24;
+    nOutput = sum(vlSelect);
+    
+    csDir_rec = sub_dir_(vcDir_rec, 1);
+    nRec = numel(csDir_rec);
     nOutput_total = nRec * nPrmset;   
     t_left = t_passed * nOutput_total / nOutput - t_passed;
-    fprintf('%s on %s: %d/%d (%0.1f%%) completed (%0.1f hr passed, %0.1f hr remaining)\n', ...
-        vcDir_rec, vcFile_prmset, nOutput, nOutput_total, nOutput/nOutput_total*100, t_passed, t_left);
+    fprintf('%s on %s:\n\t%d recordings, %d parameters\n\t%d/%d (%0.1f%%) completed (%0.1f hr passed, %0.1f hr remaining)\n', ...
+        vcDir_rec, vcFile_prmset, nRec, nPrmset, nOutput, nOutput_total, nOutput/nOutput_total*100, t_passed, t_left);
 catch
     fprintf(2, '%s\n', lasterr());
 end
