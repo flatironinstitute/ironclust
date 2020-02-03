@@ -55,13 +55,13 @@ end
 switch lower(vcCmd)
     % Git functions
     case 'push-readme', push_readme_(); return;    
-    case 'git-push', git_push_(vcArg1); return;
+    case {'push', 'git-push'}, git_push_(vcArg1); return;
         
     % optimize
     case 'optimize-clear', optimize_clear_(vcArg1, vcArg2); return;
     case 'optimize-status', optimize_status_(vcArg1, vcArg2); return;
-    case {'optimize-param', 'optimize', 'param-optimize'}
-        optimize_param_(vcArg1, vcArg2, vcArg3); return;
+    case {'optimize-param', 'optimize-prmset', 'optimize-prm'}
+        optimize_prmset_(vcArg1, vcArg2, vcArg3); return;
         
     case 'edit-readme', edit_readme_(); return;
     % spikeforest2 interface
@@ -206,8 +206,8 @@ end %func
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_()
 
-vcVer = 'v5.6.5';
-vcDate = '02/01/2020';
+vcVer = 'v5.6.6';
+vcDate = '02/03/2020';
 vcHash = file2hash_();
 
 if nargout==0
@@ -6298,6 +6298,7 @@ end %func
 % Run spikeforest2 through python docker interface
 function run_spikeforest2_(vcSorter, vcDir_in, vcDir_out, vcArg)
 if nargin<4, vcArg = ''; end
+fValidate_sf2 = 0;
 
 csSorters_sf2 = {'mountainsort4', 'ironclust', 'kilosort2', 'kilosort', 'spykingcircus', 'herdingspikes2', 'tridesclous', 'klusta', 'waveclus', 'jrclust'};
 
@@ -6342,7 +6343,7 @@ end
 
 % validate
 vcFile_true = fullfile(vcDir_in, 'firings_true.mda');
-if exist_file_(vcFile_true)
+if exist_file_(vcFile_true) && fValidate_sf2
     fPlot_gt = read_cfg_('fPlot_gt');
     vcFile_raw = fullfile(vcDir_in, 'raw.mda');
 %     S_score = irc('validate-mda', vcFile_true, vcFile_firings, vcFile_raw, fPlot_gt); % assume that groundtruth file exists
@@ -6651,16 +6652,19 @@ end %func
 
 %--------------------------------------------------------------------------
 % 2020/jan/23, run parameter optimizer for ironclust
-function optimize_param_(vcDir_rec, vcFile_prmset, vcFile_out)
+function optimize_prmset_(vcDir_rec, vcFile_prmset, vcFile_out)
 % usage
 % -----
-% optimize_param_(vcDir_rec, vcFile_prmset)
-% optimize_param_(vcDir_rec, vcFile_prmset, vcFile_out)
+% optimize_prmset_(vcDir_rec, vcFile_prmset)
+% optimize_prmset_(vcDir_rec, vcFile_prmset, vcFile_out)
 
-[fDebug, fParfor] = deal(0, 1);
+[fDebug, fParfor] = deal(1, 1);
 
+% if fDebug, fParfor = 0; end
 S_cfg = read_cfg_();
 fUse_cache = get_set_(S_cfg, 'fUse_cache_optimize', 0);
+csSorter_gpu = {'ironclust', 'kilosort2', 'kilosort', 'jrclust'};
+P_prmset = makeStruct_(fUse_cache, fParfor, csSorter_gpu);
 
 if nargin<3, vcFile_out = ''; end
 [~,vcPostfix_] = fileparts(vcFile_prmset); 
@@ -6689,7 +6693,10 @@ if isempty(S_prmset_rec)
     nPrmset = prod(cellfun(@numel, cVal_prm));
     ccScore_prmset_rec = cell(nPrmset, nRec);
 
-    if fDebug, [fParfor, nRec] = deal(0, 2); end
+    if fDebug
+        fprintf(2, 'fDebug=1, nRec=1\n');
+        nRec = 1; 
+    end
 
     if fParfor==0, fprintf(2, 'optimize_param_: fParfor=0\n'); end
     if fParfor
@@ -6698,7 +6705,7 @@ if isempty(S_prmset_rec)
                 vcDir_in1 = csDir_rec{iRec};
                 vcDir_out1 = fullfile(vcDir_in1, vcPostfix_out);
                 ccScore_prmset_rec(:,iRec) = ...
-                    score_paramset_(vcSorter, vcDir_in1, vcDir_out1, cName_prm, cVal_prm, S_cfg);
+                    score_prmset_(vcSorter, vcDir_in1, vcDir_out1, cName_prm, cVal_prm, P_prmset);
             end
         catch
             fParfor = 0;
@@ -6709,7 +6716,7 @@ if isempty(S_prmset_rec)
             vcDir_in1 = csDir_rec{iRec};
             vcDir_out1 = fullfile(vcDir_in1, vcPostfix_out);            
             ccScore_prmset_rec(:,iRec) = ...
-                score_paramset_(vcSorter, vcDir_in1, vcDir_out1, cName_prm, cVal_prm, S_cfg);
+                score_prmset_(vcSorter, vcDir_in1, vcDir_out1, cName_prm, cVal_prm, P_prmset);
         end
     end
     t_fun = toc(t_fun);
@@ -6993,51 +7000,84 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function cScore_prmset = score_paramset_(vcSorter, vcDir_in, vcDir_out, cName_prm, cVal_prm, S_cfg)
-if nargin<6, S_cfg=[]; end
+function cScore_prmset = score_prmset_(vcSorter, vcDir_in, vcDir_out, cName_prm, cVal_prm, P_prmset)
+if nargin<6, P_prmset=[]; end
 
-fParfor = 0; % turn off parfor for each file
+fParfor = get_set_(P_prmset, 'fParfor', 1);
+
 nPrmset = permute_prm_(cVal_prm);
 cScore_prmset = cell(nPrmset, 1);
-vcFile_true_mda = fullfile(vcDir_in, 'firings_true.mda');
-vcFile_sorted_mda = fullfile(vcDir_out, 'firings.mda');
-P = makeParam_(vcDir_in, vcDir_out, '', fParfor);
-vcFile_prm = P.vcFile_prm;
-clear_(vcFile_prm);
-fUse_cache = get_set_(S_cfg, 'fUse_cache_optimize', 1);
 
 % run the parameters and adjust parameters and call appropriate command
 viPrm_pre = zeros(size(cName_prm));
-for iPrmset = 1:nPrmset
-    try
-        vcFile_sorted_mda1 = strrep(vcFile_sorted_mda, '.mda', sprintf('_p%d.mda', iPrmset));
-        if exist_file_(vcFile_sorted_mda1) && fUse_cache
-            fprintf('Loaded from cache: %s\n', vcFile_sorted_mda1);
-        else
-            [cVal_prm1, viPrm1] = permute_prm_(cVal_prm, iPrmset);
-            vlPrm_update = viPrm1 ~= viPrm_pre;
-            cName_prm1 = cName_prm(vlPrm_update);
-            S_prm1 = cell2struct(cVal_prm1, cName_prm, 1);
-            switch lower(vcSorter)
-                case 'ironclust'
-                    vcCmd1 = param2cmd_(cName_prm1); 
-                    edit_prm_file_(cell2struct(cVal_prm1(vlPrm_update), cName_prm1, 1), vcFile_prm); % edit file
-                    irc2(vcCmd1, vcFile_prm);    
-                case 'kilosort2', kilosort2_(vcDir_in, vcDir_out, S_prm1);                   
-                case {'mountainsort4', 'spykingcircus', 'tridesclous', 'herdingspikes2', 'klusta', 'waveclus'}
-                    run_spikeforest2_(vcSorter, vcDir_in, vcDir_out, S_prm1);    
-    %             case {'jrclust', 'kilosort'}
-                otherwise
-                    error('unsupported sorters: %s', vcSorter);
-            end
-            movefile(vcFile_sorted_mda, vcFile_sorted_mda1, 'f');
-            viPrm_pre = viPrm1;
-        end
-        cScore_prmset{iPrmset} = compare_mda_(vcFile_true_mda, vcFile_sorted_mda1, P);                        
-        fprintf('Wrote to %s\n', vcFile_sorted_mda1);
-    catch
-        fprintf(2, '%s: paramset#%d failed:\n\t%s\n', vcDir_in, iPrmset, lasterr());
+if contains(vcSorter, P_prmset.csSorter_gpu), fParfor = 0; end
+if fParfor
+    parfor iPrmset = 1:nPrmset
+        cScore_prmset{iPrmset} = score_prmset_for_(...
+            vcSorter, vcDir_in, vcDir_out, cName_prm, cVal_prm, P_prmset, iPrmset);
     end
+end
+% for single thread sorters or retry if parallel failed
+for iPrmset = 1:nPrmset
+    if isempty(cScore_prmset{iPrmset})
+        [cScore_prmset{iPrmset}, P_prmset.viPrm_pre] = score_prmset_for_(...
+            vcSorter, vcDir_in, vcDir_out, cName_prm, cVal_prm, P_prmset, iPrmset);
+    end
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+function [S_score1, viPrm_pre] = score_prmset_for_(vcSorter, vcDir_in, vcDir_out, cName_prm, cVal_prm, P_prmset, iPrmset)
+
+t_fun=tic;
+fUse_cache = get_set_(P_prmset, 'fUse_cache', 1);
+vcFile_true_mda = fullfile(vcDir_in, 'firings_true.mda');
+P_compare = makeParam_(vcDir_in, vcDir_out, '', 0); % no parfor during compare
+% clear existing output for ironclust
+vcFile_prm = P_compare.vcFile_prm;
+clear_(vcFile_prm);
+viPrm_pre = get_(P_prmset, 'viPrm_pre');
+try    
+    vcFile_out1 = fullfile(vcDir_out, sprintf('firings_p%d.mda', iPrmset));
+    if exist_file_(vcFile_out1) && fUse_cache
+        fprintf('Loaded from cache: %s\n', vcFile_out1);
+    else
+        [cVal_prm1, viPrm1] = permute_prm_(cVal_prm, iPrmset);
+        if isempty(viPrm_pre)
+            vlPrm_update1 = true(size(viPrm1));
+        else
+            vlPrm_update1 = viPrm1 ~= viPrm_pre;
+        end
+        cName_prm1 = cName_prm(vlPrm_update1);
+        S_prm1 = cell2struct(cVal_prm1, cName_prm, 1);
+        switch lower(vcSorter)
+            case 'ironclust' % reuse last shared parameter output
+                vcDir_out1 = vcDir_out; % use previous cache
+                edit_prm_file_(cell2struct(cVal_prm1(vlPrm_update1), cName_prm1, 1), vcFile_prm); % edit file
+                irc2(param2cmd_(cName_prm1), vcFile_prm);    
+                fDelete = 0;
+            case 'kilosort2'
+                vcDir_out1 = vcDir_out; % use previous cache
+                kilosort2_(vcDir_in, vcDir_out1, S_prm1);                   
+                fDelete = 0;
+            case {'mountainsort4', 'spykingcircus', 'tridesclous', 'herdingspikes2', 'klusta', 'waveclus', 'jrclust', 'kilosort'}
+                vcDir_out1 = fullfile(vcDir_out, sprintf('p%d', iPrmset));
+                run_spikeforest2_(vcSorter, vcDir_in, vcDir_out1, S_prm1);    
+                fDelete = 1;
+            otherwise
+                error('unsupported sorters: %s', vcSorter);
+        end
+        movefile(fullfile(vcDir_out1, 'firings.mda'), vcFile_out1, 'f');
+        if fDelete, delete_(vcDir_out1); end
+        viPrm_pre = viPrm1;
+        fprintf('Wrote to %s (took %0.1fs)\n', vcFile_out1, toc(t_fun));
+    end
+    S_score1 = compare_mda_(vcFile_true_mda, vcFile_out1, P_compare);                            
+    fError = 0;
+catch E
+    S_score1 = [];
+    fprintf(2, '%s: paramset#%d failed:\n\t%s\n', vcDir_in, iPrmset, E.message());
 end
 end %func
 
@@ -7538,26 +7578,43 @@ end %func
 
 
 %--------------------------------------------------------------------------
+% 4/23/2019 JJJ: delete either cell of files or multiple arguments
+function delete_(varargin)
+for iArg = 1:nargin
+    csFiles = varargin{iArg};
+    if ischar(csFiles), csFiles = {csFiles}; end
+    for i=1:numel(csFiles)
+        try
+            if iscell(csFiles)
+                delete(csFiles{i});
+            else
+                delete(csFiles(i));
+            end
+        catch
+    %         disperr_();
+        end
+    end
+end
+end %func
+
+
+%--------------------------------------------------------------------------
 % Call from irc.m
 % function compile_cuda_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
 function varargout = frewind_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = disperr_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = edit_prm_file_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
-function varargout = delete_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = edit_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = text3_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = text_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = create_figure_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = load_prb_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
-% function varargout = read_meta_file_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = isTextFile_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = load_batch_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = list_files_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
-% function varargout = meta2struct_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = struct_merge_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = read_cfg_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = file2struct_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
-% function varargout = exist_file_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = loadjson_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = filesize_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = car_reject_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
@@ -7571,7 +7628,6 @@ function varargout = recording_duration_(varargin), cell_out = call_irc_(dbstack
 function varargout = squeeze_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = struct_set_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = find_site_spk23_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
-% function varargout = mn2tn_wav_spk2_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = matchFileExt_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = struct_copyas_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = set_bool_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
