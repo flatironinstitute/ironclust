@@ -6296,10 +6296,11 @@ end %func
 
 %--------------------------------------------------------------------------
 % Run spikeforest2 through python docker interface
-function run_spikeforest2_(vcSorter, vcDir_in, vcDir_out, vcArg)
+function run_spikeforest2_(vcSorter, vcDir_in, vcDir_out, vcArg, fValidate_sf2)
 if nargin<4, vcArg = ''; end
-fValidate_sf2 = 0;
+if nargin<5, fValidate_sf2 = []; end
 
+if isempty(fValidate_sf2), fValidate_sf2 = 1; end
 csSorters_sf2 = {'mountainsort4', 'ironclust', 'kilosort2', 'kilosort', 'spykingcircus', 'herdingspikes2', 'tridesclous', 'klusta', 'waveclus', 'jrclust'};
 
 t_fun=tic;
@@ -7064,7 +7065,7 @@ try
                 fDelete = 0;
             case {'mountainsort4', 'spykingcircus', 'tridesclous', 'herdingspikes2', 'klusta', 'waveclus', 'jrclust', 'kilosort'}
                 vcDir_out1 = fullfile(vcDir_out, sprintf('p%d', iPrmset));
-                run_spikeforest2_(vcSorter, vcDir_in, vcDir_out1, S_prm1);    
+                run_spikeforest2_(vcSorter, vcDir_in, vcDir_out1, S_prm1, 0);
                 fDelete = 1;
             otherwise
                 error('unsupported sorters: %s', vcSorter);
