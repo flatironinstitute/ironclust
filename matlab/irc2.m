@@ -206,8 +206,8 @@ end %func
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_()
 
-vcVer = 'v5.6.6';
-vcDate = '02/03/2020';
+vcVer = 'v5.6.7';
+vcDate = '02/04/2020';
 vcHash = file2hash_();
 
 if nargout==0
@@ -6300,7 +6300,11 @@ function run_spikeforest2_(vcSorter, vcDir_in, vcDir_out, vcArg, fValidate_sf2)
 if nargin<4, vcArg = ''; end
 if nargin<5, fValidate_sf2 = []; end
 
-if isempty(fValidate_sf2), fValidate_sf2 = 1; end
+S_cfg = read_cfg_();
+
+if isempty(fValidate_sf2)
+    fValidate_sf2 = get_(S_cfg, 'spikeforest2_validate'); 
+end
 csSorters_sf2 = {'mountainsort4', 'ironclust', 'kilosort2', 'kilosort', 'spykingcircus', 'herdingspikes2', 'tridesclous', 'klusta', 'waveclus', 'jrclust'};
 
 t_fun=tic;
@@ -6323,8 +6327,10 @@ if contains(lower(vcSorter), csSorters_sf2)
     
     fprintf('Running %s through spikeforest2...\n', vcSorter);
     vcFile_firings = fullfile(vcDir_out, 'firings.mda');
-    sf2_params = {'algorithm', lower(vcSorter), 'recording_path', vcDir_in, 'sorting_out', vcFile_firings};
-    fContainer = read_cfg_('spikeforest2_use_container');   
+    job_timeout = get_(S_cfg, 'spikeforest2_timeout');
+    sf2_params = {'algorithm', lower(vcSorter), 'recording_path', vcDir_in, ...
+        'sorting_out', vcFile_firings, 'job_timeout', job_timeout};
+    fContainer = get_(S_cfg, 'spikeforest2_use_container');   
     if fContainer == 1
         sf2_params = {sf2_params{:}, 'container', 'default'};
         fprintf('irc2: spikeforest2_use_container=True\n');
@@ -6405,13 +6411,14 @@ switch lower(vcSorter)
         cs_sorter_pylist = {'projection_threshold'};
     case 'spykingcircus'
         cs_sorter_double = {'auto_merge', 'template_width_ms', 'whitening_max_elts', 'clustering_max_elts', 'adjacency_radius'};
-        cs_sorter_logical = {'filter', 'merge_spikes'};        
+        cs_sorter_logical = {'filter', 'merge_spikes'};                
+    case 'klusta'
+        cs_sorter_double = {'threshold_strong_std_factor', 'threshold_weak_std_factor'};
+        cs_sorter_int = {'n_features_per_channel', 'num_starting_clusters', 'extract_s_before', 'extract_s_after'};
     case 'jrclust'        
     case 'waveclus'        
     case 'kilosort'        
-    case 'tridesclous'        
-    case 'klusta'
-        
+    case 'tridesclous'
     otherwise, error('unsupported sorter');
 end
 params = pydict_add_(params, S_arg, cs_sorter_double, 'double');
@@ -6764,7 +6771,7 @@ function [csDesc, S_best_score] = optimize_param_show_(S_prmset)
 
 S_cfg = read_cfg_();
 [MAX_PRMSET, SNR_THRESH, vcSnr_mode] = deal(inf, S_cfg.snr_thresh_gt, 'vrSnr_min_clu'); 
-SNR_THRESH = 0;
+SNR_THRESH = 6;
 
 % vrVpp_clu, vrVmin_clu, vrSnr_min_clu
 csVar_imported = import_struct_(S_prmset);
@@ -6773,6 +6780,7 @@ switch vcSorter
     case 'ironclust', cColor='r';
     case 'mountainsort4', cColor='b';
     case 'kilosort2', cColor='g';
+    case 'klusta', cColor='k';
 end
 
 % get unit amplitudes
@@ -6819,7 +6827,7 @@ ax1=axes(fig_()); hold(ax1,'on');
 calc_mean_snr_ = @(vr)arrayfun(@(x)nanmean(vr(vrSnr_gt>=x)), vrSnr_gt_srt);
 yyaxis(ax1, 'left');
 [vrY1_L1, vrY1_L2] = deal(calc_mean_snr_(S_best_score.F1), calc_mean_snr_(S_worst_score.F1));
-plot(ax1, vrSnr_gt_srt, vrY1_L1, [cColor, 'o-'], vrSnr_gt_srt, vrY1_L2, [cColor, 'o--']); 
+plot(ax1, vrSnr_gt_srt, vrY1_L1, [cColor, '-'], vrSnr_gt_srt, vrY1_L2, [cColor, '--']); 
 xylabel_(ax1, 'SNR threshold (=x)', '<F1-score> | SNR>=x');
 yyaxis(ax1, 'right'); 
 plot(ax1, vrSnr_gt_srt, abs(vrY1_L1 - vrY1_L2), [cColor,':']); ylabel(ax1, '|F1.best - F1.worst|');
@@ -6832,7 +6840,7 @@ excl_nan_ = @(x)x(~isnan(x));
 [vrX2_L1, vrX2_L2, vrY2_L1, vrY2_L2] = deal(sort(vrY2), sort(vrY3), numel(vrY2):-1:1, numel(vrY3):-1:1);
 vrX2_R = linspace(max(vrX2_L1(1),vrX2_L2(1)), min(vrX2_L1(end),vrX2_L2(end)), 100);
 yyaxis(ax2, 'left');
-plot(ax2, vrX2_L1, vrY2_L1, [cColor,'o-'], vrX2_L2, vrY2_L2, [cColor,'o--']);
+plot(ax2, vrX2_L1, vrY2_L1, [cColor,'-'], vrX2_L2, vrY2_L2, [cColor,'--']);
 xylabel_(ax2, 'F1 threshold (=x)', '# GT-units | F1>=x');    
 yyaxis(ax2, 'right'); 
 vrY2_R = abs(interp1(vrX2_L1, vrY2_L1, vrX2_R, 'linear') - interp1(vrX2_L2, vrY2_L2, vrX2_R, 'linear'));
@@ -6842,20 +6850,22 @@ legend(ax2,{'best','worst'}, 'Location', 'NE');
 
 % create a bar plot
 ax3 = axes(fig_());
-bar(ax3, [vrF1_prmset_srt(viX), vrPrecision_srt(viX), vrRecall_srt(viX), vrAccuracy_srt(viX)]); 
-xylabel_(ax3, 'prmset # (sorted by F1-score)', sprintf('Score|SNR>=%0.1f',SNR_THRESH), ...
+stairs(ax3, linspace(0,1,numel(viX)), vrF1_prmset_srt(viX), cColor);
+% bar(ax3, [vrF1_prmset_srt(viX), vrPrecision_srt(viX), vrRecall_srt(viX), vrAccuracy_srt(viX)]); 
+xylabel_(ax3, 'prmset # (sorted by F1-score)', sprintf('F1-score|SNR>=%0.1f',SNR_THRESH), ...
     disp_stats_(S_best_score.F1(vlPlot_gt), sprintf('%s|SNR>=%0.1f', csName_score{1}, SNR_THRESH), 0), 1);
-legend(ax3, {'F1','Precision','Recall','Accuracy'}, 'Location', 'SE');
+axis(ax3, [0 1 0 100]);
+% legend(ax3, {'F1','Precision','Recall','Accuracy'}, 'Location', 'SE');
 
 fig_();
 nScores = numel(csName_score);
 for iScore=1:nScores
     subplot(nScores, 1, iScore);
     vrScore_ = S_best_score.(csName_score{iScore});
-    plot(vrSnr_gt(~vlPlot_gt), vrScore_(~vlPlot_gt), [cColor,'x'], ...
-        vrSnr_gt(vlPlot_gt), vrScore_(vlPlot_gt), [cColor,'.']);
+    plot(vrSnr_gt, vrScore_, [cColor,'.']);
     xylabel_(gca, vcSnr_mode, csName_score{iScore}, disp_stats_(vrScore_(vlPlot_gt), ...
         sprintf('%s|SNR>=%0.1f', csName_score{iScore}, SNR_THRESH), 0), 1);
+    hold on; plot(SNR_THRESH*[1,1], [0 100], 'k-');
 end
 
 % output summary text
@@ -7528,23 +7538,31 @@ try
     vcSorter = lower(strrep(vcFile_prmset, '.prmset', ''));
     S_dir = dir(fullfile(vcDir_rec, '*', vcSorter, '*_p*.mda'));
     csName_file = {S_dir.name};
+    csPath_file = cellfun_(@(x,y)fullfile(x,y), {S_dir.folder}, {S_dir.name});
     viPrmset = cellfun(@(x)str2num(strrep(strrep(x,'firings_p',''), '.mda','')), csName_file);
     vlSelect = viPrmset >= 1 & viPrmset <= nPrmset; 
     nOutput = sum(vlSelect);
     vrDatenum_file = [S_dir.datenum];
     vrDatenum_file = sort(vrDatenum_file(vlSelect));
     
-    t_passed = range(vrDatenum_file) * 24;
+    t_passed = range(vrDatenum_file) * 24 * 60;
     csDir_rec = sub_dir_(vcDir_rec, 1);
     nRec = numel(csDir_rec);
     nOutput_total = nRec * nPrmset;   
     t_left = t_passed * nOutput_total / nOutput - t_passed;
-    fprintf('%s on %s:\n\t%d recordings, %d parameters\n\t%d/%d (%0.1f%%) completed (%0.1f hr passed, %0.1f hr remaining)\n', ...
+    
+    cellfun(@(x)fprintf('\t%s\n',x), csPath_file(vlSelect));
+
+    fprintf('%s on %s:\n\t%d recordings, %d parameters\n\t%d/%d (%0.1f%%) completed (%0.1f min passed, %0.1f min remaining)\n', ...
         vcDir_rec, vcFile_prmset, nRec, nPrmset, nOutput, nOutput_total, nOutput/nOutput_total*100, t_passed, t_left);
     
+    
     % plot
-    figure; plot((vrDatenum_file - vrDatenum_file(end))*24, nOutput_total - (1:nOutput), '.-'); 
-    xlabel('Time (hour)'); ylabel('# param left'); 
+    figure('Color','w','Name', [vcDir_rec, ' - ', vcFile_prmset]);
+    plot((vrDatenum_file - vrDatenum_file(end))*24*60, nOutput_total - (1:nOutput), '.-'); 
+    vcTitle = sprintf('%d/%d (%0.1f%%) completed (%0.1f min passed, %0.1f min remaining)', ...
+        nOutput, nOutput_total, nOutput/nOutput_total*100, t_passed, t_left);
+    xylabel_(gca, 'Time (minutes)', '# param left', vcTitle); 
     grid on; axis tight;
     ylim([0, nOutput_total]);
 catch

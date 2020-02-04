@@ -1,10 +1,10 @@
 % filter (slow parameters to test)
 freqLim = {[300,6000], [300,8000]};
-qqFactor = {3.5, 4, 4.5};
-fMatchedFilter_detect = {1};
+qqFactor = {4};
+fMatchedFilter_detect = {0, 1};
 
 % cluster
 
 % merge (fast parameters to test by using cache)
-maxWavCor = {.985, .99, .995};
+maxWavCor = {.985, .99, .995, 1};
 cc_merge_thresh = {.7, .8, .9, 1};
