@@ -96,6 +96,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## Acknowledgments
 
-* Hat tip to anyone whose code was used
-* Inspiration
-* etc
+* We thank our collaborators and contributors of the ground-truth datasets to validate our spike sorting accuracy through spikeforest.flatironinstitute.org website.
+* We thank Loren Frank's lab for contributing the terabyte-scale 10-day continuous recording data.
+* We thank Dan English's lab for contributing four-day uLED probe recordings.
