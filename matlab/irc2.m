@@ -6771,7 +6771,7 @@ function [csDesc, S_best_score] = optimize_param_show_(S_prmset)
 
 S_cfg = read_cfg_();
 [MAX_PRMSET, SNR_THRESH, vcSnr_mode] = deal(inf, S_cfg.snr_thresh_gt, 'vrSnr_min_clu'); 
-SNR_THRESH = 6;
+SNR_THRESH = 5;
 
 % vrVpp_clu, vrVmin_clu, vrSnr_min_clu
 csVar_imported = import_struct_(S_prmset);
@@ -6821,18 +6821,18 @@ nPrmset_show = min(MAX_PRMSET, nPrmset);
 viX = 1:nPrmset_show;
 
 fig_ = @()figure('Color','w','Name', vcSorter, 'NumberTitle', 'off');
-
+csLegend = cellfun_(@(x)sprintf('%s.%s', vcSorter, x), {'best','worst', 'diff'});
 ax1=axes(fig_()); hold(ax1,'on'); 
 % vcShapes = 'ox+*';
 calc_mean_snr_ = @(vr)arrayfun(@(x)nanmean(vr(vrSnr_gt>=x)), vrSnr_gt_srt);
 yyaxis(ax1, 'left');
 [vrY1_L1, vrY1_L2] = deal(calc_mean_snr_(S_best_score.F1), calc_mean_snr_(S_worst_score.F1));
 plot(ax1, vrSnr_gt_srt, vrY1_L1, [cColor, '-'], vrSnr_gt_srt, vrY1_L2, [cColor, '--']); 
-xylabel_(ax1, 'SNR threshold (=x)', '<F1-score> | SNR>=x');
+xylabel_(ax1, 'SNR threshold (=x)', '<F1-score> | SNR>=x'); ylim(ax1, [0 100]);
 yyaxis(ax1, 'right'); 
 plot(ax1, vrSnr_gt_srt, abs(vrY1_L1 - vrY1_L2), [cColor,':']); ylabel(ax1, '|F1.best - F1.worst|');
-grid(ax1,'on'); arrayfun(@(x)set(ax1.YAxis(x), 'Limits', [0,100]),1:2);
-legend(ax1,{'best','worst'}, 'Location', 'SE');
+grid(ax1,'on'); ylim(ax1, [0 100/4]);
+legend(ax1, csLegend, 'Location', 'SE');
 
 ax2=axes(fig_()); hold(ax2,'on');
 excl_nan_ = @(x)x(~isnan(x));
@@ -6841,12 +6841,12 @@ excl_nan_ = @(x)x(~isnan(x));
 vrX2_R = linspace(max(vrX2_L1(1),vrX2_L2(1)), min(vrX2_L1(end),vrX2_L2(end)), 100);
 yyaxis(ax2, 'left');
 plot(ax2, vrX2_L1, vrY2_L1, [cColor,'-'], vrX2_L2, vrY2_L2, [cColor,'--']);
-xylabel_(ax2, 'F1 threshold (=x)', '# GT-units | F1>=x');    
+xylabel_(ax2, 'F1 threshold (=x)', '# GT-units | F1>=x'); ylim(ax2, [0 nRec]);   
 yyaxis(ax2, 'right'); 
 vrY2_R = abs(interp1(vrX2_L1, vrY2_L1, vrX2_R, 'linear') - interp1(vrX2_L2, vrY2_L2, vrX2_R, 'linear'));
-plot(ax2, vrX2_R, vrY2_R, [cColor,':']); ylabel(ax2, '|F1.best - F1.worst|');
-grid(ax2,'on'); arrayfun(@(x)set(ax2.YAxis(x), 'Limits', [0,nRec]),1:2);
-legend(ax2,{'best','worst'}, 'Location', 'NE');
+plot(ax2, vrX2_R, vrY2_R, [cColor,':']); ylabel(ax2, '|count.best - count.worst|');
+grid(ax2,'on'); ylim(ax2, [0 nRec/4]);
+legend(ax2, csLegend, 'Location', 'NE');
 
 % create a bar plot
 ax3 = axes(fig_());
