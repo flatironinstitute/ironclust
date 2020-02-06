@@ -32,7 +32,7 @@ irc2 `path_to_recording_file`
 ```
 Examples 
 ```
-irc2 [path_to_my_recording.bin]   # for SpikeGLX format (.bin and .meta files)
+irc2 [path_to_my_recording.imec#.bin]   # for SpikeGLX Neuropixels recordings (.bin and .meta files)
 irc2 [path_to_my_recording.mda]   # for .mda format
 irc2 [path_to_my_recording] (output_dir)  # specify output directory (default location is `irc2` under recording directory)
 ```
