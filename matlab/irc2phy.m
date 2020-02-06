@@ -28,12 +28,11 @@ P = S0.P;
 %     [S0, P] = load_cached_(vcFile_prm);
 % end
 
-[vrAmp_spk, viTime_spk, viSite_spk, S_auto] = deal(S0.vrAmp_spk, S0.viTime_spk, S0.viSite_spk, get_(S0, 'S_auto'));
-nSpikes = numel(viTime_spk);
-if ~isempty(S_auto)
-    viClu_spk = S_auto.viClu;
-    viClu_spk(viClu_spk<0) = 0;
-end
+[vrAmp_spk, viTime_spk, viSite_spk] = deal(S0.vrAmp_spk, S0.viTime_spk, S0.viSite_spk);
+S_auto = get_(S0, 'S_auto');
+assert(~isempty(S_auto), 'S_auto does not exist');
+viClu_spk = S_auto.viClu;
+viClu_spk(viClu_spk<0) = 0;
 nSites = numel(P.viSite2Chan);
 
 writeNPY_(uint64(abs(vrAmp_spk)), fullfile(vcDir_out, 'amplitudes.npy'));
@@ -41,44 +40,26 @@ writeNPY_(uint64(viTime_spk), fullfile(vcDir_out, 'spike_times.npy'));
 writeNPY_(int32(viSite_spk) - 1, fullfile(vcDir_out, 'spike_sites.npy'));
 writeNPY_(int32(P.viSite2Chan) - 1, fullfile(vcDir_out, 'channel_map.npy'));
 writeNPY_(P.mrSiteXY, fullfile(vcDir_out, 'channel_positions.npy')); % dimension?
-if ~isempty(S_auto)
-    writeNPY_(uint32(viClu_spk)-1, fullfile(vcDir_out, 'spike_templates.npy'));
-%     writeNPY_(single(S_auto.mrWavCor), fullfile(vcDir_out, 'similar_templates.npy'));
-end
+writeNPY_(uint32(viClu_spk)-1, fullfile(vcDir_out, 'spike_templates.npy'));
 
-% read feature file and write to it
-if exist_file_(vcFile_fet) % irc vers2 format    
-    trFet_spk = load_bin_(vcFile_fet, S0.type_fet, S0.dimm_fet);
-    nSites_fet = size(trFet_spk, 2);
-    writeNPY_(permute(trFet_spk, [3,1,2]), fullfile(vcDir_out, 'pc_features.npy'));    
-else
-    % irc ver1 format
-    trFet_spk = load_spkfet_(S0, P);
-    trFet_spk = reshape(trFet_spk(:,1,:), [], P.nPcPerChan, nSpikes);
-    nSites_fet = size(trFet_spk, 1);
-    writeNPY_(permute(trFet_spk, [3,2,1]), fullfile(vcDir_out, 'pc_features.npy'));
-end
-
-% write locations of features
-writeNPY_(uint32(P.miSites(1:nSites_fet, S_auto.viSite_clu)') - 1, fullfile(vcDir_out, 'pc_feature_ind.npy')); % -1 for zero indexing
+% read feature file and write to it 
+trPc_spk = load_fet_(S0, P, 1);
+[nPc, nSites_fet, nSpk] = size(trPc_spk);
+trPc_spk = trPc_spk(1:min(3,nPc), :, :); % trim 
+writeNPY_(permute(trPc_spk, [3,1,2]), fullfile(vcDir_out, 'pc_features.npy'));    
+trPc_spk = []; % clear memory
     
-% Templates file
-switch 1
-    case 2
-        [~, nSites, nClu] = size(S_auto.tmrWav_spk_clu);
-        writeNPY_(permute(S_auto.tmrWav_spk_clu, [3,1,2]), fullfile(vcDir_out, 'templates.npy'));
-        writeNPY_(repmat(0:nSites, nClu, 1), fullfile(vcDir_out, 'templates_ind.npy'));        
-    case 1
-        if isfield(S_auto, 'trWav_spk_clu')
-            trWav_clu = S_auto.trWav_spk_clu(:,1:nSites_fet,:);
-        elseif isfield(S_auto, 'trWav_clu')
-            trWav_clu = S_auto.trWav_clu(:,1:nSites_fet,:);
-        else
-            error('irc2phy: `trWav_spk_clu` or `trWav_clu` not found');
-        end
-        writeNPY_(permute(trWav_clu, [3,1,2]), fullfile(vcDir_out, 'templates.npy'));
-        writeNPY_(uint32(P.miSites(1:nSites_fet, S_auto.viSite_clu)') - 1, fullfile(vcDir_out, 'template_ind.npy'));
-end %switch
+% write locations of features
+writeNPY_(uint32(P.miSites(1:nSites_fet, S_auto.viSite_clu)') - 1, ...
+    fullfile(vcDir_out, 'pc_feature_ind.npy')); % -1 for zero indexing
+    
+% Templates file: compute telmpates using most popular sites and compute
+% waveform similarity
+[trWav_clu, viSite_clu, mrWavCor] = clu_wav_(S0);
+writeNPY_(permute(trWav_clu, [3,1,2]), fullfile(vcDir_out, 'templates.npy'));
+writeNPY_(uint32(P.miSites(1:nSites_fet, viSite_clu)') - 1, fullfile(vcDir_out, 'template_ind.npy'));
+writeNPY_(single(mrWavCor), fullfile(vcDir_out, 'similar_templates.npy'));
+
 writeNPY_(eye(nSites), fullfile(vcDir_out, 'whitening_mat.npy'));
 writeNPY_(eye(nSites), fullfile(vcDir_out, 'whitening_mat_inv.npy'));
 
@@ -94,13 +75,20 @@ fOverwrite = 1;
 vcFile_params = fullfile(vcDir_out, 'params.py');
 if ~exist_file_(vcFile_params) || fOverwrite
     fid = fopen(vcFile_params, 'w');
-%     csFile_merge = get_raw_files_(P);
     [vcDir, vcFile, vcExt] = fileparts(P.vcFile);
     if isempty(vcDir), vcDir = pwd(); end
-    rawRecordings = sprintf('''%s''', fullfile(vcDir, [vcFile, vcExt]));
-%     rawRecordings = cellfun(@(x) sprintf('r''%s''', x), csFile_merge, 'UniformOutput', 0);
-%     rawRecordings = ['[' strjoin(rawRecordings, ', ') ']'];
-    fprintf(fid, 'dat_path = %s\n', rawRecordings);
+    switch lower(vcExt)
+        case '.bin'
+            rawRecordings = fullfile(vcDir, [vcFile, vcExt]);
+        case '.mda'
+            rawRecordings = fullfile(vcDir, [vcFile, '.bin']);
+            mda2bin_(P.vcFile, rawRecordings);
+        otherwise, error('Unsupported raw format: %s', P.vcFile);
+    end
+    if ispc()
+        rawRecordings = strrep(rawRecordings, filesep(), [filesep(),filesep()]);
+    end
+    fprintf(fid, 'dat_path = ''%s''\n', rawRecordings);
     fprintf(fid, 'n_channels_dat = %i\n', P.nChans);
     fprintf(fid, 'dtype = ''%s''\n', dtype2NPY_(P.vcDataType));
     fprintf(fid, 'offset = %d\n', P.header_offset);
@@ -142,13 +130,48 @@ end % func
 
 
 %--------------------------------------------------------------------------
-function out1 = exist_file_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
-function out1 = get_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
-function out1 = mkdir_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
-function out1 = get_raw_files_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
-function out1 = load_spkfet_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
-function out1 = load_bin_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
+% Call from irc.m
+function cell_out = call_irc_(dbstack1, cell_input, nargout)
+vcFunc = dbstack1(1).name;
+try
+    switch nargout
+        case 0, cell_out{1} = []; irc('call', vcFunc, cell_input);
+        case 1, cell_out{1} = irc('call', vcFunc, cell_input);
+        case 2, [cell_out{1}, cell_out{2}] = irc('call', vcFunc, cell_input);
+        case 3, [cell_out{1}, cell_out{2}, cell_out{3}] = irc('call', vcFunc, cell_input);
+        case 4, [cell_out{1}, cell_out{2}, cell_out{3}, cell_out{4}] = irc('call', vcFunc, cell_input);
+        otherwise, error('call_irc_: undefined func: %s', vcFunc);
+    end
+catch ME
+    fprintf(2, 'call_irc_: %s\n', ME.message);
+    rethrow ME;
+end
+end %func
 
-function [out1, out2] = load_cached_(varargin), fn=dbstack(); [out1, out2] = irc('call', fn(1).name, varargin); end
+
+%--------------------------------------------------------------------------
+% Call from irc2.m
+function cell_out = call_irc2_(dbstack1, cell_input, nargout)
+vcFunc = dbstack1(1).name;
+try
+    switch nargout
+        case 0, cell_out{1} = []; irc2('call', vcFunc, cell_input);
+        case 1, cell_out{1} = irc2('call', vcFunc, cell_input);
+        case 2, [cell_out{1}, cell_out{2}] = irc2('call', vcFunc, cell_input);
+        case 3, [cell_out{1}, cell_out{2}, cell_out{3}] = irc2('call', vcFunc, cell_input);
+        case 4, [cell_out{1}, cell_out{2}, cell_out{3}, cell_out{4}] = irc2('call', vcFunc, cell_input);
+        otherwise, error('call_irc2_: undefined func: %s', vcFunc);
+    end
+catch ME
+    fprintf(2, 'call_irc2_: %s\n', ME.message);
+    rethrow ME;
+end
+end %func
 
 
+function varargout = load_fet_(varargin), cell_out = call_irc2_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = exist_file_(varargin), cell_out = call_irc2_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = get_(varargin), cell_out = call_irc2_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = mkdir_(varargin), cell_out = call_irc2_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = clu_wav_(varargin), cell_out = call_irc2_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = mda2bin_(varargin), cell_out = call_irc2_(dbstack(), varargin, nargout); varargout = cell_out; end

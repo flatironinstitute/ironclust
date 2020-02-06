@@ -2516,33 +2516,19 @@ function vrCorr12 = wavcor_(mrWav1, trWav2, nShift)
 
 if nargin<3, nShift = 2; end
 % try time delay and match
-switch 1
-    case 1
-        if nShift == 0
-            a_ = zscore_(mrWav1(:));
-            b_ = zscore_(reshape(trWav2, [], size(trWav2,3)),1);
-            vrCorr12 = (a_'*b_) / size(mrWav1,1) / size(mrWav1,2);
-        else
-            vi0 = (nShift+1):(size(mrWav1,1)-nShift);
-            b_ = zscore_(reshape(trWav2(vi0,:,:), [], size(trWav2,3)),1);
-            mrCorr12 = zeros(nShift*2+1, size(trWav2,3));
-            for iShift1 = 1:(nShift*2+1)
-                a_ = mrWav1(vi0 + iShift1-1-nShift,:);
-                mrCorr12(iShift1,:) = zscore_(a_(:))' * b_;
-            end
-            vrCorr12 = max(mrCorr12)' / numel(vi0) / size(mrWav1,2);
-        end
-    case 2
-        nT = size(mrWav1,1);
-        mrCorr12 = zeros(nShift*2+1, size(trWav2,3));
-        [cvi1, cvi2] = shift_range_(nT, nShift);
-        for iShift1 = 1:numel(cvi1)
-            [vi1,vi2] = deal(cvi1{iShift1}, cvi2{iShift1});
-            a_ = mrWav1(vi1,:);
-            b_ = zscore_(reshape(trWav2(vi2,:,:), [], size(trWav2,3)),1);
-            mrCorr12(iShift1,:) = zscore_(a_(:))' * b_ / numel(vi1);
-        end
-        vrCorr12 = max(mrCorr12)' / size(mrWav1,2);
+if nShift == 0
+    a_ = zscore_(mrWav1(:));
+    b_ = zscore_(reshape(trWav2, [], size(trWav2,3)),1);
+    vrCorr12 = (a_'*b_) / size(mrWav1,1) / size(mrWav1,2);
+else
+    vi0 = (nShift+1):(size(mrWav1,1)-nShift);
+    b_ = zscore_(reshape(trWav2(vi0,:,:), [], size(trWav2,3)),1);
+    mrCorr12 = zeros(nShift*2+1, size(trWav2,3));
+    for iShift1 = 1:(nShift*2+1)
+        a_ = mrWav1(vi0 + iShift1-1-nShift,:);
+        mrCorr12(iShift1,:) = zscore_(a_(:))' * b_;
+    end
+    vrCorr12 = max(mrCorr12)' / numel(vi0) / size(mrWav1,2);
 end
 end %func
 
@@ -7398,12 +7384,13 @@ end %func
 % convert mda to int16 binary format, flip polarity if detect sign is
 % positive
 function [nChans, nSamples] = mda2bin_(vcFile_raw, vcFile_bin, detect_sign)
+if nargin<3, detect_sign=-1; end
 
-if exist_file_(vcFile_bin)
-    S_mda = readmda_header_(vcFile_raw);
-    [nChans, nSamples] = deal(S_mda.dimm(1), S_mda.dimm(2));
-    return;
-else
+% if exist_file_(vcFile_bin)
+%     S_mda = readmda_header_(vcFile_raw);
+%     [nChans, nSamples] = deal(S_mda.dimm(1), S_mda.dimm(2));
+%     return;
+% else
     mr = readmda_(vcFile_raw);
     % adjust scale to fit int16 range with a margin
     if isa(mr,'single') || isa(mr,'double')
@@ -7412,8 +7399,8 @@ else
     end
     [nChans, nSamples] = size(mr);
     if detect_sign > 0, mr = -mr; end % force negative detection
-    write_bin_(vcFile_bin, mr);
-end
+    write_bin_(vcFile_bin, mr, 1);
+% end
 end %func
 
 
@@ -7626,25 +7613,6 @@ switch lower(vcMode)
     otherwise
         error('plot0_: invalid option');
 end %switch
-end %func
-
-
-%--------------------------------------------------------------------------
-function cell_out = call_irc_(dbstack1, cell_input, nargout)
-vcFunc = dbstack1(1).name;
-try
-    switch nargout
-        case 0, cell_out{1} = []; irc('call', vcFunc, cell_input);
-        case 1, cell_out{1} = irc('call', vcFunc, cell_input);
-        case 2, [cell_out{1}, cell_out{2}] = irc('call', vcFunc, cell_input);
-        case 3, [cell_out{1}, cell_out{2}, cell_out{3}] = irc('call', vcFunc, cell_input);
-        case 4, [cell_out{1}, cell_out{2}, cell_out{3}, cell_out{4}] = irc('call', vcFunc, cell_input);
-        otherwise, error('call_irc_: undefined func: %s', vcFunc);
-    end
-catch ME
-    fprintf(2, 'call_irc_: %s\n', ME.message);
-    rethrow ME;
-end
 end %func
 
 
@@ -7943,8 +7911,78 @@ end %func
 
 
 %--------------------------------------------------------------------------
+function [trWav_clu, viSite_clu, mrWavCor] = clu_wav_(S0)
+
+[P, S_auto, viSite_spk, viSite2_spk, mrPv_global] = ...
+    get_(S0, 'P', 'S_auto', 'viSite_spk', 'viSite2_spk', 'mrPv_global');
+if isempty(viSite2_spk)
+    cviSite_spk_fet = {viSite_spk};
+else
+    cviSite_spk_fet = {viSite_spk, viSite2_spk};
+end
+[cviSite_clu_fet, ctrWav_clu_fet] = deal(cell(size(cviSite_spk_fet)));
+for iFet = 1:numel(cviSite_spk_fet)
+    viSite_spk = cviSite_spk_fet{iFet};
+    cviSite_clu = cellfun_(@(x)mode(viSite_spk(x)), S_auto.cviSpk_clu);    
+    cviSpk_clu = cellfun_(@(x,y)x(viSite_spk(x)==y), S_auto.cviSpk_clu, cviSite_clu);
+    cviSite_clu_fet{iFet} = cell2mat(cviSite_clu);
+    trPc_spk = load_fet_(S0, P, iFet);
+    cmrWav_clu = cellfun_(@(x)mrPv_global * mean(trPc_spk(:,:,x),3), cviSpk_clu);
+    ctrWav_clu_fet{iFet} = cat(3, cmrWav_clu{:});
+end
+[viSite_clu, trWav_clu] = deal(cviSite_clu_fet{1}, ctrWav_clu_fet{1});
+if isempty(viSite2_spk)
+    [viSite2_clu, trWav2_clu] = deal([]);
+else
+    [viSite2_clu, trWav2_clu] = deal(cviSite_clu_fet{2}, ctrWav_clu_fet{2});
+end
+
+mrWavCor = zeros(S_auto.nClu, 'single');
+nShift = ceil(diff(P.spkLim) * P.frac_shift_merge / 2);
+for iClu=1:S_auto.nClu
+    [iSite1, mrWav_clu1] = deal(viSite_clu(iClu), trWav_clu(:,:,iClu));
+    viClu2 = find(viSite_clu==iSite1);
+    if ~isempty(viClu2)        
+        vrWavCor2 = wavcor_(mrWav_clu1, trWav_clu(:,:,viClu2), nShift);
+        mrWavCor(viClu2,iClu) = max(mrWavCor(viClu2,iClu), vrWavCor2);
+    end
+    if ~isempty(viSite2_spk)
+        [iSite2, mrWav2_clu1] = deal(viSite2_clu(iClu), trWav2_clu(:,:,iClu));
+        viClu2A = find(viSite_clu==iSite2);
+        if ~isempty(viClu2A)
+            vrWavCor2A = wavcor_(mrWav2_clu1, trWav_clu(:,:,viClu2A), nShift);
+            mrWavCor(viClu2A,iClu) = max(mrWavCor(viClu2A,iClu), vrWavCor2A);
+        end
+        viClu2B = find(viSite2_clu==iSite1);
+        if ~isempty(viClu2B)
+            vrWavCor2B = wavcor_(mrWav_clu1, trWav2_clu(:,:,viClu2B), nShift);
+            mrWavCor(viClu2B,iClu) = max(mrWavCor(viClu2B,iClu), vrWavCor2B);
+        end
+    end
+end
+end %func
+
+
+%--------------------------------------------------------------------------
 % Call from irc.m
-% function compile_cuda_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
+function cell_out = call_irc_(dbstack1, cell_input, nargout)
+vcFunc = dbstack1(1).name;
+try
+    switch nargout
+        case 0, cell_out{1} = []; irc('call', vcFunc, cell_input);
+        case 1, cell_out{1} = irc('call', vcFunc, cell_input);
+        case 2, [cell_out{1}, cell_out{2}] = irc('call', vcFunc, cell_input);
+        case 3, [cell_out{1}, cell_out{2}, cell_out{3}] = irc('call', vcFunc, cell_input);
+        case 4, [cell_out{1}, cell_out{2}, cell_out{3}, cell_out{4}] = irc('call', vcFunc, cell_input);
+        otherwise, error('call_irc_: undefined func: %s', vcFunc);
+    end
+catch ME
+    fprintf(2, 'call_irc_: %s\n', ME.message);
+    rethrow ME;
+end
+end %func
+
+
 function varargout = frewind_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = disperr_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = edit_prm_file_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
