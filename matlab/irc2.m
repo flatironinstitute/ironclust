@@ -208,8 +208,8 @@ end %func
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_()
 
-vcVer = 'v5.6.8';
-vcDate = '02/05/2020';
+vcVer = 'v5.6.9';
+vcDate = '02/06/2020';
 vcHash = file2hash_();
 
 if nargout==0
@@ -4886,19 +4886,29 @@ try
             S_meta.sha1 = [];      
         end
     elseif isfield(S_sglx, 'imSampRate')
+        
         % IMECIII
 %         S_meta.nChans = S_sglx.nSavedChans;
         S_meta.sRateHz = S_sglx.imSampRate;
         S_meta.rangeMax = S_sglx.imAiRangeMax;
         S_meta.rangeMin = S_sglx.imAiRangeMin;
-        S_meta.ADC_bits = 10;  %10 bit adc but 16 bit saved
         vnIMRO = textscan(S_sglx.imroTbl, '%d', 'Delimiter', '( ),');
-        vnIMRO = double(vnIMRO{1});
-        S_meta.auxGain = vnIMRO(9); %hard code for now;
-        S_meta.auxGain_lfp = vnIMRO(10); %hard code for now;
-        S_meta.vcProbe = sprintf('imec3_opt%d', vnIMRO(3));
-        S_meta.nSites = vnIMRO(4);
-        S_meta.nChans = S_meta.nSites + 1; % add one 16-bit sync channel
+        vnIMRO = double(vnIMRO{1});            
+        if isfield(S_sglx, 'imProbeOpt')
+            % Neuropix 3A
+            S_meta.nChans = ceil(S_sglx.nSavedChans/2);
+            S_meta.vcProbe = sprintf('imec3_opt%d', S_sglx.imProbeOpt);            
+            S_meta.auxGain = vnIMRO(9); %hard code for now;
+            S_meta.auxGain_lfp = vnIMRO(10); %hard code for now;            
+        else
+            % Neuropix 3B
+            S_meta.nChans = S_sglx.nSavedChans;
+            S_meta.vcProbe = 'imec3_opt3';  
+            S_meta.auxGain = vnIMRO(6); %hard code for now;
+            S_meta.auxGain_lfp = vnIMRO(7); %hard code for now;                        
+        end        
+        S_meta.nSites = S_meta.nChans - 1;
+        S_meta.ADC_bits = 10;  %10 bit adc but 16 bit saved
     else
         error('unsupported format');
     end
@@ -7911,23 +7921,32 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function [trWav_clu, viSite_clu, mrWavCor] = clu_wav_(S0)
+function [trWav_clu, viSite_clu, mrWavCor] = clu_wav_(S0, S_auto, trPc_spk, trPc2_spk)
+if nargin<2, S_auto = []; end
+if nargin<3, trPc_spk=[]; end
+if nargin<4, trPc2_spk=[]; end
 
-[P, S_auto, viSite_spk, viSite2_spk, mrPv_global] = ...
-    get_(S0, 'P', 'S_auto', 'viSite_spk', 'viSite2_spk', 'mrPv_global');
+if isempty(S_auto), S_auto = S0.S_auto; end
+if isempty(trPc_spk), trPc_spk = load_fet_(S0, S0.P, 1); end
+[P, viSite_spk, viSite2_spk, mrPv_global] = ...
+    get_(S0, 'P', 'viSite_spk', 'viSite2_spk', 'mrPv_global');
 if isempty(viSite2_spk)
     cviSite_spk_fet = {viSite_spk};
+    ctrPc_spk_fet = {trPc_spk};
 else
     cviSite_spk_fet = {viSite_spk, viSite2_spk};
+    if isempty(trPc2_spk), trPc2_spk = load_fet_(S0, S0.P, 2); end
+    ctrPc_spk_fet = {trPc_spk, trPc2_spk};
 end
 [cviSite_clu_fet, ctrWav_clu_fet] = deal(cell(size(cviSite_spk_fet)));
+cviSpk_clu = vi2cell_(S_auto.viClu, S_auto.nClu);
 for iFet = 1:numel(cviSite_spk_fet)
     viSite_spk = cviSite_spk_fet{iFet};
-    cviSite_clu = cellfun_(@(x)mode(viSite_spk(x)), S_auto.cviSpk_clu);    
-    cviSpk_clu = cellfun_(@(x,y)x(viSite_spk(x)==y), S_auto.cviSpk_clu, cviSite_clu);
+    cviSite_clu = cellfun_(@(x)mode(viSite_spk(x)), cviSpk_clu);    
+    cviSpk1_clu = cellfun_(@(x,y)x(viSite_spk(x)==y), cviSpk_clu, cviSite_clu);
     cviSite_clu_fet{iFet} = cell2mat(cviSite_clu);
-    trPc_spk = load_fet_(S0, P, iFet);
-    cmrWav_clu = cellfun_(@(x)mrPv_global * mean(trPc_spk(:,:,x),3), cviSpk_clu);
+    trPc_spk = ctrPc_spk_fet{iFet};
+    cmrWav_clu = cellfun_(@(x)mrPv_global * mean(trPc_spk(:,:,x),3), cviSpk1_clu);
     ctrWav_clu_fet{iFet} = cat(3, cmrWav_clu{:});
 end
 [viSite_clu, trWav_clu] = deal(cviSite_clu_fet{1}, ctrWav_clu_fet{1});

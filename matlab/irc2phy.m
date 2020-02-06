@@ -28,26 +28,27 @@ P = S0.P;
 %     [S0, P] = load_cached_(vcFile_prm);
 % end
 
-[vrAmp_spk, viTime_spk, viSite_spk] = deal(S0.vrAmp_spk, S0.viTime_spk, S0.viSite_spk);
 S_auto = get_(S0, 'S_auto');
 assert(~isempty(S_auto), 'S_auto does not exist');
-viClu_spk = S_auto.viClu;
-viClu_spk(viClu_spk<0) = 0;
+% export valid clusters only
+vlKeep = S_auto.viClu>0;
+[S0.vrAmp_spk, S0.viTime_spk, S0.viSite_spk, S_auto.viClu] = ...
+    deal(S0.vrAmp_spk(vlKeep), S0.viTime_spk(vlKeep), S0.viSite_spk(vlKeep), S_auto.viClu(vlKeep));
+if ~isempty(get_(S0, 'viSite2_spk')), S0.viSite2_spk = S0.viSite2_spk(vlKeep); end
 nSites = numel(P.viSite2Chan);
 
-writeNPY_(uint64(abs(vrAmp_spk)), fullfile(vcDir_out, 'amplitudes.npy'));
-writeNPY_(uint64(viTime_spk), fullfile(vcDir_out, 'spike_times.npy'));
-writeNPY_(int32(viSite_spk) - 1, fullfile(vcDir_out, 'spike_sites.npy'));
+writeNPY_(uint64(abs(S0.vrAmp_spk)), fullfile(vcDir_out, 'amplitudes.npy'));
+writeNPY_(uint64(S0.viTime_spk), fullfile(vcDir_out, 'spike_times.npy'));
+writeNPY_(int32(S0.viSite_spk) - 1, fullfile(vcDir_out, 'spike_sites.npy'));
 writeNPY_(int32(P.viSite2Chan) - 1, fullfile(vcDir_out, 'channel_map.npy'));
 writeNPY_(P.mrSiteXY, fullfile(vcDir_out, 'channel_positions.npy')); % dimension?
-writeNPY_(uint32(viClu_spk)-1, fullfile(vcDir_out, 'spike_templates.npy'));
+writeNPY_(uint32(S_auto.viClu)-1, fullfile(vcDir_out, 'spike_templates.npy'));
 
 % read feature file and write to it 
-trPc_spk = load_fet_(S0, P, 1);
-[nPc, nSites_fet, nSpk] = size(trPc_spk);
-trPc_spk = trPc_spk(1:min(3,nPc), :, :); % trim 
-writeNPY_(permute(trPc_spk, [3,1,2]), fullfile(vcDir_out, 'pc_features.npy'));    
-trPc_spk = []; % clear memory
+trPc_spk = load_fet_(S0, P, 1); trPc_spk = trPc_spk(:,:,vlKeep);
+trPc2_spk = load_fet_(S0, P, 2); trPc2_spk = trPc2_spk(:,:,vlKeep);
+[nPc, nSites_fet, ~] = size(trPc_spk);
+writeNPY_(permute(trPc_spk(1:min(3,nPc),:,:), [3,1,2]), fullfile(vcDir_out, 'pc_features.npy'));    
     
 % write locations of features
 writeNPY_(uint32(P.miSites(1:nSites_fet, S_auto.viSite_clu)') - 1, ...
@@ -55,7 +56,7 @@ writeNPY_(uint32(P.miSites(1:nSites_fet, S_auto.viSite_clu)') - 1, ...
     
 % Templates file: compute telmpates using most popular sites and compute
 % waveform similarity
-[trWav_clu, viSite_clu, mrWavCor] = clu_wav_(S0);
+[trWav_clu, viSite_clu, mrWavCor] = clu_wav_(S0, S_auto, trPc_spk, trPc2_spk);
 writeNPY_(permute(trWav_clu, [3,1,2]), fullfile(vcDir_out, 'templates.npy'));
 writeNPY_(uint32(P.miSites(1:nSites_fet, viSite_clu)') - 1, fullfile(vcDir_out, 'template_ind.npy'));
 writeNPY_(single(mrWavCor), fullfile(vcDir_out, 'similar_templates.npy'));
@@ -110,6 +111,7 @@ try
     if ~exist('writeNPY', 'file')
         addpath('npy-matlab');
     end
+    if exist_file_(vcFile), delete(vcFile); end
     writeNPY(x, vcFile);
     fprintf('Wrote to %s\n', vcFile);
 catch
