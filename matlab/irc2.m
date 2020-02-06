@@ -54,7 +54,8 @@ else
 end
 switch lower(vcCmd)
     % SpikeGLX functions
-    case 'import-spikeglx', import_spikeglx_(vcArg1, vcArg2, vcArg3); return;
+    case 'import-spikeglx'
+        import_spikeglx_(vcArg1, vcArg2, vcArg3); return;
         
     % Git functions
     case 'push-readme', push_readme_(); return;    
@@ -208,8 +209,8 @@ end %func
 % 11/6/18 JJJ: Displaying the version number of the program and what's used. #Tested
 function [vcVer, vcDate, vcHash] = version_()
 
-vcVer = 'v5.6.9';
-vcDate = '02/06/2020';
+S_version = meta2struct_(ircpath_('version.txt'));
+[vcVer, vcDate] = get_(S_version, 'version', 'date');
 vcHash = file2hash_();
 
 if nargout==0
@@ -4938,10 +4939,15 @@ fclose(fid);
 csName = mcFileMeta{1};
 csValue = mcFileMeta{2};
 for i=1:numel(csName)
-    vcName1 = csName{i};
+    vcName1 = strtrim(csName{i});
     if vcName1(1) == '~', vcName1(1) = []; end
-    try         
-        eval(sprintf('%s = ''%s'';', vcName1, csValue{i}));
+    vcValue1 = csValue{i};
+    try   
+        if all(vcValue1([1,end])=='''')
+            eval(sprintf('%s = %s;', vcName1, vcValue1));
+        else
+            eval(sprintf('%s = ''%s'';', vcName1, vcValue1));
+        end
         eval(sprintf('num = str2double(%s);', vcName1));
         if ~isnan(num)
             eval(sprintf('%s = num;', vcName1));
@@ -7979,6 +7985,7 @@ for iClu=1:S_auto.nClu
         end
     end
 end
+mrWavCor = max(mrWavCor, mrWavCor');
 end %func
 
 

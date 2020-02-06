@@ -18,6 +18,7 @@ if isempty(vcDir_out)
     vcDir_out = fullfile(fileparts(vcFile_prm), 'phy'); 
 end
 mkdir_(vcDir_out);
+delete(fullfile(vcDir_out, '*'));
 
 % vcFile_mat = strrep(vcFile_prm, '.prm', '_irc.mat');
 % if exist_file_(vcFile_mat)
