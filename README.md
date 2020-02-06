@@ -32,13 +32,24 @@ irc2 `path_to_recording_file`
 ```
 Examples 
 ```
-irc2 mydir/myrecoding.bin   # for SpikeGLX format
-irc2 mydir/myrecoding.mda   # for .mda format
+irc2 [path_to_my_recording.bin]   # for SpikeGLX format (.bin and .meta files)
+irc2 [path_to_my_recording.mda]   # for .mda format
+irc2 [path_to_my_recording] (output_dir)  # specify output directory (default location is `irc2` under recording directory)
 ```
 
-This command writes output files to `output_directory`
+You can import [SpikeGLX](https://github.com/billkarsh/SpikeGLX) format to [MDA format](https://users.flatironinstitute.org/~magland/docs/mountainsort_dataset_format/) by supplying a `.bin` file and [`.prb` (probe) file](https://github.com/JaneliaSciComp/JRCLUST/wiki/Probe-file). Make sure that `.meta` file exists in the same directory. Multiple `.bin` files can be joined if you provide a wild card for `[path_to_my_recording.bin]` or supply a `.txt` (text) file containing   a list of files to be merged.
 ```
-irc2 `path_to_recording_file` `output_directory`
+irc2 import-spikeglx [path_to_my_recording.bin] [path_to_probe_file.prb] (path_to_output_dir)
+```
+
+Export to [Phy](https://github.com/kwikteam/phy-contrib/blob/master/docs/template-gui.md) for manual curation
+```
+irc2 export-phy [path_to_prm_file] (output_dir)   # default output location is `phy` under the output folder
+```
+
+and run the following python command to open Phy
+```
+phy template-gui path_to_param.py
 ```
 
 This command shows the parameter file (`.prm` extension) used for sorting
@@ -46,7 +57,7 @@ This command shows the parameter file (`.prm` extension) used for sorting
 irc2 edit `path_to_recording_file`
 ```
 
-IronClust caches `path_to_recording_file` for subsequent commands. To display the currently selected parameter file, run
+IronClust caches the `path_to_prm_file` for subsequent commands. To display the currently selected parameter file, run
 ```
 irc2 which
 ```
