@@ -28,10 +28,10 @@ P = S0.P;
 %     [S0, P] = load_cached_(vcFile_prm);
 % end
 
-[vrAmp_spk, viTime_spk, viSite_spk, S_clu] = deal(S0.vrAmp_spk, S0.viTime_spk, S0.viSite_spk, get_(S0, 'S_clu'));
+[vrAmp_spk, viTime_spk, viSite_spk, S_auto] = deal(S0.vrAmp_spk, S0.viTime_spk, S0.viSite_spk, get_(S0, 'S_auto'));
 nSpikes = numel(viTime_spk);
-if ~isempty(S_clu)
-    viClu_spk = S_clu.viClu;
+if ~isempty(S_auto)
+    viClu_spk = S_auto.viClu;
     viClu_spk(viClu_spk<0) = 0;
 end
 nSites = numel(P.viSite2Chan);
@@ -41,9 +41,9 @@ writeNPY_(uint64(viTime_spk), fullfile(vcDir_out, 'spike_times.npy'));
 writeNPY_(int32(viSite_spk) - 1, fullfile(vcDir_out, 'spike_sites.npy'));
 writeNPY_(int32(P.viSite2Chan) - 1, fullfile(vcDir_out, 'channel_map.npy'));
 writeNPY_(P.mrSiteXY, fullfile(vcDir_out, 'channel_positions.npy')); % dimension?
-if ~isempty(S_clu)
+if ~isempty(S_auto)
     writeNPY_(uint32(viClu_spk)-1, fullfile(vcDir_out, 'spike_templates.npy'));
-    writeNPY_(single(S_clu.mrWavCor), fullfile(vcDir_out, 'similar_templates.npy'));
+%     writeNPY_(single(S_auto.mrWavCor), fullfile(vcDir_out, 'similar_templates.npy'));
 end
 
 % read feature file and write to it
@@ -60,24 +60,24 @@ else
 end
 
 % write locations of features
-writeNPY_(uint32(P.miSites(1:nSites_fet, S_clu.viSite_clu)') - 1, fullfile(vcDir_out, 'pc_feature_ind.npy')); % -1 for zero indexing
+writeNPY_(uint32(P.miSites(1:nSites_fet, S_auto.viSite_clu)') - 1, fullfile(vcDir_out, 'pc_feature_ind.npy')); % -1 for zero indexing
     
 % Templates file
 switch 1
     case 2
-        [~, nSites, nClu] = size(S_clu.tmrWav_spk_clu);
-        writeNPY_(permute(S_clu.tmrWav_spk_clu, [3,1,2]), fullfile(vcDir_out, 'templates.npy'));
+        [~, nSites, nClu] = size(S_auto.tmrWav_spk_clu);
+        writeNPY_(permute(S_auto.tmrWav_spk_clu, [3,1,2]), fullfile(vcDir_out, 'templates.npy'));
         writeNPY_(repmat(0:nSites, nClu, 1), fullfile(vcDir_out, 'templates_ind.npy'));        
     case 1
-        if isfield(S_clu, 'trWav_spk_clu')
-            trWav_clu = S_clu.trWav_spk_clu(:,1:nSites_fet,:);
-        elseif isfield(S_clu, 'trWav_clu')
-            trWav_clu = S_clu.trWav_clu(:,1:nSites_fet,:);
+        if isfield(S_auto, 'trWav_spk_clu')
+            trWav_clu = S_auto.trWav_spk_clu(:,1:nSites_fet,:);
+        elseif isfield(S_auto, 'trWav_clu')
+            trWav_clu = S_auto.trWav_clu(:,1:nSites_fet,:);
         else
             error('irc2phy: `trWav_spk_clu` or `trWav_clu` not found');
         end
         writeNPY_(permute(trWav_clu, [3,1,2]), fullfile(vcDir_out, 'templates.npy'));
-        writeNPY_(uint32(P.miSites(1:nSites_fet, S_clu.viSite_clu)') - 1, fullfile(vcDir_out, 'template_ind.npy'));
+        writeNPY_(uint32(P.miSites(1:nSites_fet, S_auto.viSite_clu)') - 1, fullfile(vcDir_out, 'template_ind.npy'));
 end %switch
 writeNPY_(eye(nSites), fullfile(vcDir_out, 'whitening_mat.npy'));
 writeNPY_(eye(nSites), fullfile(vcDir_out, 'whitening_mat_inv.npy'));
