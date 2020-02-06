@@ -42,7 +42,7 @@ writeNPY_(uint64(abs(S0.vrAmp_spk)), fullfile(vcDir_out, 'amplitudes.npy'));
 writeNPY_(uint64(S0.viTime_spk), fullfile(vcDir_out, 'spike_times.npy'));
 writeNPY_(int32(S0.viSite_spk) - 1, fullfile(vcDir_out, 'spike_sites.npy'));
 writeNPY_(int32(P.viSite2Chan) - 1, fullfile(vcDir_out, 'channel_map.npy'));
-writeNPY_(P.mrSiteXY, fullfile(vcDir_out, 'channel_positions.npy')); % dimension?
+writeNPY_(double(P.mrSiteXY), fullfile(vcDir_out, 'channel_positions.npy')); % dimension?
 writeNPY_(uint32(S_auto.viClu)-1, fullfile(vcDir_out, 'spike_templates.npy'));
 
 % read feature file and write to it 

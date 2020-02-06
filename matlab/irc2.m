@@ -3975,8 +3975,8 @@ if nargin<3, S_cache = []; end
 if isempty(mrWav_T)
     mrWav_T = load_bin_(S_cache.vcFile_wav1, P.vcDataType, S_cache.dimm_wav1);
     delete_(S_cache.vcFile_wav1); % delete file
-
 end
+
 [mrWav_filt, vrWav_mean_filt] = filter_transpose_(mrWav_T, P);
 S_detect = get_spikes_(mrWav_filt, vrWav_mean_filt, P, S_cache);
 end %func
@@ -4897,7 +4897,7 @@ try
         vnIMRO = double(vnIMRO{1});            
         if isfield(S_sglx, 'imProbeOpt')
             % Neuropix 3A
-            S_meta.nChans = ceil(S_sglx.nSavedChans/2);
+            S_meta.nChans = S_sglx.nSavedChans;
             S_meta.vcProbe = sprintf('imec3_opt%d', S_sglx.imProbeOpt);            
             S_meta.auxGain = vnIMRO(9); %hard code for now;
             S_meta.auxGain_lfp = vnIMRO(10); %hard code for now;            
@@ -4908,7 +4908,7 @@ try
             S_meta.auxGain = vnIMRO(6); %hard code for now;
             S_meta.auxGain_lfp = vnIMRO(7); %hard code for now;                        
         end        
-        S_meta.nSites = S_meta.nChans - 1;
+%         S_meta.nSites = round((S_meta.nChans - 1)/2);
         S_meta.ADC_bits = 10;  %10 bit adc but 16 bit saved
     else
         error('unsupported format');
