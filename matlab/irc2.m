@@ -53,6 +53,9 @@ else
     vcFile_prm_ = vcFile_prm;
 end
 switch lower(vcCmd)
+    % SpikeGLX functions
+    case 'import-spikeglx', import_spikeglx_(vcArg1, vcArg2, vcArg3); return;
+        
     % Git functions
     case 'push-readme', push_readme_(); return;    
     case {'push', 'git-push'}, git_push_(vcArg1); return;
@@ -60,7 +63,7 @@ switch lower(vcCmd)
     % optimize
     case 'optimize-clear', optimize_clear_(vcArg1, vcArg2); return;
     case 'optimize-status', optimize_status_(vcArg1, vcArg2); return;
-    case {'optimize-param', 'optimize-prmset', 'optimize-prm'}
+    case {'optimize', 'optimize-param', 'optimize-prmset', 'optimize-prm'}
         optimize_prmset_(vcArg1, vcArg2, vcArg3); return;
         
     case 'edit-readme', edit_readme_(); return;
@@ -94,8 +97,7 @@ switch lower(vcCmd)
     case {'compile', 'install'}, compile_cuda_(vcArg1, vcArg2); return
     case 'readmda_header', varargout{1} = readmda_header_(vcArg1); return;
     case 'mcc', irc('mcc'); return; 
-    case {'join-mda', 'join_mda', 'joinmda'}
-        join_mda_(vcArg1, vcArg2); return;
+    case {'join-mda', 'join_mda', 'joinmda'}, join_mda_(vcArg1, vcArg2); return;
     case {'readmda', 'read-mda', 'read_mda'}
         mda = readmda_(vcArg1); assignWorkspace_(mda); return;
     case 'import-clip'
@@ -7778,6 +7780,164 @@ for iArg = 1:nargin
     %         disperr_();
         end
     end
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+function import_spikeglx_(vcFile_bin, vcFile_prb, vcDir_out)
+if nargin<3, vcDir_out=''; end
+if nargin<2, vcFile_prb=''; end
+if nargin<1, vcFile_bin = []; end
+
+if isempty(vcFile_bin)
+    csHelp = {'Usages', '-----', ...
+    '    irc2 import-spikeglx [path_to_bin_file] [path_to_prb_file] (output_path)`', ...    
+    '    irc2 import-spikeglx [path_to_*bin_files] [path_to_prb_file] (output_path)`', ...
+    '    irc2 import-spikeglx [path_to_bin_list_txt] [path_to_prb_file] (output_path)`'};
+    disp_cs_(csHelp);
+    return; 
+end
+
+% batch mode
+if isTextFile_(vcFile_bin)
+    csFiles_bin = load_batch_(vcFile_bin);
+    if isempty(vcDir_out), vcDir_out = fileparts(vcFile_bin); end
+else
+    csFiles_bin = list_files_(vcFile_bin, 1);
+end
+if numel(csFiles_bin)==0, fprintf(2, 'No files were found.\n'); return; end
+if isempty(vcDir_out), vcDir_out = fullfile(fileparts(vcFile_bin), 'mda'); end
+
+vlExist = cellfun(@(x)exist_file_(x), csFiles_bin);
+if ~all(vlExist)
+    fprintf(2, 'Following files are not found:');
+    arrayfun_(@(x)fprintf(2, '\t%s\n', x), csFiles_bin(~vlExist));
+    return;
+end
+
+% write params.json
+vcFile_meta = strrep(csFiles_bin{1}, '.bin', '.meta');
+assert(exist_file_(vcFile_meta), sprintf('%s does not exist', vcFile_meta));
+S_meta = read_meta_spikeglx_(vcFile_meta);
+S_json = struct('spike_sign', -1, 'samplerate', S_meta.sRateHz, 'scale', S_meta.uV_per_bit);
+mkdir_(vcDir_out);
+struct2json_(S_json, fullfile(vcDir_out, 'params.json'));
+
+% write geom.csv (probe file)
+if isempty(vcFile_prb) && ~isempty(get_(S_meta, 'vcProbe'))
+    vcFile_prb = [S_meta.vcProbe, '.prb']; 
+end
+S_prb = load_prb_(vcFile_prb);    
+assert(~isempty(S_prb), sprintf('Probe file is not found: %s', vcFile_prb));
+csvwrite(fullfile(vcDir_out, 'geom.csv'), S_prb.mrSiteXY);
+fprintf('Wrote to %s\n', fullfile(vcDir_out, 'geom.csv'));
+
+% write raw.mda
+fid_mda = writemda_fid(fullfile(vcDir_out, 'raw.mda'));
+for iFile = 1:numel(csFiles_bin)
+    mr_ = load_bin_(csFiles_bin{iFile}, S_meta.vcDataType, S_meta.nChans);
+    writemda_fid(fid_mda, mr_(S_prb.viSite2Chan,:));
+    mr_ = []; %clear
+end
+writemda_fid(fid_mda, 'close');
+fprintf('Wrote to %s\n', fullfile(vcDir_out, 'raw.mda'));
+if numel(csFiles_bin)>1
+    save_cs_(fullfile(vcDir_out, 'bin_files.txt'), csFiles_bin);
+    fprintf('\tCombined %d files: %s\n', numel(csFiles_bin), fullfile(vcDir_out, 'bin_files.txt')); 
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+function save_cs_(vcFile, cs)
+% display cell string
+fid = fopen(vcFile, 'w');
+cellfun(@(s)fprintf(fid, '%s\n',s), cs);
+fclose(fid);
+end %func
+
+
+%--------------------------------------------------------------------------
+% 2018/6/26 JJJ
+function vcStr = struct2json_(S, vcFile_json)
+if nargin<2, vcFile_json = ''; end
+
+csName = fieldnames(S);
+vcStr = '{';
+for iField = 1:numel(csName)
+    vcStr_ = sprintf('\t"%s": %s', csName{iField}, field2str_(S.(csName{iField}),true));
+    if iField < numel(csName)
+        vcStr = sprintf('%s\n%s,', vcStr, vcStr_);
+    else
+        vcStr = sprintf('%s\n%s\n}', vcStr, vcStr_);
+    end
+end
+
+if ~isempty(vcFile_json)
+    fid = fopen(vcFile_json, 'w');
+    fprintf(fid, '%s', vcStr);
+    fclose(fid);
+    fprintf('Wrote to %s\n', vcFile_json);
+end
+end
+
+
+%---------------------------------------------------------------------------
+% 8/2/17 JJJ: Test and documentation
+function vcStr = field2str_(val, fDoubleQuote)
+% convert a value to a strong
+if nargin<2, fDoubleQuote = false; end
+
+switch class(val)
+    case {'int', 'int16', 'int32', 'uint16', 'uint32'}
+        vcFormat = '%d';
+    case {'double', 'single'}
+        vcFormat = '%g';
+        if numel(val)==1
+            if mod(val(1),1)==0, vcFormat = '%d'; end
+        end
+    case 'char'
+        if fDoubleQuote
+            vcStr = sprintf('"%s"', val);
+        else
+            vcStr = sprintf('''%s''', val);
+        end
+        return;
+    case 'cell'
+        vcStr = '{';
+        for i=1:numel(val)
+            vcStr = [vcStr, field2str_(val{i})];
+            if i<numel(val), vcStr = [vcStr, ', ']; end
+        end
+        vcStr = [vcStr, '}'];
+        return;
+    case 'logical'
+        vcFormat = '%s';
+        if val
+            vcStr = '1';
+        else
+            vcStr = '0';
+        end
+        return;
+    otherwise
+        vcStr = '';
+        fprintf(2, 'field2str_: unsupported format: %s\n', class(val));
+        return;
+end
+
+if numel(val) == 1
+    vcStr = sprintf(vcFormat, val);
+else % Handle a matrix or array
+    vcStr = '[';
+    for iRow=1:size(val,1)
+        for iCol=1:size(val,2)
+            vcStr = [vcStr, field2str_(val(iRow, iCol))];
+            if iCol < size(val,2), vcStr = [vcStr, ', ']; end
+        end
+        if iRow<size(val,1), vcStr = [vcStr, '; ']; end
+    end
+    vcStr = [vcStr, ']'];
 end
 end %func
 

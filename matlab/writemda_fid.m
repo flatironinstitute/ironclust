@@ -9,6 +9,8 @@ function FF = writemda_fid(FF, X)
 %    write the data to the file
 % FF = writemda_fid(file_name, X)
 %    write the data to the file
+% FF = writemda_fid(file_name)
+%    open file with 'w+' mode
 % writemda_fid(FF, 'close')
 %    close the file and update the header
 % writemda_fid(file_name, X)
@@ -37,6 +39,7 @@ end
 if ischar(FF)
     FF = fopen(FF, 'w+', 'l');
     if nargout==0, fClose = 1; end
+    if nargin==1, return; end
 end
 nbytes_now = ftell(FF); % update header if 
 
