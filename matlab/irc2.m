@@ -6939,9 +6939,15 @@ catch
     [~, iPrmset_worst] = min(vrF1_prmset);
     [~, viPrmset_srt] = sort(vrF1_prmset, 'descend');
     cVal_prm1 = permute_prm_(cVal_prm, iPrmset_best);
-    csDesc{1} = sprintf('Best parameter set:');
-    for iPrm = 1:numel(cVal_prm)
-        csDesc{end+1} = sprintf('  %s: %s', cName_prm{iPrm}, numstr_(cVal_prm1{iPrm}));
+    csDesc = {};
+    for iiPrmset = 1:numel(viPrmset_srt)
+        iPrmset = viPrmset_srt(iiPrmset);
+        cVal_prm1 = permute_prm_(cVal_prm, iPrmset);
+        csDesc{end+1} = '----------';
+        csDesc{end+1} = sprintf('Prmset-rank %d (p#%d):', iiPrmset, iPrmset);        
+        for iPrm = 1:numel(cVal_prm)
+            csDesc{end+1} = sprintf('  %s: %s', cName_prm{iPrm}, numstr_(cVal_prm1{iPrm}));
+        end
     end
     disp_cs_(csDesc);
     S_best_score = [];
@@ -7054,10 +7060,10 @@ for iScore = 1:numel(csName_score)
 end
 
 % show prmset
-for iPrmset = 1:nPrmset_show
-    iPrmset1 = viPrmset_srt(iPrmset);
+for iiPrmset = 1:nPrmset_show
+    iPrmset1 = viPrmset_srt(iiPrmset);
     csDesc{end+1} = sprintf('------------------------------');
-    csDesc{end+1} = sprintf('  prmset rank #%d (p#%d):', iPrmset, iPrmset1);
+    csDesc{end+1} = sprintf('  prmset rank #%d (p#%d):', iiPrmset, iPrmset1);
     csDesc{end+1} = sprintf('    F1:%0.1f Precision:%0.1f Reccall:%0.1f Accuracy:%0.1f', ...
         cellfun(@(x)nanmean(x(vlPlot_gt)), get_scores_prmset_(iPrmset1)));
     cVal_prm1 = permute_prm_(cVal_prm, iPrmset1);
