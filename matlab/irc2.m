@@ -3650,10 +3650,10 @@ end
 % write a temp file and delete
 function S0 = detect_(P)
 % keep all features in the memory, no disk storage
+fCache_fid = false;
 
 % parfor loop
 fParfor = get_set_(P, 'fParfor', false);
-
 runtime_detect = tic; 
 memory_init = memory_matlab_();
 
@@ -3678,7 +3678,7 @@ S_cache = makeStruct_(vrThresh_site, mrPv_global);
 delete_file_fet_(P); % clear fet
 [vcFile, vS_load] = readmda_paged_('close'); % close the file
 viSite2Chan = get_(P, 'viSite2Chan');
-fid_fet_cache_('clear');
+if fCache_fid, fid_fet_cache_('clear'); end
 if fParfor
     cS_detect{1} = detect_paged_save_(cS_detect{1}, P, 1);    
     parfor iLoad = 2:nLoads  % change to for loop for debugging
@@ -3690,19 +3690,27 @@ if fParfor
         cS_detect{iLoad} = detect_paged_save_(cS_detect{iLoad}, P, iLoad);        
         disp_load_(iLoad, var_size1, toc(t_load1), numel(get_(cS_detect{iLoad}, 'viTime_spk')));
     end
-else
-    [c_fid_fet, c_fid_fet2] = deal(cell(nLoads, 1));
-    [cS_detect{1}, c_fid_fet{1}, c_fid_fet2{1}] = detect_paged_save_(cS_detect{1}, P, 1);            
+else    
+    if fCache_fid
+        [c_fid_fet, c_fid_fet2] = deal(cell(nLoads, 1));
+        [cS_detect{1}, c_fid_fet{1}, c_fid_fet2{1}] = detect_paged_save_(cS_detect{1}, P, 1);  
+    else
+        cS_detect{1} = detect_paged_save_(cS_detect{1}, P, 1); 
+    end              
     for iLoad = 2:nLoads  % change to for loop for debugging
         t_load1 = tic;
         S_load1 = vS_load(iLoad);
         mrWav_T1 = load_file_part_(vcFile, S_load1, viSite2Chan); var_size1 = var_size_(mrWav_T1);
         S_cache1 = setfield(S_cache, 'nlim_wav1', S_load1.nlim);
         cS_detect{iLoad} = detect_paged_(mrWav_T1, P, S_cache1);  mrWav_T1 = [];
-        [cS_detect{iLoad}, c_fid_fet{iLoad}, c_fid_fet2{iLoad}] = detect_paged_save_(cS_detect{iLoad}, P, iLoad);      
+        if fCache_fid
+            [cS_detect{iLoad}, c_fid_fet{iLoad}, c_fid_fet2{iLoad}] = detect_paged_save_(cS_detect{iLoad}, P, iLoad);
+        else
+            cS_detect{iLoad} = detect_paged_save_(cS_detect{iLoad}, P, iLoad);
+        end
         disp_load_(iLoad, var_size1, toc(t_load1), numel(get_(cS_detect{iLoad}, 'viTime_spk')));
     end
-    fid_fet_cache_('set', c_fid_fet, c_fid_fet2);
+    if fCache_fid, fid_fet_cache_('set', c_fid_fet, c_fid_fet2); end
 end
 S0 = detect_merge_(cS_detect, viOffset_load, P);
 memory_detect = memory_matlab_();
@@ -3890,48 +3898,34 @@ fKeep_fid = nargout>1;
 nSites = size(P.miSites, 2);
 vcFile_prm_ = strrep(P.vcFile_prm, '.prm', '');
 
-if fKeep_fid
-    fid_fet = fopen([vcFile_prm_, sprintf('_fet_%d.irc', iLoad)], 'w+');
-else    
-    fid_fet = sprintf('%s_fet_%d.irc', vcFile_prm_, iLoad);
-end
-write_bin_(fid_fet, S_detect.trPc_spk);
+fid_fet = fopen([vcFile_prm_, sprintf('_fet_%d.irc', iLoad)], 'w+');
 S_detect.type_fet = class(S_detect.trPc_spk);
 S_detect.dimm_fet = size(S_detect.trPc_spk);
 S_detect.cviSpk_site = save_paged_fet_site_(...
-    [vcFile_prm_, sprintf('_fet_%d.irc', iLoad)], ...
-        S_detect.trPc_spk, S_detect.viSite_spk, nSites);
+    fid_fet, S_detect.trPc_spk, S_detect.viSite_spk, nSites);
 S_detect.trPc_spk = [];
+if ~fKeep_fid, fclose(fid_fet); end
 
 if isempty(get_(S_detect, 'trPc2_spk'))
     S_detect.cviSpk2_site = cell(size(S_detect.cviSpk_site));
     fid_fet2 = [];
     S_detect.trPc2_spk = [];
 else
-    if fKeep_fid
-        fid_fet2 = fopen([vcFile_prm_, sprintf('_fet2_%d.irc', iLoad)], 'w+');
-    else
-        fid_fet2 = sprintf('%s_fet2_%d.irc', vcFile_prm_, iLoad);
-    end
-    write_bin_(fid_fet2, S_detect.trPc2_spk);    
-    if ~fKeep_fid, fid_fet2 = []; end
+    fid_fet2 = fopen([vcFile_prm_, sprintf('_fet2_%d.irc', iLoad)], 'w+');
     S_detect.cviSpk2_site = save_paged_fet_site_(...
-        [vcFile_prm_, sprintf('_fet2_%d.irc', iLoad)], ...
-            S_detect.trPc2_spk, S_detect.viSite2_spk, nSites);
+        fid_fet2, S_detect.trPc2_spk, S_detect.viSite2_spk, nSites);
     S_detect.trPc2_spk = [];
+    if ~fKeep_fid, fclose(fid_fet2); end
 end
 end %func
 
 
 %--------------------------------------------------------------------------
-function cviSpk_site = save_paged_fet_site_(vcFile_out, trFet_spk, viSite_spk, nSites)
-% t1=tic;
-[cviSpk_site] = vi2cell_(viSite_spk, nSites);
-fid_w = fopen(vcFile_out, 'w');
+function cviSpk_site = save_paged_fet_site_(fid_w, trFet_spk, viSite_spk, nSites)
+cviSpk_site = vi2cell_(viSite_spk, nSites);
 for iSite = 1:nSites
     write_bin_(fid_w, trFet_spk(:,:,cviSpk_site{iSite}));
 end
-fclose(fid_w);
 end %func
 
 
