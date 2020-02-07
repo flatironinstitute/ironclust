@@ -41,9 +41,6 @@ if iscell(vcDir_in) && iscell(vcDir_out)
 end
 
 [vcCmd, vcArg1, vcArg2] = deal(vcDir_in, vcDir_out, vcFile_arg); 
-if isempty(vcFile_arg)
-    vcFile_arg = file2struct_(get_(S_cfg, 'default2_prm'));
-end
 [fDetect, fSort] = deal(exist_file_(vcDir_in) || exist_dir_(vcDir_in)); % cmd mode
 [P, S0, fPlot_gt, fValidate] = deal([]); 
 vcFile_prm = dir2prm_(vcArg1);
@@ -345,10 +342,8 @@ end %func
 function [S0, P] = import_clip_(vcFile_mat)
 % import monotrode clips
 
+[P, S_cfg] = load_default_prm_();
 S_mat = load(vcFile_mat);
-P = file2struct_(ircpath_(read_cfg_('default_prm', 0)));
-P2 = file2struct_(ircpath_(read_cfg_('default2_prm', 0)));
-P = struct_merge_(P, P2);
 P_ = S_mat.par;
 P.sRateHz = double(P_.sr);
 P.qqFactor = double(P_.stdmin);
@@ -360,7 +355,7 @@ P.fParfor = 0;
 P.mrSiteXY = [0,0];
 P.nTime_clu = 1;
 P.nTime_drift = 1;
-P.nC_max = read_cfg_('nC_max'); % override nC_max (gpu parameter)
+P.nC_max = S_cfg.nC_max; % override nC_max (gpu parameter)
 P.viShank_site = 1;
 P.vcDir_out = fileparts(vcFile_mat);
 P.fPlot_gt = 0;
@@ -4643,6 +4638,24 @@ end %func
 
 
 %--------------------------------------------------------------------------
+function [P, S_cfg] = load_default_prm_(S_cfg)
+if nargin<1, S_cfg=[]; end
+if isempty(S_cfg), S_cfg = read_cfg_(); end
+
+read_struct_ = @(x)file2struct_(ircpath_(S_cfg.(x)));
+P = read_struct_('default_prm');
+P = struct_merge_(P, read_struct_('default2_prm'));
+P_user = read_struct_('user_prm');
+if ~isempty(P_user)
+    P = struct_merge_(P, P_user);
+    csName_user = fieldnames(P_user);
+    fprintf('Default parameters were overrode from %s: %s\n', ...
+        S_cfg.user_cfg, sprintf('%s, ', csName_user{:}));
+end
+end %func
+
+
+%--------------------------------------------------------------------------
 function P = makeParam_(vcDir_in, vcDir_out, vcFile_arg, fParfor)
 if nargin<2, vcDir_out = ''; end
 if nargin<3, vcFile_arg = ''; end
@@ -4668,9 +4681,7 @@ end
 vcDir_out = fill_dir_out_(vcDir_in, vcDir_out);
 
 % assume there is raw.mda, geom.csv, params.json, firings_true.mda
-P = file2struct_(ircpath_(read_cfg_('default_prm', 0)));
-P2 = file2struct_(ircpath_(read_cfg_('default2_prm', 0)));
-P = struct_merge_(P, P2);
+P = load_default_prm_();
 
 % now only supporting .mda file
 P.vcFile = vcFile_raw;
@@ -7922,6 +7933,50 @@ end %func
 
 
 %--------------------------------------------------------------------------
+function val = read_cfg_(vcName, fVerbose)
+% read configuration file that stores path to folder
+% load from default.cfg but override with user.cfg if it exists
+if nargin<2, fVerbose = 0; end
+
+S_cfg = file2struct_(ircpath_('default.cfg'));
+vcFile_user = ircpath_(S_cfg.user_cfg);
+if exist_file_(vcFile_user)
+    S_cfg = struct_merge_(S_cfg, file2struct_(vcFile_user)); %, {'path_dropbox', 'path_backup', 'default_prm'});
+    if fVerbose, fprintf('Configuration overrode from user.cfg\n'); end
+else
+    if fVerbose, fprintf('Configuration loaded from default.cfg\n'); end
+end
+
+% set path
+if ispc()
+    [path_alpha, path_github, path_ironclust] = ...
+        deal(S_cfg.path_alpha, S_cfg.path_github, S_cfg.path_ironclust);
+elseif isunix()
+    [path_alpha, path_github, path_ironclust] = ...
+        deal(S_cfg.path_alpha_linux, S_cfg.path_github_linux, S_cfg.path_ironclust_linux);
+end
+S_cfg = struct_add_(S_cfg, path_alpha, path_github, path_ironclust);
+
+if nargin==0
+    val = S_cfg;
+else
+    try
+        val = S_cfg.(vcName);
+    catch
+        disperr_(['read_cfg_: error reading ', ircpath_('default.cfg')]);
+        switch lower(vcName)
+            case 'default_prm'
+                val = 'default.prm';
+            otherwise
+                val = [];
+        end
+    end
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+% used by outside
 function [trWav_clu, viSite_clu, mrWavCor] = clu_wav_(S0, S_auto, trPc_spk, trPc2_spk)
 if nargin<2, S_auto = []; end
 if nargin<3, trPc_spk=[]; end
@@ -8016,7 +8071,7 @@ function varargout = isTextFile_(varargin), cell_out = call_irc_(dbstack(), vara
 function varargout = load_batch_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = list_files_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = struct_merge_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
-function varargout = read_cfg_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
+% function varargout = read_cfg_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = file2struct_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = loadjson_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = filesize_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
