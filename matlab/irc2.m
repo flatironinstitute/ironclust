@@ -6933,18 +6933,17 @@ catch
     csScore = {'vrF1_gt', 'vrAccuracy_gt', 'vrPrecision_gt', 'vrRecall_gt'};
     mr_mean_ = @(x)cellfun(@(S)nanmean(S.(x)), ccScore_prmset_rec);
     cmrScore_prmset_gt = cellfun_(@(x)mr_mean_(x), csScore);
-    mrF1_prmset_gt = cmrScore_prmset_gt{1};
-    vrF1_prmset = nanmean(mrF1_prmset_gt,2);
-    [~, iPrmset_best] = max(vrF1_prmset);
-    [~, iPrmset_worst] = min(vrF1_prmset);
+    [vrF1_prmset, vrAccuracy_prmset, vrPrecision_prmset, vrRecall_prmset] = ...
+        multifun_(@(x)nanmean(cmrScore_prmset_gt{x},2), 1, 2, 3, 4);
     [~, viPrmset_srt] = sort(vrF1_prmset, 'descend');
-    cVal_prm1 = permute_prm_(cVal_prm, iPrmset_best);
     csDesc = {};
     for iiPrmset = 1:numel(viPrmset_srt)
         iPrmset = viPrmset_srt(iiPrmset);
         cVal_prm1 = permute_prm_(cVal_prm, iPrmset);
         csDesc{end+1} = '----------';
         csDesc{end+1} = sprintf('Prmset-rank %d (p#%d):', iiPrmset, iPrmset);        
+        csDesc{end+1} = sprintf('  F1:%0.1f, Accuracy:%0.1f, Precision:%0.1f, Recall:%0.1f', ...
+            vrF1_prmset(iPrmset), vrAccuracy_prmset(iPrmset), vrPrecision_prmset(iPrmset), vrRecall_prmset(iPrmset));
         for iPrm = 1:numel(cVal_prm)
             csDesc{end+1} = sprintf('  %s: %s', cName_prm{iPrm}, numstr_(cVal_prm1{iPrm}));
         end
