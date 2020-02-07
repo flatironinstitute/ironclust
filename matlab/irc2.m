@@ -7213,7 +7213,7 @@ vcFile_true_mda = fullfile(vcDir_in, 'firings_true.mda');
 if strcmpi(vcSorter, 'ironclust')
     P_compare = makeParam_(vcDir_in, vcDir_out, '', 0); % no parfor during compare
     vcFile_prm = P_compare.vcFile_prm;
-    clear_(vcFile_prm);
+%     clear_(vcFile_prm);
 else
     vcFile_prm = '';
 end
