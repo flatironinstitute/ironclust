@@ -7655,6 +7655,7 @@ end %func
 %--------------------------------------------------------------------------
 function git_push_(vcArg1)
 system('git add -u .');
+system('git status');
 system(sprintf('git commit -m "%s"', vcArg1));
 system('git push');
 end %func

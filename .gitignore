@@ -1,7 +1,19 @@
 octave-workspace
+
+# Recording files
 *.mda
-*.asv
-*.mat
 *.bin
 *.json
-docker/run_irc
+*.irc
+*.csv
+
+# Matlab output files
+*.asv
+*.mat
+
+# Compiled matlab code
+matlab/run_irc.exe
+
+# User configuration files
+user.cfg
+user.prm
