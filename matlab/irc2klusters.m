@@ -510,3 +510,4 @@ function [out1, out2] = load_cached_(varargin), fn=dbstack(); [out1, out2] = irc
 
 function [out1, out2, out3] = fopen_(varargin), fn=dbstack(); [out1, out2, out3] = irc('call', fn(1).name, varargin); end
 function [out1, out2, out3] = plan_load_(varargin), fn=dbstack(); [out1, out2, out3] = irc('call', fn(1).name, varargin); end
+function varargout = meanSubt_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end

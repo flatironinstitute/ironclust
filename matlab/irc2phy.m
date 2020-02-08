@@ -1,4 +1,4 @@
-function irc2phy(vcFile_prm, vcDir_out)
+function vcFile_params = irc2phy(vcFile_prm, vcDir_out)
 % J. James Jun 2019 Aug 16
 % Code cited from
 %   https://github.com/JaneliaSciComp/JRCLUST/blob/9e77b8422c9a16dc65231c60977ba6af2b52fe91/%2Bjrclust/%2Bexport/phy.m
@@ -14,6 +14,7 @@ function irc2phy(vcFile_prm, vcDir_out)
 % EXPORT_MODE: 1 for loading all recordings to memory, 2 for paged read
 
 if nargin<2, vcDir_out=''; end
+assert(exist_file_(vcFile_prm), ['File does not exist: ', vcFile_prm]);
 if isempty(vcDir_out)
     vcDir_out = fullfile(fileparts(vcFile_prm), 'phy'); 
 end
@@ -50,32 +51,12 @@ writeNPY_(eye(nSites), fullfile(vcDir_out, 'whitening_mat.npy'));
 writeNPY_(eye(nSites), fullfile(vcDir_out, 'whitening_mat_inv.npy'));
 
 % param file
-write_params_(vcDir_out, P);
+vcFile_params = write_params_(vcDir_out, P);
 end %func
 
 
 %--------------------------------------------------------------------------
-function [S0, S_auto, trPc_spk, trPc2_spk, P] = load_irc2_(vcFile_prm)
-
-S0 = irc2('call', 'load0_', {vcFile_prm});
-if isempty(S0), error('%s: output is not found', vcFile_prm); end
-P = S0.P;
-S_auto = get_(S0, 'S_auto');
-assert(~isempty(S_auto), 'S_auto does not exist');
-
-% export valid clusters only
-vlKeep = S_auto.viClu>0;
-[S0.vrAmp_spk, S0.viTime_spk, S0.viSite_spk, S_auto.viClu] = ...
-    deal(S0.vrAmp_spk(vlKeep), S0.viTime_spk(vlKeep), S0.viSite_spk(vlKeep), S_auto.viClu(vlKeep));
-if ~isempty(get_(S0, 'viSite2_spk')), S0.viSite2_spk = S0.viSite2_spk(vlKeep); end
-
-trPc_spk = load_fet_(S0, P, 1); trPc_spk = trPc_spk(:,:,vlKeep);
-trPc2_spk = load_fet_(S0, P, 2); trPc2_spk = trPc2_spk(:,:,vlKeep);
-end %fnc
-
-
-%--------------------------------------------------------------------------
-function write_params_(vcDir_out, P)
+function vcFile_params = write_params_(vcDir_out, P)
 fOverwrite = 1;
 
 vcFile_params = fullfile(vcDir_out, 'params.py');
@@ -158,16 +139,20 @@ end %func
 
 %--------------------------------------------------------------------------
 % Call from irc2.m
-function cell_out = call_irc2_(dbstack1, cell_input, nargout)
+function cout = call_irc2_(dbstack1, cin, nargout)
 vcFunc = dbstack1(1).name;
 try
     switch nargout
-        case 0, cell_out{1} = []; irc2('call', vcFunc, cell_input);
-        case 1, cell_out{1} = irc2('call', vcFunc, cell_input);
-        case 2, [cell_out{1}, cell_out{2}] = irc2('call', vcFunc, cell_input);
-        case 3, [cell_out{1}, cell_out{2}, cell_out{3}] = irc2('call', vcFunc, cell_input);
-        case 4, [cell_out{1}, cell_out{2}, cell_out{3}, cell_out{4}] = irc2('call', vcFunc, cell_input);
-        otherwise, error('call_irc2_: undefined func: %s', vcFunc);
+        case 0, cout{1} = []; irc2('call', vcFunc, cin);
+        case 1, cout{1} = irc2('call', vcFunc, cin);
+        case 2, [cout{1}, cout{2}] = irc2('call', vcFunc, cin);
+        case 3, [cout{1}, cout{2}, cout{3}] = irc2('call', vcFunc, cin);
+        case 4, [cout{1}, cout{2}, cout{3}, cout{4}] = irc2('call', vcFunc, cin);
+        case 5, [cout{1}, cout{2}, cout{3}, cout{4}, cout{5}] = irc2('call', vcFunc, cin);
+        case 6, [cout{1}, cout{2}, cout{3}, cout{4}, cout{5}, cout{6}] = irc2('call', vcFunc, cin);
+        case 7, [cout{1}, cout{2}, cout{3}, cout{4}, cout{5}, cout{6}, cout{7}] = irc2('call', vcFunc, cin);
+        case 8, [cout{1}, cout{2}, cout{3}, cout{4}, cout{5}, cout{6}, cout{7}, cout{8}] = irc2('call', vcFunc, cin);
+        otherwise, error('call_irc2_: too many output');
     end
 catch ME
     fprintf(2, 'call_irc2_: %s\n', ME.message);
@@ -182,3 +167,4 @@ function varargout = get_(varargin), cell_out = call_irc2_(dbstack(), varargin, 
 function varargout = mkdir_(varargin), cell_out = call_irc2_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = clu_wav_(varargin), cell_out = call_irc2_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = mda2bin_(varargin), cell_out = call_irc2_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = load_irc2_(varargin), cell_out = call_irc2_(dbstack(), varargin, nargout); varargout = cell_out; end

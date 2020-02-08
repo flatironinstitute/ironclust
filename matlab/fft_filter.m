@@ -229,17 +229,20 @@ function filt = fft_bandpass_(N, freqLim, freqLim_width, sRateHz)
 % freqLim: frequency limit, [f_lo, f_hi]
 % freqLim_width: frequency transition width, [f_width_lo, f_width_hi]
 if isempty(freqLim), freqLim = [nan, nan]; end
-[flo, fhi] = deal(freqLim(1), freqLim(2));
+[f_lo, f_hi] = deal(freqLim(1), freqLim(2));
+if f_lo==0 || isinf(f_lo), f_lo = nan; end
+if f_hi==0 || isinf(f_hi), f_hi = nan; end
+
 [fwid_lo, fwid_hi] = deal(freqLim_width(1), freqLim_width(2));
 
 [n1, n2, f] = get_freq_(N, sRateHz);
 
-if ~isnan(flo) && ~isnan(fhi)
-    filt = sqrt((1+erf((abs(f)-flo)/fwid_lo)) .* (1-erf((abs(f)-fhi)/fwid_hi)))/2;
-elseif ~isnan(flo)
-    filt = sqrt((1+erf((abs(f)-flo)/fwid_lo))/2);
-elseif ~isnan(fhi)
-    filt = sqrt((1-erf((abs(f)-fhi)/fwid_hi))/2);
+if ~isnan(f_lo) && ~isnan(f_hi)
+    filt = sqrt((1+erf((abs(f)-f_lo)/fwid_lo)) .* (1-erf((abs(f)-f_hi)/fwid_hi)))/2;
+elseif ~isnan(f_lo) && isnan(f_hi)
+    filt = sqrt((1+erf((abs(f)-f_lo)/fwid_lo))/2);
+elseif ~isnan(f_hi) && isnan(f_lo)
+    filt = sqrt((1-erf((abs(f)-f_hi)/fwid_hi))/2);
 else
     filt = [];
 end

@@ -856,14 +856,14 @@ else
 end
 
 % set path
-if ispc()
-    [path_alpha, path_github, path_ironclust] = ...
-        deal(S_cfg.path_alpha, S_cfg.path_github, S_cfg.path_ironclust);
-elseif isunix()
-    [path_alpha, path_github, path_ironclust] = ...
-        deal(S_cfg.path_alpha_linux, S_cfg.path_github_linux, S_cfg.path_ironclust_linux);
-end
-S_cfg = struct_add_(S_cfg, path_alpha, path_github, path_ironclust);
+% if ispc()
+%     [path_alpha, path_github, path_ironclust] = ...
+%         deal(S_cfg.path_alpha, S_cfg.path_github, S_cfg.path_ironclust);
+% elseif isunix()
+%     [path_alpha, path_github, path_ironclust] = ...
+%         deal(S_cfg.path_alpha_linux, S_cfg.path_github_linux, S_cfg.path_ironclust_linux);
+% end
+% S_cfg = struct_add_(S_cfg, path_alpha, path_github, path_ironclust);
 
 if nargin==0
     val = S_cfg;

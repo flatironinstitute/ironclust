@@ -18,6 +18,24 @@ if nargin<4, vcArg3 = ''; end
  
 persistent vcFile_prm_
 
+% fast response to call
+if strcmpi(vcDir_in, 'call')
+    [vcArg1, vcArg2] = deal(vcDir_out, vcFile_arg);
+    switch nargout
+        case 0, call_(vcArg1, vcArg2);
+        case 1, varargout{1} = call_(vcArg1, vcArg2);
+        case 2, [varargout{1}, varargout{2}] = call_(vcArg1, vcArg2);
+        case 3, [varargout{1}, varargout{2}, varargout{3}] = call_(vcArg1, vcArg2);
+        case 4, [varargout{1}, varargout{2}, varargout{3}, varargout{4}] = call_(vcArg1, vcArg2);
+        case 5, [varargout{1}, varargout{2}, varargout{3}, varargout{4}, varargout{5}] = call_(vcArg1, vcArg2);
+        case 6, [varargout{1}, varargout{2}, varargout{3}, varargout{4}, varargout{5}, varargout{6}] = call_(vcArg1, vcArg2);
+        case 7, [varargout{1}, varargout{2}, varargout{3}, varargout{4}, varargout{5}, varargout{6}, varargout{7}] = call_(vcArg1, vcArg2);
+        case 8, [varargout{1}, varargout{2}, varargout{3}, varargout{4}, varargout{5}, varargout{6}, varargout{7}, varargout{8}] = call_(vcArg1, vcArg2);
+        otherwise, error('call_: too many output');
+    end %switch
+    return;
+end
+
 % batch processing. it uses default param for now
 S_cfg = read_cfg_();
 fDetect = get_(S_cfg, 'fForceRerun');
@@ -49,13 +67,13 @@ if isempty(vcFile_prm)
 else
     vcFile_prm_ = vcFile_prm;
 end
-switch lower(vcCmd)
+switch lower(vcCmd)    
     % ui
     case 'probe', irc('probe', vcArg1); return;
-        
+    case 'traces', irc2_traces(vcArg1); return;
+            
     % SpikeGLX functions
-    case 'import-spikeglx'
-        import_spikeglx_(vcArg1, vcArg2, vcArg3); return;
+    case 'import-spikeglx', import_spikeglx_(vcArg1, vcArg2, vcArg3); return;
         
     % Git functions
     case 'push-readme', push_readme_(); return;    
@@ -67,7 +85,7 @@ switch lower(vcCmd)
     case {'optimize', 'optimize-param', 'optimize-prmset', 'optimize-prm'}
         optimize_prmset_(vcArg1, vcArg2, vcArg3); return;
         
-    case 'edit-readme', edit_readme_(); return;
+    case {'readme', 'edit-readme'}, edit_readme_(); return;
     % spikeforest2 interface
     case 'clear-jobs', clear_jobs_(vcArg1); return;
         
@@ -149,16 +167,9 @@ switch lower(vcCmd)
         [fDetect, fSort, fValidate] = deal(1, 1, 1);
     case 'test-all', test_all_(); return;
 %     case 'export', irc('export', vcArg1); return;
-    case {'export-phy', 'phy'}, irc2phy(vcFile_prm, vcArg2); return;
-    case {'export-klusters', 'klusters', 'neurosuite'}, irc2klusters_v2(vcArg1, vcArg2); return;
-    case 'call'
-        switch nargout
-            case 0, call_(vcArg1, vcArg2);
-            case 1, varargout{1} = call_(vcArg1, vcArg2);
-            case 2, [varargout{1}, varargout{2}] = call_(vcArg1, vcArg2);
-            case 3, [varargout{1}, varargout{2}, varargout{3}] = call_(vcArg1, vcArg2);
-            case 4, [varargout{1}, varargout{2}, varargout{3}, varargout{4}] = call_(vcArg1, vcArg2);
-        end %switch
+    case {'export-phy', 'phy'}, open_phy_(irc2phy(vcFile_prm, vcArg2)); return;
+    case {'export-klusters', 'klusters', 'neurosuite'}
+        open_klusters_(irc2klusters_v2(vcArg1, vcArg2));
         return;
     otherwise % directory running mode
         vcCmd=''; clear_(); 
@@ -204,6 +215,54 @@ save_firings_mda_(S0, vcFile_firings_mda);
 % Validate
 if fValidate, validate_(P, fPlot_gt); end
 end %func
+
+
+%--------------------------------------------------------------------------
+function open_klusters_(csFile_par)
+system_('%s %s', read_cfg_path_('path_klusters'), csFile_par{1});
+end %func
+
+
+%--------------------------------------------------------------------------
+function open_phy_(vcFile_py)
+system_('%s template-gui %s', read_cfg_path_('path_phy'), vcFile_py);
+end %func
+
+
+%--------------------------------------------------------------------------
+function [code, msg] = system_(varargin)
+vcCmd = sprintf(varargin{:});
+try
+    disp(vcCmd);
+    [code, msg] = system(vcCmd);
+catch E
+    code = -1;
+    msg = E.message;    
+end
+if nargout==0
+    if code==0
+        fprintf('%s\n', msg);
+    else
+        fprintf(2, '%s\n', msg);
+    end
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+function vcPath = read_cfg_path_(vcKey)
+if ispc()
+    vcPath = read_cfg_([vcKey, '_pc']);
+    if any(vcPath==' '), vcPath = ['"', vcPath, '"']; end
+elseif ismac()
+    vcPath = read_cfg_([vcKey, '_mac']);
+elseif isunix()
+    vcPath = read_cfg_([vcKey, '_lin']);
+else
+    fprintf(2, 'read_cfg_path_: unsupported OS: %s\n', vcKey);
+    vcPath = []; % unsupported os
+end
+end
 
 
 %--------------------------------------------------------------------------
@@ -4442,6 +4501,41 @@ end %func
 
 
 %--------------------------------------------------------------------------
+function [mrWav_filt, vrWav_filt_mean] = filter_car_(mnWav, P)
+%-----
+% Filter
+% fprintf('\tFiltering spikes (%s)...', get_(P, 'vcCommonRef')); t_fun = tic;
+% if get_set_(P, 'fSmooth_spatial', 0)
+%     mnWav_T = spatial_smooth_(mnWav_T, P);
+% end
+mrWav_filt = fft_filter(single(mnWav), P);
+
+nChans = size(mrWav_filt, 2);
+if nChans < get_set_(P, 'nChans_min_car', 32)
+    P.vcCommonRef = 'none';
+end
+switch get_(P, 'vcCommonRef')
+    case 'mean'
+        vrWav_filt_mean = mean_excl_(mrWav_filt, P);                
+    case 'median'
+        vrWav_filt_mean = median_excl_(mrWav_filt, P);
+    case {'trimmean', 'tmean'}
+        vrWav_filt_mean = trimmean_excl_(mrWav_filt, P);   
+    otherwise
+        vrWav_filt_mean = [];
+end
+if ~isempty(vrWav_filt_mean)
+    mrWav_filt = mrWav_filt - vrWav_filt_mean(:);
+end
+if get_set_(P, 'fWhiten', 0)
+    fprintf('\tWhitening...');
+    mrWav_filt = spatial_whiten_(mrWav_filt, P);
+end
+% fprintf(' took %0.1fs\n', toc(t_fun));
+end %func
+
+
+%--------------------------------------------------------------------------
 function mrB = spatial_whiten_(mrA, P)
 
 MAX_SAMPLE = [];
@@ -4987,7 +5081,7 @@ try
         try
             S_meta.outputFile = S_sglx.fileName;
             S_meta.sha1 = S_sglx.fileSHA1;      
-            S_meta.vcProbe = 'imec2';
+%             S_meta.vcProbe = 'imec2';
         catch
             S_meta.outputFile = '';
             S_meta.sha1 = [];      
@@ -6204,13 +6298,34 @@ function varargout = call_(vcFunc, cell_Input)
 if vcFunc(end) ~= '_', vcFunc = [vcFunc, '_']; end
 
 nOutput = nargout();
-switch nOutput
-    case 0, feval(vcFunc, cell_Input{:});
-    case 1, varargout{1} = feval(vcFunc, cell_Input{:});
-    case 2, [varargout{1}, varargout{2}] = feval(vcFunc, cell_Input{:});
-    case 3, [varargout{1}, varargout{2}, varargout{3}] = feval(vcFunc, cell_Input{:});
-    case 4, [varargout{1}, varargout{2}, varargout{3}, varargout{4}] = feval(vcFunc, cell_Input{:});
-end %switch
+try
+    switch nOutput
+        case 0, feval(vcFunc, cell_Input{:});
+        case 1, varargout{1} = feval(vcFunc, cell_Input{:});
+        case 2, [varargout{1}, varargout{2}] = feval(vcFunc, cell_Input{:});
+        case 3, [varargout{1}, varargout{2}, varargout{3}] = feval(vcFunc, cell_Input{:});
+        case 4, [varargout{1}, varargout{2}, varargout{3}, varargout{4}] = feval(vcFunc, cell_Input{:});
+        case 5, [varargout{1}, varargout{2}, varargout{3}, varargout{4}, varargout{5}] = feval(vcFunc, cell_Input{:});
+        case 6, [varargout{1}, varargout{2}, varargout{3}, varargout{4}, varargout{5}, varargout{6}] = feval(vcFunc, cell_Input{:});
+        case 7, [varargout{1}, varargout{2}, varargout{3}, varargout{4}, varargout{5}, varargout{6}, varargout{7}] = feval(vcFunc, cell_Input{:});
+        case 8, [varargout{1}, varargout{2}, varargout{3}, varargout{4}, varargout{5}, varargout{6}, varargout{7}, varargout{8}] = feval(vcFunc, cell_Input{:});
+        otherwise, error('call_: too many output');
+    end %switch
+catch E
+    % try irc 
+    switch nOutput
+        case 0, irc('call', vcFunc, cell_Input);
+        case 1, varargout{1} = irc('call', vcFunc, cell_Input);
+        case 2, [varargout{1}, varargout{2}] = irc('call', vcFunc, cell_Input);
+        case 3, [varargout{1}, varargout{2}, varargout{3}] = irc('call', vcFunc, cell_Input);
+        case 4, [varargout{1}, varargout{2}, varargout{3}, varargout{4}] = irc('call', vcFunc, cell_Input);
+        case 5, [varargout{1}, varargout{2}, varargout{3}, varargout{4}, varargout{5}] = irc('call', vcFunc, cell_Input);
+        case 6, [varargout{1}, varargout{2}, varargout{3}, varargout{4}, varargout{5}, varargout{6}] = irc('call', vcFunc, cell_Input);
+        case 7, [varargout{1}, varargout{2}, varargout{3}, varargout{4}, varargout{5}, varargout{6}, varargout{7}] = irc('call', vcFunc, cell_Input);
+        case 8, [varargout{1}, varargout{2}, varargout{3}, varargout{4}, varargout{5}, varargout{6}, varargout{7}, varargout{8}] = irc('call', vcFunc, cell_Input);
+        otherwise, error('call_: too many output');
+    end %switch
+end
 end %func
 
 
@@ -7747,19 +7862,21 @@ end %func
 
 %--------------------------------------------------------------------------
 function edit_readme_()
-S_cfg = read_cfg_();
-if ispc()
-    path_code = ['"', get_(S_cfg, 'path_vscode_win'), '"'];
-elseif ismac()
-    path_code = get_(S_cfg, 'path_vscode_mac');
-elseif isunix()
-    path_code = get_(S_cfg, 'path_vscode_lin');
-else
-    path_code = 'code';
-end
-path_irc = fileparts(fileparts(mfilename('fullpath')));
-path_readme = fullfile(path_irc, 'README.md');
-system(sprintf('%s "%s"', path_code, path_readme));
+path_code = read_cfg_path_('path_vscode');
+system_('%s "%s"', path_code, ircpath_(fullfile('..', 'README.md')));
+% S_cfg = read_cfg_();
+% if ispc()
+%     path_code = ['"', get_(S_cfg, 'path_vscode_win'), '"'];
+% elseif ismac()
+%     path_code = get_(S_cfg, 'path_vscode_mac');
+% elseif isunix()
+%     path_code = get_(S_cfg, 'path_vscode_lin');
+% else
+%     path_code = 'code';
+% end
+% path_irc = fileparts(fileparts(mfilename('fullpath')));
+% path_readme = fullfile(path_irc, 'README.md');
+% system(sprintf('%s "%s"', path_code, path_readme));
 end %func
 
 
@@ -8058,16 +8175,6 @@ else
     if fVerbose, fprintf('Configuration loaded from default.cfg\n'); end
 end
 
-% set path
-if ispc()
-    [path_alpha, path_github, path_ironclust] = ...
-        deal(S_cfg.path_alpha, S_cfg.path_github, S_cfg.path_ironclust);
-elseif isunix()
-    [path_alpha, path_github, path_ironclust] = ...
-        deal(S_cfg.path_alpha_linux, S_cfg.path_github_linux, S_cfg.path_ironclust_linux);
-end
-S_cfg = struct_add_(S_cfg, path_alpha, path_github, path_ironclust);
-
 if nargin==0
     val = S_cfg;
 else
@@ -8151,16 +8258,37 @@ end %func
 
 
 %--------------------------------------------------------------------------
+function [S0, S_auto, trPc_spk, trPc2_spk, P] = load_irc2_(vcFile_prm)
+
+S0 = load0_(vcFile_prm);
+if isempty(S0), error('%s: output is not found', vcFile_prm); end
+S_auto = get_(S0, 'S_auto');
+assert(~isempty(S_auto), 'S_auto does not exist');
+P = S0.P;
+trPc_spk = load_fet_(S0, P, 1);
+trPc2_spk = load_fet_(S0, P, 2);
+
+% export valid clusters only
+vlKeep = S_auto.viClu>0;
+[S0.vrAmp_spk, S0.viTime_spk, S0.viSite_spk, S_auto.viClu] = ...
+    deal(S0.vrAmp_spk(vlKeep), S0.viTime_spk(vlKeep), S0.viSite_spk(vlKeep), S_auto.viClu(vlKeep));
+if ~isempty(get_(S0, 'viSite2_spk')), S0.viSite2_spk = S0.viSite2_spk(vlKeep); end
+trPc_spk = trPc_spk(:,:,vlKeep);
+if ~isempty(trPc2_spk), trPc2_spk = trPc2_spk(:,:,vlKeep); end
+end %fnc
+
+
+%--------------------------------------------------------------------------
 % Call from irc.m
-function cell_out = call_irc_(dbstack1, cell_input, nargout)
+function cout = call_irc_(dbstack1, cell_input, nargout)
 vcFunc = dbstack1(1).name;
 try
     switch nargout
-        case 0, cell_out{1} = []; irc('call', vcFunc, cell_input);
-        case 1, cell_out{1} = irc('call', vcFunc, cell_input);
-        case 2, [cell_out{1}, cell_out{2}] = irc('call', vcFunc, cell_input);
-        case 3, [cell_out{1}, cell_out{2}, cell_out{3}] = irc('call', vcFunc, cell_input);
-        case 4, [cell_out{1}, cell_out{2}, cell_out{3}, cell_out{4}] = irc('call', vcFunc, cell_input);
+        case 0, cout{1} = []; irc('call', vcFunc, cell_input);
+        case 1, cout{1} = irc('call', vcFunc, cell_input);
+        case 2, [cout{1}, cout{2}] = irc('call', vcFunc, cell_input);
+        case 3, [cout{1}, cout{2}, cout{3}] = irc('call', vcFunc, cell_input);
+        case 4, [cout{1}, cout{2}, cout{3}, cout{4}] = irc('call', vcFunc, cell_input);
         otherwise, error('call_irc_: undefined func: %s', vcFunc);
     end
 catch ME

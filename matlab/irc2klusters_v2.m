@@ -1,4 +1,4 @@
-function irc2klusters_v2(vcFile_prm, vcDir_out)
+function csFile_par = irc2klusters_v2(vcFile_prm, vcDir_out)
 % J. James Jun 2019 Aug 16
 % Code cited from
 %   https://github.com/brendonw1/KilosortWrapper/blob/master/Kilosort2Neurosuite.m
@@ -10,9 +10,9 @@ function irc2klusters_v2(vcFile_prm, vcDir_out)
 % EXPORT_MODE: 1 for loading all recordings to memory, 2 for paged read
 
 
-[fOverwrite, fZeroBase, NUM_PC] = deal(1, 1, 3);
+[fOverwrite, fZeroBase, scale_factor, NUM_PC] = deal(1, 1, 1, 3);
 
-t1 = tic;
+t_fun = tic;
 if nargin<2, vcDir_out=''; end
 if isempty(vcDir_out)
     vcDir_out = fullfile(fileparts(vcFile_prm), 'klusters'); 
@@ -27,11 +27,11 @@ viTime_spk = uint64(S0.viTime_spk(:));
 viClu_spk = uint32(S_auto.viClu(:));
 viShank_site = get_set_(P, 'viShank_site', ones(size(P.viSite2Chan)));
 [~, vcFile_base] = fileparts(vcFile_prm);
-single2int16_ = @(x)int16(x/P.uV_per_bit);
-single2int64_ = @(x)int64(x/P.uV_per_bit);
+single2int16_ = @(x)int16(x/P.uV_per_bit*scale_factor);
+single2int64_ = @(x)int64(x/P.uV_per_bit*scale_factor);
 
 % Shank loop
-fprintf('Exporting shanks\n'); t_shank = tic;
+fprintf('Exporting shanks\n'); 
 viSite_clu = S_auto.viSite_clu;
 viShank_clu = viShank_site(viSite_clu);
 viShank_unique = unique(viShank_clu);
@@ -58,9 +58,9 @@ for iiShank = 1:numel(viShank_unique)
     
     % write waveform file: [nSites1, nSamples_spk, nSpk1]
     vcFile_spk1 = fullfile(vcDir_out, sprintf('%s.spk.%d', vcFile_base, iShank1));
-    trPc_spk1 = expand_pc_(trPc_spk, trPc2_spk, viSpk_shank1, S0, P);
-    trPc_spk1 = trPc_spk1(:,viSite_shank1,:); % take sites for chosen shank
+    trPc_spk1 = expand_pc_(trPc_spk, trPc2_spk, viSpk_shank1, viSite_shank1, S0, P);
     trWav_spk1 = pc2wav_(trPc_spk1, S0.mrPv_global);
+%     trWav_spk1 = meanSubt_(trWav_spk1, 1, @median);
     write_file_(vcFile_spk1, single2int16_(permute(trWav_spk1, [2,1,3]))); 
     trWav_spk1 = [];
     
@@ -74,7 +74,8 @@ end %for
 
 % write parameter files
 vcFile_par = fullfile(vcDir_out, sprintf('%s.par', vcFile_base));
-write_par_(vcFile_par, cviSite_shank, P);
+csFile_par = write_par_(vcFile_par, cviSite_shank, P);
+fprintf('Exported to klusters (took %0.1fs): %s\n', toc(t_fun), vcFile_par);
 end %func
 
 
@@ -104,7 +105,7 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function trPc_spk1 = expand_pc_(trPc1_spk, trPc2_spk, viSpk_shank1, S0, P)
+function trPc_spk1 = expand_pc_(trPc1_spk, trPc2_spk, viSpk1, viSite_shank1, S0, P)
 
 miSites = P.miSites;
 [nPc, nSites_spk, nSpk] = size(trPc1_spk);
@@ -112,12 +113,12 @@ nSites = numel(P.viSite2Chan);
 trPc_spk1 = zeros([nPc, nSites, nSpk], 'single');
 if isempty(trPc2_spk)
     cviSite_spk = {S0.viSite_spk};
-    ctrPc_spk = {trPc1_spk(:,:,viSpk_shank1)};
+    ctrPc_spk = {trPc1_spk(:,:,viSpk1)};
 else
     cviSite_spk = {S0.viSite_spk, S0.viSite2_spk};
-    ctrPc_spk = {trPc1_spk(:,:,viSpk_shank1), trPc2_spk(:,:,viSpk_shank1)};    
+    ctrPc_spk = {trPc1_spk(:,:,viSpk1), trPc2_spk(:,:,viSpk1)};    
 end
-for iFet = 1:numel(cviSite_spk)
+for iFet = numel(cviSite_spk):-1:1
     cviSpk_site = vi2cell_(cviSite_spk{iFet}, nSites);
     trPc_ = ctrPc_spk{iFet};
     for iSite = 1:nSites
@@ -127,27 +128,10 @@ for iFet = 1:numel(cviSite_spk)
        trPc_spk1(:,viSite1,viSpk1) = trPc_(:,:,viSpk1);
     end
 end
+if ~isempty(viSite_shank1)
+    trPc_spk1 = trPc_spk1(:,viSite_shank1,:); % take sites for chosen shank
+end
 end %func
-
-
-%--------------------------------------------------------------------------
-function [S0, S_auto, trPc_spk, trPc2_spk, P] = load_irc2_(vcFile_prm)
-
-S0 = irc2('call', 'load0_', {vcFile_prm});
-if isempty(S0), error('%s: output is not found', vcFile_prm); end
-P = S0.P;
-S_auto = get_(S0, 'S_auto');
-assert(~isempty(S_auto), 'S_auto does not exist');
-
-% export valid clusters only
-vlKeep = S_auto.viClu>0;
-[S0.vrAmp_spk, S0.viTime_spk, S0.viSite_spk, S_auto.viClu] = ...
-    deal(S0.vrAmp_spk(vlKeep), S0.viTime_spk(vlKeep), S0.viSite_spk(vlKeep), S_auto.viClu(vlKeep));
-if ~isempty(get_(S0, 'viSite2_spk')), S0.viSite2_spk = S0.viSite2_spk(vlKeep); end
-
-trPc_spk = load_fet_(S0, P, 1); trPc_spk = trPc_spk(:,:,vlKeep);
-trPc2_spk = load_fet_(S0, P, 2); trPc2_spk = trPc2_spk(:,:,vlKeep);
-end %fnc
 
 
 %--------------------------------------------------------------------------
@@ -200,7 +184,7 @@ end %func
 
 %--------------------------------------------------------------------------
 % write par files for each shanks (easier than writing an xml file)
-function write_par_(vcFile_par, cviSite_shank, P)
+function csFile_par = write_par_(vcFile_par, cviSite_shank, P)
 
 [nBitsPerSample, fZeroBase, nPc] = deal(16, 1, 3);
 highPass = round(P.freqLim(1));
@@ -218,7 +202,7 @@ for iiShank = 1:nShanks
 end
 write_file_(vcFile_par, csLines_);
 
-
+csFile_par = cell(1, nShanks);
 for iiShank = 1:nShanks
     viSite_shank1 = cviSite_shank{iiShank} - fZeroBase;
     nSites1 = numel(viSite_shank1);
@@ -237,112 +221,8 @@ for iiShank = 1:nShanks
     
     vcFile_par1 = strrep(vcFile_par, '.par', sprintf('.par.%d', iiShank));
     write_file_(vcFile_par1, csLines_);
+    csFile_par{iiShank} = vcFile_par1;
 end % for
-end %func
-
-
-%--------------------------------------------------------------------------
-% save filtered waveform in a transposed format (_wav.jrc)
-% supports single file only and non-transposed
-function save_spk_klusters_(vcFile_prm, P, S_shank)
-% ouput
-% -----
-% S_shank: {cviSpk_shank, cviSite_shank, csFile_spk_shank, csFile_fet_shank}
-%   csFile_spk_shank: output file names to store spike waveforms by shank
-%   csFile_fet_shank: output file names to store spike features by shank
-%   cviSite_shank: site numbers per shank
-
-if nargin<2, P = []; end
-if nargin<3, S_shank = []; end
-
-NUM_PC = 3;
-
-fprintf('Exporting waveforms and features for all shanks\n\t'); t_spk = tic;
-    
-% [S0, P] = load_cached_(vcFile_prm);
-% if isempty(P), P = P; end
-
-[nPad_filt, nChans, vcDataType] = deal(P.nPad_filt, P.nChans, P.vcDataType);
-vcFile_wav = strrep(P.vcFile_prm, '.prm', '_wav.jrc');
-fid_w = [];
-
-% plan loading
-[fid1, nBytes_file, header_offset] = fopen_(P.vcFile, 'r');
-[nLoad1, nSamples_load1, nSamples_last1] = plan_load_(nBytes_file, P);
-nSamples_file = floor(nBytes_file / bytesPerSample_(vcDataType) / nChans);
-
-% load files in steps with overlap
-mnWav_pre1 = [];
-iSample_file1 = 0; % zero base
-v_fid_spk_shank = [];
-cell_pv_shank = cell(size(S_shank.cviSite_shank));
-
-for iLoad1 = 1:nLoad1
-    nSamples1 = ifeq_(iLoad1 == nLoad1, nSamples_last1, nSamples_load1);
-    mnWav1 = load_file_(fid1, nSamples1, P);
-    if iLoad1 < nLoad1
-        mnWav_post1 = load_file_preview_(fid1, P);
-    else
-        mnWav_post1 = [];
-    end
-    ilim_load1 = iSample_file1 + [1, nSamples1];
-    [mnWav1, ilim_wav1] = filter_(mnWav1, mnWav_pre1, mnWav_post1, P);
-    switch 2
-        case 2 % save waveforms and fet, don't write the waveforms            
-            if isempty(v_fid_spk_shank) % open files
-                v_fid_spk_shank = cellfun(@(x)fopen(x, 'w'), S_shank.csFile_spk_shank, 'UniformOutput', 1);
-                v_fid_fet_shank = cellfun(@(x)fopen(x, 'w'), S_shank.csFile_fet_shank, 'UniformOutput', 1);
-            end
-            % write to files
-            for iShank = 1:numel(S_shank.cviSite_shank)       
-                viTime_shank1 = S_shank.cviTime_spk_shank{iShank};
-                viSite_shank1 = S_shank.cviSite_shank{iShank};
-                [trWav11, viTime11] = mr2tr_sub_(mnWav1(:,viSite_shank1), ilim_wav1, ilim_load1, P.spkLim, viTime_shank1);
-                trWav11 = meanSubt_(trWav11);
-                if isempty(cell_pv_shank{iShank})
-                    cell_pv_shank{iShank} = calc_pv_(trWav11, NUM_PC);
-                end
-                mnPc11 = calc_pc_(trWav11, cell_pv_shank{iShank}); % project feature
-                
-                % write waveform and compute waveform ranges and powers
-                mrWav12 = reshape(permute(trWav11, [3,1,2]), [], size(trWav11,2)); % [nSites11, nSamples_spk, nSpk11]
-                if ~strcmpi(class_(mrWav12), 'int16')
-                    mrWav12 = int16(gather_(mrWav12) * get_set_(P, 'scale_filter', 200)); % make sure dynamic range is properly represented
-                end
-                fwrite(v_fid_spk_shank(iShank), mrWav12, 'int16'); % [nSites11, nSamples_spk, nSpk11]                
-                vn_range11 = int64(range(mrWav12,1));
-                vn_power11 = int64(sum(mrWav12.^2,1)/size(mrWav12,1)/100);                                
-                clear mrWav12
-                
-                % save feature vector                                              
-                mrFet11 = [mnPc11; vn_range11; vn_power11; int64(viTime11(:)'-1)];
-                vcFormat = ['%d', repmat('\t%d', 1, size(mrFet11,1)-1), '\n'];
-                if iLoad1 == 1
-                    fprintf(v_fid_fet_shank(iShank), '%d\n', size(mrFet11,1));
-                end
-                fprintf(v_fid_fet_shank(iShank), vcFormat, mrFet11);
-            end
-            
-        case 1 % save filtered waveforms to a file
-            mnWav1 = mnWav1(ilim_wav1(1):ilim_wav1(end), :); % trim
-            if isempty(fid_w), fid_w = fopen(vcFile_wav, 'w'); end
-            fwrite_sub_(fid_w, gather_(mnWav1), iSample_file1, nSamples_file); % provide offset
-    end
-    % end
-    if iLoad1 < nLoad1, mnWav_pre1 = mnWav1(end-P.nPad_filt+1:end, :); end
-    clear mnWav1
-    iSample_file1 = iSample_file1 + nSamples1;
-    fprintf('.');
-end %for
-fprintf('\n');
-
-% close files
-fclose_(v_fid_spk_shank);
-fclose_(v_fid_fet_shank);
-fclose_(fid_w);
-cellfun(@(x)fprintf('\tWrote to %s\n', x), S_shank.csFile_spk_shank);
-cellfun(@(x)fprintf('\tWrote to %s\n', x), S_shank.csFile_fet_shank);
-fprintf('\ttook %0.1fs\n', toc(t_spk));
 end %func
 
 
@@ -449,16 +329,20 @@ end %func
 
 %--------------------------------------------------------------------------
 % Call from irc2.m
-function cell_out = call_irc2_(dbstack1, cell_input, nargout)
+function cout = call_irc2_(dbstack1, cin, nargout)
 vcFunc = dbstack1(1).name;
 try
     switch nargout
-        case 0, cell_out{1} = []; irc2('call', vcFunc, cell_input);
-        case 1, cell_out{1} = irc2('call', vcFunc, cell_input);
-        case 2, [cell_out{1}, cell_out{2}] = irc2('call', vcFunc, cell_input);
-        case 3, [cell_out{1}, cell_out{2}, cell_out{3}] = irc2('call', vcFunc, cell_input);
-        case 4, [cell_out{1}, cell_out{2}, cell_out{3}, cell_out{4}] = irc2('call', vcFunc, cell_input);
-        otherwise, error('call_irc2_: undefined func: %s', vcFunc);
+        case 0, cout{1} = []; irc2('call', vcFunc, cin);
+        case 1, cout{1} = irc2('call', vcFunc, cin);
+        case 2, [cout{1}, cout{2}] = irc2('call', vcFunc, cin);
+        case 3, [cout{1}, cout{2}, cout{3}] = irc2('call', vcFunc, cin);
+        case 4, [cout{1}, cout{2}, cout{3}, cout{4}] = irc2('call', vcFunc, cin);
+        case 5, [cout{1}, cout{2}, cout{3}, cout{4}, cout{5}] = irc2('call', vcFunc, cin);
+        case 6, [cout{1}, cout{2}, cout{3}, cout{4}, cout{5}, cout{6}] = irc2('call', vcFunc, cin);
+        case 7, [cout{1}, cout{2}, cout{3}, cout{4}, cout{5}, cout{6}, cout{7}] = irc2('call', vcFunc, cin);
+        case 8, [cout{1}, cout{2}, cout{3}, cout{4}, cout{5}, cout{6}, cout{7}, cout{8}] = irc2('call', vcFunc, cin);
+        otherwise, error('call_irc2_: too many output');
     end
 catch ME
     fprintf(2, 'call_irc2_: %s\n', ME.message);
@@ -477,6 +361,7 @@ function varargout = clu_wav_(varargin), cell_out = call_irc2_(dbstack(), vararg
 function varargout = mda2bin_(varargin), cell_out = call_irc2_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = get_set_(varargin), cell_out = call_irc2_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = vi2cell_(varargin), cell_out = call_irc2_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = load_irc2_(varargin), cell_out = call_irc2_(dbstack(), varargin, nargout); varargout = cell_out; end
 
 function out1 = fwrite_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = read_chan_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
