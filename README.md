@@ -37,20 +37,11 @@ irc2 [path_to_my_recording.mda]   # for .mda format
 irc2 [path_to_my_recording] (output_dir)  # specify output directory (default location is `irc2` under recording directory)
 ```
 
-You can import [SpikeGLX](https://github.com/billkarsh/SpikeGLX) format to [MDA format](https://users.flatironinstitute.org/~magland/docs/mountainsort_dataset_format/) by supplying a `.bin` file and [`.prb` (probe) file](https://github.com/JaneliaSciComp/JRCLUST/wiki/Probe-file). Make sure that `.meta` file exists in the same directory. Multiple `.bin` files can be joined if you provide a wild card for `[path_to_my_recording.bin]` or supply a `.txt` (text) file containing   a list of files to be merged.
+You can import [SpikeGLX](https://github.com/billkarsh/SpikeGLX) format to [MDA format](https://users.flatironinstitute.org/~magland/docs/mountainsort_dataset_format/) by supplying a `.bin` file and [`.prb` (probe) file](https://github.com/JaneliaSciComp/JRCLUST/wiki/Probe-file). Make sure that `.meta` file exists in the same directory. Multiple `.bin` files can be joined if you provide a wild card for `[path_to_my_recording.bin]` or supply a `.txt` (text) file containing a list of files to be merged. 
 ```
 irc2 import-spikeglx [path_to_my_recording.bin] [path_to_probe_file.prb] (path_to_output_dir)
 ```
-
-Export to [Phy](https://github.com/kwikteam/phy-contrib/blob/master/docs/template-gui.md) for manual curation
-```
-irc2 export-phy [path_to_prm_file] (output_dir)   # default output location is `phy` under the output folder
-```
-
-and run the following python command to open Phy
-```
-phy template-gui path_to_param.py
-```
+- `path_to_output_dir` (optional): defalt location is 'probe_name' under the recording dorectory.
 
 This command shows the parameter file (`.prm` extension) used for sorting
 ```
@@ -83,7 +74,27 @@ irc2 clear `path_to_prm_file`
 ## Deployment
 
 - IronClust can run through SpikeForest2 or spikeinterface pipeline
-- IronClust output can be exported to Phy, JRClust, Klusters formats for manual clustering
+- IronClust output can be exported to Phy, Klusters, JRClust (soon available) formats for manual clustering
+
+## Export to Phy
+Export to [Phy](https://github.com/kwikteam/phy-contrib/blob/master/docs/template-gui.md) for manual curation
+```
+irc2 export-phy [path_to_prm_file] (output_dir)   # default output location is `phy` under the output folder
+```
+
+and run the following python command to open Phy
+```
+phy template-gui path_to_param.py
+```
+
+## Export to Klusters
+Export to [Klusters](http://neurosuite.sourceforge.net/) for manual curation
+```
+irc2 export-klusters [path_to_prm_file] (output_dir)
+```
+* output_dir (optional): default output location is `klusters` under the same directory.
+
+and open Klusters GUI and open `.par.#` file (#: shank number)
 
 ## Contributing
 
