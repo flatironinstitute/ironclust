@@ -36,6 +36,11 @@ irc2 [path_to_my_recording.imec#.bin]   # for SpikeGLX Neuropixels recordings (.
 irc2 [path_to_my_recording.mda]   # for .mda format
 irc2 [path_to_my_recording] (output_dir)  # specify output directory (default location is `irc2` under recording directory)
 ```
+To visualize the raw or filtered traces and see clustered spikes on the traces, run (press 'h' in the UI for further help)
+```
+irc2 traces [path_to_my_recording] 
+irc2 traces [path_to_my_param.prm]
+```
 
 You can import [SpikeGLX](https://github.com/billkarsh/SpikeGLX) format to [MDA format](https://users.flatironinstitute.org/~magland/docs/mountainsort_dataset_format/) by supplying a `.bin` file and [`.prb` (probe) file](https://github.com/JaneliaSciComp/JRCLUST/wiki/Probe-file). Make sure that `.meta` file exists in the same directory. Multiple `.bin` files can be joined if you provide a wild card for `[path_to_my_recording.bin]` or supply a `.txt` (text) file containing a list of files to be merged. 
 ```
@@ -119,5 +124,5 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ## Acknowledgments
 
 * We thank our collaborators and contributors of the ground-truth datasets to validate our spike sorting accuracy through spikeforest.flatironinstitute.org website.
-* We thank Loren Frank's lab for contributing the terabyte-scale 10-day continuous recording data.
-* We thank Dan English's lab for contributing four-day uLED probe recordings.
+* We thank [Loren Frank's lab](https://www.cin.ucsf.edu/HTML/Loren_Frank.html) for contributing the terabyte-scale 10-day continuous recording data.
+* We thank [Dan English's lab](https://www.englishneurolab.com/) for contributing four-day uLED probe recordings.
