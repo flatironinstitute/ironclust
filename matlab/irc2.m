@@ -50,6 +50,9 @@ else
     vcFile_prm_ = vcFile_prm;
 end
 switch lower(vcCmd)
+    % ui
+    case 'probe', irc('probe', vcArg1); return;
+        
     % SpikeGLX functions
     case 'import-spikeglx'
         import_spikeglx_(vcArg1, vcArg2, vcArg3); return;
@@ -5046,7 +5049,9 @@ for i=1:numel(csName)
     if vcName1(1) == '~', vcName1(1) = []; end
     vcValue1 = csValue{i};
     try   
-        if all(vcValue1([1,end])=='''')
+        if isempty(vcValue1)
+            eval(sprintf('%s = [];', vcName1));
+        elseif all(vcValue1([1,end])=='''')
             eval(sprintf('%s = %s;', vcName1, vcValue1));
         else
             eval(sprintf('%s = ''%s'';', vcName1, vcValue1));
@@ -5057,7 +5062,7 @@ for i=1:numel(csName)
         end
         eval(sprintf('S = setfield(S, ''%s'', %s);', vcName1, vcName1));
     catch
-        fprintf('%s = %s error\n', csName{i}, csValue{i});
+        fprintf(2, 'error: %s = %s\n', csName{i}, csValue{i});
     end
 end
 end %func
@@ -7901,7 +7906,6 @@ else
     csFiles_bin = list_files_(vcFile_bin, 1);
 end
 if numel(csFiles_bin)==0, fprintf(2, 'No files were found.\n'); return; end
-if isempty(vcDir_out), vcDir_out = fullfile(fileparts(vcFile_bin), 'mda'); end
 
 vlExist = cellfun(@(x)exist_file_(x), csFiles_bin);
 if ~all(vlExist)
@@ -7915,13 +7919,16 @@ vcFile_meta = strrep(csFiles_bin{1}, '.bin', '.meta');
 assert(exist_file_(vcFile_meta), sprintf('%s does not exist', vcFile_meta));
 S_meta = read_meta_spikeglx_(vcFile_meta);
 S_json = struct('spike_sign', -1, 'samplerate', S_meta.sRateHz, 'scale', S_meta.uV_per_bit);
+if isempty(vcFile_prb) && ~isempty(get_(S_meta, 'vcProbe'))
+    vcFile_prb = [S_meta.vcProbe, '.prb']; 
+end
+[~, vcProbe, ~] = fileparts(vcFile_prb);
+if isempty(vcDir_out), vcDir_out = fullfile(fileparts(vcFile_bin), vcProbe); end
+
 mkdir_(vcDir_out);
 struct2json_(S_json, fullfile(vcDir_out, 'params.json'));
 
 % write geom.csv (probe file)
-if isempty(vcFile_prb) && ~isempty(get_(S_meta, 'vcProbe'))
-    vcFile_prb = [S_meta.vcProbe, '.prb']; 
-end
 S_prb = load_prb_(vcFile_prb);    
 assert(~isempty(S_prb), sprintf('Probe file is not found: %s', vcFile_prb));
 csvwrite(fullfile(vcDir_out, 'geom.csv'), S_prb.mrSiteXY);

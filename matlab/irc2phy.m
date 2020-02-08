@@ -20,22 +20,8 @@ end
 mkdir_(vcDir_out);
 delete(fullfile(vcDir_out, '*'));
 
-% vcFile_mat = strrep(vcFile_prm, '.prm', '_irc.mat');
-% if exist_file_(vcFile_mat)
-S0 = irc2('call', 'load0_', {vcFile_prm});
-if isempty(S0), error('%s: output is not found', vcFile_prm); end
-P = S0.P;
-% else
-%     [S0, P] = load_cached_(vcFile_prm);
-% end
+[S0, S_auto, trPc_spk, trPc2_spk, P] = load_irc2_(vcFile_prm);
 
-S_auto = get_(S0, 'S_auto');
-assert(~isempty(S_auto), 'S_auto does not exist');
-% export valid clusters only
-vlKeep = S_auto.viClu>0;
-[S0.vrAmp_spk, S0.viTime_spk, S0.viSite_spk, S_auto.viClu] = ...
-    deal(S0.vrAmp_spk(vlKeep), S0.viTime_spk(vlKeep), S0.viSite_spk(vlKeep), S_auto.viClu(vlKeep));
-if ~isempty(get_(S0, 'viSite2_spk')), S0.viSite2_spk = S0.viSite2_spk(vlKeep); end
 nSites = numel(P.viSite2Chan);
 
 writeNPY_(uint64(abs(S0.vrAmp_spk)), fullfile(vcDir_out, 'amplitudes.npy'));
@@ -46,8 +32,6 @@ writeNPY_(double(P.mrSiteXY), fullfile(vcDir_out, 'channel_positions.npy')); % d
 writeNPY_(uint32(S_auto.viClu)-1, fullfile(vcDir_out, 'spike_templates.npy'));
 
 % read feature file and write to it 
-trPc_spk = load_fet_(S0, P, 1); trPc_spk = trPc_spk(:,:,vlKeep);
-trPc2_spk = load_fet_(S0, P, 2); trPc2_spk = trPc2_spk(:,:,vlKeep);
 [nPc, nSites_fet, ~] = size(trPc_spk);
 writeNPY_(permute(trPc_spk(1:min(3,nPc),:,:), [3,1,2]), fullfile(vcDir_out, 'pc_features.npy'));    
     
@@ -68,6 +52,26 @@ writeNPY_(eye(nSites), fullfile(vcDir_out, 'whitening_mat_inv.npy'));
 % param file
 write_params_(vcDir_out, P);
 end %func
+
+
+%--------------------------------------------------------------------------
+function [S0, S_auto, trPc_spk, trPc2_spk, P] = load_irc2_(vcFile_prm)
+
+S0 = irc2('call', 'load0_', {vcFile_prm});
+if isempty(S0), error('%s: output is not found', vcFile_prm); end
+P = S0.P;
+S_auto = get_(S0, 'S_auto');
+assert(~isempty(S_auto), 'S_auto does not exist');
+
+% export valid clusters only
+vlKeep = S_auto.viClu>0;
+[S0.vrAmp_spk, S0.viTime_spk, S0.viSite_spk, S_auto.viClu] = ...
+    deal(S0.vrAmp_spk(vlKeep), S0.viTime_spk(vlKeep), S0.viSite_spk(vlKeep), S_auto.viClu(vlKeep));
+if ~isempty(get_(S0, 'viSite2_spk')), S0.viSite2_spk = S0.viSite2_spk(vlKeep); end
+
+trPc_spk = load_fet_(S0, P, 1); trPc_spk = trPc_spk(:,:,vlKeep);
+trPc2_spk = load_fet_(S0, P, 2); trPc2_spk = trPc2_spk(:,:,vlKeep);
+end %fnc
 
 
 %--------------------------------------------------------------------------
