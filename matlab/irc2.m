@@ -4695,7 +4695,7 @@ if ~isempty(P_user)
     P = struct_merge_(P, P_user);
     csName_user = fieldnames(P_user);
     fprintf('Default parameters were overrode from %s: %s\n', ...
-        S_cfg.user_cfg, sprintf('%s, ', csName_user{:}));
+        S_cfg.user_prm, sprintf('%s, ', csName_user{:}));
 end
 end %func
 
