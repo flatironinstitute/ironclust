@@ -1698,6 +1698,22 @@ fprintf('\nauto-merging...\n'); runtime_automerge = tic;
 % Merge based on KNN-graph
 S_auto = postCluster_(S0.S_clu, P, S0.viSite_spk); % peak merging
 
+% Mege based on cross-correlogram
+P.cc_merge_thresh = get_set_(P, 'cc_merge_thresh', .9);
+if P.cc_merge_thresh > 0 && P.cc_merge_thresh <1 && S_auto.nClu > 1
+    S_auto0 = S_auto;
+    nClu_pre = S_auto.nClu;
+    fprintf('\tMerging based on cross-correlogram...\n\t'); t_cc=tic;
+    S_auto = wave_ccm_merge_(S0, S_auto, P);
+    if S_auto.nClu>0
+        fprintf('\tMerged clusters cc>=%0.1f (%d->%d), took %0.1fs\n', ...
+            P.cc_merge_thresh, nClu_pre, S_auto.nClu, toc(t_cc));    
+    else
+        S_auto = S_auto0;
+        fprintf('\tNo waveforms were merged\n');
+    end
+end
+
 % Merge based on waveform similarity
 P.maxWavCor = get_set_(P, 'maxWavCor', .99);
 if P.maxWavCor<1 && S_auto.nClu > 1
@@ -1715,22 +1731,6 @@ if P.maxWavCor<1 && S_auto.nClu > 1
     end
 end
 
-% Mege based on cross-correlogram
-P.cc_merge_thresh = get_set_(P, 'cc_merge_thresh', .9);
-if P.cc_merge_thresh > 0 && P.cc_merge_thresh <1 && S_auto.nClu > 1
-    S_auto0 = S_auto;
-    nClu_pre = S_auto.nClu;
-    fprintf('\tMerging based on cross-correlogram...\n\t'); t_cc=tic;
-    S_auto = wave_cc_merge_(S0, S_auto, P);
-    if S_auto.nClu>0
-        fprintf('\tMerged clusters cc>=%0.1f (%d->%d), took %0.1fs\n', ...
-            P.cc_merge_thresh, nClu_pre, S_auto.nClu, toc(t_cc));    
-    else
-        S_auto = S_auto0;
-        fprintf('\tNo waveforms were merged\n');
-    end
-end
-
 S_auto = S_auto_refrac_(S_auto, P, S0.viTime_spk); % refractory violation removal
 S_auto = S_auto_refresh_(S_auto, 1, S0.viSite_spk);
 S_auto = S_clu_sort_(S_auto, 'viSite_clu');
@@ -1742,10 +1742,14 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function S_auto = wave_cc_merge_(S0, S_auto, P)
-
+function S_auto = wave_ccm_merge_(S0, S_auto, P)
 % calculate cross-correlogram
-cviClu_clu = calc_ccm_(S_auto.viClu, S0.viTime_spk, P);
+
+switch 1
+    case 1, cviClu_clu = calc_ccm_(S_auto.viClu, S0.viTime_spk, P);
+    case 2, cviClu_clu = calc_ccm_drift_(S0.S_clu.S_drift, ...
+                S_auto.viClu, S0.viTime_spk, S0.viSite_spk, P);
+end
 
 % remap clusters
 fParfor = get_set_(P, 'fParfor', 1);
@@ -1754,6 +1758,47 @@ vlUpdate = S_auto.viClu > 0;
 S_auto.viClu(vlUpdate) = viMapClu_new(S_auto.viClu(vlUpdate));
 S_auto.nClu = sum(unique(viMapClu_new)>0);
 end %func
+
+
+%--------------------------------------------------------------------------
+% calculate cross-correlogram
+function cviClu_clu = calc_ccm_drift_(S_drift, viClu_spk, viTime_spk, viSite_spk, P)
+
+miSites = P.miSites;
+cc_merge_thresh = get_set_(P, 'cc_merge_thresh', .9);
+jitter = round(get_set_(P,'spkJitter_ms_gt',1) * P.sRateHz / 1000); %1 ms jitter
+
+t_fun=tic;
+viLim_drift = S_drift.viLim_drift;
+nDrift = S_drift.nTime_drift;
+nClu = max(viClu_spk);
+cviClu_clu = cell(nClu, 1);
+for iDrift = 1:nDrift
+    viDrift1 = find(S_drift.mlDrift(:,iDrift));
+    % find spikes in this drift zone
+    viSpk1 = cell2mat_(arrayfun_(@(x)(viLim_drift(x):(viLim_drift(x+1)-1))', viDrift1));
+    [viTime_spk1, viClu_spk1, viSite_spk1] = multifun_(@(x)x(viSpk1), viTime_spk, viClu_spk, viSite_spk);
+    cviSpk_clu1 = vi2cell_(viClu_spk1, nClu);
+    vnSpk_clu1 = cellfun(@numel, cviSpk_clu1);
+    viClu1 = int32(find(vnSpk_clu1>=P.min_count));
+    [vnSpk_clu1, cviSpk_clu1] = deal(vnSpk_clu1(viClu1), cviSpk_clu1(viClu1));
+    cviTime_clu1 = cellfun_(@(vi_)viTime_spk1(vi_), cviSpk_clu1, 'UniformOutput', 0);
+    count_overlap_ = @(i,j)numel(find_overlap_(cviTime_clu1{i}, cviTime_clu1{j}, jitter));
+    nClu1 = numel(viClu1);
+    cviClu_clu1 = cell(nClu1,1);
+    viSite_clu1 = cellfun(@(x)mode(viSite_spk1(x)), cviSpk_clu1);
+    parfor iiClu1 = 1:nClu1
+        viiClu2 = find(ismember(viSite_clu1, miSites(:, viSite_clu1(iiClu1))));
+        vnIntersect2 = arrayfun(@(j)count_overlap_(iiClu1,j), viiClu2);
+        vrCC2 = max(vnIntersect2 ./ vnSpk_clu1(viiClu2), vnIntersect2 / vnSpk_clu1(iiClu1));
+        cviClu_clu1{iiClu1} = viClu1(viiClu2(vrCC2 >= cc_merge_thresh));
+    end
+    cviClu_clu(viClu1) = cellfun_(@(x,y)[x;y], cviClu_clu(viClu1), cviClu_clu1);
+    fprintf('.');
+end
+cviClu_clu = cellfun_(@unique, cviClu_clu);
+fprintf('\n\tcalc_ccm_drift_: took %0.1fs\n', toc(t_fun));
+end
 
 
 %--------------------------------------------------------------------------
