@@ -27630,8 +27630,7 @@ if ~assert_(exist_func_('mcc'), 'Matlab Compiler Toolbox is not installed.')
 end
 cd(ircpath_());
 fprintf('Compiling run_irc.m\n'); t1=tic;
-%vcEval = 'mcc -m -v -R ''-nodesktop, -nosplash -singleCompThread -nojvm'' -a *.ptx -a *.cu -a ./mdaio/* -a ./jsonlab-1.5/* -a ./npy-matlab/* -a default*.* -a ./prb/* -a *_template.prm -a irc2.m run_irc.m';
-vcEval = 'mcc -m -v -R ''-nodesktop, -nosplash -nojvm'' -a *.ptx -a *.cu -a ./mdaio/* -a ./jsonlab-1.5/* -a ./npy-matlab/* -a default*.* -a ./prb/* -a *_template.prm -a irc2.m run_irc.m';
+vcEval = 'mcc -m -v -R ''-nodesktop, -nosplash -nojvm'' -a *.ptx -a *.cu -a ./mdaio/* -a ./jsonlab-1.5/* -a ./npy-matlab/* -a default*.* -a ./prb/* -a *_template.prm -a version.txt -a irc2.m run_irc.m';
 if ~isempty(vcDir_out)
     mkdir_(vcDir_out);
     vcEval = [vcEval, ' -d ', vcDir_out];
