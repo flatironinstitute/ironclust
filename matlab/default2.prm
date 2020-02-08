@@ -32,7 +32,7 @@ batch_sec_drift = 300;      % Total ave. duration of time batch group in sec
 knn = 30;                   % K-nearest neighbors
 
 % [Auto-merge stage: automatically merge similar clusters based on KNN-graph and waveform similarity]
-maxWavCor = .975;            % Automated merge thresohld based on waveform correlation
+maxWavCor = .985;            % Automated merge thresohld based on waveform correlation
 min_snr_clu = [];           % Automatically remove clusters below this SNR threshold, set to `[]` to disable
 spkRefrac_merge_ms = .25;   % Remove spikes violating this refractory period in msec when merged
-cc_merge_thresh = .5;       % merge based on cross-correlation thresold
+cc_merge_thresh = .75;       % merge based on cross-correlation thresold

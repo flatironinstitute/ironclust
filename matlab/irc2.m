@@ -138,9 +138,10 @@ switch lower(vcCmd)
     case 'clear-sort', clear_('sort'); return;     
     case {'test-mcc', 'test_mcc', 'testmcc'}, test_mcc_(vcArg1); return;
     case {'test-static', 'test-drift', 'test-tetrode', 'test-tetrode2', 'test-tetrode3', ...
-            'test-bionet', 'test-bionet1', 'test-monotrode', ...
-            'test-monotrode1', 'test-monotrode2', 'test-monotrode3', ...
-            'test-boyden', 'test-boyden2', 'test-neuropix'}
+            'test-bionet', 'test-bionet1', 'test-neuropix', ...
+            'test-monotrode', 'test-monotrode1', 'test-monotrode2', ...
+            'test-boyden', 'test-boyden1', 'test-boyden2', 'test-boyden3', 'test-boyden4', ...
+            'test-kampff', 'test-kampff1', 'test-kampff2', 'test-kampff3', 'test-kampff4'}
         vcDir_in = get_test_data_(strsplit_get_(vcCmd,'-',2));
         [fDetect, fSort, fValidate] = deal(1, 1, 1);
     case 'test-all', test_all_(); return;
@@ -1706,7 +1707,7 @@ if P.cc_merge_thresh > 0 && P.cc_merge_thresh <1 && S_auto.nClu > 1
     fprintf('\tMerging based on cross-correlogram...\n\t'); t_cc=tic;
     S_auto = wave_ccm_merge_(S0, S_auto, P);
     if S_auto.nClu>0
-        fprintf('\tMerged clusters cc>=%0.1f (%d->%d), took %0.1fs\n', ...
+        fprintf('\tMerged clusters cc>=%0.2f (%d->%d), took %0.1fs\n', ...
             P.cc_merge_thresh, nClu_pre, S_auto.nClu, toc(t_cc));    
     else
         S_auto = S_auto0;
@@ -1745,9 +1746,10 @@ end %func
 function S_auto = wave_ccm_merge_(S0, S_auto, P)
 % calculate cross-correlogram
 
-switch 1
+switch 2
     case 1, cviClu_clu = calc_ccm_(S_auto.viClu, S0.viTime_spk, P);
-    case 2, cviClu_clu = calc_ccm_drift_(S0.S_clu.S_drift, ...
+    case 2, cviClu_clu = calc_ccm_space_(S_auto.viClu, S0.viTime_spk, S0.viSite_spk, P);
+    case 3, cviClu_clu = calc_ccm_drift_(S0.S_clu.S_drift, ...
                 S_auto.viClu, S0.viTime_spk, S0.viSite_spk, P);
 end
 
@@ -1757,6 +1759,50 @@ viMapClu_new = cell2map_(cviClu_clu, [], fParfor);
 vlUpdate = S_auto.viClu > 0;
 S_auto.viClu(vlUpdate) = viMapClu_new(S_auto.viClu(vlUpdate));
 S_auto.nClu = sum(unique(viMapClu_new)>0);
+end %func
+
+
+%--------------------------------------------------------------------------
+% calculate cross-correlogram
+function cviClu_clu = calc_ccm_space_(viClu_spk, viTime_spk, viSite_spk, P)
+
+cc_merge_thresh = get_set_(P, 'cc_merge_thresh', .5);
+jitter = round(get_set_(P,'spkJitter_ms_gt',1) * P.sRateHz / 1000); %1 ms jitter
+
+[cviSpk_clu, nClu] = vi2cell_(int32(viClu_spk));
+cviTime_clu = cellfun(@(vi_)viTime_spk(vi_), cviSpk_clu, 'UniformOutput', 0);
+cviClu_clu = cell(nClu, 1);
+vnSpk_clu = cellfun(@numel, cviSpk_clu); vnSpk_clu = vnSpk_clu(:);
+viSite_clu = cellfun(@(x)mode(viSite_spk(x)), cviSpk_clu); viSite_clu = viSite_clu(:);
+miSites = P.miSites;
+S_fun = makeStruct_(cviTime_clu, viSite_clu, miSites, vnSpk_clu, jitter, cc_merge_thresh);
+% Compute intersection
+fParfor = get_set_(P, 'fParfor', 1) && nClu>1;
+if fParfor
+    try
+        parfor iClu = 1:nClu
+            cviClu_clu{iClu} = calc_ccm_space_for_(S_fun, iClu);
+        end
+    catch
+        fParfor = 0;
+    end
+end
+if ~fParfor
+    for iClu = 1:nClu
+        cviClu_clu{iClu} = calc_ccm_space_for_(S_fun, iClu);
+    end
+end
+end
+
+
+%--------------------------------------------------------------------------
+function viClu = calc_ccm_space_for_(S_fun, iClu)
+csVar_imported = import_struct_(S_fun);
+count_overlap_ = @(j)numel(find_overlap_(cviTime_clu{iClu}, cviTime_clu{j}, jitter));
+viClu2 = find(ismember(viSite_clu, miSites(:, viSite_clu(iClu))));
+vnIntersect2 = arrayfun(@(j)count_overlap_(j), viClu2);
+vrCC2 = max(vnIntersect2 ./ vnSpk_clu(viClu2), vnIntersect2 / vnSpk_clu(iClu));
+viClu = viClu2(vrCC2 >= cc_merge_thresh);
 end %func
 
 
@@ -2097,7 +2143,7 @@ viMapClu_new = cell2map_(cviClu_clu, viClu_remove, fParfor);
 vlUpdate = S_auto.viClu > 0;
 S_auto.viClu(vlUpdate) = viMapClu_new(S_auto.viClu(vlUpdate));
 S_auto.nClu = sum(unique(viMapClu_new)>0);
-fprintf('\n\twave_similarity_: took %0.1fs\n', toc(t_fun));
+fprintf('\twave_similarity_: took %0.1fs\n', toc(t_fun));
 end %func
 
 
@@ -4661,10 +4707,17 @@ switch vcMode
     case 'monotrode', vcDir_in = 'groundtruth/waveclus_synth/quiroga_difficult1/C_Difficult1_noise005';
     case 'monotrode1', vcDir_in = 'groundtruth/waveclus_synth/quiroga_difficult1/C_Difficult1_noise01';
     case 'monotrode2', vcDir_in = 'groundtruth/waveclus_synth/quiroga_difficult1/C_Difficult1_noise02';
-    case 'monotrode3', vcDir_in = 'groundtruth/waveclus_synth/sim2_2K10/simulation_94';
-    case 'boyden', vcDir_in = 'groundtruth/paired_recordings/boyden32c/915_10_1';
-    case 'boyden2', vcDir_in = 'groundtruth/paired_recordings/boyden32c/509_1_1';
+    case 'boyden', vcDir_in = 'groundtruth/paired_recordings/boyden32c/419_1_7';
+    case 'boyden1', vcDir_in = 'groundtruth/paired_recordings/boyden32c/419_1_8';
+    case 'boyden2', vcDir_in = 'groundtruth/paired_recordings/boyden32c/915_8_1';
+    case 'boyden3', vcDir_in = 'groundtruth/paired_recordings/boyden32c/915_10_1';
+    case 'boyden4', vcDir_in = 'groundtruth/paired_recordings/boyden32c/915_18_1';
     case 'neuropix', vcDir_in = read_cfg_('path_neuropix_sample');
+    case 'kampff', vcDir_in = 'groundtruth/paired_recordings/kampff/2015_09_03_Pair_9_0A';
+    case 'kampff1', vcDir_in = 'groundtruth/paired_recordings/kampff/2015_09_03_Pair_9_0B';
+    case 'kampff2', vcDir_in = 'groundtruth/paired_recordings/kampff/C28';
+    case 'kampff3', vcDir_in = 'groundtruth/paired_recordings/kampff/C45';
+    case 'kampff4', vcDir_in = 'groundtruth/paired_recordings/kampff/C46';
     otherwise, error('unsupported test mode');
 end
 if ~exist_dir_(vcDir_in) && ~exist_file_(vcDir_in)
