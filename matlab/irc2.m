@@ -4715,9 +4715,9 @@ switch vcMode
     case 'neuropix', vcDir_in = read_cfg_('path_neuropix_sample');
     case 'kampff', vcDir_in = 'groundtruth/paired_recordings/kampff/2015_09_03_Pair_9_0A';
     case 'kampff1', vcDir_in = 'groundtruth/paired_recordings/kampff/2015_09_03_Pair_9_0B';
-    case 'kampff2', vcDir_in = 'groundtruth/paired_recordings/kampff/C28';
-    case 'kampff3', vcDir_in = 'groundtruth/paired_recordings/kampff/C45';
-    case 'kampff4', vcDir_in = 'groundtruth/paired_recordings/kampff/C46';
+    case 'kampff2', vcDir_in = 'groundtruth/paired_recordings/kampff/c28';
+    case 'kampff3', vcDir_in = 'groundtruth/paired_recordings/kampff/c45';
+    case 'kampff4', vcDir_in = 'groundtruth/paired_recordings/kampff/c46';
     otherwise, error('unsupported test mode');
 end
 if ~exist_dir_(vcDir_in) && ~exist_file_(vcDir_in)
