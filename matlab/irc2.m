@@ -171,6 +171,21 @@ switch lower(vcCmd)
     case {'export-klusters', 'klusters', 'neurosuite'}
         open_klusters_(irc2klusters_v2(vcArg1, vcArg2));
         return;
+    case {'export-jrclust', 'jrclust'}
+        addpath(S_cfg.path_jrclust);
+        cellfun(@(x,y)copyfile_(ircpath_(x), fullfile(S_cfg.path_jrclust, y)), ...
+            S_cfg.patch_from_jrclust, S_cfg.patch_to_jrclust);
+        geom2mat_(vcFile_prm);
+        vcFile_prm_new = strrep(vcFile_prm, '.prm', '_jrclust.prm');
+        copyfile(vcFile_prm, vcFile_prm_new, 'f');
+        try
+            jrc('import-irc', vcFile_prm_new);
+            jrc('manual', vcFile_prm_new);
+        catch
+            disp(lasterr());
+        end
+%         open_jrc_(export_jrclust(vcFile_prm, vcArg2)); 
+        return;
     otherwise % directory running mode
         vcCmd=''; clear_(); 
         fValidate = exist_file_(fullfile(vcDir_in, 'firings_true.mda'));
@@ -218,6 +233,34 @@ end %func
 
 
 %--------------------------------------------------------------------------
+function copyfile_(csPath_from, csPath_to)
+
+if ischar(csPath_from), csPath_from={csPath_from}; end
+if ischar(csPath_to), csPath_to={csPath_to}; end
+assert(numel(csPath_from) == numel(csPath_to), 'number of elements must match');
+for iFile = 1:numel(csPath_from)
+    try
+        copyfile(csPath_from{iFile}, csPath_to{iFile}, 'f');
+    catch
+        fprintf('Copy failed: %s to %s\n', csPath_from{iFile}, csPath_to{iFile});
+    end
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+function vcFile_mat = geom2mat_(vcFile_prm)
+P = file2struct_(vcFile_prm);
+vcFile_geom = P.probe_file;
+geometry = csvread(vcFile_geom);
+channels = 1:size(geometry,1);
+probePad = [12, 12];
+vcFile_mat = fullfile(fileparts(vcFile_prm), 'geom.mat');
+struct_save_(makeStruct_(geometry, channels, probePad), vcFile_mat, vcFile_mat);
+end %func
+
+
+%--------------------------------------------------------------------------
 function open_klusters_(csFile_par)
 system_('%s %s', read_cfg_path_('path_klusters'), csFile_par{1});
 end %func
@@ -226,6 +269,14 @@ end %func
 %--------------------------------------------------------------------------
 function open_phy_(vcFile_py)
 system_('%s template-gui %s', read_cfg_path_('path_phy'), vcFile_py);
+end %func
+
+
+%--------------------------------------------------------------------------
+function open_jrc_(obj)
+addpath(read_cfg_path_('path_jrclust'));
+obj.isCurate = 1;
+obj.run();
 end %func
 
 
@@ -3935,12 +3986,18 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function [cviSpk_site, nSites, vi_site] = vi2cell_(viSite_spk, nSites)
+function [cviSpk_site, nSites, vi_site] = vi2cell_(viSite_spk, nSites, fRow)
 if nargin<2, nSites = []; end
+if nargin<3, fRow=0; end 
+
 if isempty(nSites), nSites = max(viSite_spk); end
 
 % based on unique() function, which sorts. faster than arrayfun.
-cviSpk_site = cell(nSites, 1);
+if fRow
+    cviSpk_site = cell(1, nSites);
+else
+    cviSpk_site = cell(nSites, 1);
+end
 [vr, vi] = sort(viSite_spk);
 vi_change = [1; find(diff(vr(:))>0)+1; numel(viSite_spk)+1];
 if isempty(viSite_spk), vi_site=[]; return; end
@@ -3952,7 +4009,12 @@ if any(vl_remove)
     vi_change(vl_remove) = [];
 end
 for iStep = 1:numel(vi_site)
-    cviSpk_site{vi_site(iStep)} = vi(vi_change(iStep):vi_change(iStep+1)-1);
+    vr_ = vi(vi_change(iStep):vi_change(iStep+1)-1);
+    if fRow
+        cviSpk_site{vi_site(iStep)} = vr_(:)';
+    else
+        cviSpk_site{vi_site(iStep)} = vr_(:);
+    end
 end
 vi_site = vi_site(:)';
 end %func
@@ -8413,3 +8475,4 @@ function varargout = shift_range_(varargin), cell_out = call_irc_(dbstack(), var
 function varargout = fopen_mda_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = fopen_nsx_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = plot_probe_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = struct2file_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
