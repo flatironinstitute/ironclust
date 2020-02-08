@@ -1796,7 +1796,7 @@ end
 
 S_auto = S_auto_refrac_(S_auto, P, S0.viTime_spk); % refractory violation removal
 S_auto = S_auto_refresh_(S_auto, 1, S0.viSite_spk);
-S_auto = S_clu_sort_(S_auto, 'viSite_clu');
+S_auto = S_auto_sort_(S_auto, 'viSite_clu', S0.viSite_spk);
 S_auto.memory_auto = memory_matlab_();
 S_auto.runtime_automerge = toc(runtime_automerge);
 fprintf('\tauto-merging took %0.1fs (fGpu=%d, fParfor=%d)\n', ...
@@ -8279,6 +8279,81 @@ end %fnc
 
 
 %--------------------------------------------------------------------------
+% 10/18/2018 JJJ: Cluster order fixed
+function S_auto = S_auto_sort_(S_auto, vcField_sort, viSite_spk)
+% sort clusters by the centroid position
+% vcField_sort: {'', 'vrPosY_clu + vrPosX_clu'}
+
+if nargin<2, vcField_sort = ''; end
+
+% Sort clusters by its sites
+if isempty(vcField_sort), vcField_sort = 'viSite_clu'; end
+
+switch vcField_sort
+    case 'vrPosY_clu + vrPosX_clu'
+        [~, viCluSort] = sort(S_auto.vrPosY_clu + S_auto.vrPosX_clu, 'ascend');
+    otherwise
+        [~, viCluSort] = sort(S_auto.(vcField_sort), 'ascend');
+end
+S_auto.viClu = mapIndex_(S_auto.viClu, viCluSort); % fixed
+S_auto = struct_reorder_(S_auto, viCluSort, ...
+    'cviSpk_clu', 'vrPosX_clu', 'vrPosY_clu', 'vnSpk_clu', 'viSite_clu', 'cviTime_clu', 'csNote_clu');
+S_auto = S_clu_refresh_(S_auto, 1, viSite_spk);
+end %func
+
+
+%--------------------------------------------------------------------------
+function [S_clu, vlKeep_clu] = S_clu_refresh_(S_clu, fRemoveEmpty, viSite_spk)
+
+if nargin<2, fRemoveEmpty=1; end
+nClu = double(max(S_clu.viClu));
+S_clu.nClu = nClu;
+S_clu.cviSpk_clu = vi2cell_(S_clu.viClu, nClu);
+S_clu.vnSpk_clu = cellfun(@numel, S_clu.cviSpk_clu); 
+if ~isempty(viSite_spk)
+    S_clu.viSite_clu = double(arrayfun(@(iClu)mode(viSite_spk(S_clu.cviSpk_clu{iClu})), 1:nClu));
+end
+if fRemoveEmpty, [S_clu, vlKeep_clu] = S_clu_remove_empty_(S_clu); end
+end %func
+
+
+%--------------------------------------------------------------------------
+function [vi, nClu, viA, viAB] = mapIndex_(vi, viA, viB)
+% change the index of vi according to the map (viA)
+
+if nargin<2, viA = setdiff(unique(vi), 0); end %excl zero
+if nargin<3, viB = 1:numel(viA); end
+if isempty(viA), viA = 1:max(vi); end
+nClu = viB(end);
+viAB(viA) = viB; %create a translation table A->B
+vl = vi>0;
+vi(vl) = viAB(vi(vl)); %do not map zeros
+end %func
+
+
+%--------------------------------------------------------------------------
+function S = struct_reorder_(S, viKeep, varargin)
+for i=1:numel(varargin)
+    try
+        vcVar = varargin{i};
+        if ~isfield(S, vcVar), continue; end %ignore if not
+        vr1 = S.(vcVar);
+        if isvector(vr1)
+            vr1 = vr1(viKeep);
+        elseif ismatrix(vr1)
+            vr1 = vr1(viKeep, :);
+        else
+            vr1 = vr1(viKeep, :, :);
+        end
+        S.(vcVar) = vr1;
+    catch
+        ;
+    end
+end
+end %func
+
+
+%--------------------------------------------------------------------------
 % Call from irc.m
 function cout = call_irc_(dbstack1, cell_input, nargout)
 vcFunc = dbstack1(1).name;
@@ -8330,10 +8405,11 @@ function varargout = struct_copyas_(varargin), cell_out = call_irc_(dbstack(), v
 function varargout = set_bool_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = file2hash_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = dir_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
-function varargout = S_clu_sort_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
+% function varargout = S_clu_refresh_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = map_index_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = mr2thresh_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = findNearSites_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = shift_range_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = fopen_mda_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = fopen_nsx_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = plot_probe_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end

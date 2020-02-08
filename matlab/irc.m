@@ -144,6 +144,7 @@ switch lower(vcCmd)
                 case 2, [varargout{1}, varargout{2}] = call_(vcArg1, vcArg2);
                 case 3, [varargout{1}, varargout{2}, varargout{3}] = call_(vcArg1, vcArg2);
                 case 4, [varargout{1}, varargout{2}, varargout{3}, varargout{4}] = call_(vcArg1, vcArg2);
+                case 5, [varargout{1}, varargout{2}, varargout{3}, varargout{4}, varargout{5}] = call_(vcArg1, vcArg2);
             end %switch
         end
     case 'export', export_(vcArg1, vcArg2, vcArg3);    
