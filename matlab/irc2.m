@@ -1813,20 +1813,8 @@ fprintf('\nauto-merging...\n'); runtime_automerge = tic;
 S_auto = postCluster_(S0.S_clu, P, S0.viSite_spk); % peak merging
 
 % Mege based on cross-correlogram
-P.cc_merge_thresh = get_set_(P, 'cc_merge_thresh', .9);
-if P.cc_merge_thresh > 0 && P.cc_merge_thresh <1 && S_auto.nClu > 1
-    S_auto0 = S_auto;
-    nClu_pre = S_auto.nClu;
-    fprintf('\tMerging based on cross-correlogram...\n\t'); t_cc=tic;
-    S_auto = wave_ccm_merge_(S0, S_auto, P);
-    if S_auto.nClu>0
-        fprintf('\tMerged clusters cc>=%0.2f (%d->%d), took %0.1fs\n', ...
-            P.cc_merge_thresh, nClu_pre, S_auto.nClu, toc(t_cc));    
-    else
-        S_auto = S_auto0;
-        fprintf('\tNo waveforms were merged\n');
-    end
-end
+S_auto = wave_ccm_merge_(S0, S_auto, P);
+% S_auto = wave_ccm_merge_(S0, S_auto, P);
 
 % Merge based on waveform similarity
 P.maxWavCor = get_set_(P, 'maxWavCor', .99);
@@ -1834,8 +1822,7 @@ if P.maxWavCor<1 && S_auto.nClu > 1
     S_auto0 = S_auto;
     fprintf('\tMerging templates...\n\t'); t_merge=tic;
     nClu_pre = S_auto.nClu;
-    S0.S_auto = S_auto;
-    [S_auto, viClu_delete] = wave_similarity_merge_(S0, P);
+    [S_auto, viClu_delete] = wave_similarity_merge_(S0, S_auto, P);
     if S_auto.nClu>0
         fprintf('\tMerged waveforms (%d->%d->%d), took %0.1fs\n', ...
             nClu_pre, S_auto.nClu+numel(viClu_delete), S_auto.nClu, toc(t_merge));    
@@ -1844,6 +1831,9 @@ if P.maxWavCor<1 && S_auto.nClu > 1
         fprintf('\tNo waveforms were merged\n');
     end
 end
+
+% Mege based on cross-correlogram
+% S_auto = wave_ccm_merge_(S0, S_auto, P);
 
 S_auto = S_auto_refrac_(S_auto, P, S0.viTime_spk); % refractory violation removal
 S_auto = S_auto_refresh_(S_auto, 1, S0.viSite_spk);
@@ -1859,19 +1849,31 @@ end %func
 function S_auto = wave_ccm_merge_(S0, S_auto, P)
 % calculate cross-correlogram
 
-switch 2
-    case 1, cviClu_clu = calc_ccm_(S_auto.viClu, S0.viTime_spk, P);
-    case 2, cviClu_clu = calc_ccm_space_(S_auto.viClu, S0.viTime_spk, S0.viSite_spk, P);
-    case 3, cviClu_clu = calc_ccm_drift_(S0.S_clu.S_drift, ...
-                S_auto.viClu, S0.viTime_spk, S0.viSite_spk, P);
+P.cc_merge_thresh = get_set_(P, 'cc_merge_thresh', .9);
+if P.cc_merge_thresh > 0 && P.cc_merge_thresh <1 && S_auto.nClu > 1
+    S_auto0 = S_auto;
+    nClu_pre = S_auto.nClu;
+    fprintf('\tMerging based on cross-correlogram...\n\t'); t_cc=tic;
+    switch 2
+        case 1, cviClu_clu = calc_ccm_(S_auto.viClu, S0.viTime_spk, P);
+        case 2, cviClu_clu = calc_ccm_space_(S_auto.viClu, S0.viTime_spk, S0.viSite_spk, P);
+        case 3, cviClu_clu = calc_ccm_drift_(S0.S_clu.S_drift, ...
+                    S_auto.viClu, S0.viTime_spk, S0.viSite_spk, P);
+    end
+    % remap clusters
+    fParfor = get_set_(P, 'fParfor', 1);
+    viMapClu_new = cell2map_(cviClu_clu, [], fParfor);
+    vlUpdate = S_auto.viClu > 0;
+    S_auto.viClu(vlUpdate) = viMapClu_new(S_auto.viClu(vlUpdate));
+    S_auto.nClu = sum(unique(viMapClu_new)>0);
+    if S_auto.nClu>0
+        fprintf('\tMerged clusters cc>=%0.2f (%d->%d), took %0.1fs\n', ...
+            P.cc_merge_thresh, nClu_pre, S_auto.nClu, toc(t_cc));    
+    else
+        S_auto = S_auto0;
+        fprintf('\tNo waveforms were merged\n');
+    end
 end
-
-% remap clusters
-fParfor = get_set_(P, 'fParfor', 1);
-viMapClu_new = cell2map_(cviClu_clu, [], fParfor);
-vlUpdate = S_auto.viClu > 0;
-S_auto.viClu(vlUpdate) = viMapClu_new(S_auto.viClu(vlUpdate));
-S_auto.nClu = sum(unique(viMapClu_new)>0);
 end %func
 
 
@@ -1888,8 +1890,11 @@ cviClu_clu = cell(nClu, 1);
 vnSpk_clu = cellfun(@numel, cviSpk_clu); vnSpk_clu = vnSpk_clu(:);
 viSite_clu = cellfun(@(x)mode(viSite_spk(x)), cviSpk_clu); viSite_clu = viSite_clu(:);
 miSites = P.miSites;
-S_fun = makeStruct_(cviTime_clu, viSite_clu, miSites, vnSpk_clu, jitter, cc_merge_thresh);
+S_fun = makeStruct_(cviTime_clu, viSite_clu, miSites, vnSpk_clu, jitter, cc_merge_thresh, nClu);
 % Compute intersection
+if false
+    [mrPrecision, mrRecall] = precision_recall_(S_fun, 1);
+end
 fParfor = get_set_(P, 'fParfor', 1) && nClu>1;
 if fParfor
     try
@@ -1909,12 +1914,44 @@ end
 
 
 %--------------------------------------------------------------------------
+function [mrPrecision, mrRecall] = precision_recall_(S_fun, fSpatialMask)
+if nargin<2, fSpatialMask=1; end
+% treat iClu as groundtruth
+t_fun=tic;
+csVar_imported = import_struct_(S_fun);
+[mrPrecision, mrRecall] = deal(nan(nClu,'single'));
+[cviTime_clu, miSites, jitter] = get_(S_fun, 'cviTime_clu', 'miSites', 'jitter');
+jitter = jitter * 1; 
+parfor iClu = 1:nClu
+    count_overlap_ = @(j)numel(find_overlap_(cviTime_clu{iClu}, cviTime_clu{j}, jitter));
+    if fSpatialMask
+        vnIntersect = zeros(nClu,1,'single');
+        viClu2 = find(ismember(viSite_clu, miSites(:, viSite_clu(iClu))));
+        vnIntersect(viClu2) = arrayfun(@(j)count_overlap_(j), viClu2);
+    else
+        vnIntersect = arrayfun(@(j)count_overlap_(j), 1:nClu)';
+    end
+    mrPrecision(:,iClu) = vnIntersect ./ vnSpk_clu;
+    mrRecall(:,iClu) = vnIntersect ./ vnSpk_clu(iClu);
+end  
+mrPrecision1 = set_diag_(mrPrecision, zeros(nClu,1));
+mrRecall1 = set_diag_(mrRecall, nan(nClu,1));
+fprintf('precision_recall_: took %0.1fs\n', toc(t_fun));
+end %func
+
+
+%--------------------------------------------------------------------------
 function viClu = calc_ccm_space_for_(S_fun, iClu)
+% treat iClu as groundtruth
+
 csVar_imported = import_struct_(S_fun);
 count_overlap_ = @(j)numel(find_overlap_(cviTime_clu{iClu}, cviTime_clu{j}, jitter));
 viClu2 = find(ismember(viSite_clu, miSites(:, viSite_clu(iClu))));
 vnIntersect2 = arrayfun(@(j)count_overlap_(j), viClu2);
-vrCC2 = max(vnIntersect2 ./ vnSpk_clu(viClu2), vnIntersect2 / vnSpk_clu(iClu));
+% vrPrecision2 = vnIntersect2 ./ vnSpk_clu(viClu2);
+vrRecall2 = vnIntersect2 ./ vnSpk_clu(iClu);
+vrCC2 = vrRecall2;
+% vrCC2 = max(vrPrecision2, vrRecall2);
 viClu = viClu2(vrCC2 >= cc_merge_thresh);
 end %func
 
@@ -2201,14 +2238,15 @@ end %func
 
 %--------------------------------------------------------------------------
 % keeps trPc in the main memory, not sent out to workers
-function [S_auto, viClu_remove] = wave_similarity_merge_(S0, P)
+function [S_auto, viClu_remove] = wave_similarity_merge_(S0, S_auto, P)
 
-S_auto = get_(S0, 'S_auto');
 S_clu = get_(S0, 'S_clu');
+vrRho = S_clu.rho;
+[viLim_drift, mlDrift] = get_(S_clu.S_drift, 'viLim_drift', 'mlDrift');
+
 t_fun = tic;
 % fprintf('\tAutomated merging based on waveform similarity...\n'); t_template=tic;
 viClu = S_auto.viClu;
-vrRho = S_clu.rho;
 [ccviSpk_site_load, ccviSpk_site2_load, type_fet, dimm_fet, mrPv, vrThresh_site] = ...
     get_(S0, 'ccviSpk_site_load', 'ccviSpk_site2_load', 'type_fet', ...
         'dimm_fet', 'mrPv_global', 'vrThresh_site');
@@ -2219,7 +2257,6 @@ nClu = S_auto.nClu;
 
 % try loading the entire miKnn to RAM
 nSites = size(P.miSites,2);
-[viLim_drift, mlDrift] = get_(S_clu.S_drift, 'viLim_drift', 'mlDrift');
 % nDrift = size(mlDrift,1);
 S_param = makeStruct_(nClu, nSites, knn, vcFile_prm, nSpk_min, ...
     vrRho, viClu, viLim_drift, ccviSpk_site_load, ccviSpk_site2_load, ...
