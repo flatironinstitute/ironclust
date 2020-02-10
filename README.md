@@ -79,27 +79,36 @@ irc2 clear `path_to_prm_file`
 ## Deployment
 
 - IronClust can run through SpikeForest2 or spikeinterface pipeline
-- IronClust output can be exported to Phy, Klusters, JRClust (soon available) formats for manual clustering
+- IronClust output can be exported to Phy, Klusters, and JRClust formats for manual clustering
 
 ## Export to Phy
-Export to [Phy](https://github.com/kwikteam/phy-contrib/blob/master/docs/template-gui.md) for manual curation
+Export to [Phy](https://github.com/kwikteam/phy-contrib/blob/master/docs/template-gui.md) for manual curation. You need to clone Phy and set the path `path_phy_x` where x={'pc,'mac','lin'} to open the output automatically.
 ```
 irc2 export-phy [path_to_prm_file] (output_dir)   # default output location is `phy` under the output folder
 ```
 
-and run the following python command to open Phy
+If Phy doesn't open automatically, run the following python command to open Phy
 ```
 phy template-gui path_to_param.py
 ```
 
 ## Export to Klusters
-Export to [Klusters](http://neurosuite.sourceforge.net/) for manual curation
+Export to [Klusters](http://neurosuite.sourceforge.net/) for manual curation. You can set the path `path_klusters_x` in `user.cfg` where x = {'pc', 'mac', 'lin'} to open the output automatically.
 ```
 irc2 export-klusters [path_to_prm_file] (output_dir)
 ```
 * output_dir (optional): default output location is `klusters` under the same directory.
 
-and open Klusters GUI and open `.par.#` file (#: shank number)
+If Klusters doesn't open automatically, open Klusters GUI and open `.par.#` file (#: shank number). 
+
+## Export to JRCLUST
+Export to [JRCLUST](https://github.com/JaneliaSciComp/JRCLUST) for manual curation. You need to clone JRCLUST and set the path `path_jrclust` in `user.cfg`.
+```
+irc2 export-jrclust [path_to_prm_file]
+```
+* output_dir: it creates a new JRCLUST parameter file by appending `_jrclust.prm` at the same directory.
+
+If JRCLUST doesn't open automatically, run `jrc manual [my_jrclust.prm]`
 
 ## Contributing
 
