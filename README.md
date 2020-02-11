@@ -32,21 +32,19 @@ irc2 `path_to_recording_file`
 ```
 Examples 
 ```
-irc2 [path_to_my_recording.imec#.bin]   # for SpikeGLX Neuropixels recordings (.bin and .meta files)
-irc2 [path_to_my_recording.mda]   # for .mda format
-irc2 [path_to_my_recording] (output_dir)  # specify output directory (default location is `irc2` under recording directory)
+irc2 [path_to_my_recording.mda] (output_dir)  # for .mda format
+irc2 [path_to_my_recording.imec#.bin] (output_dir)  # for SpikeGLX Neuropixels recordings (requires `.meta` files)
+irc2 [path_to_my_recording.bin] [myprobe.prb] (output_dir) # specify the probe file, output to `myprobe` the recording directory
+irc2 [path_to_my_recording.dat] [myprobe.prb] (output_dir)  # for Intan (requires `info.rhd`) and Neuroscope (requires `.xml`) format
 ```
+* `output_dir` (optional): default output location is `irc2` under the recording directory or `myprobe` if the probe file is specified
+* `myprobe.prb`: required for Intan and Neuroscope formats. SpikeGLX does not require it if [Neuropixels probe](https://www.neuropixels.org/) is used.
+
 To visualize the raw or filtered traces and see clustered spikes on the traces, run (press 'h' in the UI for further help)
 ```
 irc2 traces [path_to_my_recording] 
 irc2 traces [path_to_my_param.prm]
 ```
-
-You can import [SpikeGLX](https://github.com/billkarsh/SpikeGLX) format to [MDA format](https://users.flatironinstitute.org/~magland/docs/mountainsort_dataset_format/) by supplying a `.bin` file and [`.prb` (probe) file](https://github.com/JaneliaSciComp/JRCLUST/wiki/Probe-file). Make sure that `.meta` file exists in the same directory. Multiple `.bin` files can be joined if you provide a wild card for `[path_to_my_recording.bin]` or supply a `.txt` (text) file containing a list of files to be merged. 
-```
-irc2 import-spikeglx [path_to_my_recording.bin] [path_to_probe_file.prb] (path_to_output_dir)
-```
-- `path_to_output_dir` (optional): defalt location is 'probe_name' under the recording dorectory.
 
 This command shows the parameter file (`.prm` extension) used for sorting
 ```
@@ -75,6 +73,22 @@ irc2 clear `path_to_recording_file`
 irc2 clear `output_directory`
 irc2 clear `path_to_prm_file`
 ```
+
+## Importing multiple `.bin` files from [SpikeGLX](https://github.com/billkarsh/SpikeGLX)
+```
+irc2 import-spikeglx [path_to_my_recording.bin] [path_to_probe_file.prb] (path_to_output_dir)
+```
+- `path_to_output_dir` (optional): defalt location is 'probe_name' under the recording dorectory.
+- Output format is [.mda format](https://users.flatironinstitute.org/~magland/docs/mountainsort_dataset_format/) 
+- Probe file (`.prb`) is required unless Neuropixels probe is used. [`.prb` file format](https://github.com/JaneliaSciComp/JRCLUST/wiki/Probe-file)
+- `path_to_my_recording.bin`: you may use a '\*' character to join multiple files, or provide a text (`.txt`) file containing a list of files to be merged in a specified order (a text file containing the list is created when you use '\*' character). 
+
+## Importing multiple `.dat` files from [Intan RHD format](http://intantech.com/downloads.html?tabSelect=Software&yPos=0)
+```
+irc2 import-intan [path_to_my_recording.bin] [path_to_probe_file.prb] (path_to_output_dir)
+```
+- This step is not necessary if all channels are saved to a single file.
+- `path_to_my_recording.bin`: Use '\*' character to join all channels that are saved to separate files.
 
 ## Deployment
 

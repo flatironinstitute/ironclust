@@ -73,7 +73,8 @@ switch lower(vcCmd)
     case 'traces', irc2_traces(vcArg1); return;
             
     % SpikeGLX functions
-    case 'import-spikeglx', import_spikeglx_(vcArg1, vcArg2, vcArg3); return;
+    case {'import-spikeglx', 'import-rhd', 'import-intan'}
+        import_spikeglx_(vcArg1, vcArg2, vcArg3); return;
         
     % Git functions
     case 'push-readme', push_readme_(); return;    
@@ -162,7 +163,8 @@ switch lower(vcCmd)
             'test-bionet', 'test-bionet1', 'test-neuropix', ...
             'test-monotrode', 'test-monotrode1', 'test-monotrode2', ...
             'test-boyden', 'test-boyden1', 'test-boyden2', 'test-boyden3', 'test-boyden4', ...
-            'test-kampff', 'test-kampff1', 'test-kampff2', 'test-kampff3', 'test-kampff4'}
+            'test-kampff', 'test-kampff1', 'test-kampff2', 'test-kampff3', 'test-kampff4', ...
+            'test-english', 'test-english1', 'test-english2', 'test-english3', 'test-english4'}
         vcDir_in = get_test_data_(strsplit_get_(vcCmd,'-',2));
         [fDetect, fSort, fValidate] = deal(1, 1, 1);
     case 'test-all', test_all_(); return;
@@ -205,7 +207,6 @@ else
     S0 = detect_(P); 
     save0_(S0);
 end
-% set(0, 'UserData', S0);
 
 if isempty(struct_get_(S0, 'S_clu')) || fSort
     S0.S_clu = sort_(S0, P);
@@ -1506,7 +1507,10 @@ vcFile_mat = strrep(vcFile_prm, '.prm', '_irc.mat');
 vcFile_clu_mat = strrep(vcFile_prm, '.prm', '_clu_irc.mat');
 vcFile_auto_mat = strrep(vcFile_prm, '.prm', '_auto_irc.mat');
 % vcFile_knn = strrep(vcFile_prm, '.prm', '_knn.irc');
-
+if ~exist_file_(vcFile_mat)
+    S0.P = file2struct_(vcFile_prm);
+    return;
+end
 S0 = load(vcFile_mat);
 if isfield(S0, 'S_var') && fLoad_bin
     S0 = struct_load_bin_(S0.S_var, S0);
@@ -3019,7 +3023,7 @@ for iPage = 1:nPages
     fprintf('Page %d/%d ', iPage, nPages); t_ = tic;
     [S_page1, viSpk_in1, viSpk_out1] = prepare_page_(S_page, S_global, iPage);
     vrRho(viSpk_in1) = rho_page_(S_page1);
-    fprintf('\n\ttook %0.1fs\n', toc(t_));
+    fprintf(' took %0.1fs\n', toc(t_));
 end %for
 fprintf('calculating Rho took %0.1fs\n', toc(t_rho));
 
@@ -3028,7 +3032,7 @@ for iPage = 1:nPages
     fprintf('Page %d/%d ', iPage, nPages); t_ = tic;    
     [S_page1, viSpk_in1, viSpk_out1] = prepare_page_(S_page, S_global, iPage);
     [vrDelta(viSpk_in1), viNneigh(viSpk_in1)] = delta_page_(S_page1, vrRho(viSpk_out1));
-    fprintf('\n\ttook %0.1fs\n', toc(t_));
+    fprintf(' took %0.1fs\n', toc(t_));
 end %for
 fprintf('calculating Delta took %0.1fs\n', toc(t_delta));
 
@@ -4802,13 +4806,14 @@ if nargin==1
         end
     end
     vcFile = P.vcFile;
-    switch recording_type_(vcFile)
+    viSite2Chan_ = get_(P, 'viSite2Chan');
+    switch recording_type_(vcFile)        
         case 'mda'
             [S_mda, fid] = readmda_header_(vcFile);
             viSite2Chan_ = [];
-        case 'spikeglx'
-            [S_mda, fid] = spikeglx_header_(vcFile);      
-            viSite2Chan_ = P.viSite2Chan;
+        case 'spikeglx', [S_mda, fid] = spikeglx_header_(vcFile);      
+        case 'rhd', [S_mda, fid] = rhd_header_(vcFile); 
+        case 'neuroscope', [S_mda, fid] = neuroscope_header_(vcFile);
         otherwise, error('unsupported file format');
     end
     S_mda.dimm = S_mda.dimm(:)'; % formatting
@@ -4914,6 +4919,11 @@ switch vcMode
     case 'kampff2', vcDir_in = 'groundtruth/paired_recordings/kampff/c28';
     case 'kampff3', vcDir_in = 'groundtruth/paired_recordings/kampff/c45';
     case 'kampff4', vcDir_in = 'groundtruth/paired_recordings/kampff/c46';
+    case 'english', vcDir_in = 'DanEnglish/juxta_cell_curated/m139_200114_230220';
+    case 'english1', vcDir_in = 'DanEnglish/juxta_cell_curated/m139_200114_222743';
+    case 'english2', vcDir_in = 'DanEnglish/juxta_cell_curated/m113_191125_213423';
+    case 'english3', vcDir_in = 'DanEnglish/juxta_cell_curated/m14_190326_160710_cell1';
+    case 'english4', vcDir_in = 'DanEnglish/juxta_cell_curated/m15_190315_152315_cell1';        
     otherwise, error('unsupported test mode');
 end
 if ~exist_dir_(vcDir_in) && ~exist_file_(vcDir_in)
@@ -4951,6 +4961,16 @@ end %func
 
 %--------------------------------------------------------------------------
 function P = makeParam_(vcDir_in, vcDir_out, vcFile_arg, fParfor)
+% usage
+% -----
+% makeParam_(vcDir_in, vcDir_out, vcFile_arg, fParfor)
+%    Provide the output directory, optional argumentts, and optional parfor
+%    flag
+% makeParam_(vcDir_in, myprobe.prb)
+%    provide myprobe.prb file. output to `myprobe` folder under the current
+%    directory
+% makeParam_(vcDir_in, myprobe.prb, vcDir_out)
+
 if nargin<2, vcDir_out = ''; end
 if nargin<3, vcFile_arg = ''; end
 if nargin<4, fParfor = ''; end
@@ -4972,6 +4992,18 @@ end
 if ~exist_file_(vcFile_raw)
     error('%s does not exist\n', vcFile_raw);
 end
+
+% parse probe file
+vcFile_prb = '';
+if matchFileExt_(vcDir_out, '.prb')    
+    vcFile_prb = vcDir_out;
+    if exist_dir_(vcFile_arg)
+        vcDir_out = vcFile_arg;
+    else
+        [~, vcProbe, ~] = fileparts(vcFile_prb);
+        vcDir_out = fullfile(vcDir_in, vcProbe);
+    end
+end
 vcDir_out = fill_dir_out_(vcDir_in, vcDir_out);
 
 % assume there is raw.mda, geom.csv, params.json, firings_true.mda
@@ -4980,7 +5012,8 @@ P = load_default_prm_();
 % now only supporting .mda file
 P.vcFile = vcFile_raw;
 P.vcDir_out = vcDir_out;
-switch recording_type_(vcFile_raw)
+vcRecordingType = recording_type_(vcFile_raw);
+switch vcRecordingType
     case 'mda'
         S_mda = readmda_header_(P.vcFile);
         P.nChans = S_mda.dimm(1);
@@ -4998,12 +5031,21 @@ switch recording_type_(vcFile_raw)
         P.sRateHz = get_set_(S_json, 'samplerate', P.sRateHz);
         P.fInverse_file = get_set_(S_json, 'spike_sign', -1) == -1;
         P.viShank_site = deal([]);
-    case 'spikeglx'
-        S_meta = read_meta_spikeglx_(strrep(vcFile_raw, '.bin', '.meta'));
-        P.probe_file = fullfile([S_meta.vcProbe, '.prb']);
-        [P.sRateHz, P.uV_per_bit, P.vcDataType] = deal(S_meta.sRateHz, S_meta.uV_per_bit, S_meta.vcDataType);
-        P.nChans = S_meta.nChans;
+    case {'spikeglx', 'rhd', 'neuroscope'}
+        P.probe_file = vcFile_prb;
+        switch vcRecordingType
+            case 'spikeglx' % load neuropixels probe if meta has it
+                S_meta = read_meta_spikeglx_(strrep(vcFile_raw, '.bin', '.meta')); 
+                if isempty(vcFile_prb) && ~isempty(get_(S_meta, 'vcProbe'))
+                    P.probe_file = fullfile([S_meta.vcProbe, '.prb']);
+                end  
+            case 'rhd', S_meta = rhd_header_(vcFile_raw);
+            case 'neuroscope', S_meta = neuroscope_header_(vcFile_raw);
+        end                
         S_prb = load_prb_(P.probe_file);
+        assert(~isempty(S_prb), 'probe file must be provided');
+        [P.sRateHz, P.uV_per_bit, P.vcDataType, P.nChans] = ...
+            get_(S_meta, 'sRateHz', 'uV_per_bit', 'vcDataType', 'nChans');
         [P.mrSiteXY, P.vrSiteHW, P.viShank_site, P.viSite2Chan] = ...
             struct_get_(S_prb, 'mrSiteXY', 'vrSiteHW', 'viShank_site', 'viSite2Chan');
     otherwise
@@ -5052,17 +5094,19 @@ elseif strcmpi(vcExt_, '.bin')
     if exist_file_(vcFile_meta)
         vcType = 'spikeglx';
     end
+elseif strcmpi(vcExt_, '.dat')
+    if exist_file_(fullfile(vcDir_, [vcFile_, '.xml']))
+        vcType = 'neuroscope';
+    elseif exist_file_(fullfile(vcDir_, 'info.rhd'))
+        vcType = 'rhd';
+    end
 end
 end %func
 
 %--------------------------------------------------------------------------
 function vcDir_out = fill_dir_out_(vcDir_in, vcDir_out)
 if isempty(vcDir_out)
-    if ~contains(vcDir_out, 'groundtruth')
-        vcDir_out = fullfile(vcDir_in, 'irc2');
-    else
-        vcDir_out = strrep(vcDir_in, 'groundtruth', 'irc2'); 
-    end
+    vcDir_out = fullfile(vcDir_in, 'irc2');
 end
 mkdir_(vcDir_out);
 end %func
@@ -5157,6 +5201,71 @@ end %func
 
 
 %--------------------------------------------------------------------------
+% intan format
+function [S_mda, fid_r] = rhd_header_(vcFile_dat)
+% usage
+% S_mda = read_info_rhd_(fname)
+% [S_mda, fid_r] = read_info_rhd_(fname)
+
+vcFile_info = fullfile(fileparts(vcFile_dat), 'info.rhd');
+assert(exist_file_(vcFile_info), 'read_info_rhd_: info.rhd does not exist');
+S_rhd = import_rhd(vcFile_info);
+
+sRateHz = S_rhd.frequency_parameters.amplifier_sample_rate;
+vcDataType = 'int16';
+nBytes_sample = bytesPerSample_(vcDataType);
+nBytes_data = filesize_(vcFile_dat);
+nSamples = nBytes_data / nBytes_sample;
+nChans = numel(S_rhd.amplifier_channels);
+dimm = [nChans, floor(nSamples/nChans)];
+S_mda = struct('dimm', dimm, 'vcDataType', vcDataType, ...
+    'nBytes_header', 0, 'nBytes_sample', nBytes_sample, ...
+    'nBytes_missing', 0, 'nBytes_data', nBytes_data, ...
+    'nChans', nChans, 'sRateHz', sRateHz, 'uV_per_bit', .195);
+
+if nargout>=2, fid_r = fopen(vcFile_dat,'rb'); end
+end %func
+
+
+%--------------------------------------------------------------------------
+% intan format
+function [S_mda, fid_r] = neuroscope_header_(vcFile_dat)
+% usage
+% S_mda = neuroscope_header_(fname): fname is the binary file
+% [S_mda, fid_r] = neuroscope_header_(fname)
+
+[vcDir, vcFile, vcExt] = fileparts(vcFile_dat);
+if strcmpi(vcExt, '.xml') % XML is provided
+    vcFile_dat = fullfile(vcDir, [vcFile, '.dat']);
+end
+vcFile_xml = fullfile(vcDir, [vcFile, '.xml']);
+assert(exist_file_(vcFile_xml), 'neuroscope_header_: .xml does not exist');
+assert(exist_file_(vcFile_dat), 'neuroscope_header_: .dat does not exist');
+
+S_xml = xml2struct(vcFile_xml); % depends on an external file
+sRateHz = str2num_(S_xml.parameters.acquisitionSystem.samplingRate.Text);
+nChans = str2num_(S_xml.parameters.acquisitionSystem.nChannels.Text);
+
+nBits = str2num_(S_xml.parameters.acquisitionSystem.nBits.Text);
+voltageRange = str2num_(S_xml.parameters.acquisitionSystem.voltageRange.Text);
+amplification = str2num_(S_xml.parameters.acquisitionSystem.amplification.Text);
+uV_per_bit = (voltageRange / amplification * 1e6) / 2 ^ nBits;
+vcDataType = sprintf('int%d', nBits);
+
+nBytes_sample = bytesPerSample_(vcDataType);
+nBytes_data = filesize_(vcFile_dat);
+nSamples = nBytes_data / nBytes_sample;
+dimm = [nChans, floor(nSamples/nChans)];
+S_mda = struct('dimm', dimm, 'vcDataType', vcDataType, ...
+    'nBytes_header', 0, 'nBytes_sample', nBytes_sample, ...
+    'nBytes_missing', 0, 'nBytes_data', nBytes_data, ...
+    'nChans', nChans, 'sRateHz', sRateHz, 'uV_per_bit', uV_per_bit);
+
+if nargout>=2, fid_r = fopen(vcFile_dat,'rb'); end
+end %func
+
+
+%--------------------------------------------------------------------------
 % 8/2/17 JJJ: Documentation and test
 function S_meta = read_meta_spikeglx_(vcFile_meta)
 % Import SpikeGLX meta file format
@@ -5204,8 +5313,8 @@ try
             % Neuropix 3B
             S_meta.nChans = S_sglx.nSavedChans;
             S_meta.vcProbe = 'imec3_opt3';  
-            S_meta.auxGain = vnIMRO(6); %hard code for now;
-            S_meta.auxGain_lfp = vnIMRO(7); %hard code for now;                        
+            S_meta.auxGain = vnIMRO(8); %hard code for now;
+            S_meta.auxGain_lfp = vnIMRO(9); %hard code for now;                        
         end        
 %         S_meta.nSites = round((S_meta.nChans - 1)/2);
         S_meta.ADC_bits = 10;  %10 bit adc but 16 bit saved
@@ -5689,14 +5798,6 @@ end
 fTranspose_bin = 1;
 
 if ischar(vcFile)
-%     if matchFileExt_(vcFile, '.prm')
-%         vcFile_prm = vcFile;    
-%         if ~exist_file_(vcFile_prm, 1), return; end        
-%         P = loadParam_(vcFile_prm);
-%         [vcFile, vcDataType, header, nChans, fTranspose_bin] = ...
-%             struct_get_(P, 'vcFile', 'vcDataType', 'header_offset', 'nChans', 'fTranspose_bin');
-%     end
-%     if ~exist_file_(vcFile, 1), return; end
     fid = fopen_(vcFile, 'r');
     if numel(header) == 1
         if header>0, fseek(fid, header, 'bof'); end
@@ -5717,7 +5818,7 @@ else % fid directly passed
 end
 try
     if isempty(vnLoad)
-        mnWav = fread_(fid, dimm, vcDataType);
+        mnWav = fread_(fid, dimm, vcDataType);        
     else % combine multiple skips
         viOffset = header;
         assert(numel(vnLoad) == numel(viOffset), 'load_bin_: vnLoad size does not match viOffset');
@@ -5740,11 +5841,24 @@ try
             iT_offset1 = vi1(end);
         end
     end
+    if contains(vcDataType, {'uint16', 'uint32'})
+        mnWav = uint2int_(mnWav);
+    end
     if ischar(vcFile), fclose(fid); end
 catch
     disp(lasterr());
 end
 end %func
+
+
+%--------------------------------------------------------------------------
+function mn = uint2int_(mn)
+if isa(mn, 'uint16')
+    mn = int16(single(mn)-2^15);
+elseif isa(mn, 'uint32')
+    mn = int32(double(mn)-2^31);
+end
+end
 
 
 %--------------------------------------------------------------------------
@@ -7990,6 +8104,7 @@ end %func
 %--------------------------------------------------------------------------
 function git_push_(vcArg1)
 system('git add -u .');
+system('git add -u ../');
 system('git status');
 system(sprintf('git commit -m "%s"', vcArg1));
 system('git push');
@@ -8131,9 +8246,15 @@ if ~all(vlExist)
 end
 
 % write params.json
-vcFile_meta = strrep(csFiles_bin{1}, '.bin', '.meta');
-assert(exist_file_(vcFile_meta), sprintf('%s does not exist', vcFile_meta));
-S_meta = read_meta_spikeglx_(vcFile_meta);
+vcRecordingType = recording_type_(csFiles_bin{1});
+switch vcRecordingType
+    case 'spikeglx'
+        vcFile_meta = strrep(csFiles_bin{1}, '.bin', '.meta');
+        assert(exist_file_(vcFile_meta), sprintf('%s does not exist', vcFile_meta));
+        S_meta = read_meta_spikeglx_(vcFile_meta);
+    case 'rhd', S_meta = rhd_header_(csFiles_bin{1});   
+    case 'neuroscope', S_meta = neuroscope_header_(csFiles_bin{1});           
+end
 S_json = struct('spike_sign', -1, 'samplerate', S_meta.sRateHz, 'scale', S_meta.uV_per_bit);
 if isempty(vcFile_prb) && ~isempty(get_(S_meta, 'vcProbe'))
     vcFile_prb = [S_meta.vcProbe, '.prb']; 
@@ -8151,13 +8272,27 @@ csvwrite(fullfile(vcDir_out, 'geom.csv'), S_prb.mrSiteXY);
 fprintf('Wrote to %s\n', fullfile(vcDir_out, 'geom.csv'));
 
 % write raw.mda
-fid_mda = writemda_fid(fullfile(vcDir_out, 'raw.mda'));
-for iFile = 1:numel(csFiles_bin)
-    mr_ = load_bin_(csFiles_bin{iFile}, S_meta.vcDataType, S_meta.nChans);
-    writemda_fid(fid_mda, mr_(S_prb.viSite2Chan,:));
-    mr_ = []; %clear
+switch vcRecordingType
+    case 'spkleglx'
+        fid_mda = writemda_fid(fullfile(vcDir_out, 'raw.mda'));
+        for iFile = 1:numel(csFiles_bin)
+            mr_ = load_bin_(csFiles_bin{iFile}, S_meta.vcDataType, S_meta.nChans);
+            writemda_fid(fid_mda, mr_(S_prb.viSite2Chan,:));
+            mr_ = []; %clear
+        end
+        writemda_fid(fid_mda, 'close');
+    case 'rhd' %  join channels
+        mr = []; 
+        assert(numel(csFiles_bin)==S_meta.nChans, 'Number of files must be equal to the number of channels');
+        for iFile = 1:numel(csFiles_bin)
+            vr_ = load_bin_(csFiles_bin{iFile}, S_meta.vcDataType);
+            if isempty(mr)
+                mr = zeros(numel(vr_), numel(csFiles_bin), 'like', vr_);
+            end
+            mr(:,iFile) = vr_;
+        end
+        writemda_(fullfile(vcDir_out, 'raw.mda'), mr(:,S_prb.viSite2Chan)');
 end
-writemda_fid(fid_mda, 'close');
 fprintf('Wrote to %s\n', fullfile(vcDir_out, 'raw.mda'));
 if numel(csFiles_bin)>1
     save_cs_(fullfile(vcDir_out, 'bin_files.txt'), csFiles_bin);

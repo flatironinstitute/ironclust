@@ -245,61 +245,6 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function S_xml = load_xml_neuroscope_(vcFile_xml)
-% Usage
-% -----
-% S_xml = load_xml_neuroscope_(vcFile_xml)
-% S_xml = load_xml_neuroscope_(vcFile_xml, S_cfg): override settings
-% S_xml = load_xml_neuroscope_(vcFile_xml, 'settings.cfg')
-
-[vcDir,vcFile,vcExt] = fileparts(vcFile_xml);
-vcFile_dat = fullfile(vcDir, [vcFile, '.dat']);
-vcFile_xml = fullfile(vcDir, [vcFile, '.xml']);
-if ~exist_file_(vcFile_xml), S_xml=[]; return; end
-
-
-S_xml1 = xml2struct(vcFile_xml); % depends on an external file
-sRateHz = str2num_(S_xml1.parameters.acquisitionSystem.samplingRate.Text);
-nChans = str2num_(S_xml1.parameters.acquisitionSystem.nChannels.Text);
-
-nBits = str2num_(S_xml1.parameters.acquisitionSystem.nBits.Text);
-uV_per_bit = read_cfg_('uV_per_bit');
-if isempty(uV_per_bit)
-    voltageRange = str2num_(S_xml1.parameters.acquisitionSystem.voltageRange.Text);
-    amplification = str2num_(S_xml1.parameters.acquisitionSystem.amplification.Text);
-    uV_per_bit = (voltageRange / amplification * 1e6) / 2 ^ nBits;
-end
-vcDataType = sprintf('int%d', nBits);
-
-% parse out channel maps, bottom to top order
-[viSite2chan1, viSite2chan2, viSite2chan3, viSite2chan4] = deal([]);
-% fh_site2chan = @(x)fliplr(cellfun(@(y)str2num_(y.Text), x)) + 1;
-cS_channels = S_xml1.parameters.anatomicalDescription.channelGroups.group;
-if ~iscell(cS_channels), cS_channels = {cS_channels}; end
-cviSite2chan = cell(size(cS_channels));
-for iCell = 1:numel(cS_channels)
-    cS_channel1 = cS_channels{iCell}.channel;
-    if ~iscell(cS_channel1), cS_channel1 = {cS_channel1}; end
-    viSite2chan_ = fliplr(cellfun(@(x)str2num_(x.Text), cS_channel1)) + 1;
-    eval(sprintf('viSite2chan%d = viSite2chan_;', iCell));
-    cviSite2chan{iCell} = viSite2chan_;
-end
-try
-    viSite2Chan = cell2mat_(cviSite2chan);
-    viShank_site = cell2mat_(arrayfun(@(x,y)repmat(y,1,x), ...
-        cellfun(@numel, cviSite2chan), 1:numel(cviSite2chan), ...
-        'UniformOutput', 0));
-catch
-    [viSite2Chan, viShank_site] = deal([]);
-end
-S_xml = makeStruct_(sRateHz, nChans, uV_per_bit, nBits, vcDataType, ...
-    viSite2chan1, viSite2chan2, viSite2chan3, viSite2chan4, viSite2Chan, viShank_site, ...
-    vcFile_dat, vcFile_xml, cviSite2chan);
-end %func
-
-
-
-%--------------------------------------------------------------------------
 % function S_mda = export_spikeforest_crcns_(vcFile_dat1, vcDir_out1, mrLim_incl1, viChan_ext1, vcFile_prb)
 % % S_mda = export_spikeforest_crcns_(vcFile_dat1, vcDir_out1, mrLim_incl1, viChan_ext1)
 % 
@@ -1632,8 +1577,83 @@ end %func
 
 
 %--------------------------------------------------------------------------
+function S_xml = load_xml_neuroscope_(vcFile_xml)
+% Usage
+% -----
+% S_xml = load_xml_neuroscope_(vcFile_xml)
+% S_xml = load_xml_neuroscope_(vcFile_xml, S_cfg): override settings
+% S_xml = load_xml_neuroscope_(vcFile_xml, 'settings.cfg')
+
+[vcDir,vcFile,vcExt] = fileparts(vcFile_xml);
+vcFile_dat = fullfile(vcDir, [vcFile, '.dat']);
+vcFile_xml = fullfile(vcDir, [vcFile, '.xml']);
+if ~exist_file_(vcFile_xml), S_xml=[]; return; end
+
+
+S_xml1 = xml2struct(vcFile_xml); % depends on an external file
+sRateHz = str2num_(S_xml1.parameters.acquisitionSystem.samplingRate.Text);
+nChans = str2num_(S_xml1.parameters.acquisitionSystem.nChannels.Text);
+
+nBits = str2num_(S_xml1.parameters.acquisitionSystem.nBits.Text);
+uV_per_bit = read_cfg_('uV_per_bit');
+if isempty(uV_per_bit)
+    voltageRange = str2num_(S_xml1.parameters.acquisitionSystem.voltageRange.Text);
+    amplification = str2num_(S_xml1.parameters.acquisitionSystem.amplification.Text);
+    uV_per_bit = (voltageRange / amplification * 1e6) / 2 ^ nBits;
+end
+vcDataType = sprintf('int%d', nBits);
+
+% parse out channel maps, bottom to top order
+[viSite2chan1, viSite2chan2, viSite2chan3, viSite2chan4] = deal([]);
+% fh_site2chan = @(x)fliplr(cellfun(@(y)str2num_(y.Text), x)) + 1;
+cS_channels = S_xml1.parameters.anatomicalDescription.channelGroups.group;
+if ~iscell(cS_channels), cS_channels = {cS_channels}; end
+cviSite2chan = cell(size(cS_channels));
+for iCell = 1:numel(cS_channels)
+    cS_channel1 = cS_channels{iCell}.channel;
+    if ~iscell(cS_channel1), cS_channel1 = {cS_channel1}; end
+    viSite2chan_ = fliplr(cellfun(@(x)str2num_(x.Text), cS_channel1)) + 1;
+    eval(sprintf('viSite2chan%d = viSite2chan_;', iCell));
+    cviSite2chan{iCell} = viSite2chan_;
+end
+try
+    viSite2Chan = cell2mat_(cviSite2chan);
+    viShank_site = cell2mat_(arrayfun(@(x,y)repmat(y,1,x), ...
+        cellfun(@numel, cviSite2chan), 1:numel(cviSite2chan), ...
+        'UniformOutput', 0));
+catch
+    [viSite2Chan, viShank_site] = deal([]);
+end
+S_xml = makeStruct_(sRateHz, nChans, uV_per_bit, nBits, vcDataType, ...
+    viSite2chan1, viSite2chan2, viSite2chan3, viSite2chan4, viSite2Chan, viShank_site, ...
+    vcFile_dat, vcFile_xml, cviSite2chan);
+end %func
+
+
+%--------------------------------------------------------------------------
+% Call from irc.m
+function cout = call_irc2_(dbstack1, cell_input, nargout)
+vcFunc = dbstack1(1).name;
+try
+    switch nargout
+        case 0, cout{1} = []; irc2('call', vcFunc, cell_input);
+        case 1, cout{1} = irc2('call', vcFunc, cell_input);
+        case 2, [cout{1}, cout{2}] = irc2('call', vcFunc, cell_input);
+        case 3, [cout{1}, cout{2}, cout{3}] = irc2('call', vcFunc, cell_input);
+        case 4, [cout{1}, cout{2}, cout{3}, cout{4}] = irc2('call', vcFunc, cell_input);
+        otherwise, error('call_irc2_: undefined func: %s', vcFunc);
+    end
+catch ME
+    fprintf(2, 'call_irc_: %s\n', ME.message);
+    rethrow ME;
+end
+end %func
+
+
+%--------------------------------------------------------------------------
 % irc2.m
-function write_bin_(varargin), fn=dbstack(); irc2('call', fn(1).name, varargin); end
+% function varargout = load_xml_neuroscope_(varargin), cell_out = call_irc2_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = write_bin_(varargin), cell_out = call_irc2_(dbstack(), varargin, nargout); varargout = cell_out; end
 
 
 %--------------------------------------------------------------------------

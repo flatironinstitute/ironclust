@@ -1995,8 +1995,10 @@ viSiteExcl = get_set_(P, 'viSiteExcl', []);
 
 % Find the probe file
 vcFile_prb = find_prb_(vcFile_prb);
-if isempty(vcFile_prb)
-    error(['Probe file does not exist: ', vcFile_prb]);
+if ~exist_file_(vcFile_prb)
+    P=[]; 
+    fprintf(2, 'Probe file does not exist: %s\n', vcFile_prb);
+    return; 
 end
 
 P.probe_file = vcFile_prb;

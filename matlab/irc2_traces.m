@@ -14,7 +14,7 @@ set0_(fDebug_ui);
 
 % get file to show
 iFile_show = 1; %files to display for clustered together
-if ~isempty(P.csFile_merge)
+if ~isempty(get_(P, 'csFile_merge'))
     csFiles_bin = filter_files_(P.csFile_merge);
     if numel(csFiles_bin)==1
         vcFile_bin = csFiles_bin{1}; 
@@ -132,7 +132,8 @@ global mnWav1 mrWav1 % current timeslice to plot
 if nargin<1, fAxis_reset = 0; end
 fWait = msgbox_('Plotting...',0,1);
 fShuttleOrder = 1; %shuffle cluster color
-S0 = get(0, 'UserData'); P = S0.P; S_auto = S0.S_auto;
+S0 = get(0, 'UserData'); 
+[P, S_auto] = get_(S0, 'P', 'S_auto');
 [hFig, S_fig] = get_fig_cache_('Fig_traces'); 
 figure_wait_(1, hFig);
 sRateHz = P.sRateHz / P.nSkip_show;
