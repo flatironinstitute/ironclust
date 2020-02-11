@@ -90,4 +90,4 @@ for i=1:4
     irc2(sprintf('D:\\Globus\\DanEnglish\\PV_ChR2_Chronic\\shank%d',i));
 end
 %
-irc2 auto D:\Globus\recordings\kf19_nt27\irc2\raw_geom.prm
+irc2 D:\Globus\recordings\kf19_nt27\irc2\raw_geom.prm
