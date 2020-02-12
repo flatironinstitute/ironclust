@@ -147,7 +147,7 @@ switch lower(vcCmd)
             case {'auto', 'auto-verify'}, clear_('sort'); fDetect = 0; fSort = 0;
             case 'describe', describe_(vcFile_prm); return;
             case {'verify', 'validate'}, validate_(P, fPlot_gt); return;
-            case {'manual', 'ui'}, irc2_ui(P); return;
+            case {'manual', 'ui'}, irc2_manual(P); return;
         end
         fValidate = contains(vcCmd, {'auto-verify', 'sort-verify', 'spikesort-verify', 'all'});
     case 'benchmark'
@@ -159,13 +159,8 @@ switch lower(vcCmd)
     case 'clear', clear_(vcArg1); vcFile_prm_=[]; return;
     case 'clear-sort', clear_('sort'); return;     
     case {'test-mcc', 'test_mcc', 'testmcc'}, test_mcc_(vcArg1); return;
-    case {'test-static', 'test-drift', 'test-tetrode', 'test-tetrode2', 'test-tetrode3', ...
-            'test-bionet', 'test-bionet1', 'test-neuropix', ...
-            'test-monotrode', 'test-monotrode1', 'test-monotrode2', ...
-            'test-boyden', 'test-boyden1', 'test-boyden2', 'test-boyden3', 'test-boyden4', ...
-            'test-kampff', 'test-kampff1', 'test-kampff2', 'test-kampff3', 'test-kampff4', ...
-            'test-english', 'test-english1', 'test-english2', 'test-english3', 'test-english4'}
-        vcDir_in = get_test_data_(strsplit_get_(vcCmd,'-',2));
+    case 'test'
+        vcDir_in = get_test_data_(vcArg1);
         [fDetect, fSort, fValidate] = deal(1, 1, 1);
     case 'test-all', test_all_(); return;
 %     case 'export', irc('export', vcArg1); return;
@@ -189,6 +184,10 @@ switch lower(vcCmd)
 %         open_jrc_(export_jrclust(vcFile_prm, vcArg2)); 
         return;
     otherwise % directory running mode
+        if ~exist_file_(vcDir_in) && ~exist_dir_(vcDir_in)
+            fprintf(2, 'invalid command: %s\n', vcCmd);
+            return;
+        end
         vcCmd=''; clear_(); 
         fValidate = exist_file_(fullfile(vcDir_in, 'firings_true.mda'));
 end
@@ -218,10 +217,10 @@ try
 catch E
     fprintf(2, 'auto-merging error: \n\t%s\n', P.vcFile_prm);
     disp(lasterr);
-    fid_fet_cache_('clear');
+%     fid_fet_cache_('clear');
     return;
 end
-fid_fet_cache_('clear');
+% fid_fet_cache_('clear');
 
 % output
 describe_(S0);
@@ -1818,7 +1817,6 @@ S_auto = postCluster_(S0.S_clu, P, S0.viSite_spk); % peak merging
 
 % Mege based on cross-correlogram
 S_auto = wave_ccm_merge_(S0, S_auto, P);
-% S_auto = wave_ccm_merge_(S0, S_auto, P);
 
 % Merge based on waveform similarity
 P.maxWavCor = get_set_(P, 'maxWavCor', .99);
@@ -1835,9 +1833,6 @@ if P.maxWavCor<1 && S_auto.nClu > 1
         fprintf('\tNo waveforms were merged\n');
     end
 end
-
-% Mege based on cross-correlogram
-% S_auto = wave_ccm_merge_(S0, S_auto, P);
 
 S_auto = S_auto_refrac_(S_auto, P, S0.viTime_spk); % refractory violation removal
 S_auto = S_auto_refresh_(S_auto, 1, S0.viSite_spk);
@@ -3609,7 +3604,8 @@ if nargin<4, viSpk = []; end
 
 [type_fet, dimm_fet, vcFile_prm, mlPc] = ...
     struct_get_(S_fet, 'type_fet', 'dimm_fet', 'vcFile_prm', 'mlPc');
-% vcFile_prm_ = strrep(vcFile_prm, '.prm', '');
+if isempty(vcFile_prm), vcFile_prm = S_fet.P.vcFile_prm; end
+vcFile_prm_ = strrep(vcFile_prm, '.prm', '');
 bytes_per_spk = bytesPerSample_(type_fet) * dimm_fet(1) * dimm_fet(2);
 fh_sum = @(x,y)sum(cellfun(@numel, x(1:y-1)));
 nLoads = numel(S_fet.ccviSpk_site_load);
@@ -3617,11 +3613,11 @@ switch iFet
     case 1
         vnSpk_load = cellfun(@(x)numel(x{iSite}), S_fet.ccviSpk_site_load);
         vnBytes_offset_load = cellfun(@(x)fh_sum(x, iSite), S_fet.ccviSpk_site_load) * bytes_per_spk;
-%         csFiles_fet = arrayfun_(@(x)[vcFile_prm_, sprintf('_fet_%d.irc',x)], 1:nLoads);
+        csFiles_fet = arrayfun_(@(x)[vcFile_prm_, sprintf('_fet_%d.irc',x)], 1:nLoads);
         cviSpk_load = cellfun_(@(x)x{iSite}, S_fet.ccviSpk_site_load);
     case 2
         vnSpk_load = cellfun(@(x)numel(x{iSite}), S_fet.ccviSpk_site2_load);
-%         csFiles_fet = arrayfun_(@(x)[vcFile_prm_, sprintf('_fet2_%d.irc',x)], 1:nLoads);
+        csFiles_fet = arrayfun_(@(x)[vcFile_prm_, sprintf('_fet2_%d.irc',x)], 1:nLoads);
         vnBytes_offset_load = cellfun(@(x)fh_sum(x, iSite), S_fet.ccviSpk_site2_load) * bytes_per_spk;
         cviSpk_load = cellfun_(@(x)x{iSite}, S_fet.ccviSpk_site2_load);
 end
@@ -3658,12 +3654,12 @@ for iLoad = 1:nLoads
     end
     if isempty(viSpk1), continue; end    
     dimm_fet1 = [dimm_fet(1), dimm_fet(2), vnSpk_load(iLoad)];
-    [fid1, fCached1] = fid_fet_cache_(vcFile_prm, iLoad, iFet);
-%     fid1 = fopen(csFiles_fet{iLoad},'r'); 
+%     [fid1, fCached1] = fid_fet_cache_(vcFile_prm, iLoad, iFet);
+    fid1 = fopen(csFiles_fet{iLoad},'r'); 
     fseek(fid1, vnBytes_offset_load(iLoad), 'bof'); 
     trPc_load1 = fread_(fid1, dimm_fet1, type_fet);
-%     fclose(fid1);
-    if ~fCached1, fclose(fid1); end % inside of parfor, close
+    fclose(fid1);
+%     if ~fCached1, fclose(fid1); end % inside of parfor, close
     
     if ~isempty(mlPc)
         if fLoad_all
@@ -3890,7 +3886,7 @@ end
 % write a temp file and delete
 function S0 = detect_(P)
 % keep all features in the memory, no disk storage
-fCache_fid = false;
+% fCache_fid = false;
 
 % parfor loop
 fParfor = get_set_(P, 'fParfor', false);
@@ -3918,7 +3914,7 @@ S_cache = makeStruct_(vrThresh_site, mrPv_global);
 delete_file_fet_(P); % clear fet
 [vcFile, vS_load] = readmda_paged_('close'); % close the file
 viSite2Chan = get_(P, 'viSite2Chan');
-if fCache_fid, fid_fet_cache_('clear'); end
+% if fCache_fid, fid_fet_cache_('clear'); end
 if fParfor
     cS_detect{1} = detect_paged_save_(cS_detect{1}, P, 1);    
     parfor iLoad = 2:nLoads  % change to for loop for debugging
@@ -3950,7 +3946,7 @@ else
         end
         disp_load_(iLoad, var_size1, toc(t_load1), numel(get_(cS_detect{iLoad}, 'viTime_spk')));
     end
-    if fCache_fid, fid_fet_cache_('set', c_fid_fet, c_fid_fet2); end
+%     if fCache_fid, fid_fet_cache_('set', c_fid_fet, c_fid_fet2); end
 end
 S0 = detect_merge_(cS_detect, viOffset_load, P);
 memory_detect = memory_matlab_();
