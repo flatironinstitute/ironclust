@@ -2847,10 +2847,13 @@ nPc_max = P.nC_max;
 
 if isempty(nPcPerChan), nPcPerChan = 0; end
 if numel(nPcPerChan) == 1
-    if nPcPerChan == 0         
-        % subtractive from the edge
-        vnPc_site = nPc_spk * ones(1, nSites_spk);
-        for iSite = nSites_spk:-1:1
+    if nPcPerChan == 0   
+        if false
+            vnPc_site = nPc_spk:-1:1;
+        else % subtractive from the edge
+            vnPc_site = nPc_spk * ones(1, nSites_spk);
+        end
+        for iSite = numel(vnPc_site):-1:1
             if sum(vnPc_site) <= nPc_max, break; end
             vnPc_site(iSite:end) = vnPc_site(iSite:end) - 1;
             vnPc_site(vnPc_site<0) = 0; % non-negative
@@ -4254,10 +4257,10 @@ else
     if isempty(mrPv_global)
         [mrPv_global, vrD_global] = get_prinvec_(trWav_spk, P); 
     end    
-    trPc_spk = gather_(project_pc_(trWav_spk, mrPv_global, P));
-    if get_set_(P, 'sort_mode', 1) == 1 && size(trWav_spk,2) > 1
-        [viSite2_spk, viTime2_spk] = find_site2_spk_(trWav_spk, viSite_spk, viTime_spk, P); 
-        trWav_spk = [];
+    trPc_spk = project_pc_(trWav_spk, mrPv_global, P); trWav_spk = [];
+    if get_set_(P, 'sort_mode', 1) == 1 && size(trPc_spk,2) > 1
+        [viSite2_spk, viTime2_spk] = ...
+            find_site2_spk_(trPc_spk, mrPv_global, viSite_spk, viTime_spk, P); 
         trWav2_spk = mr2tr_wav_spk2_(mrWav_filt, viSite2_spk, viTime2_spk, P);
         trPc2_spk = project_pc_(trWav2_spk, mrPv_global, P);
     else
@@ -4274,15 +4277,9 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function trWav_spk1 = mr2tr_wav_spk2_(mrWav_filt, viSite_spk, viTime_spk, P, mrWav_detect)
+function trWav_spk1 = mr2tr_wav_spk2_(mrWav_filt, viSite_spk, viTime_spk, P)
 
 if nargin<5, mrWav_detect=[]; end
-if isempty(mrWav_detect)
-    nTime_search = 0;
-else
-    nTime_search = 2;
-    % nTime_search = round(P.spkRefrac_ms/2/1000*P.sRateHz);
-end
 
 nSpks = numel(viSite_spk);
 nSites = numel(P.viSite2Chan);
@@ -4295,9 +4292,6 @@ for iSite = 1:nSites
     if isempty(viiSpk1), continue; end
     viTime_spk1 = viTime_spk(viiSpk1); %already sorted by time
     viSite1 = P.miSites(:,iSite);        
-    if nTime_search > 0 % deal with single sample shift
-        viTime_spk1 = search_local_min_(mrWav_detect(:,iSite), viTime_spk1, nTime_search);
-    end
     trWav_spk1(:,:,viiSpk1) = permute(mr2tr_(mrWav_filt, spkLim_wav, viTime_spk1, viSite1), [1,3,2]); %raw    
 end
 end %func
@@ -4335,24 +4329,11 @@ mad_ = @(x)x./median(abs(x),1);
 % convolve with the first PC component and detect
 nShift = round(mean(P.spkLim));
 vrConv = mrPv_global(end:-1:1,1); % time-inverse
-switch 2
-    case 1
-        mrWav_detect = zeros(size(mrWav_filt), 'like', mrWav_filt);
-        for iSite=1:nSite
-            mrWav_detect(:,iSite) = conv(mrWav_filt(:,iSite), vrConv,'same');
-        end
-        detect_single_ = @(x)spikeDetectSingle_fast_(mrWav_detect(:,x),P);
-        [cviSpk_site, cvrSpk_site] = arrayfun_(@(i)detect_single_(i), (1:nSite)');
-    case 2 % do not allow time shift for the secondary peak
-        mrWav_detect = [];
-        conv_detect_ = @(i)spikeDetectSingle_fast_(conv(mrWav_filt(:,i), vrConv,'same'), P);
-        [cviSpk_site, cvrSpk_site] = arrayfun_(@(i)conv_detect_(i), (1:nSite)');
-end
+conv_detect_ = @(i)spikeDetectSingle_fast_(conv(mrWav_filt(:,i), vrConv,'same'), P);
+[cviSpk_site, cvrSpk_site] = arrayfun_(@(i)conv_detect_(i), (1:nSite)');
 [viTime_spk, vrAmp_spk, viSite_spk] = spikeMerge_(cviSpk_site, cvrSpk_site, P);
 [cviSpk_site, cvrSpk_site] = deal([]); % free memory
 viTime_spk = viTime_spk - nShift+1; % apply shift for PC projection
-% figure; plot(mad_(mrWav_filt(1:1e5,1)),'k'); hold on;
-% plot(mad_(conv(mrWav_filt(nShift:1e5,1),vrConv_detect,'same')));
 
 % exclude edge cases adn motion detection
 if ~isempty(vlKeep_wav)
@@ -4366,12 +4347,12 @@ end%if
 % extract waveforms and PC
 trWav_spk = get_spkwav_(mrWav_filt, viSite_spk, viTime_spk, P);
 trPc_spk = project_pc_(trWav_spk, mrPv_global, P);
-
+trWav_spk = [];
 % extract secondary PC
-if get_set_(P, 'sort_mode', 1) == 1 && size(trWav_spk,2) > 1
-    [viSite2_spk, viTime2_spk] = find_site2_spk_(trWav_spk, viSite_spk, viTime_spk, P);
-    trWav_spk = []; % clear memory
-    trWav2_spk = mr2tr_wav_spk2_(mrWav_filt, viSite2_spk, viTime2_spk, P, mrWav_detect);
+if get_set_(P, 'sort_mode', 1) == 1 && size(trPc_spk,2) > 1
+    [viSite2_spk, viTime2_spk] = ...
+        find_site2_spk_(trPc_spk, mrPv_global, viSite_spk, viTime_spk, P); 
+    trWav2_spk = mr2tr_wav_spk2_(mrWav_filt, viSite2_spk, viTime2_spk, P);
     trPc2_spk = project_pc_(trWav2_spk, mrPv_global, P);
 else
     [viSite2_spk, trPc2_spk] = deal([]);
@@ -8583,10 +8564,14 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function [viSite_spk2, viTime_spk2] = find_site2_spk_(trWav_spk, viSite_spk, viTime_spk, P)
+function [viSite_spk2, viTime_spk2] = find_site2_spk_(trPc_spk, mrPv, viSite_spk, viTime_spk, P)
 % find second min, excl local ref sites
 
 nSites_fet = P.nSites_fet;
+
+% denoised waveform
+nT_wav = abs(P.spkLim(1))*2+1;
+trWav_spk = pc2wav_(mrPv(1:nT_wav,:), trPc_spk);
 
 [mrMin_spk, miMin_spk] = min(trWav_spk(:,2:nSites_fet,:),[],1);
 miMin_spk = squeeze_(miMin_spk);
