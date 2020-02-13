@@ -46,6 +46,12 @@ irc2 traces [path_to_my_recording]
 irc2 traces [path_to_my_param.prm]
 ```
 
+Manual clustering user interface
+```
+irc2 manual [path_to_my_recording] 
+irc2 manual [path_to_my_param.prm]
+```
+
 This command shows the parameter file (`.prm` extension) used for sorting
 ```
 irc2 edit `path_to_recording_file`
