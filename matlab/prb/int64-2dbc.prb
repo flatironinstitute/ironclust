@@ -1,0 +1,21 @@
+% int64-2dbc.prb
+% two-column probe
+
+nc_ = 64;           % number of channels
+n_shank_ = 4;       % number of shanks
+p_shank_ = 250;     % shank pitch in um
+v_pitch_ = 12.5;    % vertical site pitch in um
+h_pitch_ = 22.5;    % horizontal site pitch, use negative to flip L/R
+pad = [15, 11];     % site pad height x width in um
+
+nc_shank_ = floor(nc_/n_shank_); 
+channels1_ = [1,3,5,7,9,11,8,13,6,15,4,14,2,12,0,10];
+channels2_ = [46 44 42 40 38 36 39 34 41 32 43 33 45 35 47 37];
+channels = 1+[channels1_, channels1_+16, channels2_, channels2_+16];
+
+geometry = zeros(nc_, 2);
+geometry(1:2:end,1) = 0 + floor((0:2:nc_-1)/nc_shank_)*p_shank_;
+geometry(2:2:end,1) = geometry(1:2:end,1) + h_pitch_;
+geometry(:,2) = mod(0:nc_-1,nc_shank_) * v_pitch_;
+
+shank = (ones(nc_shank_,1)*[1:n_shank_]); shank=shank(:);

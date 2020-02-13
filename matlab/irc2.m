@@ -393,10 +393,10 @@ end %func
 
 %--------------------------------------------------------------------------
 function test_all_()
-irc2('test-monotrode');
-irc2('test-tetrode');
-irc2('test-static');
-irc2('test-drift');
+irc2('test', 'monotrode');
+irc2('test', 'tetrode');
+irc2('test', 'static');
+irc2('test', 'drift');
 end %func
 
 

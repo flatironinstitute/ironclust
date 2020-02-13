@@ -1,0 +1,34 @@
+% int128-5dbc.prb
+% 3-columns per shank
+
+nc_ = 128;          % number of channels
+n_shank_ = 4;       % number of shanks
+p_shank_ = 150;     % shank pitch in um
+v_pitch_ = 30;      % vertical site pitch in um
+h_pitch_ = 18.3;       % horizontal site pitch, use negative to flip L/R
+pad = [15, 11];     % site pad height x width in um
+
+nc_shank_ = floor(nc_/n_shank_); 
+channels = 1 + [26 27 6 25 28 7 24 29 8 23 30 9 22 5 10 21 4 11 20 3 12 19 2 15 16 1 14 17 31 13 18 0];
+channels = channels(:) + [0:n_shank_-1]*nc_shank_; channels=channels(:)';
+
+geometry = zeros(nc_, 2);
+geometry(3:3:31,1) = - h_pitch_;
+geometry(4:3:31,1) = h_pitch_;
+geometry(2:3:31,2) = (1:10)*v_pitch_;
+geometry(3:3:31,2) = geometry(2:3:31,2) + v_pitch_/2;
+geometry(4:3:31,2) = geometry(3:3:31,2);
+
+geometry((1:nc_shank_)+nc_shank_*1,1) = geometry((1:nc_shank_),1) + p_shank_*1;
+geometry((1:nc_shank_)+nc_shank_*2,1) = geometry((1:nc_shank_),1) + p_shank_*2;
+geometry((1:nc_shank_)+nc_shank_*3,1) = geometry((1:nc_shank_),1) + p_shank_*3;
+
+geometry((1:nc_shank_)+nc_shank_*1,2) = geometry((1:nc_shank_),2);
+geometry((1:nc_shank_)+nc_shank_*2,2) = geometry((1:nc_shank_),2);
+geometry((1:nc_shank_)+nc_shank_*3,2) = geometry((1:nc_shank_),2);
+
+geometry((1:n_shank_)*32,1) = (0:n_shank_-1)*p_shank_;
+geometry((1:n_shank_)*32,2) = [1200,1000,800,600]+315;
+% reference sites
+
+shank = (ones(nc_shank_,1)*[1:n_shank_]); shank=shank(:);
