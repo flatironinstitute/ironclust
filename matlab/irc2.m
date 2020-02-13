@@ -708,14 +708,13 @@ end %func
 %--------------------------------------------------------------------------
 function S_score_plot_(S_score, S_cfg)
 
-[fShow_text, SNR_MAX] = deal(1, 20);
-
 if nargin<2, S_cfg=[]; end
 if isempty(S_cfg)
     S_cfg = get_(S_score, 'S_cfg');
 end
 if isempty(S_cfg), S_cfg = read_cfg_(); end
-
+fShow_text = get_set_(S_cfg, 'show_text_plot_gt', 1);
+snr_max_plot = get_set_(S_cfg, 'snr_max_plot_gt', 20);
 vrSnr_gt = get_(S_score, 'vrSnr_gt');
 if ~isempty(vrSnr_gt)
     vcSnr_gt = sprintf(' >= SNR%0.1f', S_cfg.snr_thresh_gt);
@@ -726,7 +725,7 @@ else
     vcSnr_gt = '';
     vlGt = true(S_score.nGt, 1);
     vcX_gt = 'viGt_ordered';
-    SNR_MAX = 0;
+    snr_max_plot = 0;
 end
 vrSnr_clu = get_(S_score, 'vrSnr_clu');
 if ~isempty(vrSnr_clu)
@@ -738,9 +737,9 @@ else
     vcSnr_clu = '';
     vlClu = true(S_score.nClu,1);
     vcX_clu = 'viClu_ordered';
-    SNR_MAX = 0;
+    snr_max_plot = 0;
 end
-snr_max = max([SNR_MAX, max(vrSnr_gt), max(vrSnr_clu)]);
+snr_max = max([snr_max_plot, max(vrSnr_gt), max(vrSnr_clu)]);
 
 disp_stats_(); % show caption        
 disp_stats_(S_score.vrAccuracy_gt(vlGt), ['vrAccuracy_gt', vcSnr_gt]);
@@ -2659,6 +2658,7 @@ end %func
 
 
 %--------------------------------------------------------------------------
+% waveform correlation measures
 function vrCorr12 = wavcor_pc_(mrPc1, trPc2, fMode, mrPc_sd1)
 if numel(fMode)>1
     mrPv_global = fMode;
@@ -2842,15 +2842,35 @@ end %func
 %--------------------------------------------------------------------------
 function [mlPc, nFeatures] = get_mlPc_(S0, P)
 nPcPerChan = get_set_(P, 'nPcPerChan', 0);
-mlPc = calc_mlPc_(nPcPerChan, S0.dimm_fet);
-nC_max = P.nC_max;
-nFeatures = sum(mlPc(:));
-if nFeatures > nC_max
-    fprintf('get_pc_sort_: feature trimmed %d->%d\n', nFeatures, nC_max);
-    nFeatures = nC_max;
-    vi_ = find(mlPc(:));
-    mlPc(vi_(nC_max+1:end)) = false;
+nPc_max = P.nC_max;
+[nPc_spk, nSites_spk] = deal(S0.dimm_fet(1), S0.dimm_fet(2));
+
+if isempty(nPcPerChan), nPcPerChan = 0; end
+if numel(nPcPerChan) == 1
+    if nPcPerChan == 0         
+        % subtractive from the edge
+        vnPc_site = nPc_spk * ones(1, nSites_spk);
+        for iSite = nSites_spk:-1:1
+            if sum(vnPc_site) <= nPc_max, break; end
+            vnPc_site(iSite:end) = vnPc_site(iSite:end) - 1;
+            vnPc_site(vnPc_site<0) = 0; % non-negative
+        end
+    else
+        vnPc_site = repmat(nPcPerChan, [1, nSites_spk]);
+    end
+else
+    vnPc_site = nPcPerChan;
 end
+
+% determine miPc
+mlPc = false(nPc_spk, nSites_spk);
+nSites1 = min(nSites_spk, numel(vnPc_site));
+for iSite = 1:nSites1
+    nPc1 = vnPc_site(iSite);
+    mlPc(1:nPc1, iSite) = true;
+end
+
+nFeatures = sum(mlPc(:));
 end %func
 
 
@@ -3484,32 +3504,6 @@ else
         miSpk_lim_out(iPage,:) = [viLim_drift(iA_), viLim_drift(iB_+1)-1];
     end
 end
-end %func
-
-
-%--------------------------------------------------------------------------
-function [mlPc, vnPc_site] = calc_mlPc_(nPcPerChan, dimm_fet)
-[nPc_spk, nSites_spk] = deal(dimm_fet(1), dimm_fet(2));
-
-if isempty(nPcPerChan), nPcPerChan = 0; end
-if numel(nPcPerChan) == 1
-    if nPcPerChan == 0
-        vnPc_site = nPc_spk:-1:1;
-    else
-        vnPc_site = repmat(nPcPerChan, [1, nSites_spk]);
-    end
-else
-    vnPc_site = nPcPerChan;
-end
-
-% determine miPc
-mlPc = false(nPc_spk, nSites_spk);
-nSites1 = min(nSites_spk, numel(vnPc_site));
-for iSite = 1:nSites1
-    nPc1 = vnPc_site(iSite);
-    mlPc(1:nPc1, iSite) = true;
-end
-% mlPc(1,:) = true;
 end %func
 
 
@@ -4262,8 +4256,9 @@ else
     end    
     trPc_spk = gather_(project_pc_(trWav_spk, mrPv_global, P));
     if get_set_(P, 'sort_mode', 1) == 1 && size(trWav_spk,2) > 1
-        viSite2_spk = find_site_spk23_(trWav_spk, viSite_spk, P); trWav_spk = [];
-        trWav2_spk = mr2tr_wav_spk2_(mrWav_filt, viSite2_spk, viTime_spk, P);
+        [viSite2_spk, viTime2_spk] = find_site2_spk_(trWav_spk, viSite_spk, viTime_spk, P); 
+        trWav_spk = [];
+        trWav2_spk = mr2tr_wav_spk2_(mrWav_filt, viSite2_spk, viTime2_spk, P);
         trPc2_spk = project_pc_(trWav2_spk, mrPv_global, P);
     else
         [viSite2_spk, trPc2_spk] = deal([]);
@@ -4374,8 +4369,9 @@ trPc_spk = project_pc_(trWav_spk, mrPv_global, P);
 
 % extract secondary PC
 if get_set_(P, 'sort_mode', 1) == 1 && size(trWav_spk,2) > 1
-    viSite2_spk = find_site_spk23_(trWav_spk, viSite_spk, P); trWav_spk = []; %clear memory
-    trWav2_spk = mr2tr_wav_spk2_(mrWav_filt, viSite2_spk, viTime_spk, P, mrWav_detect);
+    [viSite2_spk, viTime2_spk] = find_site2_spk_(trWav_spk, viSite_spk, viTime_spk, P);
+    trWav_spk = []; % clear memory
+    trWav2_spk = mr2tr_wav_spk2_(mrWav_filt, viSite2_spk, viTime2_spk, P, mrWav_detect);
     trPc2_spk = project_pc_(trWav2_spk, mrPv_global, P);
 else
     [viSite2_spk, trPc2_spk] = deal([]);
@@ -8587,6 +8583,76 @@ end %func
 
 
 %--------------------------------------------------------------------------
+function [viSite_spk2, viTime_spk2] = find_site2_spk_(trWav_spk, viSite_spk, viTime_spk, P)
+% find second min, excl local ref sites
+
+nSites_fet = P.nSites_fet;
+
+[mrMin_spk, miMin_spk] = min(trWav_spk(:,2:nSites_fet,:),[],1);
+miMin_spk = squeeze_(miMin_spk);
+[~, viMin_spk] = min(mrMin_spk,[],2);
+
+miSites2 = P.miSites(2:nSites_fet, viSite_spk);
+viSite_spk2 = int32(mr2vr_sub2ind_(miSites2, viMin_spk(:), []));    
+
+iT_peak = 1 - P.spkLim(1);
+viTime2_offset_spk = mr2vr_sub2ind_(miMin_spk, viMin_spk(:), []) - iT_peak;
+viTime_spk2 = viTime_spk + int64(viTime2_offset_spk);
+end %func
+
+
+%--------------------------------------------------------------------------
+% Remove leading singular dimension
+% 12/15/17 JJJ: squeeze out specific dimension
+% 7/26/17 JJJ: code cleanup and testing
+function val = squeeze_(val, idimm)
+% val = squeeze_(val) : when squeezeing matrix, transpose if leading dimm is 1
+% val = squeeze_(val, idimm): permute specified dimension out
+size_ = size(val);
+if nargin>=2
+    dimm_ = [setdiff(1:ndims(val), idimm), idimm];
+    val = permute(val, dimm_);
+elseif numel(size_)==2 && size_(1) == 1
+    val = val';
+else
+    val = squeeze(val);
+end
+end
+
+
+%--------------------------------------------------------------------------
+function vr = mr2vr_sub2ind_(mr, vi1, vi2)
+if isempty(mr), vr = []; return; end
+if nargin<3, vi2=[]; end
+if isempty(vi1), vi1 = 1:size(mr,1); end
+if isempty(vi2), vi2 = 1:size(mr,2); end
+vr = mr(sub2ind(size(mr), vi1(:), vi2(:)));
+end %func
+
+
+%--------------------------------------------------------------------------
+function [viSite_spk2] = find_site2_spk__(tnWav_spk, viSite_spk, P)
+% find second min, excl local ref sites
+
+fUse_min = 1;
+imin0 = 1 - P.spkLim(1);
+nSites_spk = size(P.miSites, 1);
+viSites2 = 2:P.nSites_fet;
+miSites2 = P.miSites(viSites2, viSite_spk);
+tnWav_spk2 = tnWav_spk(:,viSites2,:);
+if fUse_min
+    mnMin_spk = squeeze_(min(tnWav_spk2));
+else
+%     mnMin_spk = -squeeze_(std(single(tnWav_spk(:,viSites2,:))));
+    mnMin_spk = squeeze_(min(tnWav_spk2) - max(tnWav_spk2)); % use Vpp to determine second peak site
+end
+[~, viSite_spk] = min(mnMin_spk);
+viSite_spk2 = int32(mr2vr_sub2ind_(miSites2, viSite_spk, []));
+    
+end %func
+
+
+%--------------------------------------------------------------------------
 % Call from irc.m
 function cout = call_irc_(dbstack1, cell_input, nargout)
 vcFunc = dbstack1(1).name;
@@ -8630,9 +8696,8 @@ function varargout = get_filter_(varargin), cell_out = call_irc_(dbstack(), vara
 function varargout = meanSubt_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = memory_matlab_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = recording_duration_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
-function varargout = squeeze_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = struct_set_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
-function varargout = find_site_spk23_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
+% function varargout = find_site_spk23_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = matchFileExt_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = struct_copyas_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = set_bool_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
