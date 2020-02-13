@@ -9,34 +9,32 @@ if ~is_sorted_(P)
     return; 
 end
 S0 = load0_(P.vcFile_prm);
-% S0.trPc_spk = load_fet_(S0, P, 1); % 
+
+% S_manual
 S0.S_manual = load_(strrep(P.vcFile_prm, '.prm', '_ui_irc.mat'));
 if ~isempty(S0.S_manual)
-    % ask if you want to restart
     if strcmpi(questdlg_('Load last saved?', 'Confirmation'), 'no')
         S0.S_manual=[];
     end
 end
-if isempty(S0.S_manual)
-    S0.S_manual = create_S_manual_(S0); 
-end
+if isempty(S0.S_manual), S0.S_manual = create_S_manual_(S0); end
 
 clear mouse_figure;
 clear get_fig_cache_ get_tag_ %clear persistent figure handles
 close_(get_fig_('FigTrial')); %close previous FigTrial figure
 close_(get_fig_('FigTrial_b')); %close previous FigTrial figure
-S0.S_manual = struct_merge_(S0.S_manual, ...
+S0 = struct_merge_(S0, ...
     struct('iCluCopy', 1, 'iCluPaste', [], 'hCopy', [], 'hPaste', [], 'nSites', numel(P.viSite2Chan)));
-hMsg = msgbox_('Plotting... (this closes automatically)'); t1=tic;
+S0 = struct_merge_(S0, figures_manual_(P)); %create figures for manual interface
+set(0, 'UserData', S0);
 
-S0.S_manual = struct_merge_(S0.S_manual, figures_manual_(P)); %create figures for manual interface
+hMsg = msgbox_('Plotting... (this closes automatically)'); t1=tic;
 plot_FigRD_(S0); % ask user before doing so
 plot_FigWav_(S0); % hFigWav %do this after for ordering
-plot_FigWavCor_(S0);  % need `S_clu.mrWavCor`
-set(0, 'UserData', S0);
+plot_FigWavCor_(S0);  
 button_CluWav_simulate_(1, [], S0); %select first clu
 auto_scale_proj_time_(S0);
-S0 = keyPressFcn_cell_(get_fig_cache_('FigWav'), {'z'}, S0); %zoom
+keyPressFcn_cell_(get_fig_cache_('FigWav'), {'z'}, S0); %zoom
 % S_log = load_(strrep(P.vcFile_prm, '.prm', '_log.mat'), [], 0);
 % if ~isempty(S_log), S0.cS_log = {S_log}; end
 % save_log_('start', S0); %crash proof log
@@ -44,18 +42,19 @@ S0 = keyPressFcn_cell_(get_fig_cache_('FigWav'), {'z'}, S0); %zoom
 % Finish up
 close_(hMsg);
 fprintf('UI creation took %0.1fs\n', toc(t1));
+figure_wait_(0, S0.FigWav);
 end %func
 
 
 %--------------------------------------------------------------------------
 function plot_FigWav_(S0)
 
-[P, S_auto] = get_(S0, 'P', 'S_auto');
+[P, S_manual] = get_(S0, 'P', 'S_manual');
 [hFig, S_fig] = get_fig_cache_('FigWav'); 
 
 % Show number of spikes per clusters
 P.LineWidth = 1; %plot a thicker line
-P.viSite_clu = S_auto.viSite_clu;
+P.viSite_clu = S_manual.viSite_clu;
 nSites = numel(P.viSite2Chan);
 if isempty(S_fig) % initialize
     S_fig.maxAmp = P.maxAmp;
@@ -66,7 +65,7 @@ if isempty(S_fig) % initialize
     xylabel_(S_fig.hAx, 'Cluster #', 'Site #', sprintf(S_fig.vcTitle, S_fig.maxAmp));
 
     set(hFig, 'KeyPressFcn', @keyPressFcn_FigWav_, 'CloseRequestFcn', @exit_manual_, 'BusyAction', 'cancel');
-    axis(S_fig.hAx, [0, S_auto.nClu + 1, 0, nSites + 1]);
+    axis(S_fig.hAx, [0, S_manual.nClu + 1, 0, nSites + 1]);
     add_menu_(hFig, P);      
 %     vrPos_ = get(hFig, 'OuterPosition');
     mouse_figure(hFig, S_fig.hAx, @button_CluWav_);
@@ -84,9 +83,8 @@ else
 end
 
 % create text
-% S0 = set0_(mh_info);
 fText = get_set_(S_fig, 'fText', get_set_(P, 'Text', 1));
-S_fig = figWav_clu_count_(S_fig, S_auto, fText);
+S_fig = figWav_clu_count_(S_fig, S_manual, fText);
 S_fig.csHelp = { ...            
     '[Left-click] Cluter select/unselect (point at blank)', ...
     '[Right-click] Second cluster select (point at blank)', ...
@@ -125,16 +123,34 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function S_fig = figWav_clu_count_(S_fig, S_auto, fText)
+% 8/2/17 JJJ: Test and documentation
+function S0 = set0_(varargin)
+% Set(0, 'UserData')
+
+S0 = get(0, 'UserData'); 
+% set(0, 'UserData', []); %prevent memory copy operation
+for i=1:nargin
+    try
+        S0.(inputname(i)) = varargin{i};
+    catch
+        disperr_();
+    end
+end
+set(0, 'UserData', S0);
+end %func
+
+
+%--------------------------------------------------------------------------
+function S_fig = figWav_clu_count_(S_fig, S_manual, fText)
 if nargin==0, [hFig, S_fig] = get_fig_cache_('FigWav'); end
 if nargin<3, fText = 1; end
 
 if fText
-    csText_clu = arrayfun(@(i)sprintf('%d(%d)', i, S_auto.vnSpk_clu(i)), 1:S_auto.nClu, 'UniformOutput', 0);
+    csText_clu = arrayfun(@(i)sprintf('%d(%d)', i, S_manual.vnSpk_clu(i)), 1:S_manual.nClu, 'UniformOutput', 0);
 else
-    csText_clu = arrayfun(@(i)sprintf('%d', i), 1:S_auto.nClu, 'UniformOutput', 0);
+    csText_clu = arrayfun(@(i)sprintf('%d', i), 1:S_manual.nClu, 'UniformOutput', 0);
 end
-set(S_fig.hAx, 'Xtick', 1:S_auto.nClu, 'XTickLabel', csText_clu, 'FontSize', 8);
+set(S_fig.hAx, 'Xtick', 1:S_manual.nClu, 'XTickLabel', csText_clu, 'FontSize', 8);
 try
     if fText
         xtickangle(S_fig.hAx, -20); 
@@ -179,18 +195,18 @@ function S_fig = plot_spkwav_(S_fig, S0)
 % fPlot_raw = 0;
 if nargin<2, S0 = []; end
 if isempty(S0), S0 = get(0, 'UserData'); end
-[P, viSite_spk, S_auto] = deal(S0.P, S0.viSite_spk, S0.S_auto);
+[P, viSite_spk, S_manual] = deal(S0.P, S0.viSite_spk, S0.S_manual);
 
-[cvrX, cvrY, cviSite] = deal(cell(S_auto.nClu, 1));
-vnSpk = zeros(S_auto.nClu, 1);
-viSites_clu_ = @(x)P.miSites(:, S_auto.viSite_clu(x));
+[cvrX, cvrY, cviSite] = deal(cell(S_manual.nClu, 1));
+vnSpk = zeros(S_manual.nClu, 1);
+viSites_clu_ = @(x)P.miSites(:, S_manual.viSite_clu(x));
 if isfield(S_fig, 'maxAmp')
     maxAmp = S_fig.maxAmp;
 else
     maxAmp = P.maxAmp;
 end
 nSpk_show = get_set_(P, 'nSpk_show', 30);
-for iClu = 1:S_auto.nClu        
+for iClu = 1:S_manual.nClu        
     try           
         trFet1 = S0.S_manual.ctrFet_sub_clu{iClu};
         viSpk_show = randomSelect_(1:size(trFet1,3), nSpk_show);
@@ -231,24 +247,22 @@ function auto_split_(fMulti, S0)
 if nargin<1, fMulti = 0; end
 if nargin<2, S0 = []; end
 if isempty(S0), S0 = get(0, 'UserData'); end
-[P, S_clu] = deal(S0.P, S0.S_clu);
+[P, S_manual] = deal(S0.P, S0.S_manual);
 
 if ~isempty(S0.iCluPaste), msgbox_('Select one cluster', 1); return; end
-if S_clu.vnSpk_clu(S0.iCluCopy)<3
+if S_manual.vnSpk_clu(S0.iCluCopy)<3
     msgbox_('At least three spikes required for splitting', 1); return; 
 end
     
 hMsg = msgbox_('Splitting... (this closes automatically)');
 iClu1 = S0.iCluCopy;
-iSite1 = S_clu.viSite_clu(iClu1);
+iSite1 = S_manual.viSite_clu(iClu1);
 if fMulti
     viSites1 = P.miSites(1:P.nSites_fet, iSite1);
 else
     viSites1 = iSite1;
 end
-% mrSpkWav1 = tnWav2uV_(tnWav_sites_(tnWav_spk, S_clu.cviSpk_clu{iClu1}, viSites1));
-trSpkWav1 = tnWav2uV_(tnWav_spk_sites_(S_clu.cviSpk_clu{iClu1}, viSites1, S0), P, 0);
-% mrSpkWav1 = tnWav2uV_(tnWav_spk_sites_(find(S_clu.viClu==iClu1), viSites1, S0), P);
+trSpkWav1 = tnWav2uV_(tnWav_spk_sites_(S_manual.cviSpk_clu{iClu1}, viSites1, S0), P, 0);
 [vlSpkIn, mrFet_split, vhAx, hFigTemp] = auto_split_wav_(trSpkWav1, [], 2, viSites1);
 [hPoly, hFig_wav] = deal([]);
 try 
@@ -300,7 +314,7 @@ global fDebug_ui
 if isempty(fDebug_ui), fDebug_ui = false; end
 
 if nargin<3, S0 = get(0, 'UserData'); end
-[P, S_auto, S_manual] = get_(S0, 'P', 'S_auto', 'S_manual');
+[P, S_manual] = get_(S0, 'P', 'S_manual');
 P.LineStyle=[];
 nSites = numel(P.viSite2Chan);
 hFig = hObject;
@@ -316,13 +330,13 @@ switch lower(event.Key)
         if strcmpi(event.Key, 'home')
             S0.iCluCopy = 1;
         elseif strcmpi(event.Key, 'end')
-            S0.iCluCopy = S_auto.nClu;
+            S0.iCluCopy = S_manual.nClu;
         elseif ~key_modifier_(event, 'shift')
             if strcmpi(event.Key, 'leftarrow')
                 if S0.iCluCopy == 1, return; end
                 S0.iCluCopy = S0.iCluCopy - 1;
             else
-                if S0.iCluCopy == S_auto.nClu, return; end
+                if S0.iCluCopy == S_manual.nClu, return; end
                 S0.iCluCopy = S0.iCluCopy + 1;
             end
         else
@@ -333,7 +347,7 @@ switch lower(event.Key)
                 if S0.iCluPaste == 1, return; end
                 S0.iCluPaste = S0.iCluPaste - 1;
             else
-                if S0.iCluPaste == S_auto.nClu, return; end
+                if S0.iCluPaste == S_manual.nClu, return; end
                 S0.iCluPaste = S0.iCluPaste + 1;
             end
         end
@@ -353,11 +367,10 @@ switch lower(event.Key)
     case 's', auto_split_(1, S0);        
     case 'r' %reset view
         hFig_wait = figure_wait_(1);
-        axis_([0, S_auto.nClu + 1, 0, numel(P.viSite2Chan) + 1]);
+        axis_([0, S_manual.nClu + 1, 0, numel(P.viSite2Chan) + 1]);
         figure_wait_(0, hFig_wait);        
     case {'d', 'backspace', 'delete'}, S0 = ui_delete_(S0);        
-    case 'z' %zoom
-        ui_zoom_(S0, hFig);
+    case 'z', ui_zoom_(S0, hFig);  %zoom
     case 'c', plot_FigCorr_(S0);        
     case 'v', plot_FigIsi_(S0);        
     case 'a', update_spikes_(S0); clu_info_(S0);        
@@ -368,7 +381,7 @@ switch lower(event.Key)
     case 'j', plot_FigProj_(S0); %projection view        
     case 'n'
         fText = get_set_(S_fig, 'fText', get_set_(P, 'fText', 1));
-        figWav_clu_count_(S_fig, S_auto, ~fText);          
+        figWav_clu_count_(S_fig, S_manual, ~fText);          
     case 'i', plot_FigHist_(S0); %ISI histogram               
     case 'e', plot_FigMap_(S0);        
     case 'u', update_FigCor_(S0);        
@@ -377,6 +390,49 @@ switch lower(event.Key)
     otherwise, figure_wait_(0); %stop waiting
 end
 figure_(hObject); %change the focus back to the current object
+end %func
+
+
+%--------------------------------------------------------------------------
+function ui_zoom_(S0, hFig)
+iClu = S0.iCluCopy;
+S_manual = S0.S_manual;
+P = S0.P;
+iSiteClu = S_manual.viSite_clu(S0.iCluCopy);
+nSites_spk = size(P.miSites,1);
+nSites = size(P.miSites,2);
+set_axis_(hFig, iClu+[-1,1]*8, iSiteClu+[-1,1]*nSites_spk, [0 S_manual.nClu+1], [0 nSites+1]);
+end %func
+
+
+%--------------------------------------------------------------------------
+function set_axis_(hFig, xlim1, ylim1, xlim0, ylim0)
+% set the window within the box limit
+if nargin <= 3
+    % square case
+    xlim0 = ylim1;
+    ylim1 = xlim1;
+    ylim0 = xlim0;
+end
+
+hFig_prev = gcf;
+figure(hFig); 
+dx = diff(xlim1);
+dy = diff(ylim1);
+
+if xlim1(1)<xlim0(1), xlim1 = xlim0(1) + [0, dx]; end
+if xlim1(2)>xlim0(2), xlim1 = xlim0(2) + [-dx, 0]; end
+if ylim1(1)<ylim0(1), ylim1 = ylim0(1) + [0, dy]; end
+if ylim1(2)>ylim0(2), ylim1 = ylim0(2) + [-dy, 0]; end
+
+xlim1(1) = max(xlim1(1), xlim0(1));
+ylim1(1) = max(ylim1(1), ylim0(1));
+xlim1(2) = min(xlim1(2), xlim0(2));
+ylim1(2) = min(ylim1(2), ylim0(2));
+
+axis_([xlim1, ylim1]);
+
+figure(hFig_prev);
 end %func
 
 
@@ -547,17 +603,33 @@ end %end
 
 %--------------------------------------------------------------------------
 function S_manual = create_S_manual_(S0)
-% P.fParfor = 0; % disable parfor for GUI
-% fDebug_ui = false;
-
-% keep trPc_spk loaded for manual
+% S_auto is copied to S_manual and will change. S_auto not referred anymore
 
 % subsample fet
-[ctrFet_sub_clu, cviSpk_sub_fet] = clu_fet_(S0);
+[ctrFet_sub_clu, cviSpk_sub_clu] = clu_fet_(S0);
 [trWav_clu, trWav_full_clu] = clu_mean_wav_(S0, ctrFet_sub_clu);
 mrWavCor = clu_wavcor_(S0, trWav_full_clu);
-S_manual = makeStruct_(ctrFet_sub_clu, cviSpk_sub_fet, ...
-    trWav_clu, trWav_full_clu, mrWavCor);
+csNote_clu = cell(S0.S_auto.nClu, 1);
+S_manual = S0.S_auto;
+S_manual = struct_add_(S_manual, ctrFet_sub_clu, cviSpk_sub_clu, ...
+    trWav_clu, trWav_full_clu, mrWavCor, csNote_clu);
+end %func
+
+
+%--------------------------------------------------------------------------
+function S = struct_add_(varargin)
+% S = struct_add_(S, var1, var2, ...)
+% output
+% S.var1=var1; S.var2=var2; ...
+
+S = varargin{1};
+for i=2:numel(varargin)
+    try
+        S.(inputname(i)) = varargin{i};
+    catch
+        disperr_();
+    end
+end
 end %func
 
 
@@ -587,8 +659,9 @@ for iFet = 1:numel(cviSite_spk_fet)
         viClu_site1 = find(viSite_clu == iSite);
         if isempty(viClu_site1), continue; end % no cluster found
         viClu1 = viClu_spk(viSpk1);              
-        cviSpk1_clu1 = arrayfun_(@(x)subsample_vr_(find(viClu1(:)==x), max_sample), viClu_site1);
-        ctrFet_clu1 = cellfun_(@(x)trPc_spk1(:,:,x), cviSpk1_clu1);
+        cviiSpk1_clu1 = arrayfun_(@(x)subsample_vr_(find(viClu1(:)==x), max_sample), viClu_site1);
+        cviSpk1_clu1 = cellfun_(@(x)viSpk1(x), cviiSpk1_clu1);
+        ctrFet_clu1 = cellfun_(@(x)trPc_spk1(:,:,x), cviiSpk1_clu1);
         ctrFet_sub_clu(viClu_site1) = join_cell_(ctrFet_sub_clu(viClu_site1), ctrFet_clu1, 3);
         cviSpk_sub_clu(viClu_site1) = join_cell_(cviSpk_sub_clu(viClu_site1), cviSpk1_clu1, 1);
     end
@@ -679,119 +752,6 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function [ctrPc_drift, cviClu_drift, mrDist_clu] = wave_drift_site_(iSite1, S_auto)
-
-NUM_KNN = 10;
-fUseSecondSite = 1;
-
-import_struct_(S_auto);
-nDrift = size(mlDrift, 1);
-% fprintf('\twave_similarity_site_pre_: Site%d... ', iSite1); t_fun=tic;
-miKnn1 = load_miKnn_site_(S_auto, iSite1);
-miKnn1 = miKnn1(1:min(NUM_KNN, size(miKnn1,1)), :);
-% [viLim_drift, nDrift, viClu, nClu, nSpk_min, vrThresh_site, mrPv, mlDrift] = ...
-%     get_(S_auto, 'viLim_drift', 'nDrift', 'viClu', 'nClu', 'nSpk_min', 'vrThresh_site', 'mrPv', 'mlDrift');
-thresh1 = vrThresh_site(iSite1);
-[trPc1, viSpk1] = load_fet_site_(S_auto, 1, iSite1);
-% cc1_drift_clu = cell(nDrift, nClu);
-cvii1_drift = vi2cell_(discretize(viSpk1, viLim_drift), nDrift);
-[vrRho1, viClu1] = deal(S_auto.vrRho(viSpk1), viClu(viSpk1));
-vrRho_1 = copy_mask_(S_auto.vrRho, viSpk1);
-[~, miiKnn1] = ismember(miKnn1, viSpk1);
-
-if fUseSecondSite
-    [trPc2, viSpk2] = load_fet_site_(S_auto, 2, iSite1);
-else
-    trPc2 = [];
-end
-fSecondSite = ~isempty(trPc2);
-if fSecondSite   
-    vrRho_2 = copy_mask_(S_auto.vrRho, viSpk2);
-    [~, miiKnn2] = ismember(miKnn1, viSpk2);
-end
-% cc2_drift_clu = cell(nDrift, nClu);
-cviClu_drift = cell(nDrift,1);
-ctrPc_drift = cell(nDrift,1);
-
-for iDrift = 1:nDrift    
-    vii1 = cvii1_drift{iDrift};
-    if isempty(vii1), continue; end
-    [vrRho11, viClu11, miKnn11, miiKnn11] = ...
-        deal(vrRho1(vii1), viClu1(vii1), miKnn1(:,vii1), miiKnn1(:,vii1));
-    [cviiSpk_clu_, ~, viClu_uniq] = vi2cell_(viClu11, nClu);
-    if fSecondSite, miiKnn21 = miiKnn2(:,vii1); end
-    [viClu_drift1, cmrPc_drift1] = deal([], {}); 
-    for iClu = viClu_uniq
-        vii_ = cviiSpk_clu_{iClu};
-        [miKnn11_, miiKnn11_] = deal(miKnn11(:,vii_), miiKnn11(:,vii_));
-        vrRho11_T = vrRho11(vii_)';
-        vii1_ = miiKnn11_(vrRho_1(miKnn11_) >= vrRho11_T);  
-        mrPc1 = mean_conditional_(trPc1, vii1_, nSpk_min, mrPv, thresh1);
-        if ~isempty(mrPc1)
-            viClu_drift1(end+1) = iClu;
-            cmrPc_drift1{end+1} = mrPc1;
-        end
-        if fSecondSite
-            miiKnn21_ = miiKnn21(:,vii_);
-            vii2_ = miiKnn21_(vrRho_2(miKnn11_) >= vrRho11_T);
-            mrPc2 = mean_conditional_(trPc2, vii2_, nSpk_min, mrPv, thresh1);
-            if ~isempty(mrPc2)
-                viClu_drift1(end+1) = iClu;
-                cmrPc_drift1{end+1} = mrPc2;
-            end
-        end         
-    end
-    cviClu_drift{iDrift} = viClu_drift1;
-    ctrPc_drift{iDrift} = cat(3, cmrPc_drift1{:});
-end
-[trPc1, trPc2, miKnn1, miiKnn1, miiKnn2] = deal([]); % clear memory
-vlExist_clu = false(1, nClu);
-vlExist_clu([cviClu_drift{:}]) = true;
-mrDist_clu = zeros(nClu, 'single');
-
-norm_mr_ = @(mr)mr ./ sqrt(sum(mr.^2,1)); 
-tr2mr_pv_norm_ = @(tr,mr)norm_mr_(reshape(mr*reshape(tr,size(tr,1),[]),[],size(tr,3))); 
-
-% distance calculation
-for iDrift = 1:nDrift
-    viDrift1 = find(mlDrift(:,iDrift));
-    viClu1 = cviClu_drift{iDrift};
-    if isempty(viClu1), continue; end
-    trPc_clu1 = cat(3, ctrPc_drift{iDrift});
-    if isempty(trPc_clu1), continue; end
-    viClu2 = [cviClu_drift{viDrift1}];
-    trPc_clu2  = cat(3, ctrPc_drift{viDrift1});
-    if isempty(trPc_clu2), continue; end
-    mrWav_clu2 = tr2mr_pv_norm_(trPc_clu2, mrPv);
-    for iiClu1 = 1:numel(viClu1)
-        iClu1 = viClu1(iiClu1);
-        mrWav11 = pc2wav_shift_(trPc_clu1(:,:,iiClu1), mrPv, viShift);
-        for iiClu2 = 1:numel(viClu2)
-            iClu2 = viClu2(iiClu2);         
-            if iClu2 > iClu1 % symmetric
-                dist12 = max(mrWav_clu2(:,iiClu2)' * mrWav11);
-                mrDist_clu(iClu2, iClu1) = max(mrDist_clu(iClu2, iClu1), dist12);
-            end
-        end
-    end
-end
-
-fprintf('.');
-end %func
-
-
-%--------------------------------------------------------------------------
-function mrWav = pc2wav_shift_(trPc, mrPv, viShift)
-
-if isempty(trPc), mrWav=[]; return; end
-[nPc, nSites, nSpk, nT] = deal(size(trPc,1), size(trPc,2), size(trPc,3), size(mrPv,1));
-trWav = reshape(mrPv*reshape(trPc, nPc,[]), [nT, nSites, nSpk]);
-mrWav = reshape(shift_trWav_(trWav, viShift), nT*nSites, []);
-mrWav = mrWav ./ sqrt(sum(mrWav.^2,1)); 
-end %func
-
-
-%--------------------------------------------------------------------------
 function varargout = cellfun_(varargin)
 if nargout == 0
     cellfun(varargin{:}, 'UniformOutput', 0);
@@ -836,7 +796,8 @@ end %func
 %--------------------------------------------------------------------------
 function auto_scale_proj_time_(S0, fPlot)
 % auto-scale and refgresh
-if nargin<1, S0 = get(0, 'UserData'); end
+
+
 if nargin<2, fPlot = 0; end
 
 autoscale_pct = get_set_(S0.P, 'autoscale_pct', 99.5);
@@ -853,15 +814,12 @@ set(hFig_proj, 'UserData', S_fig_proj);
 
 % Update time
 [hFig_time, S_fig_time] = get_fig_cache_('FigTime');
-iSite = S_auto.viSite_clu(S0.iCluCopy);
-% [vrFet0, vrTime0] = getFet_site_(iSite, [], S0);    % plot background    
+iSite = S0.S_manual.viSite_clu(S0.iCluCopy);
 [vrFet1, vrTime1, vcYlabel, viSpk1] = getFet_site_(iSite, S0.iCluCopy, S0); % plot iCluCopy
 if isempty(S0.iCluPaste)
-%     vrFet = [vrFet0(:); vrFet1(:)];
     cvrFet = {vrFet1};
 else
     [vrFet2, vrTime2, vcYlabel, viSpk2] = getFet_site_(iSite, S0.iCluPaste, S0); % plot iCluCopy
-%     vrFet = [vrFet0(:); vrFet1(:); vrFet2(:)];
     cvrFet = {vrFet1, vrFet2};
 end
 % S_fig_time.maxAmp = quantile(vrFet, autoscale_pct/100);
@@ -873,7 +831,7 @@ if fPlot
     keyPressFcn_cell_(get_fig_cache_('FigWav'), {'j', 't'}, S0); 
 else
     rescale_FigProj_(S_fig_proj.maxAmp, hFig_proj, S_fig_proj, S0);    
-    rescale_FigTime_(S_fig_time.maxAmp, S0, S0.P);
+    rescale_FigTime_(S_fig_time.maxAmp, S0);
 end
 end %func
 
@@ -882,7 +840,7 @@ end %func
 function [hFig, S_fig] = plot_FigWavCor_(S0)
 if nargin<1, S0 = get(0, 'UserData'); end
 P = S0.P;
-nClu = S0.S_auto.nClu;
+nClu = S0.S_manual.nClu;
 [hFig, S_fig] = get_fig_cache_('FigWavCor'); 
 mrWavCor = S0.S_manual.mrWavCor;
 
@@ -988,10 +946,9 @@ end %func
 function mrWavCor = clu_wavcor_(S0, trWav_full_clu)
 
 [S_auto, P] = get_(S0, 'S_auto', 'P');
-nClu = S0.S_auto.nClu;
 mrWavCor = zeros(S_auto.nClu, 'single');
 nShift = ceil(diff(P.spkLim) * P.frac_shift_merge / 2);
-for iClu=1:nClu
+for iClu=1:S_auto.nClu
     mrWavCor(:,iClu) = wavcor_(trWav_full_clu(:,:,iClu), trWav_full_clu, nShift);
 end
 mrWavCor = max(mrWavCor, mrWavCor');
@@ -1001,14 +958,12 @@ end %func
 %--------------------------------------------------------------------------
 function S_fig = plot_tnWav_clu_(S_fig, P, S0)
 % Substituting plot_spk_
-% S0 = get(0, 'UserData'); 
+
 if ~isfield(P, 'LineWidth'), P.LineWidth=1; end
-% trWav_clu = ifeq_(P.fWav_raw_show, S_auto.trWav_raw_clu, S_auto.trWav_spk_clu);
 trWav_clu = S0.S_manual.trWav_clu;
-% trWav_clu = clu_mean_wav_(S0);
 [nSamples, nSites, nClu] = size(trWav_clu);
 nChans_show = size(P.miSites, 1);
-sites_clu_ = @(x)P.miSites(:, S0.S_auto.viSite_clu(x));
+sites_clu_ = @(x)P.miSites(:, S0.S_manual.viSite_clu(x));
 
 % determine x
 x_offset = P.spkLim(2) / (diff(P.spkLim)+1); %same for raw and filt
@@ -1130,21 +1085,6 @@ else
 end
 hObj = findobj('Tag', vcTag, 'Type', vcType);
 S_tag_cache_.(vcTag) = hObj;
-end %func
-
-
-%--------------------------------------------------------------------------
-function [viSpk_clu1, viiSpk_clu1] = S_clu_viSpk_(S_auto, iClu1, viSite_spk)
-% get a subset of cluster that is centered
-% return only centered spikes
-% if nargin<2, S0 = get(0, 'UserData'); end
-% S_clu = S0.S_clu;
-if nargin<3, viSite_spk = get0_('viSite_spk'); end
-iSite_clu1 = S_auto.viSite_clu(iClu1);
-viSpk_clu1 = S_auto.cviSpk_clu{iClu1};
-viSite_clu1 = viSite_spk(viSpk_clu1);
-viiSpk_clu1 = find(viSite_clu1 == iSite_clu1);
-viSpk_clu1 = viSpk_clu1(viiSpk_clu1);
 end %func
 
 
@@ -1316,7 +1256,7 @@ end %func
 function  S0 = update_cursor_(S0, iClu, fPaste)
 if isempty(iClu), return; end
 if isempty(S0), S0 = get(0, 'UserData'); end
-nClu = S0.S_auto.nClu;
+nClu = S0.S_manual.nClu;
 % [hFig, S_fig] = get_fig_cache_('FigWav');
 
 if ~isfield(S0, 'hCopy'), S0.hCopy = []; end
@@ -1342,7 +1282,7 @@ end %func
 %--------------------------------------------------------------------------
 function cursor_FigWavCor_(S0)
 if nargin==0, S0 = get(0, 'UserData'); end
-[mrWavCor, nClu] = deal(S0.S_manual.mrWavCor, S0.S_auto.nClu);
+[mrWavCor, nClu] = get_(S0.S_manual ,'mrWavCor', 'nClu');
 
 [hFig, S_fig] = get_fig_cache_('FigWavCor');
 if isempty(S_fig)
@@ -1546,7 +1486,7 @@ else
     set(S_fig.hPatch, 'CData', mrVpp);    
 end
 try
-    iShank1 = P.viShank_site(S_clu.viSite_clu(S0.iCluCopy));
+    iShank1 = P.viShank_site(S_manual.viSite_clu(S0.iCluCopy));
     axis_(S_fig.hAx, S_fig.cell_alim{iShank1});
     vcTitle = sprintf('Max: %0.1f uVpp (Shank %d)', max(vrVpp), iShank1);
 catch
@@ -1557,6 +1497,46 @@ title_(S_fig.hAx, vcTitle);
 caxis(S_fig.hAx, [0, max(vrVpp)]);
 
 set(hFig, 'UserData', S_fig);
+end %func
+
+
+%--------------------------------------------------------------------------
+% Remove leading singular dimension
+% 12/15/17 JJJ: squeeze out specific dimension
+% 7/26/17 JJJ: code cleanup and testing
+function val = squeeze_(val, idimm)
+% val = squeeze_(val) : when squeezeing matrix, transpose if leading dimm is 1
+% val = squeeze_(val, idimm): permute specified dimension out
+size_ = size(val);
+if nargin>=2
+    dimm_ = [setdiff(1:ndims(val), idimm), idimm];
+    val = permute(val, dimm_);
+elseif numel(size_)==2 && size_(1) == 1
+    val = val';
+else
+    val = squeeze(val);
+end
+end
+
+
+%--------------------------------------------------------------------------
+function cell_alim = get_lim_shank_(P)
+vrSiteHW = get_set_(P, 'vrSiteHW', [12,12]);
+nSites = size(P.mrSiteXY,1);
+viShank_site = get_set_(P, 'viShank_site', ones(nSites,1));
+if isempty(viShank_site), viShank_site = ones(nSites,1); end
+
+viShank_unique = 1:max(viShank_site);
+cell_alim = cell(size(viShank_unique));
+[dx, dy] = deal(abs(vrSiteHW(2)), abs(vrSiteHW(1)));
+for iShank = 1:numel(viShank_unique)
+    viSite1 = find(viShank_site == iShank);
+    vrX1 = P.mrSiteXY(viSite1,1);
+    vrY1 = P.mrSiteXY(viSite1,2);    
+    xlim1 = [min(vrX1), max(vrX1)] + [-1,2] * dx;
+    ylim1 = [min(vrY1), max(vrY1)] + [-1,2] * dy;
+    cell_alim{iShank} = [xlim1, ylim1];
+end
 end %func
 
 
@@ -1577,9 +1557,9 @@ if nargin<1, S0 = get(0, 'UserData'); end
 [hFig, S_fig] = get_fig_cache_('FigHist');
 
 nBins_hist = 50; % @TODO: put this in param file
-
+P = S0.P;
 vrX = logspace(0, 4, nBins_hist);
-vrY1 = isi_hist_(S0.iCluCopy, vrX); 
+vrY1 = isi_hist_(S0, S0.iCluCopy, vrX); 
 vcTitle = sprintf('Cluster %d', S0.iCluCopy);
 
 % draw
@@ -1595,7 +1575,7 @@ if isempty(S_fig) %first time the iCluPaste is always empty
 end
 update_plot_(S_fig.hPlot1, vrX, vrY1);
 if ~isempty(S0.iCluPaste)
-    vrY2 = isi_hist_(S0.iCluPaste, vrX);
+    vrY2 = isi_hist_(S0, S0.iCluPaste, vrX);
     vcTitle = sprintf('Cluster %d (black) vs %d (red)', S0.iCluCopy, S0.iCluPaste);
     update_plot_(S_fig.hPlot2, vrX, vrY2);
 else
@@ -1608,9 +1588,9 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function vnHist = isi_hist_(iClu1, vrX)
-P = get0_('P');
-vrTime1 = double(clu_time_(iClu1)) / P.sRateHz;
+function vnHist = isi_hist_(S0, iClu1, vrX)
+
+vrTime1 = double(clu_time_(S0, iClu1)) / S0.P.sRateHz;
 vnHist = hist(diff(vrTime1)*1000, vrX);
 vnHist(end)=0;
 vnHist = vnHist ./ sum(vnHist);
@@ -1623,7 +1603,7 @@ if nargin<1, S0 = get(0, 'UserData'); end
 P = S0.P; 
 [hFig, S_fig] = get_fig_cache_('FigIsi');
 
-[vrX1, vrY1] = get_returnMap_(S0.iCluCopy, P);                        
+[vrX1, vrY1] = get_returnMap_(S0, S0.iCluCopy);
 if isempty(S_fig)
     S_fig.hAx = axes_new_(hFig);
     S_fig.hPlot1 = plot_(S_fig.hAx, nan, nan, 'ko');
@@ -1638,7 +1618,7 @@ if isempty(S_fig)
 end  
 update_plot_(S_fig.hPlot1, vrX1, vrY1);
 if ~isempty(S0.iCluPaste)    
-    [vrX2, vrY2] = get_returnMap_(S0.iCluPaste, P);
+    [vrX2, vrY2] = get_returnMap_(S0, S0.iCluPaste);
     update_plot_(S_fig.hPlot2, vrX2, vrY2);
 else
     update_plot_(S_fig.hPlot2, nan, nan);
@@ -1649,8 +1629,9 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function [vrX, vrY] = get_returnMap_(iClu, P)
-vrTime1 = double(clu_time_(iClu)) / P.sRateHz;
+function [vrX, vrY] = get_returnMap_(S0, iClu)
+P = S0.P;
+vrTime1 = double(clu_time_(S0, iClu)) / P.sRateHz;
 vrIsi1 = diff(vrTime1 * 1000); % in msec
 vrX = vrIsi1(1:end-1);
 vrY = vrIsi1(2:end);
@@ -1661,10 +1642,19 @@ end
 
 
 %--------------------------------------------------------------------------
+function [viTime_clu1, viSpk_clu1] = clu_time_(S0, iClu1)
+% returns time in sec
+[S_manual, viTime_spk] = get_(S0, 'S_manual', 'viTime_spk');
+viSpk_clu1 = S_manual.cviSpk_clu{iClu1};
+viTime_clu1 = viTime_spk(S_manual.cviSpk_clu{iClu1});
+end %func
+
+
+%--------------------------------------------------------------------------
 function plot_FigProj_(S0)
 if nargin<1, S0 = get(0, 'UserData'); end
 P = S0.P;
-viSite_clu = S0.S_auto.viSite_clu;
+viSite_clu = S0.S_manual.viSite_clu;
 [hFig, S_fig] = get_fig_cache_('FigProj');
 
 iClu1 = S0.iCluCopy;
@@ -1751,6 +1741,82 @@ end %func
 
 
 %--------------------------------------------------------------------------
+function keyPressFcn_FigProj_(hFig, event)
+S0 = get(0, 'UserData');
+[P, S_clu] = deal(S0.P, S0.S_clu);
+[hFig, S_fig] = get_fig_cache_('FigProj');
+S_plot1 = get(S_fig.hPlot1, 'UserData');
+viSites_show = S_plot1.viSites_show;
+hFig_wait = figure_wait_(1);
+switch lower(event.Key)
+    case {'uparrow', 'downarrow'}
+        rescale_FigProj_(event, hFig, S_fig, S0);
+
+    case {'leftarrow', 'rightarrow'} % change channels
+        fPlot = 0;
+        if strcmpi(event.Key, 'leftarrow')
+            if min(S_fig.viSites_show)>1
+                S_fig.viSites_show=S_fig.viSites_show-1; 
+                fPlot = 1;
+            end
+        else
+            if max(S_fig.viSites_show) < max(P.viSite2Chan)
+                S_fig.viSites_show=S_fig.viSites_show+1;                 
+                fPlot = 1;
+            end
+        end
+        if fPlot
+            set(hFig, 'UserData', S_fig);
+            S0.P.viSites_show = S_fig.viSites_show;
+            plot_FigProj_(S0);
+        end
+        
+    case 'r' %reset view
+        axis_([0 numel(viSites_show) 0 numel(viSites_show)]);
+
+    case 's' %split
+        figure_wait_(0, hFig_wait);
+        if ~isempty(S0.iCluPaste)
+            msgbox_('Select one cluster to split'); return;
+        end
+        S_plot1 = select_polygon_(S_fig.hPlot1); 
+        if ~isempty(S_plot1)
+            [fSplit, vlIn] = plot_split_(S_plot1);
+            if fSplit
+                S_clu = split_clu_(S0.iCluCopy, vlIn);
+            else
+                update_plot2_proj_();
+            end
+        end
+        
+    case 'm'
+        ui_merge_(S0);
+        
+    case 'f'
+        disp('keyPressFcn_FigProj_: ''f'': not implemented yet');
+        
+    case 'b' %background spikes
+        toggleVisible_(S_fig.hPlot0);
+
+    case 'h' %help
+        msgbox_(S_fig.csHelp, 1);
+end %switch
+figure_wait_(0, hFig_wait);
+end %func
+
+
+%--------------------------------------------------------------------------
+function flag = equal_vr_(vr1, vr2)
+if all(size(vr1) == size(vr2))
+    ml = vr1 == vr2;
+    flag = all(ml(:));
+else
+    flag = 0;
+end
+end %func
+
+
+%--------------------------------------------------------------------------
 function update_plot2_proj_(vrX, vrY)
 if nargin==0, vrX=nan; vrY=nan; end
 [hFig, S_fig] = get_fig_cache_('FigProj');
@@ -1767,60 +1833,158 @@ end
 
 
 %--------------------------------------------------------------------------
+function plot_proj_(hPlot, mrMin, mrMax, P, maxAmp)
+if nargin<5
+    [hFig, S_fig] = get_fig_cache_('FigProj');
+    maxAmp = S_fig.maxAmp;
+end
+[vrX, vrY, viPlot, tr_dim] = amp2proj_(mrMin, mrMax, maxAmp, P.maxSite_show, P);
+
+% make struct
+maxPair = P.maxSite_show;
+viSites_show = P.viSites_show;
+S_plot = makeStruct_(mrMax, mrMin, viSites_show, viPlot, tr_dim, maxPair, maxAmp);
+
+update_plot_(hPlot, vrX, vrY, S_plot);
+end %func
+
+
+%--------------------------------------------------------------------------
+function [vrX, vrY, viPlot, tr_dim] = amp2proj_(mrMin, mrMax, maxAmp, maxPair, P)
+if nargin<4, maxPair = []; end
+if nargin<5, P = get0_('P'); end
+% switch lower(P.vcFet_show)
+%     case {'vpp', 'vmin', 'vmax'}
+%         mrMax = linmap_(mrMax', [0, maxAmp/2], [0,1], 1);
+%         mrMin = linmap_(mrMin', [0, maxAmp], [0,1], 1);
+%     otherwise
+mrMax = linmap_(mrMax', [0, 1] * maxAmp, [0,1], 1);
+mrMin = linmap_(mrMin', [0, 1] * maxAmp, [0,1], 1);            
+% end
+[nEvt, nChans] = size(mrMin);
+if isempty(maxPair), maxPair = nChans; end
+[trX, trY] = deal(nan([nEvt, nChans, nChans], 'single'));
+for chY = 1:nChans
+    vrY1 = mrMin(:,chY);
+    vlY1 = vrY1>0 & vrY1<1;
+    for chX = 1:nChans
+        if abs(chX-chY) > maxPair, continue; end
+        if chY > chX
+            vrX1 = mrMin(:,chX);
+        else
+            vrX1 = mrMax(:,chX);
+        end
+        viPlot1 = find(vrX1>0 & vrX1<1 & vlY1);
+        trX(viPlot1,chY,chX) = vrX1(viPlot1) + chX - 1;
+        trY(viPlot1,chY,chX) = vrY1(viPlot1) + chY - 1;
+    end
+end
+% plot projection
+viPlot = find(~isnan(trX) & ~isnan(trY));
+vrX = trX(viPlot);  vrX=vrX(:);
+vrY = trY(viPlot);  vrY=vrY(:);
+tr_dim = size(trX);
+end %func
+
+
+%--------------------------------------------------------------------------
+function vr = linmap_(vr, lim1, lim2, fSat)
+if nargin< 4
+    fSat = 0;
+end
+if numel(lim1) == 1, lim1 = [-abs(lim1), abs(lim1)]; end
+if numel(lim2) == 1, lim2 = [-abs(lim2), abs(lim2)]; end
+
+if fSat
+    vr(vr>lim1(2)) = lim1(2);
+    vr(vr<lim1(1)) = lim1(1);
+end
+if lim1(1)==lim1(2)
+    vr = vr / lim1(1);
+else
+    vr = interp1(lim1, lim2, vr, 'linear', 'extrap');
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+function [trFet1, viSpk1] = get_fet_clu_(S_manual, iClu1, viSites2)
+% viSites: optional site # to project on
+if nargin<3, viSites2=[]; end
+
+if isempty(iClu1)
+    viClu1 = find(ismember(S_manual.viSite_clu, viSites2));
+    [ctrFet1, cviSpk1] = arrayfun_(@(x)get_fet_clu_(S_manual, x, viSites2), viClu1);
+    trFet1 = cat_(3, ctrFet1);
+    viSpk1 = cat_([], cviSpk1);
+    return;
+end
+iSite1 = S_manual.viSite_clu(iClu1);
+viSite1 = S_manual.P.miSites(:,iSite1);
+viSpk1 = S_manual.cviSpk_sub_clu{iClu1};
+trFet1 = S_manual.ctrFet_sub_clu{iClu1};
+if ~isempty(viSites2)
+    dimm2 = size(trFet1); dimm2(2) = numel(viSites2);
+    trFet2 = zeros(dimm2, 'like', trFet1);
+    [~, vii1, vii2] = intersect(viSite1, viSites2);   
+    if isempty(vii1), return; end
+    for i1 = 1:numel(vii1)
+        trFet2(:,vii2(i1),:) = trFet1(:,vii1(i1),:);
+    end
+    trFet1 = trFet2;
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+function vr1 = cat_(dimm, cell1)
+if isempty(dimm)
+    try
+        vr1 = cat(1, cell1{:});
+    catch
+        vr1 = cat(2, cell1{:});
+    end
+else
+    vr1 = cat(dimm, cell1{:});
+end
+end %func
+
+
+%--------------------------------------------------------------------------
 function [mrMin0, mrMax0, mrMin1, mrMax1, mrMin2, mrMax2] = fet2proj_(S0, viSites0)
 % show spikes excluding the clusters excluding clu1 and 2
-P = S0.P;
-S_auto = S0.S_auto;
-iClu1 = S0.iCluCopy;
-iClu2 = S0.iCluPaste;
 
-% select subset of spikes
-viSpk0 = find(ismember(S0.viSite_spk, viSites0));
-viTime0 = S0.viTime_spk(viSpk0);
-%time filter
-if ~isfield(P, 'tlim_proj'), P.tlim_proj = []; end
-if ~isempty(P.tlim_proj) 
-    nlim_proj = round(P.tlim_proj * P.sRateHz);
-    viSpk01 = find(viTime0>=nlim_proj(1) & viTime0<=nlim_proj(end));
-    viSpk0 = viSpk0(viSpk01);
-    viTime0 = viTime0(viSpk01);
-end
-viClu0 = S_auto.viClu(viSpk0);
-viSpk00 = randomSelect_(viSpk0, P.nShow_proj*2);
-viSpk01 = randomSelect_(viSpk0(viClu0 == iClu1), P.nShow_proj);
+[S_manual, iClu1, iClu2] = get_(S0, 'S_manual', 'iCluCopy', 'iCluPaste');
+trFet_clu0 = get_fet_clu_(S_manual, [], viSites0);
+trFet_clu1 = get_fet_clu_(S_manual, iClu1, viSites0);
 if ~isempty(iClu2)
-    viSpk02 = randomSelect_(viSpk0(viClu0 == iClu2), P.nShow_proj);
+    trFet_clu2 = get_fet_clu_(S_manual, iClu2, viSites0);
+else
+    trFet_clu2 = [];
+end
+fet2pc_ = @(x,i)permute(x(i,:,:),[2,3,1]);
+
+% put these sites in order
+[mrMin0, mrMax0] = deal(fet2pc_(trFet_clu0,1), fet2pc_(trFet_clu0,2)); 
+[mrMin1, mrMax1] = deal(fet2pc_(trFet_clu1,1), fet2pc_(trFet_clu1,2)); 
+if ~isempty(iClu2)  
+    [mrMin2, mrMax2] = deal(fet2pc_(trFet_clu2,1), fet2pc_(trFet_clu2,2)); 
 else
     [mrMin2, mrMax2] = deal([]);
 end
-switch lower(P.vcFet_show)
-    case {'pca'} %channel by channel pca. do it by channel
-        % determine pca vector from cluster 1
-        [mrPv1, mrPv2] = pca_pv_spk_(S_auto.cviSpk_clu{iClu1}, viSites0);
-        [mrMin0, mrMax0] = pca_pc_spk_(viSpk00, viSites0, mrPv1, mrPv2); %getall spikes whose center lies in certain range
-        [mrMin1, mrMax1] = pca_pc_spk_(viSpk01, viSites0, mrPv1, mrPv2); %getall spikes whose center lies in certain range
-        if ~isempty(iClu2)  
-            [mrMin2, mrMax2] = pca_pc_spk_(viSpk02, viSites0, mrPv1, mrPv2);
-        end 
-                
-    case {'ppca', 'private pca'} %channel by channel pca. do it by channel
-        % determine pca vector from cluster 1
-        [mrPv1, mrPv2] = pca_pv_clu_(viSites0, iClu1, iClu2);            
-        [mrMin0, mrMax0] = pca_pc_spk_(viSpk00, viSites0, mrPv1, mrPv2); %getall spikes whose center lies in certain range
-        [mrMin1, mrMax1] = pca_pc_spk_(viSpk01, viSites0, mrPv1, mrPv2); %getall spikes whose center lies in certain range
-        if ~isempty(iClu2)              
-            [mrMin2, mrMax2] = pca_pc_spk_(viSpk02, viSites0, mrPv1, mrPv2);
-        end
         
-    otherwise % generic
-        [mrMin0, mrMax0] = getFet_spk_(viSpk00, viSites0, S0); %getall spikes whose center lies in certain range
-        [mrMin1, mrMax1] = getFet_spk_(viSpk01, viSites0, S0); %getall spikes whose center lies in certain range
-        if ~isempty(iClu2)  
-            [mrMin2, mrMax2] = getFet_spk_(viSpk02, viSites0, S0);
-        end            
-end %switch
-[mrMin0, mrMax0, mrMin1, mrMax1, mrMin2, mrMax2] = ...
-    multifun_(@(x)abs(x), mrMin0, mrMax0, mrMin1, mrMax1, mrMin2, mrMax2);
+% todo
+% switch lower(P.vcFet_show)
+%     case 'vpp'
+%     case 'vmin'
+%         [mrMin0, mrMax0] = getFet_spk_(viSpk00, viSites0, S0); %getall spikes whose center lies in certain range
+%         [mrMin1, mrMax1] = getFet_spk_(viSpk01, viSites0, S0); %getall spikes whose center lies in certain range
+%         if ~isempty(iClu2)  
+%             [mrMin2, mrMax2] = getFet_spk_(viSpk02, viSites0, S0);
+%         end            
+% end %switch
+% [mrMin0, mrMax0, mrMin1, mrMax1, mrMin2, mrMax2] = ...
+%     multifun_(@(x)abs(x), mrMin0, mrMax0, mrMin1, mrMax1, mrMin2, mrMax2);
 end %func
 
 
@@ -1938,6 +2102,663 @@ end %func
 
 
 %--------------------------------------------------------------------------
+function clu_info_(S0)
+% This also plots cluster position
+if nargin<1, S0 = get(0, 'UserData'); end
+csNote_clu = S0.S_manual.csNote_clu;
+mh_info = get_tag_('mh_info', 'uimenu');
+S_clu1 = get_cluInfo_(S0, S0.iCluCopy);
+if ~isempty(S0.iCluPaste)
+    S_clu2 = get_cluInfo_(S0, S0.iCluPaste);
+    vcLabel = sprintf('Unit %d "%s" vs. Unit %d "%s"', ...
+        S0.iCluCopy, csNote_clu{S0.iCluCopy}, ...
+        S0.iCluPaste, csNote_clu{S0.iCluPaste});
+    set(mh_info, 'Label', vcLabel);
+else
+    S_clu2 = [];
+    vcLabel = sprintf('Unit %d "%s"', S0.iCluCopy, csNote_clu{S0.iCluCopy});
+    set(mh_info, 'Label', vcLabel);
+end
+plot_FigPos_(S0, S_clu1, S_clu2);
+end %func
+
+
+%--------------------------------------------------------------------------
+function xyPos = clu_pos_(S0, iClu1)
+% compute cluster centroid based on the subsampled spikes
+
+trFet1 = get_fet_clu_(S0.S_manual, iClu1);
+iSite1 = S0.S_manual.viSite_clu(iClu1);
+nSpk1 = size(trFet1,3);
+mrPos1 = calc_pos_spk_(trFet1, repmat(iSite1, [nSpk1,1]), S0.P);
+xyPos = mean(mrPos1,1);
+end %func
+
+
+%--------------------------------------------------------------------------
+function S_cluInfo = get_cluInfo_(S0, iClu)
+
+% determine cluster position
+if isempty(iClu), S_cluInfo=[]; return; end
+[P, S_manual] = get_(S0, 'P', 'S_manual');
+
+iSite1 = S_manual.viSite_clu(iClu);
+viSite = P.miSites(:, iSite1);
+
+xyPos = clu_pos_(S0, iClu);
+vcPos = sprintf('Unit %d (x,y):(%0.1f, %0.1f)[pix]', iClu, xyPos/P.um_per_pix);
+
+trFet1 = S0.S_manual.ctrFet_sub_clu{iClu};
+nSpk_show = get_set_(P, 'nSpk_show', 30);
+viSpk_show = randomSelect_(1:size(trFet1,3), nSpk_show);
+trWav = pc2wav_(S0.mrPv_global, trFet1(:,:,viSpk_show));
+mrWav_clu = mean(trWav, 3);
+
+% if P.fWav_raw_show
+%     trWav = fft_lowpass_(trWav, get_set_(P, 'fc_spkwav_show', []), P.sRateHz);
+% end
+S_cluInfo = makeStruct_(xyPos, iClu, mrWav_clu, viSite, vcPos, trWav, P);
+try
+    S_cluInfo.l_ratio = S_manual.vrLRatio_clu(iClu);
+    S_cluInfo.isi_ratio = S_manual.vrIsiRatio_clu(iClu);
+    S_cluInfo.iso_dist = S_manual.vrIsoDist_clu(iClu);
+    S_cluInfo.snr = S_manual.vrSnr_clu(iClu);
+    S_cluInfo.uVmin = S_manual.vrVmin_uv_clu(iClu);
+    S_cluInfo.uVpp = S_manual.vrVpp_uv_clu(iClu);
+catch    
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+function plot_FigPos_(S0, S_clu1, S_clu2)
+[hFig, S_fig] = get_fig_cache_('FigPos');
+S_manual = S0.S_manual;
+if nargin<2, S_clu2 = []; end
+
+% plot waveform in space
+if isempty(S_fig)
+    S_fig.hAx = axes_new_(hFig);
+else
+    cla(S_fig.hAx); hold(S_fig.hAx, 'on');
+end
+fPlot_spk = isempty(S_clu2);
+plot_unit_(S_clu1, S_fig.hAx, [0 0 0], fPlot_spk);
+vrPosXY1 = S_clu1.xyPos;
+nSpk1 = S_manual.vnSpk_clu(S_clu1.iClu);
+try
+    if isempty(S_clu2)        
+        vcTitle = sprintf('Unit %d: #spikes:%d; x:%0.1fum; y:%0.1fum', S_clu1.iClu, nSpk1, vrPosXY1);
+        try
+            vcTitle = sprintf('%s\nSNR:%0.1f; %0.1fuVmin; %0.1fuVpp\nIsoD:%0.1f; ISIr:%0.2f; Lrat:%0.2f', ...
+                vcTitle, S_clu1.snr, S_clu1.uVmin, S_clu1.uVpp, S_clu1.iso_dist, S_clu1.isi_ratio, S_clu1.l_ratio);
+        catch
+        end
+    else
+        nSpk2 = S_manual.vnSpk_clu(S_clu2.iClu);
+        vrPosXY2 = S_clu2.xyPos;
+        plot_unit_(S_clu2, S_fig.hAx, [1 0 0], fPlot_spk);
+        vcTitle = sprintf('Units %d/%d (black/red); (%d/%d) spikes\nSNR=%0.1f/%0.1f; (X,Y)=(%0.1f/%0.1f, %0.1f/%0.1f)um', ...
+            S_clu1.iClu, S_clu2.iClu, nSpk1, nSpk2, S_clu1.snr, S_clu2.snr, ...
+            vrPosXY1(1), vrPosXY2(1), vrPosXY1(2), vrPosXY2(2));
+    end
+    title_(S_fig.hAx, vcTitle);
+catch
+    ;
+end
+set(hFig, 'UserData', S_fig);
+end %func
+
+
+%--------------------------------------------------------------------------
+function [hSpk, hSpkAll] = plot_unit_(S_clu1, hAx, vcColor0, fPlot_spk)
+if isempty(S_clu1), return; end
+if nargin<2, hAx = axes_new_('FigWav'); end
+if nargin<3, vcColor0 = [0 0 0]; end
+if nargin<4, fPlot_spk = true; end
+
+P = S_clu1.P;
+[~, S_figWav] = get_fig_cache_('FigWav');
+maxAmp = S_figWav.maxAmp;
+% plot individual unit
+nSamples = size(S_clu1.mrWav_clu,1);
+vrX = (1:nSamples)'/nSamples;
+vrX([1,end])=nan; % line break
+
+if ~fPlot_spk %~isequal(vcColor0, [0 0 0])
+    trWav1 = zeros(1,1,0);
+else
+    trWav1 = S_clu1.trWav;
+end
+
+for iWav = size(trWav1,3):-1:0
+    if iWav==0
+        mrY1 = S_clu1.mrWav_clu / maxAmp;
+        lineWidth=1.5;
+        vcColor = vcColor0;
+    else
+        mrY1 = trWav1(:,:,iWav) / maxAmp;
+        lineWidth=.5;
+        vcColor = .5*[1,1,1];
+    end
+    vrX1_site = P.mrSiteXY(S_clu1.viSite, 1) / P.um_per_pix;
+    vrY1_site = P.mrSiteXY(S_clu1.viSite, 2) / P.um_per_pix;
+    mrY1 = bsxfun(@plus, mrY1, vrY1_site');
+    mrX1 = bsxfun(@plus, repmat(vrX, [1, size(mrY1, 2)]), vrX1_site');
+    line(mrX1(:), mrY1(:), 'Color', vcColor, 'Parent', hAx, 'LineWidth', lineWidth);
+end
+
+xlabel(hAx, 'X pos [pix]');
+ylabel(hAx, 'Z pos [pix]');
+grid(hAx, 'on');
+xlim_(hAx, [min(mrX1(:)), max(mrX1(:))]);
+ylim_(hAx, [floor(min(mrY1(:))-1), ceil(max(mrY1(:))+1)]);
+end %func
+
+
+%--------------------------------------------------------------------------
+function rescale_FigWav_(event, S0, P)
+% set(0, 'UserData', S0);
+
+[S_fig, maxAmp_prev, hFigWav] = set_fig_maxAmp_('FigWav', event);                
+set_fig_(hFigWav, plot_tnWav_clu_(S_fig, P, S0));
+multiplot(S0.hCopy, S_fig.maxAmp);
+if ~isempty(S0.iCluPaste)
+    multiplot(S0.hPaste, S_fig.maxAmp);
+end
+rescale_spikes_(S_fig.hSpkAll, maxAmp_prev, P);
+title_(S_fig.hAx, sprintf(S_fig.vcTitle, S_fig.maxAmp)); %update scale
+end
+
+
+%--------------------------------------------------------------------------
+function plot_FigTime_(S0)
+% plot FigTime window. Uses subsampled data
+
+S_manual = S0.S_manual; 
+P = S0.P; 
+[hFig, S_fig] = get_fig_cache_('FigTime');
+
+%----------------
+% collect info
+iSite = S_manual.viSite_clu(S0.iCluCopy);
+[vrFet0, vrTime0] = getFet_site_(iSite, [], S0);    % plot background    
+[vrFet1, vrTime1, vcYlabel, viSpk1] = getFet_site_(iSite, S0.iCluCopy, S0); % plot iCluCopy
+
+vcTitle = '[H]elp; (Sft)[Left/Right]:Sites/Features; (Sft)[Up/Down]:Scale; [B]ackground; [S]plit; [R]eset view; [P]roject; [M]erge; (sft)[Z] pos; [E]xport selected; [C]hannel PCA';
+if ~isempty(S0.iCluPaste)
+    [vrFet2, vrTime2] = getFet_site_(iSite, S0.iCluPaste, S0);
+    vcTitle = sprintf('Clu%d (black), Clu%d (red); %s', S0.iCluCopy, S0.iCluPaste, vcTitle);
+else
+    vrFet2 = [];
+    vrTime2 = [];
+    vcTitle = sprintf('Clu%d (black); %s', S0.iCluCopy, vcTitle);
+end
+time_lim = double([0, abs(S0.viTime_spk(end))] / P.sRateHz);
+
+%------------
+% draw
+if isempty(S_fig)
+    S_fig.maxAmp = P.maxAmp;
+    S_fig.hAx = axes_new_(hFig);
+    set(S_fig.hAx, 'Position', [.05 .2 .9 .7], 'XLimMode', 'manual', 'YLimMode', 'manual');
+    grid(S_fig.hAx, 'on');
+    
+    % first time
+    S_fig.hPlot0 = line(nan, nan, 'Marker', '.', 'Color', P.mrColor_proj(1,:), 'MarkerSize', 3, 'LineStyle', 'none');
+    S_fig.hPlot1 = line(nan, nan, 'Marker', '.', 'Color', P.mrColor_proj(2,:), 'MarkerSize', 5, 'LineStyle', 'none');
+    S_fig.hPlot2 = line(nan, nan, 'Marker', '.', 'Color', P.mrColor_proj(3,:), 'MarkerSize', 5, 'LineStyle', 'none');   %place holder  
+    xlabel(S_fig.hAx, 'Time (s)');         
+    
+    set(hFig, 'KeyPressFcn', @keyPressFcn_FigTime_);
+    S_fig.cvhHide_mouse = mouse_hide_(hFig, S_fig.hPlot0, S_fig);
+    if ~isempty(P.time_tick_show) %tick mark
+        set(S_fig.hAx, 'XTick', time_lim(1):P.time_tick_show:time_lim(end));
+    end
+end
+vpp_lim = [0, abs(S_fig.maxAmp)];
+% iFet = S_fig.iFet;
+% iFet = 1;
+if ~isfield(S_fig, 'iSite'), S_fig.iSite = []; end
+update_plot_(S_fig.hPlot0, vrTime0, vrFet0);
+update_plot_(S_fig.hPlot1, vrTime1, vrFet1);
+update_plot_(S_fig.hPlot2, vrTime2, vrFet2);
+mouse_figure(hFig, S_fig.hAx); % allow zoom using wheel
+% button click function to select individual spikes, all spikes plotted
+
+if isfield(S_fig, 'vhAx_track')
+    toggleVisible_({S_fig.vhAx_track, S_fig.hPlot0_track, S_fig.hPlot1_track, S_fig.hPlot2_track}, 0);
+end
+
+if ~isfield(S_fig, 'fPlot0'), S_fig.fPlot0 = 1; end
+toggleVisible_(S_fig.hPlot0, S_fig.fPlot0);
+
+axis_(S_fig.hAx, [time_lim, vpp_lim]);
+title_(S_fig.hAx, vcTitle);    
+ylabel(S_fig.hAx, vcYlabel);
+
+S_fig = struct_merge_(S_fig, makeStruct_(iSite, time_lim, P, vpp_lim, viSpk1));
+S_fig.csHelp = {...
+    'Up/Down: change channel', ...
+    'Left/Right: Change sites', ...
+    'Shift + Left/Right: Show different features', ...
+    'r: reset scale', ...
+    'a: auto-scale', ...
+    'c: show pca across sites', ...
+    'e: export cluster info', ...
+    'f: export cluster feature', ...
+    'Zoom: mouse wheel', ...
+    'H-Zoom: press x and wheel. space to reset', ...
+    'V-Zoom: press y and wheel. space to reset', ...
+    'Drag while pressing wheel: pan'};
+        
+set(hFig, 'UserData', S_fig);
+end %func
+
+
+%--------------------------------------------------------------------------
+function [vrFet1, vrTime1, vcYlabel, viSpk1] = getFet_site_(iSite, iClu, S0)
+% just specify iSite to obtain background info
+% 2016 07 07 JJJ
+% return feature correspojnding to a site and cluster
+% requiring subsampled info: cvrVpp_site and cmrFet_site. store in S0
+
+if nargin < 2, iClu = []; end
+P = S0.P;
+
+
+if ~isfield(P, 'vcFet_show'), P.vcFet_show = 'vpp'; end
+if isempty(iClu)
+    viSite = S0.P.miSites(1:P.nSites_fet,iSite);
+    [vrFet1, viSpk1] = get_fet_clu_(S0.S_manual, iClu, viSite);
+    vrFet1 = abs(squeeze(vrFet1(1,1,:)));
+else
+    [vrFet1, viSpk1] = get_fet_clu_(S0.S_manual, iClu, iSite);
+    vrFet1 = abs(squeeze(vrFet1(1,1,:)));
+end
+vrTime1 = double(S0.viTime_spk(viSpk1)) / P.sRateHz;
+vcYlabel = sprintf('Site %d (PC)', iSite);
+% % label
+% switch lower(P.vcFet_show)
+%     case {'vpp', 'vmin'} %voltage feature
+%         vcYlabel = sprintf('Site %d (\\mu%s)', iSite, P.vcFet_show);
+%     otherwise %other feature options
+%         vcYlabel = sprintf('Site %d (%s)', iSite, P.vcFet_show);
+% end
+
+end %func 
+
+
+%--------------------------------------------------------------------------
+% 122917 JJJ: modified
+function S_fig = rescale_FigProj_(event, hFig, S_fig, S0)
+% S_fig = rescale_FigProj_(event, hFig, S_fig, S0)
+% S_fig = rescale_FigProj_(maxAmp)
+
+if nargin<2, hFig = []; end
+if nargin<3, S_fig = []; end
+if nargin<4, S0 = []; end
+if isempty(hFig) || isempty(S_fig), [hFig, S_fig] = get_fig_cache_('FigProj'); end
+if isempty(S0), S0 = get(0, 'UserData'); end
+P = S0.P;
+
+if isnumeric(event)
+    S_fig.maxAmp = event;
+else
+    S_fig.maxAmp = change_amp_(event, S_fig.maxAmp);     
+end
+vhPlot = [S_fig.hPlot0, S_fig.hPlot1, S_fig.hPlot2];
+if isempty(S0.iCluPaste), vhPlot(end) = []; end
+rescaleProj_(vhPlot, S_fig.maxAmp, S0.P);
+switch lower(P.vcFet_show)
+    case {'vpp', 'vmin', 'vmax'}
+        S_fig.vcXLabel = 'Site # (%0.0f \\muV; upper: V_{min}; lower: V_{max})';
+        S_fig.vcYLabel = 'Site # (%0.0f \\muV_{min})';
+    otherwise
+        S_fig.vcXLabel = sprintf('Site # (%%0.0f %s; upper: %s1; lower: %s2)', P.vcFet_show, P.vcFet_show, P.vcFet_show);
+        S_fig.vcYLabel = sprintf('Site # (%%0.0f %s)', P.vcFet_show);    
+end
+xlabel(S_fig.hAx, sprintf(S_fig.vcXLabel, S_fig.maxAmp));   
+ylabel(S_fig.hAx, sprintf(S_fig.vcYLabel, S_fig.maxAmp));  
+if nargout==0
+    set(hFig, 'UserData', S_fig);
+end
+end
+
+
+%--------------------------------------------------------------------------
+function rescale_FigTime_(event, S0)
+% rescale_FigTime_(event, S0, P)
+% rescale_FigTime_(maxAmp, S0, P)
+if nargin<2, S0 = []; end
+
+if isempty(S0), S0 = get0_(); end
+
+[S_fig, maxAmp_prev] = set_fig_maxAmp_('FigTime', event);
+ylim_(S_fig.hAx, [0, 1] * S_fig.maxAmp);
+% imrect_set_(S_fig.hRect, [], [0, S_fig.maxAmp]);
+iSite = S0.S_manual.viSite_clu(S0.iCluCopy);
+end %func
+
+
+%--------------------------------------------------------------------------
+function [S_fig, maxAmp_prev, hFig] = set_fig_maxAmp_(vcFig, event)
+[hFig, S_fig] = get_fig_cache_(vcFig);
+if isempty(S_fig)
+    P = get0_('P');
+    S_fig.maxAmp = P.maxAmp;
+end
+maxAmp_prev = S_fig.maxAmp;
+if isnumeric(event)
+    S_fig.maxAmp = event;
+else
+    S_fig.maxAmp = change_amp_(event, maxAmp_prev);
+end
+set(hFig, 'UserData', S_fig);
+end
+
+
+%--------------------------------------------------------------------------
+function rescaleProj_(vhPlot1, maxAmp, P)
+if nargin<3, P = get0_('P'); end
+for iPlot=1:numel(vhPlot1)
+    hPlot1 = vhPlot1(iPlot);
+    S_plot1 = get(hPlot1, 'UserData');
+    update_plot2_proj_();
+    S_plot1 = struct_delete_(S_plot1, 'hPoly'); %, 'hPlot_split'
+    [vrX, vrY, viPlot, tr_dim] = amp2proj_(S_plot1.mrMin, S_plot1.mrMax, maxAmp, P.maxSite_show, P);
+    S_plot1 = struct_add_(S_plot1, viPlot, vrX, vrY, maxAmp);
+    set(hPlot1, 'XData', vrX, 'YData', vrY, 'UserData', S_plot1);
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+function S = struct_delete_(S, varargin)
+% delete and set to empty
+
+for i=1:numel(varargin)
+    try 
+        delete(S.(varargin{i}));
+        S.(varargin{i}) = [];
+    catch
+        ;
+    end
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+% 8/2/17 JJJ: Documentation and test
+function varargout = get0_(varargin)
+% returns get(0, 'UserData') to the workspace
+% [S0, P] = get0_();
+% [S0, P, S_clu] = get0_();
+% [var1, var2] = get0_('var1', 'var2'); %sets [] if doesn't exist
+S0 = get(0, 'UserData'); 
+if ~isfield(S0, 'S_clu'), S0.S_clu = []; end
+if nargin==0
+    varargout{1} = S0; 
+    if nargout==0, assignWorkspace_(S0); return; end
+    if nargout>=1, varargout{1} = S0; end
+    if nargout>=2, varargout{2} = S0.P; end
+    if nargout>=3, varargout{3} = S0.S_clu; end
+    return;
+end
+for i=1:nargin
+    try                
+        eval(sprintf('%s = S0.%s;', varargin{i}, varargin{i}));
+        varargout{i} = S0.(varargin{i});
+    catch
+        varargout{i} = [];
+    end
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+function [maxAmp, mrAmp_prev] = change_amp_(event, maxAmp, varargin)
+% varargin: plot object to rescale
+% Change amplitude scaling 
+% change_amp_(event, maxAmp, varargin)
+% change_amp_(event) % directly set
+% if nargin<3, hPlot=[]; end
+factor = sqrt(2);
+if key_modifier_(event, 'shift'), factor = factor ^ 4; end
+if isempty(maxAmp)
+    vhLine = varargin(:);
+    vhLine = vhLine(~isempty_(vhLine));
+    maxAmp = get_userdata_(vhLine{1}, 'scale');
+end
+mrAmp_prev = maxAmp;
+if strcmpi(event.Key, 'uparrow')
+    maxAmp = maxAmp / factor;
+elseif strcmpi(event.Key, 'downarrow')
+    maxAmp = maxAmp * factor;
+end
+for iPlot = 1:numel(varargin)
+    try
+        multiplot(varargin{iPlot}, maxAmp);
+    catch            
+    end
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+function val = get_userdata_(h, vcName, fDelete)
+% fDelete: delete the field after retrieving
+val = [];
+if nargin<3, fDelete = 0; end
+try
+    S_userdata = get(h, 'UserData');
+    if ~isfield(S_userdata, vcName), return; end
+    val = S_userdata.(vcName);
+    if fDelete
+        set(h, 'UserData', rmfield(S_userdata, vcName));
+    end
+catch
+    val = [];
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+function plot_FigCorr_(S0)
+% hFigCorr plot
+jitter_ms = .5; % bin size for correlation plot
+nLags_ms = 25; %show 25 msec
+
+if nargin<1, S0 = get(0, 'UserData'); end
+P = S0.P; 
+S_manual = S0.S_manual;
+P.jitter_ms = jitter_ms;
+P.nLags_ms = nLags_ms;
+
+[hFig, S_fig] = get_fig_cache_('FigCorr'); 
+iClu1 = get_set_(S0, 'iCluCopy', 1);
+iClu2 = get_(S0, 'iCluPaste');
+if isempty(iClu2), iClu2 = iClu1; end
+
+jitter = round(P.sRateHz / 1000 * P.jitter_ms); %0.5 ms
+nLags = round(P.nLags_ms / P.jitter_ms);
+
+vi1 = int32(double(clu_time_(S0, iClu1)) /jitter);
+
+if iClu1~=iClu2
+    vi1 = [vi1, vi1-1, vi1+1]; %allow missing one
+end
+vi2 = int32(double(clu_time_(S0, iClu2)) /jitter);
+viLag = -nLags:nLags;
+vnCnt = zeros(size(viLag));
+for iLag=1:numel(viLag)
+    if iClu1 == iClu2 && viLag(iLag)==0, continue; end
+    vnCnt(iLag) = numel(intersect(vi1, vi2+viLag(iLag)));
+end
+vrTime_lag = viLag * P.jitter_ms;
+
+%--------------
+% draw
+if isempty(S_fig)
+    S_fig.hAx = axes_new_(hFig);
+    S_fig.hBar = bar_(vrTime_lag, vnCnt, 1);     
+    xlabel('Time (ms)'); 
+    ylabel('Counts');
+    grid on; 
+    set(S_fig.hAx, 'YScale', 'log');
+else
+    set(S_fig.hBar, 'XData', vrTime_lag, 'YData', vnCnt);
+end
+if iClu1==iClu2
+    title_(S_fig.hAx, sprintf('Clu%d', iClu1));
+else
+    title_(S_fig.hAx, sprintf('Clu%d vs Clu%d', iClu1, iClu2));
+end
+xlim_(S_fig.hAx, [-nLags, nLags] * P.jitter_ms);
+set(hFig, 'UserData', S_fig);
+end %func
+
+
+%--------------------------------------------------------------------------
+function hPlot = bar_(varargin)
+try hPlot = bar(varargin{:}); catch, hPlot = []; end
+end %func
+
+
+%--------------------------------------------------------------------------
+function hPlot = stem_(varargin)
+try hPlot = stem(varargin{:}); catch, hPlot = []; end
+end %func
+
+
+%--------------------------------------------------------------------------
+function S_txt = loadjson_(vcArg_txt)
+S_txt=[]; 
+if ~exist_file_(vcArg_txt), return; end
+addpath_('jsonlab-1.5/');
+S_txt = loadjson(vcArg_txt);
+end %func
+
+
+%--------------------------------------------------------------------------
+function vl = isempty_(cvr)
+if iscell(cvr)
+    vl = cellfun(@isempty, cvr);
+else
+    vl = isempty(cvr);
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+function keyPressFcn_FigTime_(hObject, event, S0)
+
+if nargin<3, S0 = get(0, 'UserData'); end
+[P, S_manual, hFig] = deal(S0.P, S0.S_manual, hObject);
+S_fig = get(hFig, 'UserData');
+
+nSites = numel(P.viSite2Chan);
+switch lower(event.Key)
+    case {'leftarrow', 'rightarrow'}
+        if ~isVisible_(S_fig.hAx)
+            msgbox_('Channel switching is disabled in the position view'); return; 
+        end
+        factor = key_modifier_(event, 'shift')*3 + 1;
+        if strcmpi(event.Key, 'rightarrow')
+            S_fig.iSite = min(S_fig.iSite + factor, nSites);
+        else
+            S_fig.iSite = max(S_fig.iSite - factor, 1);
+        end
+        set(hFig, 'UserData', S_fig);        
+        update_FigTime_(S0);                
+
+    case {'uparrow', 'downarrow'} %change ampl
+        if ~isVisible_(S_fig.hAx)
+            msgbox_('Zoom is disabled in the position view'); return; 
+        end
+        rescale_FigTime_(event, S0, P);
+        
+    case 'r' %reset view
+        if ~isVisible_(S_fig.hAx), return; end
+        axis_(S_fig.hAx, [S_fig.time_lim, S_fig.vpp_lim]);
+        imrect_set_(S_fig.hRect, S_fig.time_lim, S_fig.vpp_lim);
+
+    case 'm' %merge
+        ui_merge_(S0);
+        
+    case 'h' %help
+        msgbox_(S_fig.csHelp, 1);
+        
+    case 'b' %background spike toggle
+        if isVisible_(S_fig.hAx)  
+            S_fig.fPlot0 = toggleVisible_(S_fig.hPlot0);
+        else
+            S_fig.fPlot0 = toggleVisible_(S_fig.hPlot0_track);
+        end
+        set(hFig, 'UserData', S_fig);
+        
+    case 't'
+        plot_FigTime_(S0);
+        
+    case 's' %split. draw a polygon
+        if ~isempty(S0.iCluPaste)
+            msgbox_('Select one cluster'); return;
+        end
+        try
+            hPoly = impoly_();
+            if isempty(hPoly); return; end
+            mrPolyPos = getPosition(hPoly);
+            vrX1 = double(get(S_fig.hPlot1, 'XData'));
+            vrY1 = double(get(S_fig.hPlot1, 'YData'));
+            vlIn = inpolygon(vrX1, vrY1, mrPolyPos(:,1), mrPolyPos(:,2));
+            hSplit = line(vrX1(vlIn), vrY1(vlIn), 'Color', [1 0 0], 'Marker', '.', 'LineStyle', 'none');
+            if strcmpi(questdlg_('Split?', 'Confirmation', 'Yes'), 'yes')
+                split_clu_(S0.iCluCopy, vlIn);
+            end
+            delete_multi_(hPoly, hSplit);
+        catch
+            disp(lasterror());
+        end
+        
+    case 'p' %update projection view
+        vrPos = getPosition(S_fig.hRect);
+        tlim_proj = [vrPos(1), sum(vrPos([1,3]))];
+        P.tlim_proj = tlim_proj;
+        plot_FigProj_(S0);        
+end %switch
+end %func
+
+
+%--------------------------------------------------------------------------
+function update_FigTime_(S0)
+% display features in a new site
+
+[hFig, S_fig] = get_fig_cache_('FigTime');
+if ~isVisible_(S_fig.hAx), return; end
+[vrFet0, vrTime0, vcYlabel] = getFet_site_(S_fig.iSite, [], S0);
+if ~isfield(S_fig, 'fPlot0'), S_fig.fPlot0 = 1; end
+toggleVisible_(S_fig.hPlot0, S_fig.fPlot0);
+update_plot_(S_fig.hPlot0, vrTime0, vrFet0);
+set(S_fig.hPlot1, 'YData', getFet_site_(S_fig.iSite, S0.iCluCopy, S0));
+if ~isempty(S0.iCluPaste)
+    set(S_fig.hPlot2, 'YData', getFet_site_(S_fig.iSite, S0.iCluPaste, S0));
+else
+    hide_plot_(S_fig.hPlot2);
+end
+ylim_(S_fig.hAx, [0, 1] * S_fig.maxAmp);
+% imrect_set_(S_fig.hRect, [], [0, 1] * S_fig.maxAmp);    
+grid(S_fig.hAx, 'on');
+ylabel(S_fig.hAx, vcYlabel);
+end %func
+
+
+%--------------------------------------------------------------------------
+function flag = isVisible_(hObj)
+flag = strcmpi(get(hObj, 'Visible'), 'on');
+end %func
+
+
+%--------------------------------------------------------------------------
 % irc2.m
 function varargout = load0_(varargin), cell_out = call_irc2_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = is_sorted_(varargin), cell_out = call_irc2_(dbstack(), varargin, nargout); varargout = cell_out; end
@@ -1951,25 +2772,58 @@ function varargout = validate_(varargin), cell_out = call_irc2_(dbstack(), varar
 function varargout = pc2wav_(varargin), cell_out = call_irc2_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = wavcor_(varargin), cell_out = call_irc2_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = describe_(varargin), cell_out = call_irc2_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = calc_pos_spk_(varargin), cell_out = call_irc2_(dbstack(), varargin, nargout); varargout = cell_out; end
 
 %--------------------------------------------------------------------------
 % irc.m
 
-function varargout = clu_info_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = plot_raster_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = plot_split_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = select_polygon_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = calc_cov_spk_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = pca_pc_spk_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = get_spkwav_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = rescale_spikes_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
+% function varargout = keyPressFcn_FigTime_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = imrect_set_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = assignWorkspace_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = addpath_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = ui_show_elective_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
+
+function varargout = export_csv_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = export_klusters_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = export_mrWav_clu_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = export_phy_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = export_quality_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = export_rate_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = export_tmrWav_clu_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = export_tnWav_spk_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = help_FigWav_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = issue_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = merge_auto_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = open_prm_folder_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = plot_drift_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = proj_view_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = reload_prm_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = save_figures_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = save_manual_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = traces_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = ui_show_all_chan_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = ui_show_drift_view_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = unit_annotate_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = wiki_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = delete_multi_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = get_fig_all_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
+
+% function varargout = clu_info_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = figure_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = key_modifier_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
-function varargout = plot_FigCorr_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
-% function varargout = plot_FigHist_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
-% function varargout = plot_FigIsi_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
-% function varargout = plot_FigProj_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
-function varargout = plot_FigTime_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
+% function varargout = plot_FigCorr_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = plot_psth_trial_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
-function varargout = rescale_FigWav_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = reset_position_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = toggleVisible_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = ui_delete_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = ui_merge_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
-function varargout = ui_zoom_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = update_FigCor_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = update_spikes_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = about_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
@@ -1978,14 +2832,12 @@ function varargout = delete_auto_(varargin), cell_out = call_irc_(dbstack(), var
 function varargout = edit_prm_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = keyPressFcn_FigWavCor_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = button_FigWavCor_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
-% function varargout = plotDiag_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = axes_new_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = plot_update_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = plot_group_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = impoly_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = split_clu_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = tnWav2uV_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
-% function varargout = tnWav_spk_sites_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = wave_split_manual_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = auto_split_wav_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = plot_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
