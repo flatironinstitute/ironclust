@@ -11,7 +11,7 @@ end
 S0 = load0_(P.vcFile_prm);
 
 % S_manual
-S0.S_manual = load_(strrep(P.vcFile_prm, '.prm', '_ui_irc.mat'));
+S0.S_manual = load_(strrep(P.vcFile_prm, '.prm', '_manual_irc.mat'));
 if ~isempty(S0.S_manual)
     if strcmpi(questdlg_('Load last saved?', 'Confirmation'), 'no')
         S0.S_manual=[];
@@ -26,15 +26,17 @@ close_(get_fig_('FigTrial_b')); %close previous FigTrial figure
 S0 = struct_merge_(S0, ...
     struct('iCluCopy', 1, 'iCluPaste', [], 'hCopy', [], 'hPaste', [], 'nSites', numel(P.viSite2Chan)));
 S0 = struct_merge_(S0, figures_manual_(P)); %create figures for manual interface
-set(0, 'UserData', S0);
 
 hMsg = msgbox_('Plotting... (this closes automatically)'); t1=tic;
 plot_FigRD_(S0); % ask user before doing so
 plot_FigWav_(S0); % hFigWav %do this after for ordering
 plot_FigWavCor_(S0);  
-button_CluWav_simulate_(1, [], S0); %select first clu
+S0 = button_CluWav_simulate_(1, [], S0); %select first clu
 auto_scale_proj_time_(S0);
 keyPressFcn_cell_(get_fig_cache_('FigWav'), {'z'}, S0); %zoom
+set(0, 'UserData', S0);
+
+% logging
 % S_log = load_(strrep(P.vcFile_prm, '.prm', '_log.mat'), [], 0);
 % if ~isempty(S_log), S0.cS_log = {S_log}; end
 % save_log_('start', S0); %crash proof log
@@ -74,12 +76,11 @@ if isempty(S_fig) % initialize
     S_fig.cvhHide_mouse = mouse_hide_(hFig, S_fig.hSpkAll, S_fig);
 %     set(hFig, 'OuterPosition', vrPos_);
 else
-%     mh_info = [];
     S_fig = plot_spkwav_(S_fig, S0); %plot spikes
     try delete(S_fig.vhPlot); catch; end %delete old text
     S_fig = rmfield_(S_fig, 'vhPlot');
     S_fig = plot_tnWav_clu_(S_fig, P, S0); %do this after plotSpk_
-%     xylabel_(S_fig.hAx, 'Cluster #', 'Site #');
+    xylabel_(S_fig.hAx, 'Cluster #', 'Site #', sprintf(S_fig.vcTitle, S_fig.maxAmp));
 end
 
 % create text
@@ -530,8 +531,7 @@ try
     if ~ishandle(src), return; end
     if ~isvalid(src), return; end
     S0 = get(0, 'UserData'); 
-    P = S0.P;
-    fExit = save_manual_(P);
+    fExit = save_manual_();
     if ~fExit, return; end 
     % These figures get closed when the main window gets closed.    
     csFig_close = {'FigPos', 'FigMap', 'FigTime', 'FigWav', 'FigWavCor', ...
@@ -884,13 +884,13 @@ hFig_wait = figure_wait_(1);
 S0 = update_cursor_(S0, iCluCopy, 0);
 S0 = update_cursor_(S0, iCluPaste, 1);
 S0 = keyPressFcn_cell_(get_fig_cache_('FigWav'), {'j','t','c','i','v','e','f'}, S0); %'z' to recenter
-set(0, 'UserData', S0);
 
 auto_scale_proj_time_(S0);
 figure_wait_(0, hFig_wait);
 
 plot_raster_(S0); %psth
 ui_show_elective_();
+if nargout==0, set(0, 'UserData', S0); end
 end
 
 
@@ -1253,7 +1253,7 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function  S0 = update_cursor_(S0, iClu, fPaste)
+function S0 = update_cursor_(S0, iClu, fPaste)
 if isempty(iClu), return; end
 if isempty(S0), S0 = get(0, 'UserData'); end
 nClu = S0.S_manual.nClu;
@@ -2759,6 +2759,43 @@ end %func
 
 
 %--------------------------------------------------------------------------
+function update_spikes_(S0)
+
+hMsg = msgbox_open_('Updating spikes');
+fig_prev = gcf;
+hFig_wait = figure_wait_(1);
+[~, S_fig] = get_fig_cache_('FigWav');
+plot_spkwav_(S_fig, S0);
+close_(hMsg);
+figure_wait_(0, hFig_wait);
+figure(fig_prev);
+end %func
+
+
+%--------------------------------------------------------------------------
+function fExit = save_manual_(varargin)
+% just save S_manual
+
+S0 = get0_();
+P = S0.P;
+vcFile_manual = subsFileExt_(P.vcFile_prm, '_manual_irc.mat');
+fExit = 1;
+switch lower(questdlg_(['Save to ', vcFile_manual, ' ?'], 'Confirmation', 'Yes'))
+    case 'yes'
+        hMsg = msgbox_('Saving... (this closes automatically)');
+        struct_save_(S0.S_manual, vcFile_manual); % 1 will skip figure saving
+        fExit = 1;
+        close_(hMsg);
+    case 'no'
+        fExit = 1;
+    case 'cancel' 
+        fExit = 0;
+        return;
+end
+end %func;
+
+
+%--------------------------------------------------------------------------
 % irc2.m
 function varargout = load0_(varargin), cell_out = call_irc2_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = is_sorted_(varargin), cell_out = call_irc2_(dbstack(), varargin, nargout); varargout = cell_out; end
@@ -2773,10 +2810,13 @@ function varargout = pc2wav_(varargin), cell_out = call_irc2_(dbstack(), varargi
 function varargout = wavcor_(varargin), cell_out = call_irc2_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = describe_(varargin), cell_out = call_irc2_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = calc_pos_spk_(varargin), cell_out = call_irc2_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = struct_save_(varargin), cell_out = call_irc2_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = subsFileExt_(varargin), cell_out = call_irc2_(dbstack(), varargin, nargout); varargout = cell_out; end
 
 %--------------------------------------------------------------------------
 % irc.m
 
+function varargout = msgbox_open_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = plot_raster_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = plot_split_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = select_polygon_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
@@ -2784,7 +2824,6 @@ function varargout = calc_cov_spk_(varargin), cell_out = call_irc_(dbstack(), va
 function varargout = pca_pc_spk_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = get_spkwav_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = rescale_spikes_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
-% function varargout = keyPressFcn_FigTime_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = imrect_set_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = assignWorkspace_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = addpath_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
@@ -2806,7 +2845,6 @@ function varargout = plot_drift_(varargin), cell_out = call_irc_(dbstack(), vara
 function varargout = proj_view_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = reload_prm_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = save_figures_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
-function varargout = save_manual_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = traces_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = ui_show_all_chan_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = ui_show_drift_view_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
@@ -2825,7 +2863,7 @@ function varargout = toggleVisible_(varargin), cell_out = call_irc_(dbstack(), v
 function varargout = ui_delete_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = ui_merge_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = update_FigCor_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
-function varargout = update_spikes_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
+% function varargout = update_spikes_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = about_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = clipboard_prm_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = delete_auto_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end

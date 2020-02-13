@@ -5,6 +5,9 @@ MAX_BYTES_LOAD = .5e9;
 nThreads_rho = 1024;        % number of threads in GPU
 nThreads_delta = 512;        % number of threads in GPU
 
+% [Display parameters for manual clustering]
+maxAmp = 500;               % Amplitude range in uV (initial setting, changeable in UI) (*)
+
 % [Detect stage: filter and detect spikes]
 vcFilter = 'bandpass';
 freqLim = [500, inf];

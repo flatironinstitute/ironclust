@@ -161,6 +161,7 @@ switch lower(vcCmd)
     case {'test-mcc', 'test_mcc', 'testmcc'}, test_mcc_(vcArg1); return;
     case 'test'
         vcDir_in = get_test_data_(vcArg1);
+        vcDir_out = '';
         [fDetect, fSort, fValidate] = deal(1, 1, 1);
     case 'test-all', test_all_(); return;
 %     case 'export', irc('export', vcArg1); return;
@@ -707,13 +708,13 @@ end %func
 %--------------------------------------------------------------------------
 function S_score_plot_(S_score, S_cfg)
 
+[fShow_text, SNR_MAX] = deal(1, 20);
+
 if nargin<2, S_cfg=[]; end
 if isempty(S_cfg)
     S_cfg = get_(S_score, 'S_cfg');
 end
 if isempty(S_cfg), S_cfg = read_cfg_(); end
-
-SNR_MAX = 20;
 
 vrSnr_gt = get_(S_score, 'vrSnr_gt');
 if ~isempty(vrSnr_gt)
@@ -754,11 +755,11 @@ disp_stats_(S_score.vrPrecision_clu(vlClu), ['vrPrecision_clu', vcSnr_clu]);
 disp_stats_(S_score.vrRecall_clu(vlClu), ['vrRecall_clu', vcSnr_clu]);
 fprintf('\n');
 
-if false
+if fShow_text
     csText_gt = arrayfun_(@(x)sprintf('%d',x), 1:numel(vrSnr_gt))';  
     csText_clu = arrayfun_(@(x)sprintf('%d',x), 1:numel(vrSnr_clu))';
-    text_gt_(x) = @(x)text_(vrSnr_gt, S_score.(x), csText_gt, 'VerticalAlignment', 'top', 'HorizontalAlignment', 'left')
-    text_clu_(x) = @(x)text_(vrSnr_clu, S_score.(x), csText_clu, 'VerticalAlignment', 'top', 'HorizontalAlignment', 'left')
+    text_gt_ = @(x)text_(vrSnr_gt, S_score.(x), csText_gt, 'VerticalAlignment', 'top', 'HorizontalAlignment', 'left');
+    text_clu_ = @(x)text_(vrSnr_clu, S_score.(x), csText_clu, 'VerticalAlignment', 'top', 'HorizontalAlignment', 'left');
 else
     text_gt_ = @(x)'';
     text_clu_ = @(x)'';
@@ -1019,7 +1020,7 @@ if fCompute_snr_mda
     mrWav_filt = [];
     if exist_file_(vcFile_filt)
         fprintf('\tLoading from %s...', vcFile_filt); 
-        try, mrWav_filt = readmda_(vcFile_filt); catch; end
+        try mrWav_filt = readmda_(vcFile_filt); catch; end
         fprintf(' took %0.1fs\n', toc(t1));
     end
     if isempty(mrWav_filt)
@@ -1819,7 +1820,7 @@ S_auto = postCluster_(S0.S_clu, P, S0.viSite_spk); % peak merging
 S_auto = wave_ccm_merge_(S0, S_auto, P);
 
 % Merge based on waveform similarity
-P.maxWavCor = get_set_(P, 'maxWavCor', .99);
+P.maxWavCor = get_set_(P, 'maxWavCor', .98);
 if P.maxWavCor<1 && S_auto.nClu > 1
     S_auto0 = S_auto;
     fprintf('\tMerging templates...\n\t'); t_merge=tic;
@@ -2249,17 +2250,15 @@ viClu = S_auto.viClu;
 [ccviSpk_site_load, ccviSpk_site2_load, type_fet, dimm_fet, mrPv, vrThresh_site] = ...
     get_(S0, 'ccviSpk_site_load', 'ccviSpk_site2_load', 'type_fet', ...
         'dimm_fet', 'mrPv_global', 'vrThresh_site');
-nShift_max = ceil(diff(P.spkLim) * P.frac_shift_merge / 2);
+nShift_max = round(P.spkRefrac_merge_ms/2 * P.sRateHz / 1000);
 viShift = -nShift_max:nShift_max;
 [knn, nSpk_min, vcFile_prm, maxWavCor] = get_(P, 'knn', 'knn', 'vcFile_prm', 'maxWavCor');
 nClu = S_auto.nClu;
 
-% try loading the entire miKnn to RAM
 nSites = size(P.miSites,2);
-% nDrift = size(mlDrift,1);
 S_param = makeStruct_(nClu, nSites, knn, vcFile_prm, nSpk_min, ...
     vrRho, viClu, viLim_drift, ccviSpk_site_load, ccviSpk_site2_load, ...
-    type_fet, dimm_fet, mrPv, vrThresh_site, viShift, mlDrift, maxWavCor);
+    type_fet, dimm_fet, mrPv, vrThresh_site, viShift, mlDrift, maxWavCor, P);
 
 % compute pairwise distance in parallel by sites
 [cviClu_clu_site, cvlExist_site] = deal(cell(nSites, 1));
@@ -2313,12 +2312,17 @@ NUM_KNN = 10;
 fUseSecondSite = 1;
 
 % Load KNN and identify neighbors per cluster
-import_struct_(S_auto);
+csVar_imported = import_struct_(S_auto);
 nDrift = size(mlDrift, 1);
 % fprintf('\twave_similarity_site_pre_: Site%d... ', iSite1); t_fun=tic;
 miKnn1 = load_miKnn_site_(S_auto, iSite1);
 miKnn1 = miKnn1(1:min(NUM_KNN, size(miKnn1,1)), :);
-thresh1 = vrThresh_site(iSite1);
+
+% remove small center spikes
+thresh1 = -abs(vrThresh_site(iSite1)); % negative detection
+iT_peak = 1 - P.spkLim(1);
+mrPv_peak = mrPv(iT_peak,:);
+
 viSpk1 = get_viSpk_site_(S_auto, 1, iSite1);
 cvii1_drift = vi2cell_(discretize(viSpk1, viLim_drift), nDrift);
 [vrRho1, viClu1] = deal(S_auto.vrRho(viSpk1), viClu(viSpk1));
@@ -2388,7 +2392,7 @@ for iFet = 1:2
         for ic = 1:numel(cviSpk_drift1)
             [iClu1, vii1] = deal(viClu_drift1(ic), cviSpk_drift1{ic});
             mrPc1 = mean(trPc(:,:,vii1),3);
-            if abs(min(mrPv * mrPc1(:,1))) >= thresh1
+            if mrPv_peak*mrPc1(:,1) <= thresh1 % && peak_amp1 <= min(min(mrPv * mrPc1))/2
                 viClu_drift2(end+1) = iClu1;
                 cmrPc_drift2{end+1} = mrPc1;
             end
@@ -2816,7 +2820,7 @@ fprintf('Clustering\n');
 runtime_sort = tic;
 
 S_drift = calc_drift_(S0, P);
-if true % disable parfor for large recordings
+if false % disable parfor for large recordings
     if get_set_(P, 'fGpu', 1)
         P.fParfor = get_set_(P, 'fParfor', 1) && ~isLargeRecording_(P); % disable parfor
     end
@@ -2993,17 +2997,13 @@ t_fun = tic;
 [viLim_drift, mlDrift] = get_(S_drift, 'viLim_drift', 'mlDrift');
 nSpk = numel(viSite_spk);
 nSites = size(P.miSites,2);
-% fParfor = get_set_(P, 'fParfor', 0) && nSites>1;
-% fGpu = get_set_(P, 'fGpu', 1);
 vcFile_prm = P.vcFile_prm;
-% if fDebug, nSites = 2; end
 
 S_page = makeStruct_(P, mlDrift, mlPc, viLim_drift, nSites, vcFile_prm);
 S_page = struct_merge_(S_page, struct_copy_(S0, ...
     'type_fet', 'dimm_fet', 'ccviSpk_site_load', 'ccviSpk_site2_load'));
 
 % return schedules
-% lim2range_ = @(lim)lim(1):lim(2);
 [miSpk_lim_out, miSpk_lim_in, miDrift_lim_out, miDrift_lim_in] = plan_sort_page_(S_drift, P);
 nPages = size(miSpk_lim_out,1);
 [vrRho, vrDelta] = deal(zeros(nSpk, 1, 'single'));
@@ -3012,7 +3012,6 @@ S_global = makeStruct_(S_drift, miSpk_lim_out, miSpk_lim_in, miDrift_lim_out, vi
 
 vcFile_miKnn = [strrep(vcFile_prm, '.prm', ''), '_knn_*.irc'];
 delete_(vcFile_miKnn);
-%     assert(isempty(dir(vcFile_miKnn)), sprintf('sort_long_: %s must be deleted', vcFile_miKnn));
 fprintf('sort_page_: calculating Rho...\n'); t_rho = tic;
 for iPage = 1:nPages  
     fprintf('Page %d/%d ', iPage, nPages); t_ = tic;
@@ -3068,7 +3067,7 @@ cviiSpk_out1_site = vi2cell_(viSite_out1, nSites);
 cviiSpk2_in1_site = vi2cell_(viSite2_in1, nSites);
 cviiSpk2_out1_site = vi2cell_(viSite2_out1, nSites);
 csName_site1 = {'viiSpk_in1', 'viiSpk_out1', 'viiSpk2_in1', 'viiSpk2_out1'};
-fParfor = get_set_(P, 'fParfor') && nSites>1;
+fParfor = get_set_(P, 'fParfor',1) && nSites>1;
 
 if fParfor
     try
@@ -3927,23 +3926,14 @@ if fParfor
         disp_load_(iLoad, var_size1, toc(t_load1), numel(get_(cS_detect{iLoad}, 'viTime_spk')));
     end
 else    
-    if fCache_fid
-        [c_fid_fet, c_fid_fet2] = deal(cell(nLoads, 1));
-        [cS_detect{1}, c_fid_fet{1}, c_fid_fet2{1}] = detect_paged_save_(cS_detect{1}, P, 1);  
-    else
-        cS_detect{1} = detect_paged_save_(cS_detect{1}, P, 1); 
-    end              
+    cS_detect{1} = detect_paged_save_(cS_detect{1}, P, 1); 
     for iLoad = 2:nLoads  % change to for loop for debugging
         t_load1 = tic;
         S_load1 = vS_load(iLoad);
         mrWav_T1 = load_file_part_(vcFile, S_load1, viSite2Chan); var_size1 = var_size_(mrWav_T1);
         S_cache1 = setfield(S_cache, 'nlim_wav1', S_load1.nlim);
         cS_detect{iLoad} = detect_paged_(mrWav_T1, P, S_cache1);  mrWav_T1 = [];
-        if fCache_fid
-            [cS_detect{iLoad}, c_fid_fet{iLoad}, c_fid_fet2{iLoad}] = detect_paged_save_(cS_detect{iLoad}, P, iLoad);
-        else
-            cS_detect{iLoad} = detect_paged_save_(cS_detect{iLoad}, P, iLoad);
-        end
+        cS_detect{iLoad} = detect_paged_save_(cS_detect{iLoad}, P, iLoad);
         disp_load_(iLoad, var_size1, toc(t_load1), numel(get_(cS_detect{iLoad}, 'viTime_spk')));
     end
 %     if fCache_fid, fid_fet_cache_('set', c_fid_fet, c_fid_fet2); end
@@ -5974,22 +5964,35 @@ else
         mlMask = abs((1:nTime_drift) - (1:nTime_drift)') <= quarter_;
         mlMask(1:quarter_*2+1,1:quarter_) = true;
         mlMask(end-quarter_*2:end,end-quarter_+1:end) = true;
-        mrDist_drift = dist_mask_(mrCount_drift, mlMask);
+        mlDrift = dist_mask_ml_(mrCount_drift, mlMask, nTime_batch);
     else
         mrDist_drift = squareform(pdist(mrCount_drift'));
+        [~, miSort_drift] = sort(mrDist_drift, 'ascend');
+        miSort_drift = miSort_drift(1:nTime_batch,:);
+        mlDrift = mi2ml_drift_(miSort_drift); %gpuArray_(mi2ml_drift_(miSort_drift), P.fGpu);
     end
-    [mrSort_drift, miSort_drift] = sort(mrDist_drift, 'ascend');
-    miSort_drift = miSort_drift(1:nTime_batch,:);
     
     if read_cfg_('fPlot_drift')
         figure; imagesc(mrDist_drift); set(gcf,'Name', P.vcFile_prm);
         figure; imagesc(mrSort_drift); set(gcf,'Name', P.vcFile_prm);
         hold on; plot([0, size(mrSort_drift,1)], repmat(nTime_batch,1,2), 'r-');
-    end
-    mlDrift = mi2ml_drift_(miSort_drift); %gpuArray_(mi2ml_drift_(miSort_drift), P.fGpu);
+    end    
 end
 S_drift = makeStruct_(nTime_drift, viDrift_spk, mlDrift, viLim_drift);
 fprintf('\n\ttook %0.1fs\n', toc(t1));
+end %func
+
+
+%--------------------------------------------------------------------------
+function ml = dist_mask_ml_(mrF, mlMask, nneigh)
+% return euclidean distance for masked portions
+
+ml = false(size(mrF,2));
+for iCol=1:size(mrF,2)
+    vrD1 = sqrt(sum((mrF(:,iCol) -  mrF(:,mlMask(:,iCol))).^2, 1));
+    [~, viSrt1] = sort(vrD1, 'ascend');
+    ml(viSrt1(1:nneigh), iCol) = true;
+end
 end %func
 
 
