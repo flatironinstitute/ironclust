@@ -122,7 +122,7 @@ irc2 export-klusters [path_to_prm_file] (output_dir)
 If Klusters doesn't open automatically, open Klusters GUI and open `.par.#` file (#: shank number). 
 
 ## Export to JRCLUST
-Export to [JRCLUST](https://github.com/JaneliaSciComp/JRCLUST) for manual curation. You need to clone JRCLUST and set the path `path_jrclust` in `user.cfg`.
+Export to [JRCLUST](https://github.com/JaneliaSciComp/JRCLUST) for manual curation. You need to clone JRCLUST and set the path `path_jrclust` in `user.cfg` (you need to create this file if it doesn't exist).
 ```
 irc2 export-jrclust [path_to_prm_file]
 ```
