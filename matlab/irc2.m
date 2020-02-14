@@ -4426,7 +4426,10 @@ function [mrPv1, vrD1] = get_prinvec_(tr, P)
 % end
 t_fun = tic;
 nPc_spk = get_set_(P, 'nPc_spk', 9); % # components to compress spike waveforms
-mr1 = gather_(reshape(tr, size(tr,1), []));
+switch 2
+    case 1, mr1 = gather_(reshape(tr, size(tr,1), []));
+    case 2, mr1 = gather_(reshape(tr(:,1,:), size(tr,1), []));
+end
 switch 3
     case 1
         % mrSpkWav1 = meanSubt_(mrSpkWav1);
@@ -8564,10 +8567,18 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function [viSite_spk2, viTime_spk2] = find_site2_spk_(trPc_spk, mrPv, viSite_spk, viTime_spk, P)
+function [viSite2_spk, viTime2_spk] = find_site2_spk_(trPc_spk, mrPv, viSite_spk, viTime_spk, P)
 % find second min, excl local ref sites
 
 nSites_fet = P.nSites_fet;
+
+% vrDist_site = pdist(P.mrSiteXY);
+% vrDist_site_uniq = unique(pdist(P.mrSiteXY));
+% mrDist_site = squareform(vrDist_site);
+% median(sum(mrDist_site <= vrDist_site_uniq(1),1))
+% median(sum(mrDist_site <= vrDist_site_uniq(2),1))
+% median(sum(mrDist_site <= vrDist_site_uniq(3),1))
+% median(sum(mrDist_site <= vrDist_site_uniq(8),1))
 
 % denoised waveform
 nT_wav = abs(P.spkLim(1))*2+1;
@@ -8578,11 +8589,11 @@ miMin_spk = squeeze_(miMin_spk);
 [~, viMin_spk] = min(mrMin_spk,[],2);
 
 miSites2 = P.miSites(2:nSites_fet, viSite_spk);
-viSite_spk2 = int32(mr2vr_sub2ind_(miSites2, viMin_spk(:), []));    
+viSite2_spk = int32(mr2vr_sub2ind_(miSites2, viMin_spk(:), []));    
 
 iT_peak = 1 - P.spkLim(1);
 viTime2_offset_spk = mr2vr_sub2ind_(miMin_spk, viMin_spk(:), []) - iT_peak;
-viTime_spk2 = viTime_spk + int64(viTime2_offset_spk);
+viTime2_spk = viTime_spk + int64(viTime2_offset_spk);
 end %func
 
 
@@ -8704,8 +8715,8 @@ end %func
 
 %--------------------------------------------------------------------------
 function nSites = nSites_within_radius_(mrSiteXY, radius)
-mrDist_site = pdist2(mrSiteXY, mrSiteXY);
-nSites = max(sum(mrDist_site <= radius));
+mrDist_site = squareform(pdist(mrSiteXY));
+nSites = floor(median(sum(mrDist_site <= radius,1)));
 end %func
 
 
