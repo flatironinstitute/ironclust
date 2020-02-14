@@ -2796,6 +2796,45 @@ end %func;
 
 
 %--------------------------------------------------------------------------
+function button_FigWavCor_(xyPos, vcButton)
+S0 = get(0, 'UserData');
+xyPos = round(xyPos);
+switch lower(vcButton)
+    case 'normal' %left click        
+        S0.iCluCopy = xyPos(1);
+        if diff(xyPos) == 0
+            S0.iCluPaste = [];
+        else
+            S0.iCluPaste = xyPos(2);
+        end
+        S0 = button_CluWav_simulate_(S0.iCluCopy, S0.iCluPaste, S0);
+        S0 = keyPressFcn_cell_(get_fig_cache_('FigWav'), {'z'}, S0); %zoom        
+end %switch
+end %func
+
+
+%--------------------------------------------------------------------------
+function keyPressFcn_FigWavCor_(hObject, event)
+S0 = get(0, 'UserData');
+switch lower(event.Key)
+    case 'm' %merge
+        ui_merge_(S0);
+    case 's' %split
+        auto_split_(1); %multi
+    case {'d', 'backspace', 'delete'} %delete
+        ui_delete_(S0);        
+end %switch
+end %func
+
+
+%--------------------------------------------------------------------------
+function help_FigWav_(hObject, event)
+[~, S_fig] = get_fig_cache_('FigWav');
+msgbox_(S_fig.csHelp, 1);
+end %func
+
+
+%--------------------------------------------------------------------------
 % irc2.m
 function varargout = load0_(varargin), cell_out = call_irc2_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = is_sorted_(varargin), cell_out = call_irc2_(dbstack(), varargin, nargout); varargout = cell_out; end
@@ -2837,7 +2876,7 @@ function varargout = export_quality_(varargin), cell_out = call_irc_(dbstack(), 
 function varargout = export_rate_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = export_tmrWav_clu_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = export_tnWav_spk_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
-function varargout = help_FigWav_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
+% function varargout = help_FigWav_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = issue_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = merge_auto_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = open_prm_folder_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
@@ -2868,8 +2907,7 @@ function varargout = about_(varargin), cell_out = call_irc_(dbstack(), varargin,
 function varargout = clipboard_prm_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = delete_auto_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = edit_prm_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
-function varargout = keyPressFcn_FigWavCor_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
-function varargout = button_FigWavCor_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
+% function varargout = keyPressFcn_FigWavCor_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = axes_new_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = plot_update_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = plot_group_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end

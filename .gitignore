@@ -3,7 +3,6 @@ octave-workspace
 # Recording files
 *.mda
 *.bin
-*.json
 *.irc
 *.csv
 

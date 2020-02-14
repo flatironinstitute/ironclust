@@ -69,6 +69,7 @@ else
 end
 switch lower(vcCmd)    
     % ui
+    case 'export-prb', export_prb_json_(vcArg1, vcArg2); return;
     case 'probe', irc('probe', vcArg1); return;
     case 'traces', irc2_traces(vcArg1); return;
             
@@ -2848,10 +2849,10 @@ nPc_max = P.nC_max;
 if isempty(nPcPerChan), nPcPerChan = 0; end
 if numel(nPcPerChan) == 1
     if nPcPerChan == 0   
-        if false
-            vnPc_site = nPc_spk:-1:1;
-        else % subtractive from the edge
-            vnPc_site = nPc_spk * ones(1, nSites_spk);
+        switch 2
+            case 1, vnPc_site = nPc_spk:-1:1;
+            case 2, vnPc_site = nPc_spk * ones(1, nSites_spk);
+            case 3, vnPc_site = nPc_spk * ones(1, P.nSites_fet);
         end
         for iSite = numel(vnPc_site):-1:1
             if sum(vnPc_site) <= nPc_max, break; end
@@ -8717,6 +8718,55 @@ end %func
 function nSites = nSites_within_radius_(mrSiteXY, radius)
 mrDist_site = squareform(pdist(mrSiteXY));
 nSites = floor(median(sum(mrDist_site <= radius,1)));
+end %func
+
+
+%--------------------------------------------------------------------------
+% export .prb files to .json (flatiron-0.1) format
+function S_json = export_prb_json_(vcFile_prb, vcDir_out)
+
+format_version = read_cfg_('flatiron_probe_version');
+
+% batch export
+if any(vcFile_prb=='*')
+    csFile_prb = list_files_(vcFile_prb);
+    S_json = cellfun_(@(x)export_prb_json_(x, vcDir_out), csFile_prb);
+    return;
+end
+
+[~, probe_name, vcExt_] = fileparts(vcFile_prb);
+assert(strcmpi(vcExt_, '.prb'), 'must be a valid probe format');
+
+S_prb = load_prb_(vcFile_prb);
+assert(~isempty(S_prb), 'probe file must exist');
+nSites = size(S_prb.mrSiteXY,1);
+[x, y] = deal(S_prb.mrSiteXY(:,1)', S_prb.mrSiteXY(:,2)');
+z = zeros(size(x));
+
+if ~isempty(get_(S_prb, 'viSite2Chan'))
+    channel = S_prb.viSite2Chan(:)' - 1; %zero-base
+else
+    channel = 0:nSites-1;
+end
+if ~isempty(get_(S_prb, 'vrSiteHW'))
+    [site_height, site_width] = deal(S_prb.vrSiteHW(1), S_prb.vrSiteHW(2));
+else
+    [site_height, site_width] = deal([]);
+end
+shank = get_(S_prb, 'viShank_site');
+if isempty(shank)
+    shank = zeros(nSites,1);
+elseif min(shank) > 0
+    shank = shank - 1;
+end
+shank = shank(:)';
+
+% write to a file
+S_json = makeStruct_(format_version, probe_name, channel, x, y, z, shank, site_width, site_height);
+mkdir_(vcDir_out);
+vcFile_json = fullfile(vcDir_out, [probe_name, '.json']);
+struct2json_(S_json, vcFile_json);
+if nargout==0, edit_(vcFile_json); end
 end %func
 
 
