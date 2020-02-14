@@ -8657,6 +8657,58 @@ end
 end %func
 
 
+%--------------------------------------------------------------------------
+function [miSites, nSites_fet] = findNearSites_(mrSiteXY, P)
+% find nearest sites
+% if nargin<2, maxSite = []; end
+% if nargin<3, viSiteZero = []; end
+% if nargin<4, viShank_site = []; end
+% if numel(unique(viShank_site)) <= 1, viShank_site = []; end
+if nargin<2, P=[]; end
+if ~isempty(P)
+    [maxDist_site_um, maxDist_site_spk_um, viSiteZero, viShank_site] = ...
+        struct_get_(P, 'maxDist_site_um', 'maxDist_site_spk_um', 'viSiteZero', 'viShank_site');
+else
+    [maxDist_site_um, maxDist_site_spk_um, viSiteZero, viShank_site] = deal([]);
+end
+if ~isempty(viSiteZero), mrSiteXY(viSiteZero,:) = inf; end
+% max_dist = max(pdist(mrSiteXY));
+nSites = size(mrSiteXY,1);
+if ~isempty(viShank_site)
+    [vi_uniq, vn_uniq] = unique_count_(viShank_site);    
+    nSites_shank = min(vn_uniq);
+else
+    nSites_shank = nSites;
+end
+nSites_spk = nSites_within_radius_(mrSiteXY, maxDist_site_spk_um);
+nSites_spk = min(nSites_spk, nSites_shank);
+
+miSites = zeros(nSites_spk, nSites);
+for iSite=1:nSites
+    vrSiteDist = pdist2_(mrSiteXY(iSite,:), mrSiteXY);
+    if ~isempty(viShank_site)
+        vrSiteDist(viShank_site~=viShank_site(iSite)) = inf;
+    end
+    [vrSiteDist, viSrt] = sort(vrSiteDist, 'ascend');
+    miSites(:,iSite) = viSrt(1:nSites_spk);
+end
+
+if ~isempty(maxDist_site_um)
+    nSites_fet = nSites_within_radius_(mrSiteXY, maxDist_site_um);
+    nSites_fet = min(nSites_fet, nSites_spk);
+else
+    nSites_fet = nSites_spk;
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+function nSites = nSites_within_radius_(mrSiteXY, radius)
+mrDist_site = pdist2(mrSiteXY, mrSiteXY);
+nSites = max(sum(mrDist_site <= radius));
+end %func
+
+
 function varargout = frewind_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = disperr_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = edit_prm_file_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
@@ -8691,7 +8743,7 @@ function varargout = dir_(varargin), cell_out = call_irc_(dbstack(), varargin, n
 % function varargout = S_clu_refresh_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = map_index_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = mr2thresh_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
-function varargout = findNearSites_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
+% function varargout = findNearSites_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = shift_range_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = fopen_mda_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = fopen_nsx_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
