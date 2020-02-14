@@ -5233,9 +5233,9 @@ end %func
 
 
 %--------------------------------------------------------------------------
-% 8/2/17 JJJ: Documentation and test
 function S_meta = read_meta_spikeglx_(vcFile_meta)
 % Import SpikeGLX meta file format
+% https://github.com/billkarsh/SpikeGLX/blob/fc28efc2ff464be45339180424fad378c83eda92/Markdown/Metadata_20.md                    
 
 S_meta = [];
 assert(exist_file_(vcFile_meta), sprintf('%s does not exist\n', vcFile_meta));
@@ -5261,32 +5261,35 @@ try
             S_meta.outputFile = '';
             S_meta.sha1 = [];      
         end
-    elseif isfield(S_sglx, 'imSampRate')
-        
-        % IMECIII
-%         S_meta.nChans = S_sglx.nSavedChans;
+    elseif isfield(S_sglx, 'imSampRate')        
+        % IMEC Phase 3
         S_meta.sRateHz = S_sglx.imSampRate;
         S_meta.rangeMax = S_sglx.imAiRangeMax;
         S_meta.rangeMin = S_sglx.imAiRangeMin;
-        vnIMRO = textscan(S_sglx.imroTbl, '%d', 'Delimiter', '( ),');
-        vnIMRO = double(vnIMRO{1});            
+        S_meta.nChans = S_sglx.nSavedChans;
+        [mr_imro, vrHeader_imro] = parse_imroTbl_(get_(S_sglx, 'imroTbl'));  
+        S_meta.auxGain = median(mr_imro(:,4));
+        S_meta.auxGain_lfp = median(mr_imro(:,5));          
         if isfield(S_sglx, 'imProbeOpt')
-            % Neuropix 3A
-            S_meta.nChans = S_sglx.nSavedChans;
+            % Neuropix 3A            
             S_meta.vcProbe = sprintf('imec3_opt%d', S_sglx.imProbeOpt);            
-            S_meta.auxGain = vnIMRO(9); %hard code for now;
-            S_meta.auxGain_lfp = vnIMRO(10); %hard code for now;            
-        else
-            % Neuropix 3B
-            S_meta.nChans = S_sglx.nSavedChans;
-            S_meta.vcProbe = 'imec3_opt3';  
-            S_meta.auxGain = vnIMRO(8); %hard code for now;
-            S_meta.auxGain_lfp = vnIMRO(9); %hard code for now;                        
-        end        
-%         S_meta.nSites = round((S_meta.nChans - 1)/2);
-        S_meta.ADC_bits = 10;  %10 bit adc but 16 bit saved
+            S_meta.ADC_bits = 10;
+        else            
+            probe_type = vrHeader_imro(1);
+            switch probe_type
+                case 0 % Neuropix 3B2
+                    S_meta.vcProbe = 'imec3B2';  
+                    S_meta.ADC_bits = 10;
+                case [21, 24] % Neuropix Phase 2
+                    S_meta.auxGain = 80; %fixed
+                    S_meta.ADC_bits = 14;
+                    error('Neuropixels 2.0 is not supported');
+                otherwise
+                    error('read_meta_spikeglx_: unsupported probe: %d', probe_type);
+            end            
+        end
     else
-        error('unsupported format');
+        error('read_meta_spikeglx_: unsupported format');
     end
     
      %number of bits of ADC [was 16 in Chongxi original]
@@ -5297,6 +5300,19 @@ try
     end    
 catch
     error('Parsing error: %s\n\t%s\n', vcFile_meta, lasterr());
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+function [mrBody, vrHeader] = parse_imroTbl_(vc_imroTbl)
+try
+    vnIMRO = strrep(strrep(vc_imroTbl(2:end-1),')(',';'),' ',',');
+    iBody_ = find(vnIMRO==';',1,'first');
+    mrBody = str2num(sprintf('[%s]',vnIMRO(iBody_+1:end)));
+    vrHeader = str2num(sprintf('[%s]',vnIMRO(1:iBody_-1)));
+catch
+    [mrBody, vrHeader] = deal([]);
 end
 end %func
 
