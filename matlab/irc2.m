@@ -8313,7 +8313,7 @@ try
     if numel(cs)>1
         cellfun(@(s)fprintf(fid, '%s\n',s), cs(1:end-1));
     end
-    cellfun(@(s)fprintf(fid, '%s',s), cs{end});
+    fprintf(fid, '%s', cs{end});
     fclose(fid);
 catch ME
     fprintf(2, 'File write error: %s\n', vcFile);
