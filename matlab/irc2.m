@@ -6500,8 +6500,8 @@ S_cfg = read_cfg_();
 
 % build successful, now copy and edit docker files
 vc_irc_ver = sprintf('%s:%s', sf2_docker_name, version_());
-save_cs_(fullfile(sf2_path, 'push_docker.sh'), {'#!/bin/bash','',['docker build -t ',vc_irc_ver,' .']});
-save_cs_(fullfile(sf2_path, 'build_docker.sh'), {'#!/bin/bash','',['docker push ', vc_irc_ver]});
+save_cs_(fullfile(sf2_path, 'build_docker.sh'), {'#!/bin/bash','',['docker build -t ',vc_irc_ver,' .']});
+save_cs_(fullfile(sf2_path, 'push_docker.sh'), {'#!/bin/bash','',['docker push ', vc_irc_ver]});
 copyfile('run_irc', sf2_path);
 system(sprintf('(cd %s && ./build_docker.sh && ./push_docker.sh)', sf2_path), '-echo');
 system(sprintf('(cd %s && %s %s)', sf2_test_path, sf2_python_path, sf2_test_script), '-echo');
