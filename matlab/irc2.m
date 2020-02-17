@@ -2308,11 +2308,11 @@ end %func
 %--------------------------------------------------------------------------
 function [cviClu_clu, vlExist_clu] = wave_similarity_site_(iSite1, S_auto)
 
-NUM_KNN = 15;
 fUseSecondSite = 1;
 
 % Load KNN and identify neighbors per cluster
 csVar_imported = import_struct_(S_auto);
+NUM_KNN = get_set_(P, 'knn_expand_merge', 8);
 nDrift = size(mlDrift, 1);
 % fprintf('\twave_similarity_site_pre_: Site%d... ', iSite1); t_fun=tic;
 miKnn1 = load_miKnn_site_(S_auto, iSite1);
@@ -3096,29 +3096,26 @@ fParfor = get_set_(P, 'fParfor',1) && nSites>1;
 if fParfor
     try
         parfor iSite = 1:nSites
-            try
-                S_site1 = cell2struct({cviiSpk_in1_site{iSite}, cviiSpk_out1_site{iSite}, ...
-                    cviiSpk2_in1_site{iSite}, cviiSpk2_out1_site{iSite}}, csName_site1, 2);
-                cvrRho_in1{iSite} = rho_paged_site_(S_page1, S_site1, iSite);
-            catch
-                fprintf('x');
-            end
+            S_site1 = cell2struct({cviiSpk_in1_site{iSite}, cviiSpk_out1_site{iSite}, ...
+                cviiSpk2_in1_site{iSite}, cviiSpk2_out1_site{iSite}}, csName_site1, 2);
+            cvrRho_in1{iSite} = rho_paged_site_(S_page1, S_site1, iSite);
         end %for
     catch
+        fParfor = 0;
+    end
+end
+if ~fParfor
+    for iSite = 1:nSites
+        S_site1 = cell2struct({cviiSpk_in1_site{iSite}, cviiSpk_out1_site{iSite}, ...
+            cviiSpk2_in1_site{iSite}, cviiSpk2_out1_site{iSite}}, csName_site1, 2);
+        cvrRho_in1{iSite} = rho_paged_site_(S_page1, S_site1, iSite);
+        fprintf('.');
     end
 end
 
 vrRho_in1 = zeros(nSpk1, 1, 'single');
 for iSite = 1:nSites
     if isempty(cviiSpk_in1_site{iSite}), continue; end
-    if isempty(cvrRho_in1{iSite})
-%         fprintf('\tSite %d: ', iSite); t1=tic;
-        S_site1 = cell2struct({cviiSpk_in1_site{iSite}, cviiSpk_out1_site{iSite}, ...
-            cviiSpk2_in1_site{iSite}, cviiSpk2_out1_site{iSite}}, csName_site1, 2);        
-        cvrRho_in1{iSite} = rho_paged_site_(S_page1, S_site1, iSite);        
-%         fprintf('took %0.1fs\n', toc(t1));
-        fprintf('.');
-    end
     vrRho_in1(cviiSpk_in1_site{iSite}) = cvrRho_in1{iSite};
 end
 end %func
@@ -3136,36 +3133,33 @@ cviiSpk_out1_site = vi2cell_(viSite_out1, nSites);
 cviiSpk2_in1_site = vi2cell_(viSite2_in1, nSites);
 cviiSpk2_out1_site = vi2cell_(viSite2_out1, nSites);
 csName_site1 = {'viiSpk_in1', 'viiSpk_out1', 'viiSpk2_in1', 'viiSpk2_out1'};
-
-if get_set_(P, 'fParfor', 1)
+fParfor = get_set_(P, 'fParfor', 1);
+if fParfor
     try
         parfor iSite = 1:nSites
-            try
-                S_site1 = cell2struct({cviiSpk_in1_site{iSite}, cviiSpk_out1_site{iSite}, ...
-                    cviiSpk2_in1_site{iSite}, cviiSpk2_out1_site{iSite}}, csName_site1, 2);        
-                [cvrDelta_in1{iSite}, cviNneigh_in1{iSite}] = ...
-                    delta_paged_site_(S_page1, S_site1, vrRho_page1, iSite);
-            catch
-                fprintf('x');
-            end
+            S_site1 = cell2struct({cviiSpk_in1_site{iSite}, cviiSpk_out1_site{iSite}, ...
+                cviiSpk2_in1_site{iSite}, cviiSpk2_out1_site{iSite}}, csName_site1, 2);        
+            [cvrDelta_in1{iSite}, cviNneigh_in1{iSite}] = ...
+                delta_paged_site_(S_page1, S_site1, vrRho_page1, iSite);
         end %for
     catch
+        fParfor = 0;
     end
+end
+if ~fParfor
+    for iSite = 1:nSites
+        S_site1 = cell2struct({cviiSpk_in1_site{iSite}, cviiSpk_out1_site{iSite}, ...
+            cviiSpk2_in1_site{iSite}, cviiSpk2_out1_site{iSite}}, csName_site1, 2);        
+        [cvrDelta_in1{iSite}, cviNneigh_in1{iSite}] = ...
+            delta_paged_site_(S_page1, S_site1, vrRho_page1, iSite);
+        fprintf('.');
+    end %for
 end
 
 vrDelta1 = zeros(nSpk1, 1, 'single');
 viNneigh1 = zeros(nSpk1, 1, 'int64');
 for iSite = 1:nSites
     if isempty(cviiSpk_in1_site{iSite}), continue; end
-    if isempty(cvrDelta_in1{iSite})
-%         fprintf('\tSite %d: ', iSite); t1=tic;
-        S_site1 = cell2struct({cviiSpk_in1_site{iSite}, cviiSpk_out1_site{iSite}, ...
-            cviiSpk2_in1_site{iSite}, cviiSpk2_out1_site{iSite}}, csName_site1, 2);                
-        [cvrDelta_in1{iSite}, cviNneigh_in1{iSite}] = ...
-            delta_paged_site_(S_page1, S_site1, vrRho_page1, iSite);
-%         fprintf('took %0.1fs\n', toc(t1));
-        fprintf('.');
-    end
     vrDelta1(cviiSpk_in1_site{iSite}) = cvrDelta_in1{iSite};
     viNneigh1(cviiSpk_in1_site{iSite}) = cviNneigh_in1{iSite};
 end

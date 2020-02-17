@@ -4,7 +4,7 @@
 nc_ = 128;          % number of channels
 n_shank_ = 4;       % number of shanks
 p_shank_ = 150;     % shank pitch in um
-v_pitch_ = 15;      % vertical site pitch in um
+v_pitch_ = 12.5;    % vertical site pitch in um
 h_pitch_ = 21;      % horizontal site pitch, use negative to flip L/R
 pad = [15, 11];     % site pad height x width in um
 
