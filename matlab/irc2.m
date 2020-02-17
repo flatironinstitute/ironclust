@@ -5988,9 +5988,10 @@ function ml = dist_mask_ml_(mrF, mlMask, nneigh)
 
 ml = false(size(mrF,2));
 for iCol=1:size(mrF,2)
-    vrD1 = sqrt(sum((mrF(:,iCol) -  mrF(:,mlMask(:,iCol))).^2, 1));
+    viMask1 = find(mlMask(:,iCol));
+    vrD1 = sqrt(sum((mrF(:,iCol) -  mrF(:,viMask1)).^2, 1));
     [~, viSrt1] = sort(vrD1, 'ascend');
-    ml(viSrt1(1:nneigh), iCol) = true;
+    ml(viMask1(viSrt1(1:nneigh)), iCol) = true;
 end
 end %func
 
