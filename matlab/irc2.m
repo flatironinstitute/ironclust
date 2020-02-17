@@ -67,7 +67,10 @@ if isempty(vcFile_prm)
 else
     vcFile_prm_ = vcFile_prm;
 end
-switch lower(vcCmd)    
+switch lower(vcCmd) 
+    % probe reader
+    case 'probe-image', probe_image_(vcArg1, vcArg2, vcArg3); return;
+    
     % ui
     case 'export-prb', export_prb_json_(vcArg1, vcArg2); return;
     case 'probe', irc('probe', vcArg1); return;
@@ -8802,6 +8805,54 @@ mkdir_(vcDir_out);
 vcFile_json = fullfile(vcDir_out, [probe_name, '.json']);
 struct2json_(S_json, vcFile_json);
 if nargout==0, edit_(vcFile_json); end
+end %func
+
+
+%--------------------------------------------------------------------------
+function probe_image_(vcFile_img, vcShankPitch, vcSitePitch)
+% vcFile_img: file name of probe image
+% vcShankPitch: nominal distance between shank tips in microns
+% vcSitePitch: nominal vertical distance between adjacent sites in microns
+
+if nargin<2, vcShankPitch=''; end
+if nargin<2, vcSitePitch=''; end
+
+assert(exist_file_(vcFile_img), 'probe image file not found');
+imtool(vcFile_img);
+S_cfg = read_cfg_();
+color_prbimg = get_(S_cfg, 'color_prbimg', [0 0 0]);
+img = imread(vcFile_img);
+BW = img(:,:,1)==color_prbimg(1) & img(:,:,2)==color_prbimg(2) & img(:,:,3)==color_prbimg(3);
+s=regionprops(bwlabel(BW,8), 'centroid'); 
+mrXY = cat(1, s.Centroid);
+figure('Color','w','Name',vcFile_img);
+imshow(~BW);
+hold on
+plot(mrXY(:,1), mrXY(:,2), 'go-');
+
+% shank pitch and site pitch scaling
+mrXY1 = mrXY;
+mrXY1(:,2) = max(mrXY1(:,2))-mrXY1(:,2);
+viSite_tip = find(mrXY1(:,2)<.5); % sites at the bottom tips
+[~, imin] = min(mrXY1(viSite_tip,1)); iSite0 = viSite_tip(imin(1));
+mrXY1(:,1) = mrXY1(:,1) - mrXY1(iSite0,1);
+plot(mrXY(iSite0,1), mrXY(iSite0,2), 'g*-');
+
+if ~isempty(vcShankPitch) % scale x
+    shankPitch = mean(diff(mrXY1(viSite_tip,1)));
+    mrXY1(:,1) = mrXY1(:,1) / shankPitch * str2num(vcShankPitch);
+end
+
+if ~isempty(vcSitePitch)
+    sitePitch = mean(diff(unique(round(mrXY1(:,2)))));
+    mrXY1(:,2) = mrXY1(:,2) / sitePitch * str2num(vcSitePitch);
+end
+
+mrXY1 = round(mrXY1*2)/2; 
+csText_xy = arrayfun_(@(x,y)sprintf('%0.1f, %0.1f',x,y), mrXY1(:,1), mrXY1(:,2));
+text(mrXY(:,1), mrXY(:,2), csText_xy, ...
+    'VerticalAlignment', 'top', 'HorizontalAlignment', 'left', 'Color','r');
+
 end %func
 
 
