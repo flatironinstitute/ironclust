@@ -6499,10 +6499,8 @@ S_cfg = read_cfg_();
 copyfile('run_irc', sf2_path);
 % edit build_docker.sh and push_docker.sh
 vc_irc_ver = sprintf('jamesjun/sf-ironclust:%s .', version_());
-save_cs_({'#!/bin/bash','',['docker build -t ', vc_irc_ver]}, ...
-    fullfile(sf2_path, 'push_docker.sh'));
-save_cs_({'#!/bin/bash','',['docker push ', vc_irc_ver]}, ...
-    fullfile(sf2_path, 'build_docker.sh'));
+save_cs_(fullfile(sf2_path, 'push_docker.sh'), {'#!/bin/bash','',['docker build -t ', vc_irc_ver]});
+save_cs_(fullfile(sf2_path, 'build_docker.sh'), {'#!/bin/bash','',['docker push ', vc_irc_ver]});
 system(sprintf('(cd %s && ./build_docker.sh && ./push_docker.sh)', sf2_path), '-echo');
 system(sprintf('(cd %s && %s %s)', sf2_test_path, sf2_python_path, sf2_test_script), '-echo');
 end %func
