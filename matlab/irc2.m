@@ -407,7 +407,11 @@ function vcFile_prm = dir2prm_(vcDir_in)
 [vcDir1, vcFile1, vcExt1] = fileparts(vcDir_in);
 switch lower(vcExt1)
     case '.prm', vcFile_prm = vcDir_in;        
-    case '.mat', vcFile_prm = fullfile(vcDir1, strrep(vcFile1, '_irc', ''), '.prm');        
+    case '.mat', vcFile_prm = fullfile(vcDir1, strrep(vcFile1, '_irc', ''), '.prm');    
+    case {'.bin', '.dat'}
+        vcFile_prm = dir_(fullfile(vcDir1, 'irc2', '*.prm'));
+        assert(numel(vcFile_prm)==1, 'dir2prm_: .prm file does not exist');
+        vcFile_prm = vcFile_prm{1};
     case ''
         vcDir_out = fullfile(vcDir_in, 'irc2');
         S_prm = dir(fullfile(vcDir_out, '*.prm'));
