@@ -6497,6 +6497,12 @@ S_cfg = read_cfg_();
 [sf2_path, sf2_test_path, sf2_python_path, sf2_test_script] = get_(S_cfg, ...
     'spikeforest2_irc_path', 'spikeforest2_test_path', 'spikeforest2_python_path', 'spikeforest2_test_script');
 copyfile('run_irc', sf2_path);
+% edit build_docker.sh and push_docker.sh
+vc_irc_ver = sprintf('jamesjun/sf-ironclust:%s .', version_());
+save_cs_({'#!/bin/bash','',['docker build -t ', vc_irc_ver]}, ...
+    fullfile(sf2_path, 'push_docker.sh'));
+save_cs_({'#!/bin/bash','',['docker push ', vc_irc_ver]}, ...
+    fullfile(sf2_path, 'build_docker.sh'));
 system(sprintf('(cd %s && ./build_docker.sh && ./push_docker.sh)', sf2_path), '-echo');
 system(sprintf('(cd %s && %s %s)', sf2_test_path, sf2_python_path, sf2_test_script), '-echo');
 end %func
@@ -8304,9 +8310,16 @@ end %func
 %--------------------------------------------------------------------------
 function save_cs_(vcFile, cs)
 % display cell string
-fid = fopen(vcFile, 'w');
-cellfun(@(s)fprintf(fid, '%s\n',s), cs);
-fclose(fid);
+try
+    fid = fopen(vcFile, 'w');
+    if numel(cs)>1
+        cellfun(@(s)fprintf(fid, '%s\n',s), cs(1:end-1));
+    end
+    cellfun(@(s)fprintf(fid, '%s',s), cs{end});
+    fclose(fid);
+catch ME
+    fprintf(2, 'File write error: %s\n', vcFile);
+end
 end %func
 
 
