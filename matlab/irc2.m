@@ -2308,7 +2308,7 @@ end %func
 %--------------------------------------------------------------------------
 function [cviClu_clu, vlExist_clu] = wave_similarity_site_(iSite1, S_auto)
 
-NUM_KNN = 10;
+NUM_KNN = 15;
 fUseSecondSite = 1;
 
 % Load KNN and identify neighbors per cluster
@@ -5968,7 +5968,11 @@ else
         miSort_drift = miSort_drift(1:nTime_batch,:);
         mlDrift = mi2ml_drift_(miSort_drift); %gpuArray_(mi2ml_drift_(miSort_drift), P.fGpu);
     end
-    
+    if false % widen the diagonal
+        n_ = nTime_drift;
+        mlDrift(2:n_+1:n_^2) = true;
+        mlDrift(n_+2:n_+1:n_^2) = true;
+    end
     if read_cfg_('fPlot_drift')
         figure; imagesc(mrDist_drift); set(gcf,'Name', P.vcFile_prm);
         figure; imagesc(mrSort_drift); set(gcf,'Name', P.vcFile_prm);
