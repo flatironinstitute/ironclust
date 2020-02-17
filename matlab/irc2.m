@@ -80,6 +80,7 @@ switch lower(vcCmd)
     % Git functions
     case 'push-readme', push_readme_(); return;    
     case {'push', 'git-push'}, git_push_(vcArg1); return;
+    case {'pull', 'update', 'git-pull'}, git_pull_(vcArg1); return;
         
     % optimize
     case 'optimize-clear', optimize_clear_(vcArg1, vcArg2); return;
@@ -8804,6 +8805,7 @@ if nargout==0, edit_(vcFile_json); end
 end %func
 
 
+function varargout = git_pull_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = frewind_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = disperr_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = edit_prm_file_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
