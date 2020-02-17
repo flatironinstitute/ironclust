@@ -6496,7 +6496,7 @@ irc2('mcc');
 S_cfg = read_cfg_();
 [sf2_path, sf2_test_path, sf2_python_path, sf2_test_script, sf2_docker_name] = ...
     get_(S_cfg, 'spikeforest2_irc_path', 'spikeforest2_test_path', ...
-        'spikeforest2_python_path', 'spikeforest2_test_script');
+        'spikeforest2_python_path', 'spikeforest2_test_script', 'spikeforest2_docker_name');
 
 % build successful, now copy and edit docker files
 vc_irc_ver = sprintf('%s:%s', sf2_docker_name, version_());
