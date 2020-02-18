@@ -2,12 +2,12 @@
 freqLim = {[500,inf]};
 qqFactor = {4};
 fMatchedFilter_detect = {1};
-spkLim_ms = {[-.25, .75]};
+spkLim_ms = {[-.5, 1]};
 
 % cluster
-step_sec_drift = {10};
-batch_sec_drift = {300};
+step_sec_drift = {20};
+batch_sec_drift = {600};
 
 % merge (fast parameters to test by using cache)
-maxWavCor = {.98, .985, .99, .995, 1};
-cc_merge_thresh = {1};
+maxWavCor = num2cell(.9:.01:1);
+cc_merge_thresh = num2cell(.5:.1:1);

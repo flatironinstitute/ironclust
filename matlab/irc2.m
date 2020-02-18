@@ -2421,10 +2421,14 @@ for iFet = 1:2
         end
         for ic = 1:numel(cviSpk_drift1)
             [iClu1, vii1] = deal(viClu_drift1(ic), cviSpk_drift1{ic});
-            mrPc1 = mean(trPc(:,:,vii1),3);
+            tr_ = trPc(:,:,vii1);
+            mrPc1 = mean(tr_,3);
             if mrPv_peak*mrPc1(:,1) <= thresh1 % && peak_amp1 <= min(min(mrPv * mrPc1))/2
                 viClu_drift2(end+1) = iClu1;
-                cmrPc_drift2{end+1} = mrPc1;
+                switch 2
+                    case 1, cmrPc_drift2{end+1} = mrPc1;
+                    case 2, cmrPc_drift2{end+1} = mrPc1 ./ std(tr_,1,3);
+                end
             end
         end
         if ~isempty(viClu_drift2)
