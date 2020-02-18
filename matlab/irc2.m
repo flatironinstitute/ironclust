@@ -8785,7 +8785,9 @@ end %func
 % export .prb files to .json (flatiron-0.1) format
 function S_json = export_prb_json_(vcFile_prb, vcDir_out)
 
-format_version = read_cfg_('flatiron_probe_version');
+S_cfg = read_cfg_();
+format_version = S_cfg.flatiron_probe_version;
+probe_type = S_cfg.flatiron_probe_default;
 
 % batch export
 if any(vcFile_prb=='*')
@@ -8822,7 +8824,7 @@ end
 group = group(:)';
 
 % write to a file
-S_json = makeStruct_(format_version, probe_name, channel, x, y, z, group, site_width, site_height);
+S_json = makeStruct_(format_version, probe_name, probe_type, channel, x, y, z, group, site_width, site_height);
 mkdir_(vcDir_out);
 vcFile_json = fullfile(vcDir_out, [probe_name, '.json']);
 struct2json_(S_json, vcFile_json);
