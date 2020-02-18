@@ -34,11 +34,12 @@ nPcPerChan = 0;             % #PC/chan. Set to `0` to use a variable # as a func
 step_sec_drift = 20;        % Ave. duration of time batch in sec
 batch_sec_drift = 600;      % Total ave. duration of time batch group in sec
 knn = 30;                   % K-nearest neighbors
+nTime_max_drift = 256;		% (do not change), max number of time batches per load
 
 % [Auto-merge stage: automatically merge similar clusters based on KNN-graph and waveform similarity]
-knn_expand_merge = 8;       % average using n nearest neighbors
+knn_expand_merge = 15;      % average using n nearest neighbors
 maxWavCor = .98;            % Automated merge thresohld based on waveform correlation
 min_snr_clu = [];           % Automatically remove clusters below this SNR threshold, set to `[]` to disable
 spkRefrac_merge_ms = .25;   % Remove spikes violating this refractory period in msec when merged
 spkJitter_ms_gt = 1;
-cc_merge_thresh = 1;       % merge based on cross-correlation thresold
+cc_merge_thresh = 1;        % merge based on cross-correlation thresold

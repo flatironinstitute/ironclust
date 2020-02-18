@@ -2347,7 +2347,8 @@ end
 [cviClu1_drift, cviClu2_drift, ccviSpk1_drift, ccviSpk2_drift] = deal(cell(nDrift,1));
 for iDrift = 1:nDrift    
     vii1 = cvii1_drift{iDrift};
-    if isempty(vii1), continue; end
+    if numel(vii1) < nSpk_min, continue; end
+%     if isempty(vii1), continue; end
     [vrRho11, viClu11, miKnn11, miiKnn11] = ...
         deal(vrRho1(vii1), viClu1(vii1), miKnn1(:,vii1), miiKnn1(:,vii1));
     [cviiSpk_clu_, ~, viClu_uniq] = vi2cell_(viClu11, nClu);
@@ -2357,22 +2358,43 @@ for iDrift = 1:nDrift
     [cviSpk1_drift1, cviSpk2_drift1] = deal(cell(1,nClu1));
     for iiClu1 = 1:nClu1
         iClu1 = viClu_uniq(iiClu1);
-        vii_ = cviiSpk_clu_{iClu1};
-        [miKnn11_, miiKnn11_] = deal(miKnn11(:,vii_), miiKnn11(:,vii_));
-        vrRho11_T = vrRho11(vii_)';
-        vii1_ = miiKnn11_(vrRho_1(miKnn11_) >= vrRho11_T); 
+        vii_ = cviiSpk_clu_{iClu1};   
+%         if numel(vii_) < nSpk_min, continue; end
+        vii2_ = [];
+        switch 3
+            case 1
+                [miKnn11_, miiKnn11_, vrRho11_T] = ...
+                    deal(miKnn11(:,vii_), miiKnn11(:,vii_), vrRho11(vii_)');
+                vii1_ = miiKnn11_(vrRho_1(miKnn11_) >= vrRho11_T); 
+                if fSecondSite
+                    miiKnn21_ = miiKnn21(:,vii_);
+                    vii2_ = miiKnn21_(vrRho_2(miKnn11_) >= vrRho11_T);
+                end                  
+            case 2
+                [miKnn11_, miiKnn11_, vrRho11_T] = ...
+                    deal(miKnn11(:,vii_), miiKnn11(:,vii_), vrRho11(vii_)');
+                vrRho11_T = median(vrRho11_T);
+                vii1_ = miiKnn11_(vrRho_1(miKnn11_) >= vrRho11_T);
+                if fSecondSite
+                    miiKnn21_ = miiKnn21(:,vii_);
+                    vii2_ = miiKnn21_(vrRho_2(miKnn11_) >= vrRho11_T);
+                end                  
+            case 3 % use the top half of the density
+                vrRho11_T = vrRho11(vii_)';
+                vii_ = vii_(vrRho11_T>=median(vrRho11_T));
+                vii1_ = miiKnn11(:,vii_); vii1_ = vii1_(vii1_>0);
+                if fSecondSite
+                    vii2_ = miiKnn21(:,vii_); vii2_ = vii2_(vii2_>0);
+                end
+        end
         if numel(vii1_) >= nSpk_min
             cviSpk1_drift1{iiClu1} = vii1_;
             viClu1_drift1(iiClu1) = iClu1;
-        end        
-        if fSecondSite
-            miiKnn21_ = miiKnn21(:,vii_);
-            vii2_ = miiKnn21_(vrRho_2(miKnn11_) >= vrRho11_T);
-            if numel(vii2_) >= nSpk_min
-                cviSpk2_drift1{iiClu1} = vii2_;    
-                viClu2_drift1(iiClu1) = iClu1;
-            end
-        end         
+        end    
+        if numel(vii2_) >= nSpk_min
+            cviSpk2_drift1{iiClu1} = vii2_;    
+            viClu2_drift1(iiClu1) = iClu1;
+        end       
     end
     vi1_keep = find(~isnan(viClu1_drift1));    
     cviClu1_drift{iDrift} = viClu1_drift1(vi1_keep);
@@ -8791,16 +8813,16 @@ if ~isempty(get_(S_prb, 'vrSiteHW'))
 else
     [site_height, site_width] = deal([]);
 end
-shank = get_(S_prb, 'viShank_site');
-if isempty(shank)
-    shank = zeros(nSites,1);
-elseif min(shank) > 0
-    shank = shank - 1;
+group = get_(S_prb, 'viShank_site');
+if isempty(group)
+    group = zeros(nSites,1);
+elseif min(group) > 0
+    group = group - 1;
 end
-shank = shank(:)';
+group = group(:)';
 
 % write to a file
-S_json = makeStruct_(format_version, probe_name, channel, x, y, z, shank, site_width, site_height);
+S_json = makeStruct_(format_version, probe_name, channel, x, y, z, group, site_width, site_height);
 mkdir_(vcDir_out);
 vcFile_json = fullfile(vcDir_out, [probe_name, '.json']);
 struct2json_(S_json, vcFile_json);

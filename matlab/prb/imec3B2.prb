@@ -6,7 +6,7 @@ channels = 1:384;
 geometry = [repmat([43; 11; 59; 27], 96, 1), 20*reshape(repmat((1:192), 2, 1), 384, 1)];
 
 % Reference sites: not removed by default
-ref_sites = []; %192
+ref_sites = [192]; %192: tip reference
 channels(ref_sites) = []; 
 geometry(ref_sites,:) = []; 
 
