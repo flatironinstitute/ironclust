@@ -1,0 +1,21 @@
+% int64-10dbc.prb
+% v-edge probe
+
+nc_ = 64;           % number of channels
+n_shank_ = 2;       % number of shanks
+p_shank_ = 250;     % shank pitch in um
+v_pitch_ = 25;      % vertical site pitch in um
+h_slope_ = 1/50;    % horizontal site pitch, use negative to flip L/R
+pad = [15, 11];     % site pad height x width in um
+
+nc_shank_ = floor(nc_/n_shank_); 
+channels1_ = [16 1 18 3 20 5 22 7 24 9 26 11 28 13 30 15 31 14 29 12 27 10 25 8 23 6 21 4 19 2 17 0];
+channels2_ = [63 46 61 44 59 42 57 40 55 38 53 36 51 34 49 32 48 33 50 35 52 37 54 39 56 41 58 43 60 45 62 47];
+channels = 1+[channels1_, channels2_];
+
+geometry = zeros(nc_, 2);
+geometry(:,2) = mod(0:nc_-1,nc_shank_) * v_pitch_;
+geometry(:,1) = h_slope_.*geometry(:,2)'.*(-1).^(0:nc_-1) + floor((0:nc_-1)/nc_shank_)*p_shank_;
+geometry(2:2:end,1) = geometry(2:2:end,1)-11.5;
+
+shank = (ones(nc_shank_,1)*[1:n_shank_]); shank=shank(:);

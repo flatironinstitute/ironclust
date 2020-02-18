@@ -1,0 +1,28 @@
+% int64-7dbc.prb
+% two-column probe
+
+nc_ = 64;           % number of channels
+n_shank_ = 6;       % number of shanks
+p_shank_ = 200;     % shank pitch in um
+v_pitch_ = 15;      % vertical site pitch in um
+h_pitch_ = 16.5;    % horizontal site pitch, use negative to flip L/R
+pad = [15, 11];     % site pad height x width in um
+
+channels1_ = [8 10 0 13 2 15 4 14 6 12];
+channels2_ = [1 16 3 24 11 22 9 20 7 18 5];
+channels3_ = [27 25 29 17 26 19 28 21 30 23 31];
+channels4_ = [37 35 39 36 47 34 45 32 43 33 41];
+channels5_ = [63 61 46 53 38 55 40 57 42 59 44];
+channels6_ = [52 54 51 62 49 60 48 58 50 56];
+channels = 1+[channels1_, channels2_, channels3_, channels4_, channels5_, channels6_];
+
+nc_shank_ = ceil(nc_/n_shank_)+1;
+nc_ = nc_shank_*n_shank_;
+geometry = zeros(nc_, 2);
+geometry(1:2:end,1) = 0 + floor((0:2:nc_-1)/nc_shank_)*p_shank_;
+geometry(2:2:end,1) = geometry(1:2:end,1) + h_pitch_;
+geometry(:,2) = mod(0:nc_-1,nc_shank_) * v_pitch_;
+
+shank = [1 1 1 1 1 1 1 1 1 1 0 0 2 2 2 2 2 2 2 2 2 2 2 0 3 3 3 3 3 3 3 3 3 3 3 0 4 4 4 4 4 4 4 4 4 4 4 0 5 5 5 5 5 5 5 5 5 5 5 0 6 6 6 6 6 6 6 6 6 6 0 0];
+geometry = geometry(shank>0,:);
+shank = shank(shank>0);
