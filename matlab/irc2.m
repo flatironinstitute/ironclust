@@ -77,8 +77,8 @@ switch lower(vcCmd)
     case 'traces', irc2_traces(vcArg1); return;
             
     % SpikeGLX functions
-    case {'import-spikeglx', 'import-rhd', 'import-intan'}
-        import_spikeglx_(vcArg1, vcArg2, vcArg3); return;
+    case {'import-recordings', 'import-spikeglx', 'import-rhd', 'import-intan', 'import-neurosuite'}
+        import_recordings_(vcArg1, vcArg2, vcArg3); return;
         
     % Git functions
     case 'push-readme', push_readme_(); return;    
@@ -1723,7 +1723,7 @@ try
     csDesc{end+1} = sprintf('Auto-merge');   
     csDesc{end+1} = sprintf('    delta_cut:              %0.3f', get_set_(P, 'delta_cut', 1));
     csDesc{end+1} = sprintf('    maxWavCor:              %0.3f', get_(P, 'maxWavCor'));
-    csDesc{end+1} = sprintf('    cc_merge_thresh:        %0.3f', get_(P, 'cc_merge_thresh'));
+    csDesc{end+1} = sprintf('    merge_thresh_cc:        %0.3f', get_(P, 'merge_thresh_cc'));
 catch
 end
 try
@@ -1818,29 +1818,19 @@ end %func
 % auto merge
 function S_auto = auto_(S0, P)
 
+nRepeat = 3;
 
 fprintf('\nauto-merging...\n'); runtime_automerge = tic;
 
 % Merge based on KNN-graph
 S_auto = postCluster_(S0.S_clu, P, S0.viSite_spk); % peak merging
 
-% Mege based on cross-correlogram
-S_auto = wave_ccm_merge_(S0, S_auto, P);
-
 % Merge based on waveform similarity
-P.maxWavCor = get_set_(P, 'maxWavCor', .98);
-if P.maxWavCor<1 && S_auto.nClu > 1
-    S_auto0 = S_auto;
-    fprintf('\tMerging templates...\n\t'); t_merge=tic;
-    nClu_pre = S_auto.nClu;
-    [S_auto, viClu_delete] = wave_similarity_merge_(S0, S_auto, P);
-    if S_auto.nClu>0
-        fprintf('\tMerged waveforms (%d->%d->%d), took %0.1fs\n', ...
-            nClu_pre, S_auto.nClu+numel(viClu_delete), S_auto.nClu, toc(t_merge));    
-    else
-        S_auto = S_auto0;
-        fprintf('\tNo waveforms were merged\n');
-    end
+for iRepeat=1:nRepeat
+    nClu_prev = S_auto.nClu;
+    S_auto = wave_ccm_merge_(S0, S_auto, P);
+    S_auto = wave_similarity_merge_(S0, S_auto, P);
+    if nClu_prev==S_auto.nClu, break; end
 end
 
 S_auto = S_auto_refrac_(S_auto, P, S0.viTime_spk); % refractory violation removal
@@ -1857,8 +1847,8 @@ end %func
 function S_auto = wave_ccm_merge_(S0, S_auto, P)
 % calculate cross-correlogram
 
-P.cc_merge_thresh = get_set_(P, 'cc_merge_thresh', .9);
-if P.cc_merge_thresh > 0 && P.cc_merge_thresh <1 && S_auto.nClu > 1
+P.merge_thresh_cc = get_set_(P, 'merge_thresh_cc', .9);
+if P.merge_thresh_cc > 0 && P.merge_thresh_cc <1 && S_auto.nClu > 1
     S_auto0 = S_auto;
     nClu_pre = S_auto.nClu;
     fprintf('\tMerging based on cross-correlogram...\n\t'); t_cc=tic;
@@ -1876,7 +1866,7 @@ if P.cc_merge_thresh > 0 && P.cc_merge_thresh <1 && S_auto.nClu > 1
     S_auto.nClu = sum(unique(viMapClu_new)>0);
     if S_auto.nClu>0
         fprintf('\tMerged clusters cc>=%0.2f (%d->%d), took %0.1fs\n', ...
-            P.cc_merge_thresh, nClu_pre, S_auto.nClu, toc(t_cc));    
+            P.merge_thresh_cc, nClu_pre, S_auto.nClu, toc(t_cc));    
     else
         S_auto = S_auto0;
         fprintf('\tNo waveforms were merged\n');
@@ -1889,8 +1879,8 @@ end %func
 % calculate cross-correlogram
 function cviClu_clu = calc_ccm_space_(viClu_spk, viTime_spk, viSite_spk, P)
 
-cc_merge_thresh = get_set_(P, 'cc_merge_thresh', .5);
-jitter = round(get_set_(P,'spkJitter_ms_gt',1) * P.sRateHz / 1000); %1 ms jitter
+merge_thresh_cc = get_set_(P, 'merge_thresh_cc', .5);
+jitter = round(get_set_(P,'spkJitter_ms_cc',1) * P.sRateHz / 1000); %1 ms jitter
 
 [cviSpk_clu, nClu] = vi2cell_(int32(viClu_spk));
 cviTime_clu = cellfun(@(vi_)viTime_spk(vi_), cviSpk_clu, 'UniformOutput', 0);
@@ -1898,7 +1888,7 @@ cviClu_clu = cell(nClu, 1);
 vnSpk_clu = cellfun(@numel, cviSpk_clu); vnSpk_clu = vnSpk_clu(:);
 viSite_clu = cellfun(@(x)mode(viSite_spk(x)), cviSpk_clu); viSite_clu = viSite_clu(:);
 miSites = P.miSites;
-S_fun = makeStruct_(cviTime_clu, viSite_clu, miSites, vnSpk_clu, jitter, cc_merge_thresh, nClu);
+S_fun = makeStruct_(cviTime_clu, viSite_clu, miSites, vnSpk_clu, jitter, merge_thresh_cc, nClu);
 % Compute intersection
 if false
     [mrPrecision, mrRecall] = precision_recall_(S_fun, 1);
@@ -1960,7 +1950,7 @@ vnIntersect2 = arrayfun(@(j)count_overlap_(j), viClu2);
 vrRecall2 = vnIntersect2 ./ vnSpk_clu(iClu);
 vrCC2 = vrRecall2;
 % vrCC2 = max(vrPrecision2, vrRecall2);
-viClu = viClu2(vrCC2 >= cc_merge_thresh);
+viClu = viClu2(vrCC2 >= merge_thresh_cc);
 end %func
 
 
@@ -1969,8 +1959,8 @@ end %func
 function cviClu_clu = calc_ccm_drift_(S_drift, viClu_spk, viTime_spk, viSite_spk, P)
 
 miSites = P.miSites;
-cc_merge_thresh = get_set_(P, 'cc_merge_thresh', .9);
-jitter = round(get_set_(P,'spkJitter_ms_gt',1) * P.sRateHz / 1000); %1 ms jitter
+merge_thresh_cc = get_set_(P, 'merge_thresh_cc', .9);
+jitter = round(get_set_(P,'spkJitter_ms_cc',1) * P.sRateHz / 1000); %1 ms jitter
 
 t_fun=tic;
 viLim_drift = S_drift.viLim_drift;
@@ -1995,7 +1985,7 @@ for iDrift = 1:nDrift
         viiClu2 = find(ismember(viSite_clu1, miSites(:, viSite_clu1(iiClu1))));
         vnIntersect2 = arrayfun(@(j)count_overlap_(iiClu1,j), viiClu2);
         vrCC2 = max(vnIntersect2 ./ vnSpk_clu1(viiClu2), vnIntersect2 / vnSpk_clu1(iiClu1));
-        cviClu_clu1{iiClu1} = viClu1(viiClu2(vrCC2 >= cc_merge_thresh));
+        cviClu_clu1{iiClu1} = viClu1(viiClu2(vrCC2 >= merge_thresh_cc));
     end
     cviClu_clu(viClu1) = cellfun_(@(x,y)[x;y], cviClu_clu(viClu1), cviClu_clu1);
     fprintf('.');
@@ -2009,7 +1999,7 @@ end
 % calculate cross-correlogram
 function cviClu_clu = calc_ccm_(viClu_spk, viTime_spk, P)
 
-cc_merge_thresh = get_set_(P, 'cc_merge_thresh', .5);
+merge_thresh_cc = get_set_(P, 'merge_thresh_cc', .5);
 jitter = round(get_set_(P,'spkJitter_ms_gt',1) * P.sRateHz / 1000); %1 ms jitter
 
 [cviSpk_clu, nClu] = vi2cell_(int32(viClu_spk));
@@ -2025,7 +2015,7 @@ if fParfor
         parfor iClu = 1:nClu
             vnIntersect1 = arrayfun(@(j)count_overlap_(iClu,j), 1:nClu)';
             vrCC1 = max(vnIntersect1 ./ vnSpk_clu, vnIntersect1 / vnSpk_clu(iClu));
-            cviClu_clu{iClu} = find(vrCC1 >= cc_merge_thresh);
+            cviClu_clu{iClu} = find(vrCC1 >= merge_thresh_cc);
         end
     catch
         fParfor = 0;
@@ -2035,7 +2025,7 @@ if ~fParfor
     for iClu = 1:nClu
         vnIntersect1 = arrayfun(@(j)count_overlap_(iClu,j), 1:nClu)';
         vrCC1 = max(vnIntersect1 ./ vnSpk_clu, vnIntersect1 / vnSpk_clu(iClu));
-        cviClu_clu{iClu} = find(vrCC1 >= cc_merge_thresh);
+        cviClu_clu{iClu} = find(vrCC1 >= merge_thresh_cc);
     end
 end
 end
@@ -2045,8 +2035,8 @@ end
 % calculate cross-correlogram
 function cviClu_clu = calc_ccm1_(viClu_spk, viTime_spk, P)
 
-cc_merge_thresh = get_set_(P, 'cc_merge_thresh', .5);
-jitter = round(get_set_(P,'spkJitter_ms_gt',1) * P.sRateHz / 1000); %1 ms jitter
+merge_thresh_cc = get_set_(P, 'merge_thresh_cc', .5);
+jitter = round(get_set_(P,'spkJitter_ms_cc',1) * P.sRateHz / 1000); %1 ms jitter
 
 [cviSpk_clu, nClu] = vi2cell_(int32(viClu_spk));
 cviTime_clu = cellfun(@(vi_)unique(int32(viTime_spk(vi_)/jitter)), cviSpk_clu, 'UniformOutput', 0);
@@ -2063,7 +2053,7 @@ if fParfor
         parfor iClu = 1:nClu
             vnIntersect1 = compare_mda_gt_(cviTime_clu{iClu}, cviTime_clu, miLim_clu);
             vrCC1 = max(vnIntersect1 ./ vnSpk_clu, vnIntersect1 / vnSpk_clu(iClu));
-            cviClu_clu{iClu} = find(vrCC1 >= cc_merge_thresh);
+            cviClu_clu{iClu} = find(vrCC1 >= merge_thresh_cc);
         end
     catch
         fParfor = 0;
@@ -2073,7 +2063,7 @@ if ~fParfor
     for iClu = 1:nClu
         vnIntersect1 = compare_mda_gt_(cviTime_clu{iClu}, cviTime_clu, miLim_clu);
         vrCC1 = max(vnIntersect1 ./ vnSpk_clu, vnIntersect1 / vnSpk_clu(iClu));
-        cviClu_clu{iClu} = find(vrCC1 >= cc_merge_thresh);
+        cviClu_clu{iClu} = find(vrCC1 >= merge_thresh_cc);
     end
 end
 end
@@ -2246,18 +2236,26 @@ end %func
 
 %--------------------------------------------------------------------------
 % keeps trPc in the main memory, not sent out to workers
-function [S_auto, viClu_remove] = wave_similarity_merge_(S0, S_auto, P)
+function S_auto = wave_similarity_merge_(S0, S_auto, P)
 
+
+P.maxWavCor = get_set_(P, 'maxWavCor', .98);
+if P.maxWavCor>=1 || P.maxWavCor<=0 || S_auto.nClu == 1
+    return; 
+end
+
+S_auto0 = S_auto;
+fprintf('\tMerging templates...\n\t'); t_fun=tic;
+nClu_pre = S_auto.nClu;
 S_clu = get_(S0, 'S_clu');
 vrRho = S_clu.rho;
 [viLim_drift, mlDrift] = get_(S_clu.S_drift, 'viLim_drift', 'mlDrift');
 
-t_fun = tic;
 % fprintf('\tAutomated merging based on waveform similarity...\n'); t_template=tic;
 viClu = S_auto.viClu;
-[ccviSpk_site_load, ccviSpk_site2_load, type_fet, dimm_fet, mrPv, vrThresh_site] = ...
+[ccviSpk_site_load, ccviSpk_site2_load, type_fet, dimm_fet, mrPv, vrThresh_site, viTime_spk] = ...
     get_(S0, 'ccviSpk_site_load', 'ccviSpk_site2_load', 'type_fet', ...
-        'dimm_fet', 'mrPv_global', 'vrThresh_site');
+        'dimm_fet', 'mrPv_global', 'vrThresh_site', 'viTime_spk');
 nShift_max = round(P.spkRefrac_merge_ms/2 * P.sRateHz / 1000);
 viShift = -nShift_max:nShift_max;
 [knn, nSpk_min, vcFile_prm, maxWavCor] = get_(P, 'knn', 'knn', 'vcFile_prm', 'maxWavCor');
@@ -2265,7 +2263,7 @@ nClu = S_auto.nClu;
 
 nSites = size(P.miSites,2);
 S_param = makeStruct_(nClu, nSites, knn, vcFile_prm, nSpk_min, ...
-    vrRho, viClu, viLim_drift, ccviSpk_site_load, ccviSpk_site2_load, ...
+    vrRho, viClu, viTime_spk, viLim_drift, ccviSpk_site_load, ccviSpk_site2_load, ...
     type_fet, dimm_fet, mrPv, vrThresh_site, viShift, mlDrift, maxWavCor, P);
 
 % compute pairwise distance in parallel by sites
@@ -2299,7 +2297,14 @@ viMapClu_new = cell2map_(cviClu_clu, viClu_remove, fParfor);
 vlUpdate = S_auto.viClu > 0;
 S_auto.viClu(vlUpdate) = viMapClu_new(S_auto.viClu(vlUpdate));
 S_auto.nClu = sum(unique(viMapClu_new)>0);
-fprintf('\twave_similarity_: took %0.1fs\n', toc(t_fun));
+
+if S_auto.nClu>0
+    fprintf('\tMerged waveforms (%d->%d->%d), took %0.1fs\n', ...
+        nClu_pre, S_auto.nClu+numel(viClu_remove), S_auto.nClu, toc(t_fun));    
+else
+    S_auto = S_auto0;
+    fprintf('\tNo waveforms were merged\n');
+end
 end %func
 
 
@@ -2314,54 +2319,71 @@ end %func
 
 
 %--------------------------------------------------------------------------
+function vi = unique_(vi)
+if isempty(vi), return; end
+vi = sort(vi);
+vi(diff(vi)==0)=[];
+end %func
+
+
+%--------------------------------------------------------------------------
+function cviSpk = separate_burst_(viSpk, viTime, nSamples_burst)
+viiPre = find(diff(sort(viTime(viSpk))) >= nSamples_burst);
+cviSpk = {viSpk(viiPre), viSpk(viiPre+1)};
+end %func
+
+
+%--------------------------------------------------------------------------
 function [cviClu_clu, vlExist_clu] = wave_similarity_site_(iSite1, S_auto)
 
 fUseSecondSite = 1;
 
 % Load KNN and identify neighbors per cluster
 csVar_imported = import_struct_(S_auto);
-NUM_KNN = get_set_(P, 'knn_expand_merge', 8);
+NUM_KNN = get_set_(P, 'knn_expand_merge', 30);
 nDrift = size(mlDrift, 1);
 % fprintf('\twave_similarity_site_pre_: Site%d... ', iSite1); t_fun=tic;
 miKnn1 = load_miKnn_site_(S_auto, iSite1);
 miKnn1 = miKnn1(1:min(NUM_KNN, size(miKnn1,1)), :);
+viSpk1 = get_viSpk_site_(S_auto, 1, iSite1);
+cvii1_drift = vi2cell_(discretize(viSpk1, viLim_drift), nDrift);
+[vrRho1, viClu1, viTime1] = deal(S_auto.vrRho(viSpk1), viClu(viSpk1), viTime_spk(viSpk1));
 
-% remove small center spikes
 thresh1 = -abs(vrThresh_site(iSite1)); % negative detection
 iT_peak = 1 - P.spkLim(1);
 mrPv_peak = mrPv(iT_peak,:);
-
-viSpk1 = get_viSpk_site_(S_auto, 1, iSite1);
-cvii1_drift = vi2cell_(discretize(viSpk1, viLim_drift), nDrift);
-[vrRho1, viClu1] = deal(S_auto.vrRho(viSpk1), viClu(viSpk1));
+nSamples_burst = round(get_set_(P, 't_burst_ms', 20) * P.sRateHz / 1000);
 vrRho_1 = copy_mask_(S_auto.vrRho, viSpk1);
 [~, miiKnn1] = ismember(miKnn1, viSpk1);
 if fUseSecondSite
-    viSpk2 = get_viSpk_site_(S_auto, 2, iSite1);
+    viSpk2 = get_viSpk_site_(S_auto, 2, iSite1);    
 end
 fSecondSite = ~isempty(viSpk2);
 if fSecondSite   
     vrRho_2 = copy_mask_(S_auto.vrRho, viSpk2);
     [~, miiKnn2] = ismember(miKnn1, viSpk2);
+    viTime2 = viTime_spk(viSpk2);
+%     cvii2_drift = vi2cell_(discretize(viSpk2, viLim_drift), nDrift);
 end
 [cviClu1_drift, cviClu2_drift, ccviSpk1_drift, ccviSpk2_drift] = deal(cell(nDrift,1));
 for iDrift = 1:nDrift    
-    vii1 = cvii1_drift{iDrift};
+    vii1 = cvii1_drift{iDrift};    
     if numel(vii1) < nSpk_min, continue; end
-%     if isempty(vii1), continue; end
     [vrRho11, viClu11, miKnn11, miiKnn11] = ...
         deal(vrRho1(vii1), viClu1(vii1), miKnn1(:,vii1), miiKnn1(:,vii1));
     [cviiSpk_clu_, ~, viClu_uniq] = vi2cell_(viClu11, nClu);
-    if fSecondSite, miiKnn21 = miiKnn2(:,vii1); end
+    if fSecondSite
+%         vii2 = cvii2_drift{iDrift};
+        miiKnn21 = miiKnn2(:,vii1); 
+    end
     nClu1 = numel(viClu_uniq);
     [viClu1_drift1, viClu2_drift1] = deal(nan(1,nClu1));
     [cviSpk1_drift1, cviSpk2_drift1] = deal(cell(1,nClu1));
     for iiClu1 = 1:nClu1
         iClu1 = viClu_uniq(iiClu1);
         vii_ = cviiSpk_clu_{iClu1};   
-%         if numel(vii_) < nSpk_min, continue; end
         vii2_ = [];
-        switch 3
+        switch 4 
             case 1
                 [miKnn11_, miiKnn11_, vrRho11_T] = ...
                     deal(miKnn11(:,vii_), miiKnn11(:,vii_), vrRho11(vii_)');
@@ -2386,6 +2408,27 @@ for iDrift = 1:nDrift
                 if fSecondSite
                     vii2_ = miiKnn21(:,vii_); vii2_ = vii2_(vii2_>0);
                 end
+            case 4
+                vrRho11_T = vrRho11(vii_)';
+                vii_ = vii_(vrRho11_T>=median(vrRho11_T));
+                
+                [miKnn11_, miiKnn11_, vrRho11_T] = ...
+                    deal(miKnn11(:,vii_), miiKnn11(:,vii_), vrRho11(vii_)');
+                vii1_ = unique_(miiKnn11_(vrRho_1(miKnn11_) >= vrRho11_T)); 
+                if fSecondSite
+                    miiKnn21_ = miiKnn21(:,vii_);
+                    vii2_ = unique_(miiKnn21_(vrRho_2(miKnn11_) >= vrRho11_T));
+                end
+            case 5
+                vrRho11_T = vrRho11(vii_)';
+                med_rho11 = median(vrRho11_T);
+                vii_ = vii_(vrRho11_T>=med_rho11);                
+                [miKnn11_, miiKnn11_] = deal(miKnn11(:,vii_), miiKnn11(:,vii_));
+                vii1_ = unique_(miiKnn11_(vrRho_1(miKnn11_) >= med_rho11)); 
+                if fSecondSite
+                    miiKnn21_ = miiKnn21(:,vii_);
+                    vii2_ = unique_(miiKnn21_(vrRho_2(miKnn11_) >= med_rho11));
+                end    
         end
         if numel(vii1_) >= nSpk_min
             cviSpk1_drift1{iiClu1} = vii1_;
@@ -2410,6 +2453,11 @@ end
 for iFet = 1:2
     if iFet==2 && ~fSecondSite, break; end    
     trPc = load_fet_site_(S_auto, iFet, iSite1);
+    if iFet==1
+        viTime = viTime1;
+    else
+        viTime = viTime2;
+    end
     for iDrift = 1:nDrift
         [viClu_drift2, cmrPc_drift2] = deal([], {});
         if iFet==1
@@ -2418,16 +2466,20 @@ for iFet = 1:2
         else
             viClu_drift1 = cviClu2_drift{iDrift};
             cviSpk_drift1 = ccviSpk2_drift{iDrift};
-        end
+        end        
         for ic = 1:numel(cviSpk_drift1)
-            [iClu1, vii1] = deal(viClu_drift1(ic), cviSpk_drift1{ic});
-            tr_ = trPc(:,:,vii1);
-            mrPc1 = mean(tr_,3);
-            if mrPv_peak*mrPc1(:,1) <= thresh1 % && peak_amp1 <= min(min(mrPv * mrPc1))/2
-                viClu_drift2(end+1) = iClu1;
-                switch 2
-                    case 1, cmrPc_drift2{end+1} = mrPc1;
-                    case 2, cmrPc_drift2{end+1} = mrPc1 ./ std(tr_,1,3);
+            [iClu1, vii1] = deal(viClu_drift1(ic), cviSpk_drift1{ic}); 
+            cvii1 = separate_burst_(vii1, viTime, nSamples_burst);
+            for iBurst=1:numel(cvii1)
+                if numel(cvii1{iBurst}) < nSpk_min, continue; end
+                tr_ = trPc(:,:,cvii1{iBurst});
+                mrPc1 = mean(tr_,3);
+                if mrPv_peak*mrPc1(:,1) <= thresh1 % && peak_amp1 <= min(min(mrPv * mrPc1))/2
+                    viClu_drift2(end+1) = iClu1;
+                    switch 1
+                        case 1, cmrPc_drift2{end+1} = mrPc1;
+                        case 2, cmrPc_drift2{end+1} = mrPc1 ./ std(tr_,1,3);
+                    end
                 end
             end
         end
@@ -8250,16 +8302,17 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function import_spikeglx_(vcFile_bin, vcFile_prb, vcDir_out)
+function import_recordings_(vcFile_bin, vcFile_prb, vcDir_out)
+
 if nargin<3, vcDir_out=''; end
 if nargin<2, vcFile_prb=''; end
 if nargin<1, vcFile_bin = []; end
 
 if isempty(vcFile_bin)
     csHelp = {'Usages', '-----', ...
-    '    irc2 import-spikeglx [path_to_bin_file] [path_to_prb_file] (output_path)`', ...    
-    '    irc2 import-spikeglx [path_to_*bin_files] [path_to_prb_file] (output_path)`', ...
-    '    irc2 import-spikeglx [path_to_bin_list_txt] [path_to_prb_file] (output_path)`'};
+    '    irc2 import-recordings [path_to_bin_file] [path_to_prb_file] (output_path)`', ...    
+    '    irc2 import-recordings [path_to_*bin_files] [path_to_prb_file] (output_path)`', ...
+    '    irc2 import-recordings [path_to_bin_list_txt] [path_to_prb_file] (output_path)`'};
     disp_cs_(csHelp);
     return; 
 end
@@ -8267,7 +8320,7 @@ end
 % batch mode
 if isTextFile_(vcFile_bin)
     csFiles_bin = load_batch_(vcFile_bin);
-    if isempty(vcDir_out), vcDir_out = fileparts(vcFile_bin); end
+%     if isempty(vcDir_out), vcDir_out = fileparts(vcFile_bin); end
 else
     csFiles_bin = list_files_(vcFile_bin, 1);
 end
@@ -8308,14 +8361,9 @@ fprintf('Wrote to %s\n', fullfile(vcDir_out, 'geom.csv'));
 
 % write raw.mda
 switch vcRecordingType
-    case 'spkleglx'
-        fid_mda = writemda_fid(fullfile(vcDir_out, 'raw.mda'));
-        for iFile = 1:numel(csFiles_bin)
-            mr_ = load_bin_(csFiles_bin{iFile}, S_meta.vcDataType, S_meta.nChans);
-            writemda_fid(fid_mda, mr_(S_prb.viSite2Chan,:));
-            mr_ = []; %clear
-        end
-        writemda_fid(fid_mda, 'close');
+    case {'spkleglx', 'neuroscope'}
+        append_bin2mda_(csFiles_bin, fullfile(vcDir_out, 'raw.mda'),...
+            S_meta.nChans, S_meta.vcDataType, S_prb.viSite2Chan);
     case 'rhd' %  join channels
         mr = []; 
         assert(numel(csFiles_bin)==S_meta.nChans, 'Number of files must be equal to the number of channels');
@@ -8328,11 +8376,54 @@ switch vcRecordingType
         end
         writemda_(fullfile(vcDir_out, 'raw.mda'), mr(:,S_prb.viSite2Chan)');
 end
-fprintf('Wrote to %s\n', fullfile(vcDir_out, 'raw.mda'));
+fprintf('\nWrote to %s\n', fullfile(vcDir_out, 'raw.mda'));
 if numel(csFiles_bin)>1
     save_cs_(fullfile(vcDir_out, 'bin_files.txt'), csFiles_bin);
     fprintf('\tCombined %d files: %s\n', numel(csFiles_bin), fullfile(vcDir_out, 'bin_files.txt')); 
 end
+end %func
+
+
+%--------------------------------------------------------------------------
+function append_bin2mda_(csFiles_bin, vcFile_mda, nChans, vcDataType, viSite2Chan)
+% viSite2Chan: channel reordering
+CACHE_SIZE = 1e9; % half a gig
+
+if nargin<3, nChans = 1; end
+if nargin<4, vcDataType = 'uint8'; end
+if nargin<5, viSite2Chan=[]; end
+
+bytes_per_sample = bytesPerSample_(vcDataType) * nChans;
+nSamples_copy = floor(CACHE_SIZE/bytes_per_sample); % number of sammples to copy at a time
+
+fid_mda = writemda_fid(vcFile_mda);
+for iFile = 1:numel(csFiles_bin)    
+    t1=tic;
+    assert(exist_file_(csFiles_bin{iFile}), 'file must exist');
+    fid_r = fopen(csFiles_bin{iFile}, 'r');
+    b1 = ftell(fid_mda);
+    while ~feof(fid_r) % read one sample at a time        
+        mr_ = fread(fid_r, nChans*nSamples_copy, ['*', vcDataType]);
+        if mod(numel(mr_), nChans) > 0
+            nSamples_ = floor(numel(mr_) / nChans);
+            if nSamples_==0, break; end
+            mr_ = reshape(mr_(1:nChans * nSamples_), nChans, nSamples_);
+        else
+            mr_ = reshape(mr_, nChans, []);
+        end
+        if ~isempty(viSite2Chan)
+            writemda_fid(fid_mda, mr_(viSite2Chan,:));    
+        else
+            writemda_fid(fid_mda, mr_);
+        end
+    end
+    [t1, b1] = deal(toc(t1), ftell(fid_mda)-b1);
+    fprintf('\t%d/%d: took %0.1fs (%0.1f MB/s)\n', ...
+        iFile, numel(csFiles_bin), t1, b1/1e6/t1);
+    fclose(fid_r);
+end
+
+writemda_fid(fid_mda, 'close');
 end %func
 
 
