@@ -7,7 +7,7 @@
 %   Flatiron Institute, a division of Simons Foundation
 
 
-function varargout = irc2(vcDir_in, vcDir_out, vcFile_arg, vcArg3)
+function varargout = irc2(vcDir_in, vcDir_out, vcFile_arg, vcArg3, vcArg4)
 % irc2(vcDir_in, vcDir_out, vcFile_arg)
 % irc2(vcCmd, vcArg1, vcArg2)
 
@@ -15,7 +15,8 @@ if nargin<1, vcDir_in = ''; end
 if nargin<2, vcDir_out = ''; end
 if nargin<3, vcFile_arg = ''; end
 if nargin<4, vcArg3 = ''; end
- 
+if nargin<5, vcArg4 = ''; end
+
 persistent vcFile_prm_
 
 % fast response to call
@@ -67,7 +68,7 @@ if isempty(vcFile_prm)
 else
     vcFile_prm_ = vcFile_prm;
 end
-switch lower(vcCmd) 
+switch lower(vcCmd)     
     % probe reader
     case 'probe-image', probe_image_(vcArg1, vcArg2, vcArg3); return;
     
@@ -120,7 +121,8 @@ switch lower(vcCmd)
     case 'compile-deploy', compile_cuda_(vcArg1, '0'); return
     case 'compile-system', compile_cuda_(vcArg1, '1'); return
     case {'compile', 'install'}, compile_cuda_(vcArg1, vcArg2); return
-    case 'readmda_header', varargout{1} = readmda_header_(vcArg1); return;
+    case {'readmda_header', 'mda-info'}, disp(readmda_header_(vcArg1)); return;
+    case 'trim-mda', trim_mda_(vcArg1, vcArg2, vcArg3, vcArg4); return;
     case 'mcc', irc('mcc'); return; 
     case {'join-mda', 'join_mda', 'joinmda'}, join_mda_(vcArg1, vcArg2); return;
     case {'readmda', 'read-mda', 'read_mda'}
@@ -414,8 +416,11 @@ switch lower(vcExt1)
     case '.mat', vcFile_prm = fullfile(vcDir1, strrep(vcFile1, '_irc', ''), '.prm');    
     case {'.bin', '.dat'}
         vcFile_prm = dir_(fullfile(vcDir1, 'irc2', '*.prm'));
-        assert(numel(vcFile_prm)==1, 'dir2prm_: .prm file does not exist');
-        vcFile_prm = vcFile_prm{1};
+        if numel(vcFile_prm)==1
+            vcFile_prm = vcFile_prm{1};
+        else
+            vcFile_prm = [];
+        end
     case ''
         vcDir_out = fullfile(vcDir_in, 'irc2');
         S_prm = dir(fullfile(vcDir_out, '*.prm'));
@@ -2473,7 +2478,10 @@ for iFet = 1:2
             for iBurst=1:numel(cvii1)
                 if numel(cvii1{iBurst}) < nSpk_min, continue; end
                 tr_ = trPc(:,:,cvii1{iBurst});
-                mrPc1 = mean(tr_,3);
+                switch 2
+                    case 1, mrPc1 = mean(tr_,3);
+                    case 2, mrPc1 = median(tr_,3);
+                end
                 if mrPv_peak*mrPc1(:,1) <= thresh1 % && peak_amp1 <= min(min(mrPv * mrPc1))/2
                     viClu_drift2(end+1) = iClu1;
                     switch 1
@@ -5054,6 +5062,7 @@ end
 vcDir_out = fill_dir_out_(vcDir_in, vcDir_out);
 
 % assume there is raw.mda, geom.csv, params.json, firings_true.mda
+% group.csv
 P = load_default_prm_();
 
 % now only supporting .mda file
@@ -5072,12 +5081,15 @@ switch vcRecordingType
         P.viSite2Chan = 1:size(P.mrSiteXY,1);
         P.viShank_site = ones(size(P.viSite2Chan));
         P.vrSiteHW = [12,12];
+        if exist_file_(fullfile(vcDir_in, 'group.csv'))
+            P.viShank_site = csvread(fullfile(vcDir_in, 'group.csv'));
+            assert(numel(P.viShank_site)==numel(P.viSite2Chan), 'number of sites should match');
+        end
 
         % load json file
         S_json = loadjson_(fullfile(vcDir_in, 'params.json'));
         P.sRateHz = get_set_(S_json, 'samplerate', P.sRateHz);
         P.fInverse_file = get_set_(S_json, 'spike_sign', -1) == -1;
-        P.viShank_site = deal([]);
     case {'spikeglx', 'rhd', 'neuroscope'}
         P.probe_file = vcFile_prb;
         switch vcRecordingType
@@ -8357,6 +8369,7 @@ struct2json_(S_json, fullfile(vcDir_out, 'params.json'));
 S_prb = load_prb_(vcFile_prb);    
 assert(~isempty(S_prb), sprintf('Probe file is not found: %s', vcFile_prb));
 csvwrite(fullfile(vcDir_out, 'geom.csv'), S_prb.mrSiteXY);
+csvwrite(fullfile(vcDir_out, 'group.csv'), S_prb.viShank_site(:)');
 fprintf('Wrote to %s\n', fullfile(vcDir_out, 'geom.csv'));
 
 % write raw.mda
@@ -8972,6 +8985,32 @@ csText_xy = arrayfun_(@(x,y)sprintf('%0.1f, %0.1f',x,y), mrXY1(:,1), mrXY1(:,2))
 text(mrXY(:,1), mrXY(:,2), csText_xy, ...
     'VerticalAlignment', 'top', 'HorizontalAlignment', 'left', 'Color','r');
 
+end %func
+
+
+%--------------------------------------------------------------------------
+function trim_mda_(vcFile_in, vcFile_out, nSamples_copy, iOffset)
+if nargin<4, iOffset=''; end
+
+if ischar(nSamples_copy), nSamples_copy = str2num(nSamples_copy); end
+if isempty(iOffset), iOffset=0; end
+
+% vcTrim: str2num samples
+t_fun = tic;
+[S_mda, fid_r] = readmda_header_(vcFile_in);
+fid_mda = writemda_fid(vcFile_out);
+[vcDataType, dimm] = get_(S_mda, 'vcDataType', 'dimm');
+nChans = dimm(1);
+
+b1 = ftell(fid_r);
+mr_ = fread_(fid_r, [nChans, nSamples_copy], vcDataType);
+writemda_fid(fid_mda, mr_);
+b1 = ftell(fid_r) - b1;
+t_fun = toc(t_fun);
+
+fclose(fid_r);
+writemda_fid(fid_mda, 'close');
+fprintf('\ttook %0.1fs (%0.1f MB/s)\n', t_fun, b1/1e6/t_fun);
 end %func
 
 

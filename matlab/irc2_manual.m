@@ -17,6 +17,7 @@ if ~isempty(S0.S_manual)
         S0.S_manual=[];
     end
 end
+S0.iShank = 1;
 if isempty(S0.S_manual), S0.S_manual = create_S_manual_(S0); end
 
 clear mouse_figure;
@@ -464,6 +465,15 @@ uimenu_(mh_file,'Label', 'Export to NeuroSuite Klusters', 'Callback', @(h,e)expo
 uimenu_(mh_file,'Label', 'Export to Phy', 'Callback', @(h,e)export_phy_, 'Separator', 'on');
 uimenu_(mh_file,'Label', 'Exit', 'Callback', @exit_manual_, 'Separator', 'on', 'Accelerator', 'Q', 'Separator', 'on');
 
+% shank menu
+mh_shank = uimenu_(hFig,'Label','Shank', 'Tag', 'mh_shank'); 
+menu_shank_ = @(i)uimenu_(mh_shank, 'Label', sprintf('Shank %d',i), 'Callback', @(h,e)select_shank_(h,e));
+viShank_uniq = unique(get_(P, 'viShank_site', []));
+if isempty(viShank_uniq), viShank_uniq = 1; end
+cell_menu_shank = arrayfun_(@(x)menu_shank_(x), viShank_uniq);
+set_userdata_(mh_shank, cell_menu_shank);
+set(cell_menu_shank{1}, 'Checked', 'on');
+
 mh_edit = uimenu_(hFig,'Label','Edit'); 
 uimenu_(mh_edit,'Label', '[M]erge', 'Callback', @(h,e)keyPressFcn_cell_(hFig, 'm'));
 uimenu_(mh_edit,'Label', 'Merge auto', 'Callback', @(h,e)merge_auto_());
@@ -511,7 +521,7 @@ uimenu_(mh_info, 'Label', 'noise', 'Callback', @(h,e)unit_annotate_(h,e,'noise')
 uimenu_(mh_info, 'Label', 'clear annotation', 'Callback', @(h,e)unit_annotate_(h,e,''));
 uimenu_(mh_info, 'Label', 'equal to', 'Callback', @(h,e)unit_annotate_(h,e,'=%d'));
 
-mh_history = uimenu_(hFig, 'Label', 'History', 'Tag', 'mh_history'); 
+% mh_history = uimenu_(hFig, 'Label', 'History', 'Tag', 'mh_history'); 
 
 mh_help = uimenu_(hFig,'Label','Help'); 
 uimenu_(mh_help, 'Label', '[H]elp', 'Callback', @help_FigWav_);
@@ -638,13 +648,13 @@ function [ctrFet_sub_clu, cviSpk_sub_clu] = clu_fet_(S0, max_sample)
 if nargin<2, max_sample = []; end
 if isempty(max_sample), max_sample = 2^12; end
 
-fUseSecondSite = 1;
-
+fUseSecondSite = 0;
 t_fun = tic;
 [S_auto, P] = get_(S0, 'S_auto', 'P');
+nSites = numel(P.viSite2Chan);
 [viClu_spk, viSite_clu, nClu] = get_(S_auto, 'viClu', 'viSite_clu', 'nClu');
 [viSite_spk, viSite2_spk] = get_(S0, 'viSite_spk', 'viSite2_spk');
-nSites = numel(P.viSite2Chan);
+% nSites = numel(P.viSite2Chan);
 % for each cluster create cluster average waveform and subsample features
 if isempty(viSite2_spk) || ~fUseSecondSite
     cviSite_spk_fet = {viSite_spk};
@@ -653,8 +663,9 @@ else
 end
 [ctrFet_sub_clu, cviSpk_sub_clu] = deal(cell(1, nClu));
 
+fprintf('clu_fet_: ');
 for iFet = 1:numel(cviSite_spk_fet)
-    for iSite=1:nSites       
+    for iSite = 1:nSites  
         [trPc_spk1, viSpk1] = load_fet_site_(S0, iFet, iSite);
         viClu_site1 = find(viSite_clu == iSite);
         if isempty(viClu_site1), continue; end % no cluster found
@@ -664,9 +675,10 @@ for iFet = 1:numel(cviSite_spk_fet)
         ctrFet_clu1 = cellfun_(@(x)trPc_spk1(:,:,x), cviiSpk1_clu1);
         ctrFet_sub_clu(viClu_site1) = join_cell_(ctrFet_sub_clu(viClu_site1), ctrFet_clu1, 3);
         cviSpk_sub_clu(viClu_site1) = join_cell_(cviSpk_sub_clu(viClu_site1), cviSpk1_clu1, 1);
+        fprintf('.');
     end
 end
-fprintf('clu_fet_: took %0.1fs\n', toc(t_fun));
+fprintf(' took %0.1fs\n', toc(t_fun));
 end %func
 
 
@@ -2831,6 +2843,19 @@ end %func
 function help_FigWav_(hObject, event)
 [~, S_fig] = get_fig_cache_('FigWav');
 msgbox_(S_fig.csHelp, 1);
+end %func
+
+
+%--------------------------------------------------------------------------
+function select_shank_(hObject, event)
+% select active shank
+iShank = str2num(strrep(hObject.Text, 'Shank ', ''));
+disp(hObject.Text);
+cell_menu_shank = get_userdata_(hObject.Parent, 'cell_menu_shank');
+for iShank_ = 1:numel(cell_menu_shank)
+    set(cell_menu_shank{iShank_}, 'Checked', ifeq_(iShank_==iShank, 'on', 'off'));
+end
+set0_(iShank);
 end %func
 
 

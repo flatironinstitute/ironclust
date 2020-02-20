@@ -2006,6 +2006,11 @@ P.probe_file = vcFile_prb;
 if matchFileExt_(vcFile_prb, '.csv')    
     S_prb.geometry = csvread(vcFile_prb);
     S_prb.channels = 1:size(S_prb.geometry,1);
+    vcFile_group = fullfile(fileparts(vcFile_prb), 'group.csv');
+    if exist_file_(vcFile_group)
+        S_prb.shank = csvread(vcFile_group);
+        assert(numel(S_prb.shank)==numel(S_prb.channels), '# sites must match');
+    end
 else
     S_prb = file2struct_(vcFile_prb);
 end
@@ -31206,7 +31211,7 @@ switch lower(vcMode)
         zlabel('log power');
     case 'probe'
         hFig = create_figure_([], [0 0 .5 1], P.vcFile, 1, 1);
-        plot_probe_(P.mrSiteXY, [12 12], P.viSite2Chan);
+        plot_probe_(P.mrSiteXY, [12 12], P.viSite2Chan, get_(P, 'viShank_site'));
         axis equal;
     case {'verify', 'validate'}
         validate_(P, [], S0);

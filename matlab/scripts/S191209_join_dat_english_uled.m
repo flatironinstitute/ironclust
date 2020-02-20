@@ -91,3 +91,6 @@ for i=1:4
 end
 %
 irc2 D:\Globus\recordings\kf19_nt27\irc2\raw_geom.prm
+
+%% dan english dataset
+irc2 
