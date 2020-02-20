@@ -8371,8 +8371,17 @@ end %func
 
 %--------------------------------------------------------------------------
 function optimize_status_(vcDir_rec, vcFile_prmset)
+% usage
+% optimize_status_(vcFile_list, vcFile_prmset)
+% optimize_status_(vcDir_rec, vcFile_prmset)
+
 try
-    if exist_file_(vcDir_rec), vcDir_rec=fileparts(vcDir_rec); end 
+    if exist_file_(vcDir_rec)
+        csDir_rec = load_batch_(vcDir_rec);
+        vcDir_rec=fileparts(vcDir_rec); 
+    else
+        csDir_rec = {};
+    end
     
     assert(exist_file_(vcFile_prmset) && exist_dir_(vcDir_rec), 'file or dir does not exist');
 
@@ -8382,7 +8391,7 @@ try
     
     vcSorter = lower(strrep(vcFile_prmset, '.prmset', ''));
     S_dir = dir(fullfile(vcDir_rec, '*', vcSorter, '*_p*.mda'));
-    csName_file = {S_dir.name};
+    csName_file = {S_dir.name};    
     csPath_file = cellfun_(@(x,y)fullfile(x,y), {S_dir.folder}, {S_dir.name});
     viPrmset = cellfun(@(x)str2num(strrep(strrep(x,'firings_p',''), '.mda','')), csName_file);
     vlSelect = viPrmset >= 1 & viPrmset <= nPrmset; 
@@ -8391,7 +8400,9 @@ try
     vrDatenum_file = sort(vrDatenum_file(vlSelect));
     
     t_passed = range(vrDatenum_file) * 24 * 60;
-    csDir_rec = sub_dir_(vcDir_rec, 1);
+    if isempty(csDir_rec)
+        csDir_rec = sub_dir_(vcDir_rec, 1);
+    end
     nRec = numel(csDir_rec);
     nOutput_total = nRec * nPrmset;   
     t_left = t_passed * nOutput_total / nOutput - t_passed;
