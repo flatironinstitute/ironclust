@@ -8372,6 +8372,8 @@ end %func
 %--------------------------------------------------------------------------
 function optimize_status_(vcDir_rec, vcFile_prmset)
 try
+    if exist_file_(vcDir_rec), vcDir_rec=fullfile(vcDir_rec); end 
+    
     assert(exist_file_(vcFile_prmset) && exist_dir_(vcDir_rec), 'file or dir does not exist');
 
     S_prmset = file2struct_ordered_(vcFile_prmset);
@@ -8416,7 +8418,12 @@ end %func
 
 %--------------------------------------------------------------------------
 function optimize_clear_(vcDir_rec, vcFile_prmset)
+% usage
+% -----
+% optimize_clear_(vcFile_list, vcFile_prmset)
+% optimize_clear_(vcDir_rec, vcFile_prmset)
 
+if exist_file_(vcDir_rec), vcDir_rec=fullfile(vcDir_rec); end 
 assert(exist_file_(vcFile_prmset) && exist_dir_(vcDir_rec), 'file or dir does not exist');
 
 vcSorter = lower(strrep(vcFile_prmset, '.prmset', ''));
