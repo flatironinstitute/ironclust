@@ -1061,7 +1061,9 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function [vcFile_true, vcFile_json] = export_spikeforest_intra_(vcDir_out1, S_intra, S_json)
+function [vcFile_true, vcFile_json] = export_spikeforest_intra_(vcDir_out1, S_intra, S_json, mrLim_incl)
+if nargin<4, mrLim_incl=[]; end
+
 % create raw_true.mda file 
 mkdir_(vcDir_out1);
 vcFile_true = fullfile(vcDir_out1, 'raw_true.mda');
@@ -1077,6 +1079,11 @@ else
     vrWav_int = S_intra.vrWav_filt;
 end
 vrWav_int = single(vrWav_int(:)') * single(S_json.scale_factor);
+
+if ~isempty(mrLim_incl) 
+    viTime = lim2range_(numel(vrWav_int), mrLim_incl);
+    vrWav_int = vrWav_int(viTime);
+end
 
 % write firings_true.mda
 writemda_(vcFile_true, vrWav_int);
@@ -1206,6 +1213,8 @@ hAx3 = axes(hFig, 'OuterPosition', [0 0 .5 .4]);
 hAx4 = axes(hFig, 'OuterPosition', [.5 0 .25 .8]); 
 hAx5 = axes(hFig, 'OuterPosition', [.75 0 .25 .8]); 
 
+S_gt1.trWav_raw_clu = S_gt1.trWav_raw_clu - median(S_gt1.trWav_raw_clu(1:10,:,:));
+
 vrT_plot = (spkLim(1):spkLim(2)) / sRateHz * 1000;
 plot(hAx1, vrT_plot, vrWav_int_spk); 
 plot(hAx2, vrT_plot, S_gt1.trWav_raw_clu);
@@ -1220,6 +1229,8 @@ xylabel_(hAx2, 'time (ms)','V_ext (uV)', 'Extracellular mean raw waveforms');
 xylabel_(hAx3, 'time (ms)','V_ext (uV)', 'Extracellular mean filtered waveforms');    
 
 % plot hAx4,5
+text_ = @(ax,xlim,ylim,txt)text(ax, double(xlim(1)), double(ylim(2)), txt, ...
+    'Color','w', 'VerticalAlignment', 'top', 'HorizontalAlignment', 'left', 'Interpreter', 'none');
 try
     switch nSites1
         case 32
@@ -1229,14 +1240,18 @@ try
             mrSiteXY = [0 0; -1/sqrt(2), 1/sqrt(2); 1/sqrt(2), 1/sqrt(2); 0, 2/sqrt(2)]*25;
     end
     [hLine4, xlim4, ylim4] = ...
-        plot_unit_(hAx4, S_gt1.trWav_raw_clu, mrSiteXY, get_(S_gt1, 'trWav_raw_sem_clu'));    
-    hImg4 = overlay_image_(hAx4, S_gt1.trWav_raw_clu, mrSiteXY, xlim4, ylim4);
-    title(hAx4, 'Extracellular mean raw waveforms (color: |V|)');    
+        plot_unit_(hAx4, S_gt1.trWav_raw_clu, mrSiteXY); %, get_(S_gt1, 'trWav_raw_sem_clu'));    
+    hImg4 = overlay_image_(hAx4, S_gt1.trWav_raw_clu, mrSiteXY, xlim4, ylim4, hLine4);
+    title(hAx4, 'Raw waveforms (color: |V|)');    
+    text_(hAx4, xlim4, ylim4, [vcRec, '-raw']);
+    set_userdata_(hAx4, 'name', [vcRec, '-raw']);
     
     [hLine5, xlim5, ylim5] = ...
-        plot_unit_(hAx5, S_gt1.trWav_clu, mrSiteXY, get_(S_gt1, 'trWav_sem_clu'));          
-    hImg5 = overlay_image_(hAx5, S_gt1.trWav_clu, mrSiteXY, xlim5, ylim5);        
-    title(hAx5, 'Extracellular mean filtered waveforms (color: |V|)');
+        plot_unit_(hAx5, S_gt1.trWav_clu, mrSiteXY); %, get_(S_gt1, 'trWav_sem_clu'));          
+    hImg5 = overlay_image_(hAx5, S_gt1.trWav_clu, mrSiteXY, xlim5, ylim5, hLine5);        
+    title(hAx5, 'Filtered waveforms (color: |V|)');
+    text_(hAx5, xlim5, ylim5, [vcRec, '-filtered']);
+    set_userdata_(hAx5, 'name', [vcRec, '-raw']);
 catch
     disp(lasterr());
 end
@@ -1250,12 +1265,20 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function hImg1 = overlay_image_(hAx1, mrZ1, mrXY1, xlim1, ylim1)
-[vrX1, vrY1, mrZ1] = deal(mrXY1(:,1), mrXY1(:,2), double(mrZ1));
+function lim1 = lim_pad_(x, p)
+lim = [min(x), max(x)];
+lim1 = lim + diff(lim)*[-p, p];
+end %func
+
+
+%--------------------------------------------------------------------------
+function hImg1 = overlay_image_(hAx1, mrZ1, mrXY_site, xlim1, ylim1, hLine)
+
+[vrX1, vrY1, mrZ1] = deal(mrXY_site(:,1), mrXY_site(:,2), double(mrZ1));
 vrZ1 = max(abs(mrZ1))';
-% [~,iC_max] = max(vrZ1);
-% [~,iT_max] = max(range(mrZ1');
-[vrX2, vrY2] = deal(linspace(min(vrX1),max(vrX1), 40), linspace(min(vrY1),max(vrY1), 320));
+xlim2 = lim_pad_(vrX1, .1);
+ylim2 = lim_pad_(vrY1, .05);
+[vrX2, vrY2] = deal(linspace(xlim2(1), xlim2(2), 40), linspace(ylim2(1), ylim2(2), 320));
 [xx2,yy2] = meshgrid(vrX2,vrY2);
 F = scatteredInterpolant(vrX1, vrY1, vrZ1, 'natural');
 mrY_interp = abs(F(xx2,yy2));
@@ -1264,37 +1287,69 @@ hold(hAx1, 'on');
 vrX3 = linspace(xlim1(1), xlim1(2), size(mrY_interp,2));
 vrY3 = linspace(ylim1(1), ylim1(2), size(mrY_interp,1));
 hImg1 = imagesc(hAx1, 'XData', vrX3, 'YData', vrY3, 'CData', mrY_interp, [0, max(vrZ1)]);
-uistack(hImg1, 'bottom');
 grid(hAx1,'on');
 colormap jet;
+
+% plot sites
+um2x_ = @(x)interp1(xlim2, xlim1, x);
+um2y_ = @(x)interp1(ylim2, ylim1, x);
+hSites=plot(hAx1, um2x_(mrXY_site(:,1)), um2y_(mrXY_site(:,2)), 'wo', 'MarkerSize', 20);
+
+uistack(hSites,'bottom');
+uistack(hImg1, 'bottom');
+set(hAx1, 'XTick', xlim1, 'XTickLabel', vrX2([1,end]));
 
 % animate
 cell_F = arrayfun(@(i)scatteredInterpolant(vrX1, vrY1, mrZ1(i,:)', 'natural'), 1:size(mrZ1,1), 'UniformOutput',0);    
 nF = numel(cell_F);
 fh_update = @(iF)set(hImg1, 'CData', abs(cell_F{iF}(xx2,yy2)));
-set(hImg1, 'UserData', makeStruct_(fh_update, nF, mrY_interp));
+fh_update_line = hLine.UserData.fh_update;
+set(hImg1, 'UserData', makeStruct_(fh_update, nF, mrY_interp, fh_update_line));
 hImg1.ButtonDownFcn = @(h,e)cbf_animate_(h,e);
 end %func
 
 
 %--------------------------------------------------------------------------
 function cbf_animate_(h,e)
+% right-click to save
+fExport = (e.Button==3);
+
 S = get(h, 'UserData');
-[fh_update, nF, mrY_interp] = struct_get_(S, 'fh_update', 'nF', 'mrY_interp');
+[fh_update, nF, mrY_interp, fh_update_line] = struct_get_(S, 'fh_update', 'nF', 'mrY_interp', 'fh_update_line');
+if fExport
+    F = cell(nF,1); 
+end
 for iF=1:nF
     try
         fh_update(iF);
+        fh_update_line(iF);
         drawnow('limitrate');
+        if fExport
+            F{iF} = getframe(h.Parent);
+            fprintf('.');
+        end
     catch
         return;
     end
 end
 set(h, 'CData', mrY_interp);
+
+if fExport  
+    vcRec = h.Parent.UserData.name;
+    vcFile_gif = [vcRec, '.gif'];    
+    f = getframe; 
+    [img,cmap] = rgb2ind(f.cdata,256,'nodither');
+    imwrite(f.cdata, [vcRec, '.png']);
+    rgb2ind_ = @(x)rgb2ind(x.cdata,cmap,'nodither'); 
+    trImg = cellfun_(@(x)rgb2ind_(x), F); trImg=cat(4,trImg{:});
+    imwrite(trImg, cmap, vcFile_gif,'DelayTime',0,'LoopCount',inf);
+    fprintf(sprintf('\nWrote to: %s\n', vcFile_gif));
+end
 end %func
 
 
 %--------------------------------------------------------------------------
-function savefig_(hFig, vcFile_fig);
+function savefig_(hFig, vcFile_fig)
 try
     drawnow();
     vcFile_png = strrep(vcFile_fig, '.fig', '.png');
@@ -1334,16 +1389,22 @@ else
     mrColor = [.5 .5 .5; .5 .5 .5; 0 0 0];
 end
 hold(hAx,'on');
+toVec = @(x)x(:);
 for iY = 1:numel(cmrY)
     mrY1 = cmrY{iY};
     mrY1 = bsxfun(@plus, mrY1 / maxAmp, vrY1_site') * maxAmp;
     mrX1 = bsxfun(@plus, repmat(vrX, [1, size(mrY1, 2)]), vrX1_site');
-    hLine(iY) = line(mrX1(:), mrY1(:), 'Color', mrColor(iY,:), 'Parent', hAx, 'LineWidth', 1);
+    hLine(iY) = line(mrX1(:), mrY1(:), 'Color', mrColor(iY,:), 'Parent', hAx, 'LineWidth', 1);   
+    
+    fh_update = @(iT)set(hLine(iY), 'XData', toVec(mrX1(1:iT,:)), 'YData', toVec(mrY1(1:iT,:)));
+    set(hLine(iY), 'UserData', makeStruct_(fh_update));
 end
-xlabel(hAx, 'Time (ms)');
-ylabel(hAx, 'Voltage (uV)');
+xlabel(hAx, 'X (um)');
+ylabel(hAx, 'Y (um)');
 grid(hAx, 'on');
 [xlim1, ylim1] = deal([min(mrX1(:)), max(mrX1(:))], [min(mrY1(:)), max(mrY1(:))]);
+xlim1 = xlim1 + range(xlim1)*[-.1,.1];
+ylim1 = ylim1 + range(ylim1)*[-.05,.05];
 xlim_(hAx, xlim1);
 ylim_(hAx, ylim1);
 end %func

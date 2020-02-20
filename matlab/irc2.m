@@ -414,7 +414,7 @@ function vcFile_prm = dir2prm_(vcDir_in)
 switch lower(vcExt1)
     case '.prm', vcFile_prm = vcDir_in;        
     case '.mat', vcFile_prm = fullfile(vcDir1, strrep(vcFile1, '_irc', ''), '.prm');    
-    case {'.bin', '.dat'}
+    case {'.bin', '.dat', '.mda'}
         vcFile_prm = dir_(fullfile(vcDir1, 'irc2', '*.prm'));
         if numel(vcFile_prm)==1
             vcFile_prm = vcFile_prm{1};
@@ -2418,7 +2418,7 @@ for iFet = 1:numel(cviTime_fet)
         else
             viClu_drift1 = cviClu2_drift{iDrift};
             cviSpk_drift1 = ccviSpk2_drift{iDrift};
-        end        
+        end 
         for ic = 1:numel(cviSpk_drift1)
             [iClu1, vii1] = deal(viClu_drift1(ic), cviSpk_drift1{ic}); 
             cvii1 = separate_burst_(vii1, viTime1, nSamples_burst);
@@ -7482,6 +7482,7 @@ end %func
 function optimize_prmset_(vcDir_rec, vcFile_prmset, vcFile_out)
 % usage
 % -----
+% optimize_prmset_(vcFile_list, vcFile_prmset)
 % optimize_prmset_(vcDir_rec, vcFile_prmset)
 % optimize_prmset_(vcDir_rec, vcFile_prmset, vcFile_out)
 
@@ -7497,6 +7498,12 @@ if nargin<3, vcFile_out = ''; end
 [~,vcPostfix_] = fileparts(vcFile_prmset); 
 vcSorter = infer_sorter_(vcPostfix_);
 vcPostfix_out = vcSorter;
+if exist_file_(vcDir_rec)    
+    csDir_rec = load_batch_(vcDir_rec);
+    vcDir_rec = fileparts(vcDir_rec);
+else
+    csDir_rec = {};
+end
 if isempty(vcFile_out)
     vcFile_out = fullfile(vcDir_rec, sprintf('scores_prmset_%s.mat', vcPostfix_));
 end
@@ -7513,7 +7520,9 @@ end
 if ~fUse_cache, optimize_clear_(vcDir_rec,vcFile_prmset); end
 if isempty(S_prmset_rec)
     t_fun = tic;
-    csDir_rec = sub_dir_(vcDir_rec, 1);
+    if isempty(csDir_rec)
+        csDir_rec = sub_dir_(vcDir_rec, 1);
+    end
     nRec = numel(csDir_rec);
     S_prmset = file2struct_ordered_(vcFile_prmset);
     [cName_prm, cVal_prm] = deal(fieldnames(S_prmset), struct2cell(S_prmset));
