@@ -8380,16 +8380,17 @@ try
         csDir_rec = load_batch_(vcDir_rec);
         vcDir_rec=fileparts(vcDir_rec); 
     else
-        csDir_rec = {};
+        csDir_rec = sub_dir_(vcDir_rec, 1);
     end
     
     assert(exist_file_(vcFile_prmset) && exist_dir_(vcDir_rec), 'file or dir does not exist');
 
     S_prmset = file2struct_ordered_(vcFile_prmset);
     [cName_prm, cVal_prm] = deal(fieldnames(S_prmset), struct2cell(S_prmset));
-    nPrmset = prod(cellfun(@numel, cVal_prm));    
-    
+    nPrmset = prod(cellfun(@numel, cVal_prm));        
     vcSorter = lower(strrep(vcFile_prmset, '.prmset', ''));
+    csPath_file = cellfun_(@(x)dir(fullfile(x, vcSorter, 'firings_p*.mda')), csDir_rec);
+    
     S_dir = dir(fullfile(vcDir_rec, '*', vcSorter, '*_p*.mda'));
     csName_file = {S_dir.name};    
     csPath_file = cellfun_(@(x,y)fullfile(x,y), {S_dir.folder}, {S_dir.name});
@@ -8400,9 +8401,6 @@ try
     vrDatenum_file = sort(vrDatenum_file(vlSelect));
     
     t_passed = range(vrDatenum_file) * 24 * 60;
-    if isempty(csDir_rec)
-        csDir_rec = sub_dir_(vcDir_rec, 1);
-    end
     nRec = numel(csDir_rec);
     nOutput_total = nRec * nPrmset;   
     t_left = t_passed * nOutput_total / nOutput - t_passed;
