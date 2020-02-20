@@ -1823,7 +1823,7 @@ end %func
 % auto merge
 function S_auto = auto_(S0, P)
 
-nRepeat = 3;
+nRepeat = 1;
 
 fprintf('\nauto-merging...\n'); runtime_automerge = tic;
 
@@ -2340,6 +2340,145 @@ end %func
 
 %--------------------------------------------------------------------------
 function [cviClu_clu, vlExist_clu] = wave_similarity_site_(iSite1, S_auto)
+% free of KNN
+fUseSecondSite = 1;
+
+% Load KNN and identify neighbors per cluster
+csVar_imported = import_struct_(S_auto);
+nDrift = size(mlDrift, 1);
+viSpk1 = get_viSpk_site_(S_auto, 1, iSite1);
+cvii1_drift = vi2cell_(discretize(viSpk1, viLim_drift), nDrift);
+[vrRho1, viClu1, viTime1] = deal(S_auto.vrRho(viSpk1), viClu(viSpk1), viTime_spk(viSpk1));
+
+thresh1 = -abs(vrThresh_site(iSite1)); % negative detection
+iT_peak = 1 - P.spkLim(1);
+mrPv_peak = mrPv(iT_peak,:);
+nSamples_burst = round(get_set_(P, 't_burst_ms', 20) * P.sRateHz / 1000);
+if fUseSecondSite
+    viSpk2 = get_viSpk_site_(S_auto, 2, iSite1);    
+end
+fSecondSite = ~isempty(viSpk2);
+if fSecondSite   
+    cvii2_drift = vi2cell_(discretize(viSpk2, viLim_drift), nDrift);
+    [vrRho2, viClu2, viTime2] = deal(S_auto.vrRho(viSpk2), viClu(viSpk2), viTime_spk(viSpk2));
+    cvrRho_fet = {vrRho1, vrRho2};
+    cviClu_fet = {viClu1, viClu2};
+    cviTime_fet = {viTime1, viTime2};
+    ccvii_drift_fet = {cvii1_drift, cvii2_drift};
+else
+    cvrRho_fet = {vrRho1};
+    cviClu_fet = {viClu1};
+    cviTime_fet = {viTime1};
+    ccvii_drift_fet = {cvii1_drift};
+end
+
+[cviClu1_drift, cviClu2_drift, ccviSpk1_drift, ccviSpk2_drift] = deal(cell(nDrift,1));
+for iFet=1:(fSecondSite+1)
+    [vrRho1, viClu1, cvii1_drift] = deal(...
+        cvrRho_fet{iFet}, cviClu_fet{iFet}, ccvii_drift_fet{iFet});    
+    for iDrift = 1:nDrift      
+        vii1 = cat(1, cvii1_drift{mlDrift(:,iDrift)});
+        if numel(vii1) < nSpk_min, continue; end
+        [vrRho11, viClu11] = deal(vrRho1(vii1), viClu1(vii1));
+        [cviiSpk_clu_, ~, viClu_uniq] = vi2cell_(viClu11, nClu);
+        nClu1 = numel(viClu_uniq);
+        [viClu_drift1, cviSpk_drift1] = deal(nan(1,nClu1), cell(1,nClu1));
+        for iiClu1 = 1:nClu1
+            iClu1 = viClu_uniq(iiClu1);
+            vii_ = cviiSpk_clu_{iClu1};   
+            vrRho11_ = vrRho11(vii_);
+            vii1_ = vii1(vii_(vrRho11_>=median(vrRho11_)));
+            if numel(vii1_) >= nSpk_min
+                cviSpk_drift1{iiClu1} = vii1_;
+                viClu_drift1(iiClu1) = iClu1;
+            end    
+        end
+        vi1_keep = find(~isnan(viClu_drift1));   
+        switch iFet
+            case 1
+                cviClu1_drift{iDrift} = viClu_drift1(vi1_keep);
+                ccviSpk1_drift{iDrift} = cviSpk_drift1(vi1_keep);    
+            case 2
+                cviClu2_drift{iDrift} = viClu_drift1(vi1_keep);
+                ccviSpk2_drift{iDrift} = cviSpk_drift1(vi1_keep);    
+        end
+    end
+end
+
+% load trPc1 and trPc2
+[cviClu_drift, ctrPc_drift] = deal(cell(nDrift,1));
+for iFet = 1:numel(cviTime_fet)
+    trPc1 = load_fet_site_(S_auto, iFet, iSite1);
+    viTime1 = cviTime_fet{iFet};
+    for iDrift = 1:nDrift
+        [viClu_drift2, cmrPc_drift2] = deal([], {});
+        if iFet==1
+            viClu_drift1 = cviClu1_drift{iDrift};
+            cviSpk_drift1 = ccviSpk1_drift{iDrift};
+        else
+            viClu_drift1 = cviClu2_drift{iDrift};
+            cviSpk_drift1 = ccviSpk2_drift{iDrift};
+        end        
+        for ic = 1:numel(cviSpk_drift1)
+            [iClu1, vii1] = deal(viClu_drift1(ic), cviSpk_drift1{ic}); 
+            cvii1 = separate_burst_(vii1, viTime1, nSamples_burst);
+            for iBurst=1:numel(cvii1)
+                if numel(cvii1{iBurst}) < nSpk_min, continue; end
+                tr_ = trPc1(:,:,cvii1{iBurst});
+                switch 1
+                    case 1, mrPc1 = mean(tr_,3);
+                    case 2, mrPc1 = median(tr_,3);
+                end
+                if mrPv_peak*mrPc1(:,1) <= thresh1 % && peak_amp1 <= min(min(mrPv * mrPc1))/2
+                    viClu_drift2(end+1) = iClu1;
+                    cmrPc_drift2{end+1} = mrPc1;
+                end
+            end
+        end
+        if ~isempty(viClu_drift2)
+            if iFet==1
+                cviClu_drift{iDrift} = viClu_drift2;
+                ctrPc_drift{iDrift} = cat(3, cmrPc_drift2{:});
+            else
+                cviClu_drift{iDrift} = [cviClu_drift{iDrift}, viClu_drift2];
+                ctrPc_drift{iDrift} = cat(3, ctrPc_drift{iDrift}, cmrPc_drift2{:});
+            end
+        end
+    end
+    trPc1 = [];
+end
+
+% distance calculation
+vlExist_clu = false(1, nClu);
+vlExist_clu([cviClu_drift{:}]) = true;
+cviClu_clu = arrayfun_(@(x)x, (1:nClu)'); %start with self-containing cell
+norm_mr_ = @(mr)mr ./ sqrt(sum(mr.^2,1)); 
+tr2mr_pv_norm_ = @(tr,mr)norm_mr_(reshape(mr*reshape(tr,size(tr,1),[]),[],size(tr,3))); 
+for iDrift = 1:nDrift
+    viDrift1 = find(mlDrift(:,iDrift));
+    viClu1 = cviClu_drift{iDrift};
+    if isempty(viClu1), continue; end
+    trPc_clu1 = cat(3, ctrPc_drift{iDrift});
+    if isempty(trPc_clu1), continue; end
+    viClu2 = [cviClu_drift{viDrift1}];
+    trPc_clu2  = cat(3, ctrPc_drift{viDrift1});
+    if isempty(trPc_clu2), continue; end
+    mrWav_clu2 = tr2mr_pv_norm_(trPc_clu2, mrPv);
+    for iiClu1 = 1:numel(viClu1)
+        iClu1 = viClu1(iiClu1);
+        mrWav11 = pc2wav_shift_(trPc_clu1(:,:,iiClu1), mrPv, viShift);
+        viClu2_ = viClu2(max(mrWav11' * mrWav_clu2, [], 1) >= maxWavCor);
+        if isempty(viClu2_), continue; end
+        viClu2_ = unique(viClu2_(:));
+        cviClu_clu{iClu1} = [cviClu_clu{iClu1}; viClu2_];
+    end
+end  
+fprintf('.');
+end %func
+
+
+%--------------------------------------------------------------------------
+function [cviClu_clu, vlExist_clu] = wave_similarity_site__(iSite1, S_auto)
 
 fUseSecondSite = 1;
 
@@ -2368,11 +2507,18 @@ if fSecondSite
     vrRho_2 = copy_mask_(S_auto.vrRho, viSpk2);
     [~, miiKnn2] = ismember(miKnn1, viSpk2);
     viTime2 = viTime_spk(viSpk2);
-%     cvii2_drift = vi2cell_(discretize(viSpk2, viLim_drift), nDrift);
+    cvii2_drift = vi2cell_(discretize(viSpk2, viLim_drift), nDrift);
 end
 [cviClu1_drift, cviClu2_drift, ccviSpk1_drift, ccviSpk2_drift] = deal(cell(nDrift,1));
-for iDrift = 1:nDrift    
-    vii1 = cvii1_drift{iDrift};    
+for iDrift = 1:nDrift   
+    switch 2
+        case 1, vii1 = cvii1_drift{iDrift};
+        case 2
+            vii1 = cat(1,cvii1_drift{mlDrift(:,iDrift)});
+            if fSecondSite
+                vii2 = cat(1,cvii2_drift{mlDrift(:,iDrift)});
+            end
+    end
     if numel(vii1) < nSpk_min, continue; end
     [vrRho11, viClu11, miKnn11, miiKnn11] = ...
         deal(vrRho1(vii1), viClu1(vii1), miKnn1(:,vii1), miiKnn1(:,vii1));
@@ -2388,7 +2534,7 @@ for iDrift = 1:nDrift
         iClu1 = viClu_uniq(iiClu1);
         vii_ = cviiSpk_clu_{iClu1};   
         vii2_ = [];
-        switch 4 
+        switch 6 
             case 1
                 [miKnn11_, miiKnn11_, vrRho11_T] = ...
                     deal(miKnn11(:,vii_), miiKnn11(:,vii_), vrRho11(vii_)');
@@ -2433,7 +2579,11 @@ for iDrift = 1:nDrift
                 if fSecondSite
                     miiKnn21_ = miiKnn21(:,vii_);
                     vii2_ = unique_(miiKnn21_(vrRho_2(miKnn11_) >= med_rho11));
-                end    
+                end  
+            case 6
+                vrRho11_ = vrRho11(vii_);
+                vii1_ = vii1(vii_(vrRho11_>=median(vrRho11_)));
+                vii2_ = vii2(vii_(vrRho11_T>=med_rho11));
         end
         if numel(vii1_) >= nSpk_min
             cviSpk1_drift1{iiClu1} = vii1_;
