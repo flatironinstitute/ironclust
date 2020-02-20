@@ -8389,15 +8389,14 @@ try
     [cName_prm, cVal_prm] = deal(fieldnames(S_prmset), struct2cell(S_prmset));
     nPrmset = prod(cellfun(@numel, cVal_prm));        
     vcSorter = lower(strrep(vcFile_prmset, '.prmset', ''));
-    csPath_file = cellfun_(@(x)dir(fullfile(x, vcSorter, 'firings_p*.mda')), csDir_rec);
-    
-    S_dir = dir(fullfile(vcDir_rec, '*', vcSorter, '*_p*.mda'));
-    csName_file = {S_dir.name};    
-    csPath_file = cellfun_(@(x,y)fullfile(x,y), {S_dir.folder}, {S_dir.name});
+    vS_dir = cellfun_(@(x)dir(fullfile(x, vcSorter, 'firings_p*.mda')), csDir_rec);
+    vS_dir = cat(1, vS_dir{:}); 
+    csName_file = arrayfun_(@(x)x.name, vS_dir);
+    csPath_file = arrayfun_(@(x)fullfile(x.folder, x.name), vS_dir);    
     viPrmset = cellfun(@(x)str2num(strrep(strrep(x,'firings_p',''), '.mda','')), csName_file);
     vlSelect = viPrmset >= 1 & viPrmset <= nPrmset; 
     nOutput = sum(vlSelect);
-    vrDatenum_file = [S_dir.datenum];
+    vrDatenum_file = [vS_dir.datenum];
     vrDatenum_file = sort(vrDatenum_file(vlSelect));
     
     t_passed = range(vrDatenum_file) * 24 * 60;
@@ -8432,11 +8431,18 @@ function optimize_clear_(vcDir_rec, vcFile_prmset)
 % optimize_clear_(vcFile_list, vcFile_prmset)
 % optimize_clear_(vcDir_rec, vcFile_prmset)
 
-if exist_file_(vcDir_rec), vcDir_rec=fileparts(vcDir_rec); end 
+if exist_file_(vcDir_rec)
+    csDir_rec = load_batch_(vcDir_rec);
+    vcDir_rec=fileparts(vcDir_rec); 
+else
+    csDir_rec = sub_dir_(vcDir_rec, 1);
+end
 assert(exist_file_(vcFile_prmset) && exist_dir_(vcDir_rec), 'file or dir does not exist');
 
 vcSorter = lower(strrep(vcFile_prmset, '.prmset', ''));
-vS_dir = dir(fullfile(vcDir_rec, '*', vcSorter, '*_p*.mda'));
+vS_dir = cellfun_(@(x)dir(fullfile(x, vcSorter, 'firings_p*.mda')), csDir_rec);
+vS_dir = cat(1, vS_dir{:}); 
+  
 arrayfun_(@(x)delete(fullfile(x.folder, x.name)), vS_dir);
 delete_(fullfile(vcDir_rec, sprintf('scores_prmset_%s.mat', vcSorter)));
 fprintf(2, 'Deleted %d previous outputs\n', numel(vS_dir));
