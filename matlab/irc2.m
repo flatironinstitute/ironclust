@@ -5668,7 +5668,7 @@ end
 % copy fields (don't copy empty fields)
 P = struct_copyas_(P, S_txt, ...
     {'detect_threshold', 'pc_per_chan', 'merge_thresh', 'scale_factor'}, ...
-    {'qqFactor', 'nPcPerChan', 'maxWavCor', 'uV_per_bit'}, 1);
+    {'qqFactor', 'nPc_spk', 'maxWavCor', 'uV_per_bit'}, 1);
 
 % String parameters
 P = struct_copyas_(P, S_txt, {'filter_type', 'feature_type'}, {'vcFilter', 'vcFet'});
@@ -5676,7 +5676,7 @@ P = struct_copyas_(P, S_txt, {'filter_type', 'feature_type'}, {'vcFilter', 'vcFe
 % same name
 P = struct_copyas_(P, S_txt, ...
     {'knn', 'batch_sec_drift', 'step_sec_drift', 'min_count', 'nSites_whiten', ...
-    'fft_thresh', 'delta_cut', 'fft_thresh_low', 'post_merge_mode', 'sort_mode'});
+    'fft_thresh', 'delta_cut', 'fft_thresh_low', 'post_merge_mode', 'sort_mode', 'merge_thresh_cc'});
 
 % set boolean
 P = set_bool_(P, 'fGpu', S_txt);

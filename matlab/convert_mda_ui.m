@@ -1203,6 +1203,7 @@ disp_cs_(csMsg);
 % create a window and display info
 vcTitle_fig = ['Paired recording viewer: ', vcRec];
 hFig = create_figure_([], [.5 0 .5 1], vcTitle_fig, 0, 1); 
+set_userdata_(hFig, 'path', vcFile_recording);
 hText  = uicontrol(hFig, 'Style','text','String','',...
            'Unit', 'Normalized', 'OuterPosition', [.5 .8 .5 .2], ...
            'HorizontalAlignment', 'left', 'BackgroundColor','w');
@@ -1229,8 +1230,8 @@ xylabel_(hAx2, 'time (ms)','V_ext (uV)', 'Extracellular mean raw waveforms');
 xylabel_(hAx3, 'time (ms)','V_ext (uV)', 'Extracellular mean filtered waveforms');    
 
 % plot hAx4,5
-text_ = @(ax,xlim,ylim,txt)text(ax, double(xlim(1)), double(ylim(2)), txt, ...
-    'Color','w', 'VerticalAlignment', 'top', 'HorizontalAlignment', 'left', 'Interpreter', 'none');
+text_ = @(ax,xlim,ylim,txt)text(ax, double(mean(xlim)), double(ylim(2)), txt, ...
+    'Color','w', 'VerticalAlignment', 'top', 'HorizontalAlignment', 'center', 'Interpreter', 'none');
 try
     switch nSites1
         case 32
@@ -1295,6 +1296,9 @@ um2x_ = @(x)interp1(xlim2, xlim1, x);
 um2y_ = @(x)interp1(ylim2, ylim1, x);
 hSites=plot(hAx1, um2x_(mrXY_site(:,1)), um2y_(mrXY_site(:,2)), 'wo', 'MarkerSize', 20);
 
+% plot scale bars
+plot_scalebars_(hAx1, xlim1, ylim1, 1, 100, 'ms', 'uV');
+
 uistack(hSites,'bottom');
 uistack(hImg1, 'bottom');
 set(hAx1, 'XTick', xlim1, 'XTickLabel', vrX2([1,end]));
@@ -1302,12 +1306,23 @@ set(hAx1, 'XTick', xlim1, 'XTickLabel', vrX2([1,end]));
 % animate
 cell_F = arrayfun(@(i)scatteredInterpolant(vrX1, vrY1, mrZ1(i,:)', 'natural'), 1:size(mrZ1,1), 'UniformOutput',0);    
 nF = numel(cell_F);
-fh_update = @(iF)set(hImg1, 'CData', abs(cell_F{iF}(xx2,yy2)));
+fh_interp = @(iF)cell_F{iF}(xx2,yy2);
 fh_update_line = hLine.UserData.fh_update;
-set(hImg1, 'UserData', makeStruct_(fh_update, nF, mrY_interp, fh_update_line));
+set(hImg1, 'UserData', makeStruct_(fh_interp, nF, mrY_interp, fh_update_line));
 hImg1.ButtonDownFcn = @(h,e)cbf_animate_(h,e);
 end %func
 
+
+%--------------------------------------------------------------------------
+function [hPlot, hX, hY] = plot_scalebars_(hAx1, xlim1, ylim1, xlen, ylen, vcX, vcY)
+[xlim1, ylim1] = deal(double(xlim1), double(ylim1));
+x0 = xlim1(1) + diff(xlim1) * .04;
+y0 = ylim1(1) + diff(ylim1) * .01;
+hPlot = plot(hAx1, x0+[0, xlen], y0+[0,0], 'w-', x0+[0, 0], y0+[0,ylen], 'w-', 'LineWidth', 1);
+text_ = @(x,y,txt)text(hAx1, x, y, txt, 'VerticalAlignment', 'middle', 'Color', 'w', 'Interpreter', 'none');
+hX = text_(x0+xlen, y0, sprintf('%g %s',xlen, vcX));
+hY = text_(x0, y0+ylen, sprintf('%g %s',ylen, vcY));
+end %func
 
 %--------------------------------------------------------------------------
 function cbf_animate_(h,e)
@@ -1315,35 +1330,50 @@ function cbf_animate_(h,e)
 fExport = (e.Button==3);
 
 S = get(h, 'UserData');
-[fh_update, nF, mrY_interp, fh_update_line] = struct_get_(S, 'fh_update', 'nF', 'mrY_interp', 'fh_update_line');
+[fh_interp, nF, mrY_interp, fh_update_line] = struct_get_(S, 'fh_interp', 'nF', 'mrY_interp', 'fh_update_line');
 if fExport
     F = cell(nF,1); 
+    trV = [];
 end
 for iF=1:nF
     try
-        fh_update(iF);
-        fh_update_line(iF);
-        drawnow('limitrate');
+        mrV1 = fh_interp(iF);
+        set(h, 'CData', abs(mrV1));
+        fh_update_line(iF);        
         if fExport
+            if isempty(trV)
+                trV = zeros([size(mrV1), nF], 'like', mrV1);
+            end
+            trV(:,:,iF) = mrV1;
             F{iF} = getframe(h.Parent);
             fprintf('.');
+        else
+            drawnow('limitrate');
         end
     catch
         return;
     end
 end
 set(h, 'CData', mrY_interp);
-
+cat_ = @(dimm, x)cat(dimm,x{:});
 if fExport  
+    fprintf('\n');
     vcRec = h.Parent.UserData.name;
-    vcFile_gif = [vcRec, '.gif'];    
+    vcDir = fileparts(h.Parent.Parent.UserData.path);
+    pathext_ = @(x)fullfile(vcDir, [vcRec, x]); 
     f = getframe; 
     [img,cmap] = rgb2ind(f.cdata,256,'nodither');
-    imwrite(f.cdata, [vcRec, '.png']);
+    imwrite(f.cdata, pathext_('.png'));
+    disp(['Wrote to ', pathext_('.png')]);
+    
     rgb2ind_ = @(x)rgb2ind(x.cdata,cmap,'nodither'); 
     trImg = cellfun_(@(x)rgb2ind_(x), F); trImg=cat(4,trImg{:});
-    imwrite(trImg, cmap, vcFile_gif,'DelayTime',0,'LoopCount',inf);
-    fprintf(sprintf('\nWrote to: %s\n', vcFile_gif));
+    imwrite(trImg, cmap, pathext_('.gif'),'DelayTime',0,'LoopCount',inf);
+    disp(['Wrote to ', pathext_('.gif')]);
+    
+    mov = cat_(4, cellfun_(@(x)x.cdata, F));
+    save(pathext_('.mat'), 'trV', 'mov');
+    disp(['Wrote to ', pathext_('.mat')]);
 end
 end %func
 
@@ -1372,8 +1402,9 @@ um_per_pix = get_set_(S_cfg, 'um_per_pix', 25);
 spkLim_ms = get_set_(S_cfg, 'spkLim_ms', [-2,2]);
 
 nSamples = size(mrWav_clu,1);
-dy = diff(sort(mrXY_site(:,2))); dy = min(dy(dy>0));
-dx = diff(sort(mrXY_site(:,1))); dx = min(dx(dx>0));
+gap_ = @(x)min(diff(unique(x(:))));
+dy = gap_(mrXY_site(:,2));
+dx = gap_(mrXY_site(:,1));
 dt = diff(spkLim_ms);
 
 vrX = (1:nSamples)'/nSamples*dt;
@@ -1402,9 +1433,8 @@ end
 xlabel(hAx, 'X (um)');
 ylabel(hAx, 'Y (um)');
 grid(hAx, 'on');
-[xlim1, ylim1] = deal([min(mrX1(:)), max(mrX1(:))], [min(mrY1(:)), max(mrY1(:))]);
-xlim1 = xlim1 + range(xlim1)*[-.1,.1];
-ylim1 = ylim1 + range(ylim1)*[-.05,.05];
+xlim1 = lim_pad_(mrX1(:), .1);
+ylim1 = lim_pad_(mrY1(:), .05);
 xlim_(hAx, xlim1);
 ylim_(hAx, ylim1);
 end %func
