@@ -8936,7 +8936,7 @@ nT_wav = abs(P.spkLim(1))*2+1;
 trWav_spk = pc2wav_(mrPv(1:nT_wav,:), trPc_spk);
 
 [mrMin_spk, miMin_spk] = min(trWav_spk(:,2:nSites_fet,:),[],1);
-miMin_spk = squeeze_(miMin_spk);
+miMin_spk = permute(miMin_spk, [2,3,1]);
 [~, viMin_spk] = min(mrMin_spk,[],2);
 
 miSites2 = P.miSites(2:nSites_fet, viSite_spk);
@@ -8944,7 +8944,7 @@ viSite2_spk = int32(mr2vr_sub2ind_(miSites2, viMin_spk(:), []));
 
 iT_peak = 1 - P.spkLim(1);
 viTime2_offset_spk = mr2vr_sub2ind_(miMin_spk, viMin_spk(:), []) - iT_peak;
-viTime2_spk = viTime_spk + int64(viTime2_offset_spk);
+viTime2_spk = viTime_spk + int64(viTime2_offset_spk(:));
 end %func
 
 
