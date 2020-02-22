@@ -8595,7 +8595,8 @@ function optimize_status_(vcDir_rec, vcFile_prmset)
 % usage
 % optimize_status_(vcFile_list, vcFile_prmset)
 % optimize_status_(vcDir_rec, vcFile_prmset)
-
+if nargin<2, vcFile_prmset=''; end
+if isempty(vcFile_prmset), vcFile_prmset=read_cfg_('ironclust_prmset'); end
 try
     if exist_file_(vcDir_rec)
         csDir_rec = load_batch_(vcDir_rec);
