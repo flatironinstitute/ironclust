@@ -8591,10 +8591,10 @@ try
     plot(hAx, (vrDatenum_file - vrDatenum_file(end))*24*60, nOutput_total - (1:nOutput), '.-'); 
     vcTitle = sprintf('%d/%d (%0.1f%%) completed (%0.1f min passed, %0.1f min remaining)', ...
         nOutput, nOutput_total, nOutput/nOutput_total*100, t_passed, t_left);
-    xylabel_(gca, 'Time (minutes)', '# param left', vcTitle); 
-    grid on; axis tight;
-    ylim([0, nOutput_total]);
-    set(hAx, 'ButtonDownFcn', @(h,e)optimize_status_(vcDir_rec, vcFile_prmset, h));
+    xylabel_(hAx, 'Time (minutes)', '# param left', vcTitle); 
+    grid(hAx, 'on'); axis(hAx, 'tight');
+    ylim(hAx, [0, nOutput_total]);
+    set(hAx, 'ButtonDownFcn', @(h,e)optimize_status_(vcDir_rec, vcFile_prmset, hAx));
 catch
     fprintf(2, '%s\n', lasterr());
 end
