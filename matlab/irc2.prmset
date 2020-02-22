@@ -1,15 +1,15 @@
 % filter (slow parameters to test)
-freqLim = {[300,inf]};
+freqLim = {[300,inf], [300,6000]};
 qqFactor = {4};
 fMatchedFilter_detect = {1};
-spkLim_ms = {[-.5, 1]};
+spkLim_ms = {[-.5, 1], [-.25, .75]};
 
 % detect
 nPc_spk = {6, 9};
 
 % cluster
 step_sec_drift = {20};
-batch_sec_drift = {600};
+batch_sec_drift = {300, 600};
 
 % merge (fast parameters to test by using cache)
 maxWavCor = num2cell([.95:.01:1]);
