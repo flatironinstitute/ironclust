@@ -1227,6 +1227,7 @@ if isempty(P)
     P.sRateHz = get_(S_json, 'samplerate'); 
     [P.freqLim, P.freqLim_width, P.spkLim] = get_(S_cfg, 'freqLim_gt', 'freqLim_width_gt', 'spkLim_ms_gt');
     P.jitter = round(get_(S_cfg, 'spkJitter_ms_gt') * P.sRateHz / 1000); %1 ms jitter    
+    P.fParfor=0;
 end
 
 fprintf('Validating cluster...\n'); t_fun = tic;
