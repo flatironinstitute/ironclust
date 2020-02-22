@@ -448,6 +448,7 @@ if ischar(csDir_rec), csDir_rec={csDir_rec}; end
 for iDir=1:numel(csDir_rec)
     delete_(fullfile(csDir_rec{iDir}, '**', '.*.lock'));
 end
+fprintf('Removed locks from %d recordings.\n', numel(csDir_rec));
 end %func
 
 
