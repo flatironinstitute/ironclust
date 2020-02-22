@@ -5,13 +5,9 @@ MAX_BYTES_LOAD = .5e9;
 nThreads_rho = 1024;        % number of threads in GPU
 nThreads_delta = 512;        % number of threads in GPU
 
-% [Display parameters for manual clustering]
-maxAmp = 250;               % Amplitude range in uV (initial setting, changeable in UI) (*)
-corrLim = [.8, 1];           % Correlation color plot range
-
 % [Detect stage: filter and detect spikes]
 vcFilter = 'bandpass';
-freqLim = [500, inf];
+freqLim = [300, inf];
 maxDist_site_spk_um = 100;  % Event extraction radius
 maxDist_site_um = 50;       % Event merge radius
 vcCommonRef = 'trimmean';   % Common reference mode {'none', 'mean', 'median', 'trimmean'}    
@@ -43,3 +39,7 @@ spkJitter_ms_cc = 1;        % merge jitter timing
 t_burst_ms = 20;            % burst ISI for waveform separation
 min_snr_clu = [];           % Automatically remove clusters below this SNR threshold, set to `[]` to disable
 spkRefrac_merge_ms = .25;   % Remove spikes violating this refractory period in msec when merged 
+
+% [Manual stage: dispplay marameters]
+maxAmp = 250;               % Amplitude range in uV (initial setting, changeable in UI) (*)
+corrLim = [.8, 1];           % Correlation color plot range
