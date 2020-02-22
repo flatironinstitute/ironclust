@@ -7762,9 +7762,20 @@ if isempty(S_prmset_rec)
             parfor iRun = 1:nRuns
                 [iRec, iPrmset] = ind2sub([nRec,nPrmset], iRun);
                 cVal_prm1 = permute_prm_(cVal_prm, iPrmset);
-                ccScore_prmset_rec{iRun} = score_prmset_(...
+                ccScore_prmset_rec{iRun} = load_score_prmset_(...
                     vcSorter, csDir_rec{iRec}, csName_prm, cVal_prm1, P_prmset, iPrmset);
             end
+            % rebalance the parfor loop
+            viRun1 = find(cellfun(@(x)isempty(x), ccScore_prmset_rec));
+            ccScore_prmset_rec1 = cell(size(viRun1));
+            parfor iRun1 = 1:nRuns1
+                [iRec, iPrmset] = ind2sub([nRec,nPrmset], viRun1(iRun1));
+                cVal_prm1 = permute_prm_(cVal_prm, iPrmset);
+                ccScore_prmset_rec1{iRun1} = score_prmset_(...
+                    vcSorter, csDir_rec{iRec}, csName_prm, cVal_prm1, P_prmset, iPrmset);
+            end      
+            ccScore_prmset_rec(viRun1) = ccScore_prmset_rec1;
+            ccScore_prmset_rec1 = {}; % clear
         catch
             fParfor = 0;
         end
@@ -7790,6 +7801,33 @@ end
 assignWorkspace_(S_prmset_rec, S_best_score);
 cellstr2file_(strrep(vcFile_out, '.mat', '.txt'), csDesc, 1);
 edit(strrep(vcFile_out, '.mat', '.txt'));
+end %func
+
+
+%--------------------------------------------------------------------------
+% load from existing cache
+function S_score1 = load_score_prmset_(...
+    vcSorter, vcDir_in, csName_prm, cVal_prm, P_prmset, iPrmset)
+
+vcDir_out = fullfile(vcDir_in, vcSorter);
+fUse_cache = get_set_(P_prmset, 'fUse_cache', 1);
+vcFile_true_mda = fullfile(vcDir_in, 'firings_true.mda');
+try    
+    vcFile_out1 = fullfile(vcDir_out, sprintf('firings_p%d.mda', iPrmset));
+    vcFile_score1 = strrep(vcFile_out1, '.mda', '_score.mat');
+    if exist_file_(vcFile_score1) && fUse_cache   
+        S_score1 = load(vcFile_score1);
+        fprintf('Loaded from cache: %s\n', vcFile_score1);
+    elseif exist_file_(vcFile_out1) && fUse_cache
+        S_score1 = compare_mda_(vcFile_true_mda, vcFile_out1);
+        struct_save_(S_score1, vcFile_score1, 1);
+    else
+        S_score1 = [];
+    end
+catch ME
+    S_score1 = [];
+    fprintf(2, '%s: paramset#%d failed:\n\t%s\n', vcDir_in, iPrmset, ME.message());
+end
 end %func
 
 
