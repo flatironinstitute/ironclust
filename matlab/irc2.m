@@ -8587,7 +8587,7 @@ try
     % plot
     if isempty(vrDatenum_file), return; end
     if isempty(hAx)
-        hFig = figure('Color','w','Name', [vcDir_rec, ' - ', vcFile_prmset]);
+        hFig = figure('Color','w','Name', [vcDir_rec, ' - ', vcFile_prmset, ' (click to update)']);
         hAx = axes(hFig);
     end
     cla(hAx);
