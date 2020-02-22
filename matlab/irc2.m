@@ -445,14 +445,8 @@ end %func
 function remove_lock_(csDir_rec)
 % recursively remove locks
 if ischar(csDir_rec), csDir_rec={csDir_rec}; end
-try
-    parfor iDir=1:numel(csDir_rec)
-        delete_(fullfile(csDir_rec{iDir}, '**', '.*.lock'));
-    end
-catch
-    for iDir=1:numel(csDir_rec)
-        delete_(fullfile(csDir_rec{iDir}, '**', '.*.lock'));
-    end
+for iDir=1:numel(csDir_rec)
+    delete_(fullfile(csDir_rec{iDir}, '**', '.*.lock'));
 end
 end %func
 
