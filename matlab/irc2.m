@@ -7758,7 +7758,7 @@ if isempty(S_prmset_rec)
     if fParfor
         try
             parfor iRun = 1:nRuns
-                [iPrmset, iRec] = ind2sub([nRec,nPrmset], iRun);
+                [iRec, iPrmset] = ind2sub([nRec,nPrmset], iRun);
                 cVal_prm1 = permute_prm_(cVal_prm, iPrmset);
                 ccScore_prmset_rec{iRun} = score_prmset_(...
                     vcSorter, csDir_rec{iRec}, csName_prm, cVal_prm1, P_prmset, iPrmset);
@@ -7769,7 +7769,7 @@ if isempty(S_prmset_rec)
     end
     if ~fParfor
         for iRun = 1:nRuns
-            [iPrmset, iRec] = ind2sub([nRec,nPrmset], iRun);
+            [iRec, iPrmset] = ind2sub([nRec,nPrmset], iRun);
             cVal_prm1 = permute_prm_(cVal_prm, iPrmset);
             ccScore_prmset_rec{iRun} = score_prmset_(...
                 vcSorter, csDir_rec{iRec}, csName_prm, cVal_prm1, P_prmset, iPrmset);
