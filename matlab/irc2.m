@@ -199,7 +199,7 @@ switch lower(vcCmd)
             P = file2struct_(vcDir_in);
             P.vcFile_prm = vcDir_in;
         end
-        vcCmd=''; clear_(); 
+        vcCmd=''; 
         fValidate = exist_file_(fullfile(vcDir_in, 'firings_true.mda')) && nargout==0;
 end
 
