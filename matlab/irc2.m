@@ -447,13 +447,11 @@ function remove_lock_(csDir_rec)
 if ischar(csDir_rec), csDir_rec={csDir_rec}; end
 try
     parfor iDir=1:numel(csDir_rec)
-        vS_dir1 = dir(fullfile(csDir_rec{iDir}, '**', '.*.lock'));
-        arrayfun_(@(x)delete(fullfile(x.folder, x.name)), vS_dir1);
+        delete_(fullfile(csDir_rec{iDir}, '**', '.*.lock'));
     end
 catch
     for iDir=1:numel(csDir_rec)
-        vS_dir1 = dir(fullfile(csDir_rec{iDir}, '**', '.*.lock'));
-        arrayfun_(@(x)delete(fullfile(x.folder, x.name)), vS_dir1);
+        delete_(fullfile(csDir_rec{iDir}, '**', '.*.lock'));
     end
 end
 end %func
