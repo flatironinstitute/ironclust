@@ -7786,6 +7786,7 @@ end
 [csDesc, S_best_score] = optimize_param_show_(S_prmset_rec);
 assignWorkspace_(S_prmset_rec, S_best_score);
 cellstr2file_(strrep(vcFile_out, '.mat', '.txt'), csDesc, 1);
+edit(strrep(vcFile_out, '.mat', '.txt'));
 end %func
 
 
@@ -7859,6 +7860,19 @@ end %func
 
 
 %--------------------------------------------------------------------------
+function mr = cell_struct_fun_(cS, fh, vcName)
+% cc: cell, fh: function handle, vcName: name of the field
+mr = nan(size(cS));
+for ic=1:numel(cS)
+    S1 = cS{ic};
+    if isfield(S1, vcName)
+        mr(ic) = fh(S1.(vcName));
+    end
+end
+end %func
+
+
+%--------------------------------------------------------------------------
 function [csDesc, S_best_score] = optimize_param_show_(S_prmset)
 
 S_cfg = read_cfg_();
@@ -7887,10 +7901,11 @@ catch  % SNR not saved
     csScore = {'vrF1_gt', 'vrAccuracy_gt', 'vrPrecision_gt', 'vrRecall_gt'};
     switch lower(S_cfg.vcMode_optimize)
         case 'mean'
-            mr_func_ = @(x)cellfun(@(S)nanmean(S.(x)), ccScore_prmset_rec);
+            mr_func_ = @(x)cell_struct_fun_(ccScore_prmset_rec, mean, x);
             vcScore = 'mean';
         case 'count'
-            mr_func_ = @(x)cellfun(@(S)sum(S.(x)>=THRESH_SCORE), ccScore_prmset_rec);
+            mr_func_ = @(x)cell_struct_fun_(ccScore_prmset_rec, @(y)sum(y>=THRESH_SCORE), x);
+%             mr_func_ = @(x)cellfun(@(S)sum(S.(x)>=THRESH_SCORE), ccScore_prmset_rec);
             vcScore = sprintf('count|x>%0.1f', THRESH_SCORE);
         otherwise, error('optimize_param_show_: unsupported `vcMode_optimize`');
     end
