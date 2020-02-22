@@ -8547,6 +8547,9 @@ if nargin<3, hAx=[]; end
 if nargin<2, vcFile_prmset=''; end
 if isempty(vcFile_prmset), vcFile_prmset=read_cfg_('ironclust_prmset'); end
 try
+    hMsg = [];
+    if ~isempty(hAx), hMsg = msgbox('updating...'); end
+    vcArg1 = vcDir_rec;
     if exist_file_(vcDir_rec)
         csDir_rec = load_batch_(vcDir_rec);
         vcDir_rec=fileparts(vcDir_rec); 
@@ -8594,9 +8597,19 @@ try
     xylabel_(hAx, 'Time (minutes)', '# param left', vcTitle); 
     grid(hAx, 'on'); axis(hAx, 'tight');
     ylim(hAx, [0, nOutput_total]);
-    set(hAx, 'ButtonDownFcn', @(h,e)optimize_status_(vcDir_rec, vcFile_prmset, hAx));
+    set(hAx, 'ButtonDownFcn', @(h,e)optimize_status_(vcArg1, vcFile_prmset, hAx));
+    close_(hMsg);
 catch
     fprintf(2, '%s\n', lasterr());
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+function close_(h)
+try
+    close(h);
+catch
 end
 end %func
 
