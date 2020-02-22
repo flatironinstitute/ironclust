@@ -8660,11 +8660,12 @@ assert(exist_file_(vcFile_prmset) && exist_dir_(vcDir_rec), 'file or dir does no
 vcSorter = lower(strrep(vcFile_prmset, '.prmset', ''));
 vS_dir = cellfun_(@(x)dir(fullfile(x, vcSorter, 'firings_p*')), csDir_rec);
 vS_dir = cat(1, vS_dir{:}); 
-  
 csFiles_remove = arrayfun_(@(x)fullfile(x.folder, x.name), vS_dir);
-delete_(csFiles_remove);
+
+cellfun_(@(x)delete_(fullfile(x, vcSorter, 'firings_p*')), csDir_rec);
+  
 delete_(fullfile(vcDir_rec, sprintf('scores_prmset_%s.mat', vcSorter)));
-fprintf(2, 'Deleted %d previous outputs\n', numel(vS_dir));
+fprintf(2, 'Deleted %d previous outputs\n', numel(csFiles_remove));
 disp(csFiles_remove(:));
 end %func
 
