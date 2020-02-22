@@ -272,11 +272,16 @@ mkdir_(vcDir_detect);
 vcFile_detect = fullfile(vcDir_detect, 'detect_irc.mat');
 waitfor_lock_(vcDir_detect);
 
+S0 = [];
 if exist_file_(vcFile_detect) && ~fForce_detect
-    S0 = load(vcFile_detect);
-    S0 = struct_load_bin_(S0.S_var, S0);
-    fprintf('Loaded from cache: %s\n', vcFile_detect);
-else    
+    try
+        S0 = load(vcFile_detect);
+        S0 = struct_load_bin_(S0.S_var, S0);
+        fprintf('Loaded from cache: %s\n', vcFile_detect);
+    catch
+    end
+end
+if isempty(S0)
     try
         lock_dir_(vcDir_detect);
         P.vcFile_prm = fullfile(vcDir_detect, 'detect.prm');
@@ -307,11 +312,16 @@ mkdir_(vcDir_sort);
 vcFile_sort = fullfile(vcDir_sort, 'sort_irc.mat');
 waitfor_lock_(vcDir_sort);
 
+S_clu = [];
 if exist_file_(vcFile_sort) && ~fForce_sort
-    S_clu = load(vcFile_sort);
-    S_clu = struct_load_bin_(S_clu.S_var, S_clu);
-    fprintf('Loaded from cache: %s\n', vcFile_sort);
-else
+    try
+        S_clu = load(vcFile_sort);
+        S_clu = struct_load_bin_(S_clu.S_var, S_clu);
+        fprintf('Loaded from cache: %s\n', vcFile_sort);
+    catch
+    end
+end
+if isempty(S_clu)
     try
         lock_dir_(vcDir_sort);
         P.vcFile_prm = strrep(vcFile_sort, '_irc.mat', '.prm');
@@ -343,15 +353,20 @@ vcFile_auto = fullfile(vcDir_auto, 'auto_irc.mat');
 vcFile_firings_mda = fullfile(vcDir_auto, 'firings.mda');
 waitfor_lock_(vcDir_auto);
 
+S_auto = [];
 if exist_file_(vcFile_auto) && ~fForce_auto
-    S_auto = load(vcFile_auto);
-    S_auto = struct_load_bin_(S_auto.S_var, S_auto);
-    fprintf('Loaded from cache: %s\n', vcFile_auto);
-    if ~exist_file_(vcFile_firings_mda)
-        S0.S_auto = S_auto;
-        save_firings_mda_(S0, vcFile_firings_mda);
+    try
+        S_auto = load(vcFile_auto);
+        S_auto = struct_load_bin_(S_auto.S_var, S_auto);
+        fprintf('Loaded from cache: %s\n', vcFile_auto);
+        if ~exist_file_(vcFile_firings_mda)
+            S0.S_auto = S_auto;
+            save_firings_mda_(S0, vcFile_firings_mda);
+        end
+    catch
     end
-else
+end
+if isempty(S_auto)
     try
         lock_dir_(vcDir_auto);
         P.vcFile_prm = fullfile(vcDir_auto, 'auto.prm');
