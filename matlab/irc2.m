@@ -1769,10 +1769,13 @@ try
             case '.txt'
                 csDir_rec = load_batch_(vcFile_prm);
                 cellfun_(@(x)rmdir_(fullfile(x, 'irc2')), csDir_rec);
-            otherwise
+            case '.prm'
+                % preserves .prm file
                 vcFile_prm_ = fullfile(vcDir, vcFile);
                 delete([vcFile_prm_, '*.irc']);
                 delete([vcFile_prm_, '*_irc.mat']);
+                delete_(fullfile(vcDir, '*_score.mat'));
+                rmdir_(fullfile(vcDir, 'detect_*'));
                 fprintf('Cleared %s\n', vcFile_prm);
         end
     else
