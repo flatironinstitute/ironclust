@@ -8665,8 +8665,8 @@ csFiles_remove = arrayfun_(@(x)fullfile(x.folder, x.name), vS_dir);
 cellfun_(@(x)delete_(fullfile(x, vcSorter, 'firings_p*')), csDir_rec);
   
 delete_(fullfile(vcDir_rec, sprintf('scores_prmset_%s.mat', vcSorter)));
-fprintf(2, 'Deleted %d previous outputs\n', numel(csFiles_remove));
 disp(csFiles_remove(:));
+fprintf(2, 'Deleted %d previous outputs\n', numel(csFiles_remove));
 end %func
 
 
