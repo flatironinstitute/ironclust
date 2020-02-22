@@ -150,8 +150,8 @@ switch lower(vcCmd)
         P = file2struct_(vcFile_prm);        
         switch lower(vcCmd)
             case {'detect-sort', 'spikesort', 'spikesort-verify', 'all'}, clear_(); fDetect = 1; fSort = 1; fAuto=1;
-            case {'sort', 'sort-verify'}, clear_('sort'); fDetect = 0; fSort = 1; fAuto=1;   
-            case {'auto', 'auto-verify'}, clear_('sort'); fDetect = 0; fSort = 0; fAuto=1;
+            case {'sort', 'sort-verify'}, fDetect = 0; fSort = 1; fAuto=1;   
+            case {'auto', 'auto-verify'}, fDetect = 0; fSort = 0; fAuto=1;
             case 'describe', describe_(vcFile_prm); return;
             case {'verify', 'validate'}, validate_(P); return;
             case {'manual', 'ui'}, irc2_manual(P); return;
@@ -164,7 +164,6 @@ switch lower(vcCmd)
         return;
     case 'plot-drift', plot0_('drift', vcArg1, vcArg2); return;
     case 'clear', clear_(vcArg1); vcFile_prm_=[]; return;
-    case 'clear-sort', clear_('sort'); return;     
     case {'test-mcc', 'test_mcc', 'testmcc'}, test_mcc_(vcArg1); return;
     case 'test'
         vcDir_in = get_test_data_(vcArg1);
@@ -1745,57 +1744,57 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function vcDir_in = clear_(vcMode)
-if nargin<1, vcMode=''; end
+% clear ironclust output from specified directories
+function clear_(vcFile_prm)
+% usage
+% vcDir_in = clear_(vcDir)
+% vcDir_in = clear_(vcFile_prm)
+% vcDir_in = clear_(vcFile_list_txt)
 
-switch vcMode
-    case {'all', ''}
-        set(0, 'UserData', []); % unused
-        disp('irc2: cleared all');
-        vcDir_in = '';
-    case 'sort'
-        S0 = get(0, 'UserData'); % unused
-        S0.S_clu = [];
-        S0.S_auto = [];
-        set(0,'UserData',S0);
-        disp('irc2: cleared sort');
-        try
-            vcDir_in = fileparts(S0.P.vcFile);
-        catch
-            vcDir_in = '';
+% clear specified recording
+dir_prm_ = @(x)dir(fullfile(x, '*.prm'));
+try
+    if exist_dir_(vcFile_prm) 
+        % directory is passed
+        vcDir = vcFile_prm;
+        vcDir_irc2 = fullfile(vcDir, 'irc2');
+        if exist_dir_(vcDir_irc2)
+            % output dir passed
+            rmdir_(vcDir_irc2);
+            fprintf('Removed %s\n', vcDir_irc2);
         end
-    otherwise
-        % clear specified recording
-        dir_prm_ = @(x)dir(fullfile(x, '*.prm'));
-        vcFile_prm = vcMode;        
-        try
-            if exist_dir_(vcFile_prm) 
-                % directory is passed
-                vcDir = vcFile_prm;
-                if exist_dir_(fullfile(vcDir, 'irc2'))
-                    % output dir passed
-                    vcDir = fullfile(vcDir, 'irc2');
-                    rmdir(vcDir, 's');
-                    fprintf('Removed %s\n', vcDir);
-                    return;
-%                     S_dir = dir_prm_(vcDir);
-%                     vcFile_prm = fullfile(vcDir, S_dir(1).name);
-                else
-                    % input dir passed
-                    S_dir = dir_prm_(vcDir);
-                    vcFile_prm = fullfile(vcDir, S_dir(1).name);
-                end
-            end
-            [vcDir, vcFile, vcExt] = fileparts(vcFile_prm);
-            vcFile_prm_ = fullfile(vcDir, vcFile);
-            delete([vcFile_prm_, '*.irc']);
-            delete([vcFile_prm_, '*_irc.mat']);
-            fprintf('Cleared %s\n', vcFile_prm);
-        catch
-            fprintf(2, 'Nothing is cleared.\n');
+    elseif exist_file_(vcFile_prm)
+        [vcDir, vcFile, vcExt] = fileparts(vcFile_prm);
+        switch lower(vcExt)
+            case '.txt'
+                csDir_rec = load_batch_(vcFile_prm);
+                cellfun_(@(x)rmdir_(fullfile(x, 'irc2')), csDir_rec);
+            otherwise
+                vcFile_prm_ = fullfile(vcDir, vcFile);
+                delete([vcFile_prm_, '*.irc']);
+                delete([vcFile_prm_, '*_irc.mat']);
+                fprintf('Cleared %s\n', vcFile_prm);
         end
+    else
+        fprintf(2, 'Does not exist: %s\n', vcFile_prm);
+    end
+catch
+    fprintf(2, 'Nothing is cleared.\n');
 end
+end %func
+
+
+%--------------------------------------------------------------------------
+function fSuccess = rmdir_(vcDir)
+flag = false;
+if exist_dir_(vcDir)
+    try
+        rmdir(vcDir, 's');
+        flag = true;
+    catch        
+    end
 end
+end %func
 
 %--------------------------------------------------------------------------
 function csDesc = describe_(S0)
