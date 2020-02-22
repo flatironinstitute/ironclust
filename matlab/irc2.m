@@ -167,6 +167,7 @@ switch lower(vcCmd)
     case {'test-mcc', 'test_mcc', 'testmcc'}, test_mcc_(vcArg1); return;
     case 'test'
         vcDir_in = get_test_data_(vcArg1);
+        remove_lock_(vcDir_in);
         vcDir_out = '';
         fValidate = 1;
     case 'test-all', test_all_(); return;
@@ -210,9 +211,23 @@ if isempty(P)
 end
 vcFile_prm_ = P.vcFile_prm;
 
-S0 = detect_cache_(P, logical_(fDetect));
-S0.S_clu = sort_cache_(S0, P, logical_(fSort));
-S0.S_auto = auto_cache_(S0, P, logical_(fAuto));
+[S0, fCached_detect] = detect_cache_(P, logical_(fDetect));
+try
+    [S0.S_clu, fCached_sort] = sort_cache_(S0, P, logical_(fSort));
+catch % remove cache
+    if fCached_detect
+        S0 = detect_cache_(P, 1);
+        S0.S_clu = sort_cache_(S0, P, 1);
+    end
+end
+try
+    [S0.S_auto, fCached_auto] = auto_cache_(S0, P, logical_(fAuto));
+catch % remove cache
+    if fCached_sort
+        S0.S_clu = sort_cache_(S0, P, 1);
+        S0.S_auto = auto_cache_(S0, P, 1);
+    end
+end
 
 vcFile_firings_mda = get_(S0.S_auto, 'vcFile_firings_mda');
 if exist_file_(vcFile_firings_mda)
@@ -241,7 +256,7 @@ function [vcHash, csParam] = get_hash_(P_detect, vcMode)
 csParam_detect = {'vcFilter', 'freqLim', 'maxDist_site_spk_um', 'maxDist_site_um', ...
     'vcCommonRef', 'trimmean_pct', 'fWhiten', 'nSites_whiten', 'nChans_min_car', ...
     'qqFactor', 'nPc_spk', 'spkLim_ms', 'fInterp_fet', 'spkRefrac_ms', 'fft_thresh', ...
-    'blank_thresh', 'blank_period_ms', 'fMatchedFilter_detect'};
+    'blank_thresh', 'blank_period_ms', 'fMatchedFilter_detect', 'prinvec_mode'};
 csParam_sort = {'version', 'nPcPerChan', 'step_sec_drift', 'batch_sec_drift', 'knn', 'nTime_max_drift'};
 csParam_auto = {'version', 'maxWavCor', 'merge_thresh_cc', 'spkJitter_ms_cc', ...
     't_burst_ms', 'min_snr_clu', 'spkRefrac_merge_ms'};
@@ -255,29 +270,29 @@ switch lower(vcMode)
     case 'auto', csParam = csParam_auto;
     otherwise, error('get_hash_: invalid mode'); 
 end
-vcHash = struct2hash_(struct_copy_(P_detect, csParam));
+vcHash = [vcMode, '_', struct2hash_(struct_copy_(P_detect, csParam))];
 end %func
 
 
 %--------------------------------------------------------------------------
-function S0 = detect_cache_(P, fForce_detect)
+function [S0, fCached] = detect_cache_(P, fForce_detect)
 if nargin<2, fForce_detect=0; end
 
 csVar_bin = {'viTime_spk', 'viSite_spk', 'viSite2_spk', 'vrAmp_spk', ...
     'vrPow_spk', 'mrPos_spk', 'ccviSpk_site_load', 'ccviSpk_site2_load'};
 
-vcHash_detect = get_hash_(P, 'detect');
-vcDir_detect = fullfile(fileparts(P.vcFile_prm), ['detect_', vcHash_detect]);
+vcDir_detect = fullfile(fileparts(P.vcFile_prm), get_hash_(P, 'detect'));
 mkdir_(vcDir_detect);
 vcFile_detect = fullfile(vcDir_detect, 'detect_irc.mat');
 waitfor_lock_(vcDir_detect);
+[S0, fCached] = deal([], 0);
 
-S0 = [];
 if exist_file_(vcFile_detect) && ~fForce_detect
     try
         S0 = load(vcFile_detect);
         S0 = struct_load_bin_(S0.S_var, S0);
         fprintf('Loaded from cache: %s\n', vcFile_detect);
+        fCached = 1;
     catch
     end
 end
@@ -301,18 +316,17 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function S_clu = sort_cache_(S0, P, fForce_sort)
+function [S_clu, fCached] = sort_cache_(S0, P, fForce_sort)
 if nargin<3, fForce_sort = 0; end
 
 csVar_bin = {'rho', 'delta', 'nneigh', 'ordrho'};
 
-vcHash_sort = get_hash_(P, 'sort');
-vcDir_sort = fullfile(fileparts(S0.vcFile_detect), ['sort_', vcHash_sort]);
+vcDir_sort = fullfile(fileparts(S0.vcFile_detect), get_hash_(P, 'sort'));
 mkdir_(vcDir_sort);
 vcFile_sort = fullfile(vcDir_sort, 'sort_irc.mat');
 waitfor_lock_(vcDir_sort);
+[S_clu, fCached] = deal([], 0);
 
-S_clu = [];
 if exist_file_(vcFile_sort) && ~fForce_sort
     try
         S_clu = load(vcFile_sort);
@@ -331,8 +345,8 @@ if isempty(S_clu)
         struct_save_(S_, vcFile_sort, 1);
         unlock_dir_(vcDir_sort);
     catch ME
-        disp(ME.message());
         unlock_dir_(vcDir_sort);
+        disp(ME.message());
         rethrow(ME);
     end        
 end
@@ -340,20 +354,20 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function S_auto = auto_cache_(S0, P, fForce_auto)
+% no need to use lock on auto since it's the final step
+function [S_auto, fCached] = auto_cache_(S0, P, fForce_auto)
 
 csVar_bin = {'viClu', 'cviSpk_clu'};
 
 if nargin<3, fForce_auto = 0; end
 
-vcHash_auto = get_hash_(P, 'auto');
-vcDir_auto = fullfile(fileparts(S0.S_clu.vcFile_sort), ['auto_', vcHash_auto]);
+vcDir_auto = fullfile(fileparts(S0.S_clu.vcFile_sort), get_hash_(P, 'auto'));
 mkdir_(vcDir_auto);
 vcFile_auto = fullfile(vcDir_auto, 'auto_irc.mat');
 vcFile_firings_mda = fullfile(vcDir_auto, 'firings.mda');
-waitfor_lock_(vcDir_auto);
+% waitfor_lock_(vcDir_auto);
 
-S_auto = [];
+[S_auto, fCached] = deal([], 0);
 if exist_file_(vcFile_auto) && ~fForce_auto
     try
         S_auto = load(vcFile_auto);
@@ -362,13 +376,14 @@ if exist_file_(vcFile_auto) && ~fForce_auto
         if ~exist_file_(vcFile_firings_mda)
             S0.S_auto = S_auto;
             save_firings_mda_(S0, vcFile_firings_mda);
+            fCached = 1;
         end
     catch
     end
 end
 if isempty(S_auto)
     try
-        lock_dir_(vcDir_auto);
+%         lock_dir_(vcDir_auto);
         P.vcFile_prm = fullfile(vcDir_auto, 'auto.prm');
         S_auto = auto_(S0, P);
 
@@ -379,10 +394,10 @@ if isempty(S_auto)
 
         [S_, S_.S_var] = struct_save_bin_(S_auto, strrep(vcFile_auto,'_irc.mat','.irc'), csVar_bin);
         struct_save_(S_, vcFile_auto, 1);  
-        unlock_dir_(vcDir_auto);
+%         unlock_dir_(vcDir_auto);
     catch ME
         disp(ME.message());
-        unlock_dir_(vcDir_auto);
+%         unlock_dir_(vcDir_auto);
         rethrow(ME);
     end
 end
@@ -444,16 +459,24 @@ end %func
 %--------------------------------------------------------------------------
 function remove_lock_(csDir_rec)
 % recursively remove locks
+% delete files associated with locks (they are incomplete)
+
 if ischar(csDir_rec), csDir_rec={csDir_rec}; end
 try
     parfor iDir=1:numel(csDir_rec)
         vS_dir = dir(fullfile(csDir_rec{iDir}, '**', '.*.lock'));
-        arrayfun_(@(x)delete_(fullfile(x.folder, x.name)), vS_dir);
+        csFiles_lock1 = arrayfun_(@(x)fullfile(fullfile(x.folder, x.name)), vS_dir);
+        csFiles_locked1 = cellfun_(@(x)strrep(x(2:end), '.lock', ''), csFiles_lock1);
+        delete_(csFiles_lock1);
+        delete_(csFiles_locked1);
     end
 catch
     for iDir=1:numel(csDir_rec)
         vS_dir = dir(fullfile(csDir_rec{iDir}, '**', '.*.lock'));
-        arrayfun_(@(x)delete_(fullfile(x.folder, x.name)), vS_dir);
+        csFiles_lock1 = arrayfun_(@(x)fullfile(fullfile(x.folder, x.name)), vS_dir);
+        csFiles_locked1 = cellfun_(@(x)strrep(x(2:end), '.lock', ''), csFiles_lock1);
+        delete_(csFiles_lock1);
+        delete_(csFiles_locked1);
     end
 end
 fprintf('Removed locks from %d recordings.\n', numel(csDir_rec));
@@ -4069,8 +4092,7 @@ elseif strcmp(vcFile_, 'auto')
 elseif strcmpi(vcFile_, 'detect')
     vcFile_prm_ = strrep(vcFile_prm, '.prm', '');
 else
-    vcHash = get_hash_(vcFile_prm, 'detect'); %todo: cache
-    vcFile_prm_ = fullfile(fileparts(vcFile_prm), ['detect_', vcHash], 'detect');
+    vcFile_prm_ = fullfile(fileparts(vcFile_prm), get_hash_(vcFile_prm, 'detect'), 'detect');
 end
 bytes_per_spk = bytesPerSample_(type_fet) * dimm_fet(1) * dimm_fet(2);
 fh_sum = @(x,y)sum(cellfun(@numel, x(1:y-1)));
@@ -4895,7 +4917,7 @@ function [mrPv1, vrD1] = get_prinvec_(tr, P)
 % end
 t_fun = tic;
 nPc_spk = get_set_(P, 'nPc_spk', 9); % # components to compress spike waveforms
-switch 2
+switch get_set_(P, 'prinvec_mode', 1)
     case 1, mr1 = gather_(reshape(tr, size(tr,1), []));
     case 2, mr1 = gather_(reshape(tr(:,1,:), size(tr,1), []));
 end
@@ -7818,13 +7840,16 @@ if isempty(S_prmset_rec)
     % display
     S_prmset_rec = makeStruct_(S_prmset, ccScore_prmset_rec, vcFile_prmset, ...
         csDir_rec, cVal_prm, csName_prm, t_fun, vcDir_rec, vcFile_out);
-    struct_save_(S_prmset_rec, vcFile_out, 1);    
+    fSave = 1;    
+else
+    fSave = 0;
 end
 
 [csDesc, S_best_score] = optimize_param_show_(S_prmset_rec);
 assignWorkspace_(S_prmset_rec, S_best_score);
 cellstr2file_(strrep(vcFile_out, '.mat', '.txt'), csDesc, 1);
 edit(strrep(vcFile_out, '.mat', '.txt'));
+if fSave, struct_save_(S_prmset_rec, vcFile_out, 1); end
 end %func
 
 
@@ -7975,6 +8000,9 @@ catch  % SNR not saved
         case 'mean'
             mr_func_ = @(x)cell_struct_fun_(ccScore_prmset_rec, @(y)mean(y), x);
             vcScore = 'mean';
+        case 'median'
+            mr_func_ = @(x)cell_struct_fun_(ccScore_prmset_rec, @(y)median(y), x);
+            vcScore = 'median';            
         case 'count'
             mr_func_ = @(x)cell_struct_fun_(ccScore_prmset_rec, @(y)sum(y>=THRESH_SCORE), x);
 %             mr_func_ = @(x)cellfun(@(S)sum(S.(x)>=THRESH_SCORE), ccScore_prmset_rec);
@@ -7983,7 +8011,7 @@ catch  % SNR not saved
     end
     cmrScore_prmset_gt = cellfun_(@(x)mr_func_(x), csScore);
     [vrF1_prmset, vrAccuracy_prmset, vrPrecision_prmset, vrRecall_prmset] = ...
-        multifun_(@(x)nanmean(cmrScore_prmset_gt{x},2), 1, 2, 3, 4);
+        multifun_(@(x)nanmean(cmrScore_prmset_gt{x},1), 1, 2, 3, 4);
     [~, viPrmset_srt] = sort(vrAccuracy_prmset, 'descend');
     csDesc = {};
     for iiPrmset = 1:numel(viPrmset_srt)
@@ -8640,8 +8668,10 @@ try
     if exist_file_(vcDir_rec)
         csDir_rec = load_batch_(vcDir_rec);
         vcDir_rec=fileparts(vcDir_rec); 
+    elseif exist_dir_(vcDir_rec)
+        csDir_rec = {vcDir_rec};
     else
-        csDir_rec = sub_dir_(vcDir_rec, 1);
+        error('not found: %s', vcDir_rec);
     end
     
     assert(exist_file_(vcFile_prmset) && exist_dir_(vcDir_rec), 'file or dir does not exist');
