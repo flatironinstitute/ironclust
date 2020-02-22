@@ -7909,7 +7909,7 @@ catch  % SNR not saved
     csScore = {'vrF1_gt', 'vrAccuracy_gt', 'vrPrecision_gt', 'vrRecall_gt'};
     switch lower(S_cfg.vcMode_optimize)
         case 'mean'
-            mr_func_ = @(x)cell_struct_fun_(ccScore_prmset_rec, mean, x);
+            mr_func_ = @(x)cell_struct_fun_(ccScore_prmset_rec, @(y)mean(y), x);
             vcScore = 'mean';
         case 'count'
             mr_func_ = @(x)cell_struct_fun_(ccScore_prmset_rec, @(y)sum(y>=THRESH_SCORE), x);
