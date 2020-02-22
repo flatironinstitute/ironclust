@@ -7828,7 +7828,13 @@ try
         delete_(vcDir_tmp);
         fprintf('Wrote to %s (took %0.1fs)\n', vcFile_out1, toc(t_fun));
     end
-    S_score1 = compare_mda_(vcFile_true_mda, vcFile_out1);                            
+    vcFile_score1 = strrep(vcFile_out1, '.mda', '_score.mat');
+    if exist_file_(vcFile_score1)
+        S_score1 = load(vcFile_score1);
+    else
+        S_score1 = compare_mda_(vcFile_true_mda, vcFile_out1);
+        struct_save_(S_score1, vcFile_score1);
+    end
 catch ME
     S_score1 = [];
     fprintf(2, '%s: paramset#%d failed:\n\t%s\n', vcDir_in, iPrmset, ME.message());
@@ -8649,7 +8655,7 @@ end
 assert(exist_file_(vcFile_prmset) && exist_dir_(vcDir_rec), 'file or dir does not exist');
 
 vcSorter = lower(strrep(vcFile_prmset, '.prmset', ''));
-vS_dir = cellfun_(@(x)dir(fullfile(x, vcSorter, '**', 'firings_p*.mda')), csDir_rec);
+vS_dir = cellfun_(@(x)dir(fullfile(x, vcSorter, '**', 'firings_p*')), csDir_rec);
 vS_dir = cat(1, vS_dir{:}); 
   
 csFiles_remove = arrayfun_(@(x)fullfile(x.folder, x.name), vS_dir);
