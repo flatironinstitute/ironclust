@@ -7735,7 +7735,7 @@ fParfor_rec = 1; % disable parfor on individual recording
 % if fDebug, fParfor = 0; end
 S_cfg = read_cfg_();
 fUse_cache = get_set_(S_cfg, 'fUse_cache_optimize', 0);
-csSorter_gpu = {'ironclust', 'kilosort2', 'kilosort', 'jrclust'};
+csSorter_gpu = {'irc2', 'kilosort2', 'kilosort', 'jrclust'};
 P_prmset = makeStruct_(fUse_cache, csSorter_gpu);
 P_prmset.fParfor = fParfor_rec;
 
@@ -8724,7 +8724,15 @@ vS_dir = cellfun_(@(x)dir(fullfile(x, vcSorter, 'firings_p*')), csDir_rec);
 vS_dir = cat(1, vS_dir{:}); 
 csFiles_remove = arrayfun_(@(x)fullfile(x.folder, x.name), vS_dir);
 
-cellfun_(@(x)delete_(fullfile(x, vcSorter, 'firings_p*')), csDir_rec);
+try
+    parfor ic=1:numel(csDir_rec)
+        delete_(fullfile(csDir_rec{ic}, vcSorter, 'firings_p*'));
+    end
+catch
+    for ic=1:numel(csDir_rec)
+        delete_(fullfile(csDir_rec{ic}, vcSorter, 'firings_p*'));
+    end    
+end
   
 delete_(fullfile(vcDir_rec, sprintf('scores_prmset_%s.mat', vcSorter)));
 disp(csFiles_remove(:));
