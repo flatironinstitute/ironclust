@@ -445,8 +445,16 @@ end %func
 function remove_lock_(csDir_rec)
 % recursively remove locks
 if ischar(csDir_rec), csDir_rec={csDir_rec}; end
-for iDir=1:numel(csDir_rec)
-    delete_(fullfile(csDir_rec{iDir}, '**', '.*.lock'));
+try
+    parfor iDir=1:numel(csDir_rec)
+        vS_dir = dir(fullfile(csDir_rec{iDir}, '**', '.*.lock'));
+        cellfun_(@(x)delete_(fullfile(x.folder, x.name)), vS_dir);
+    end
+catch
+    for iDir=1:numel(csDir_rec)
+        vS_dir = dir(fullfile(csDir_rec{iDir}, '**', '.*.lock'));
+        cellfun_(@(x)delete_(fullfile(x.folder, x.name)), vS_dir);
+    end
 end
 fprintf('Removed locks from %d recordings.\n', numel(csDir_rec));
 end %func
@@ -7784,7 +7792,7 @@ if isempty(S_prmset_rec)
             ccScore_prmset_rec1 = cell(size(viRun1));
             nRuns_loaded = nRuns - numel(viRun1);
             fprintf(2, 'Loaded %d/%d (%0.1f%%) from cache\n', nRuns_loaded, nRuns, nRuns_loaded/nRuns*100);
-            parfor iRun1 = 1:numel(viRun1)
+            for iRun1 = 1:numel(viRun1)
                 [iRec, iPrmset] = ind2sub([nRec,nPrmset], viRun1(iRun1));
                 cVal_prm1 = permute_prm_(cVal_prm, iPrmset);
                 ccScore_prmset_rec1{iRun1} = score_prmset_(...
