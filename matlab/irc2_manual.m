@@ -4,10 +4,10 @@
 function irc2_manual(P)
 % global fDebug_ui
 
-if ~is_sorted_(P)
-    fprintf(2, 'File must to be sorted first (run "irc spikesort %s")\n', P.vcFile_prm); 
-    return; 
-end
+% if ~is_sorted_(P)
+%     fprintf(2, 'File must to be sorted first (run "irc spikesort %s")\n', P.vcFile_prm); 
+%     return; 
+% end
 S0 = load0_(P.vcFile_prm);
 
 % S_manual
@@ -1114,7 +1114,7 @@ try
     end
 catch ME
     fprintf(2, 'call_irc2_: %s\n', ME.message);
-    rethrow ME;
+    rethrow(ME);
 end
 end %func
 
@@ -1133,7 +1133,7 @@ try
     end
 catch ME
     fprintf(2, 'call_irc_: %s\n', ME.message);
-    rethrow ME;
+    rethrow(ME);
 end
 end %func
 

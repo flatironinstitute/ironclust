@@ -211,17 +211,10 @@ if isempty(P)
 end
 vcFile_prm_ = P.vcFile_prm;
 
-% detect spikes
-P.fDetect = logical_(fDetect);
-S0 = detect_cache_(P, S_cfg);
+S0 = detect_cache_(P, logical_(fDetect));
+S0.S_clu = sort_cache_(S0, P, logical_(fSort));
+S0.S_auto = auto_cache_(S0, P, logical_(fAuto));
 
-% cluster spikes
-P.fSort = logical_(fSort);
-S0.S_clu = sort_cache_(S0, P, S_cfg);
-
-% auto-merge spikes
-P.fAuto = logical_(fAuto);
-S0.S_auto = auto_cache_(S0, P, S_cfg);
 vcFile_firings_mda = get_(S0.S_auto, 'vcFile_firings_mda');
 if exist_file_(vcFile_firings_mda)
     if nargout==0
@@ -241,34 +234,54 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function S0 = detect_cache_(P, S_cfg)
+function [vcHash, csParam] = get_hash_(P_detect, vcMode)
+% usage
+% -----
+% vcHash = get_hash_(P_detect, vcMode) : vcMode={'detect','sort','auto'}
+
+csParam_detect = {'vcFilter', 'freqLim', 'maxDist_site_spk_um', 'maxDist_site_um', ...
+    'vcCommonRef', 'trimmean_pct', 'fWhiten', 'nSites_whiten', 'nChans_min_car', ...
+    'qqFactor', 'nPc_spk', 'spkLim_ms', 'fInterp_fet', 'spkRefrac_ms', 'fft_thresh', ...
+    'blank_thresh', 'blank_period_ms', 'fMatchedFilter_detect'};
+csParam_sort = {'version', 'nPcPerChan', 'step_sec_drift', 'batch_sec_drift', 'knn', 'nTime_max_drift'};
+csParam_auto = {'version', 'maxWavCor', 'merge_thresh_cc', 'spkJitter_ms_cc', ...
+    't_burst_ms', 'min_snr_clu', 'spkRefrac_merge_ms'};
+
+if ischar(P_detect)
+    P_detect = file2struct_(P_detect);
+end
+switch lower(vcMode)
+    case 'detect', csParam = csParam_detect;
+    case 'sort', csParam = csParam_sort;
+    case 'auto', csParam = csParam_auto;
+    otherwise, error('get_hash_: invalid mode'); 
+end
+vcHash = struct2hash_(struct_copy_(P_detect, csParam));
+end %func
+
+
+%--------------------------------------------------------------------------
+function S0 = detect_cache_(P, fForce_detect)
+if nargin<2, fForce_detect=0; end
 
 csVar_bin = {'viTime_spk', 'viSite_spk', 'viSite2_spk', 'vrAmp_spk', ...
     'vrPow_spk', 'mrPos_spk', 'ccviSpk_site_load', 'ccviSpk_site2_load'};
 
-if nargin<2, S_cfg=[]; end
-if isempty(S_cfg), S_cfg = read_cfg_(); end
-csParam_detect = setdiff(setdiff(fieldnames(P), S_cfg.csParam_sort), S_cfg.csParam_auto);
-csParam_detect = setdiff(csParam_detect, 'vcFile_prm');
-
-% determine output directory
-P_detect = struct_copy_(P, csParam_detect{:});
-vcHash_detect = struct2hash_(P_detect);
+vcHash_detect = get_hash_(P, 'detect');
 vcDir_detect = fullfile(fileparts(P.vcFile_prm), ['detect_', vcHash_detect]);
 mkdir_(vcDir_detect);
 vcFile_detect = fullfile(vcDir_detect, 'detect_irc.mat');
-waitfor_lock_(vcDir_detect, S_cfg.lock_timeout);
+waitfor_lock_(vcDir_detect);
 
-if exist_file_(vcFile_detect) && ~get_set_(P, 'fDetect', 0)
+if exist_file_(vcFile_detect) && ~fForce_detect
     S0 = load(vcFile_detect);
     S0 = struct_load_bin_(S0.S_var, S0);
     fprintf('Loaded from cache: %s\n', vcFile_detect);
-%     S0 = load0_(P.vcFile_prm);
 else    
     try
         lock_dir_(vcDir_detect);
-        P_detect.vcFile_prm = fullfile(vcDir_detect, 'detect.prm');
-        S0 = detect_(P_detect); 
+        P.vcFile_prm = fullfile(vcDir_detect, 'detect.prm');
+        S0 = detect_(P); 
         S0.P.vcFile_prm = P.vcFile_prm;
         S0.vcFile_detect = vcFile_detect;
         [S_, S_.S_var] = struct_save_bin_(S0, strrep(vcFile_detect,'_irc.mat','.irc'), csVar_bin);
@@ -277,39 +290,33 @@ else
     catch ME
         disp(ME.message());
         unlock_dir_(vcDir_detect);
-        rethrow ME;
+        rethrow(ME);
     end
-%     save0_(S0);
 end
 end %func
 
 
 %--------------------------------------------------------------------------
-function S_clu = sort_cache_(S0, P, S_cfg)
+function S_clu = sort_cache_(S0, P, fForce_sort)
+if nargin<3, fForce_sort = 0; end
 
 csVar_bin = {'rho', 'delta', 'nneigh', 'ordrho'};
 
-if nargin<3, S_cfg=[]; end
-if isempty(S_cfg), S_cfg = read_cfg_(); end
-csParam_detect = setdiff(fieldnames(S0.P)', 'vcFile_prm');
-csParam_sort = [csParam_detect, S_cfg.csParam_sort];
-
-% determine output directory
-P_sort = struct_copy_(P, csParam_sort{:});
-vcHash_sort = struct2hash_(P_sort);
+vcHash_sort = get_hash_(P, 'sort');
 vcDir_sort = fullfile(fileparts(S0.vcFile_detect), ['sort_', vcHash_sort]);
 mkdir_(vcDir_sort);
 vcFile_sort = fullfile(vcDir_sort, 'sort_irc.mat');
+waitfor_lock_(vcDir_sort);
 
-if exist_file_(vcFile_sort) && ~get_set_(P, 'fSort', 0)
+if exist_file_(vcFile_sort) && ~fForce_sort
     S_clu = load(vcFile_sort);
     S_clu = struct_load_bin_(S_clu.S_var, S_clu);
     fprintf('Loaded from cache: %s\n', vcFile_sort);
 else
     try
         lock_dir_(vcDir_sort);
-        P_sort.vcFile_prm = strrep(vcFile_sort, '_irc.mat', '.prm');
-        S_clu = sort_(S0, P_sort);   
+        P.vcFile_prm = strrep(vcFile_sort, '_irc.mat', '.prm');
+        S_clu = sort_(S0, P);   
         S_clu.vcFile_sort = vcFile_sort;
         [S_, S_.S_var] = struct_save_bin_(S_clu, strrep(vcFile_sort,'_irc.mat','.irc'), csVar_bin);
         struct_save_(S_, vcFile_sort, 1);
@@ -317,31 +324,27 @@ else
     catch ME
         disp(ME.message());
         unlock_dir_(vcDir_sort);
-        rethrow ME;
+        rethrow(ME);
     end        
 end
 end %func
 
 
 %--------------------------------------------------------------------------
-function S_auto = auto_cache_(S0, P, S_cfg)
+function S_auto = auto_cache_(S0, P, fForce_auto)
 
 csVar_bin = {'viClu', 'cviSpk_clu'};
 
-if nargin<3, S_cfg=[]; end
-if isempty(S_cfg), S_cfg = read_cfg_(); end
-csParam_detect = setdiff(fieldnames(S0.P)', 'vcFile_prm');
-csParam_auto = [csParam_detect, S_cfg.csParam_sort, S_cfg.csParam_auto];
+if nargin<3, fForce_auto = 0; end
 
-% determine output directory
-P_auto = struct_copy_(P, csParam_auto{:});
-vcHash_auto = struct2hash_(P_auto);
+vcHash_auto = get_hash_(P, 'auto');
 vcDir_auto = fullfile(fileparts(S0.S_clu.vcFile_sort), ['auto_', vcHash_auto]);
 mkdir_(vcDir_auto);
 vcFile_auto = fullfile(vcDir_auto, 'auto_irc.mat');
 vcFile_firings_mda = fullfile(vcDir_auto, 'firings.mda');
+waitfor_lock_(vcDir_auto);
 
-if exist_file_(vcFile_auto) && ~get_set_(P, 'fAuto', 0)
+if exist_file_(vcFile_auto) && ~fForce_auto
     S_auto = load(vcFile_auto);
     S_auto = struct_load_bin_(S_auto.S_var, S_auto);
     fprintf('Loaded from cache: %s\n', vcFile_auto);
@@ -352,8 +355,8 @@ if exist_file_(vcFile_auto) && ~get_set_(P, 'fAuto', 0)
 else
     try
         lock_dir_(vcDir_auto);
-        P_auto.vcFile_prm = fullfile(vcDir_auto, 'auto.prm');
-        S_auto = auto_(S0, P_auto);
+        P.vcFile_prm = fullfile(vcDir_auto, 'auto.prm');
+        S_auto = auto_(S0, P);
 
         % export to mda format
         S_auto.vcFile_firings_mda = vcFile_firings_mda;
@@ -366,7 +369,7 @@ else
     catch ME
         disp(ME.message());
         unlock_dir_(vcDir_auto);
-        rethrow ME;
+        rethrow(ME);
     end
 end
 end %func
@@ -382,9 +385,9 @@ vcFile_lock = lock_file_(vcPath);
 t1=tic;
 i=0;
 while exist_file_(vcFile_lock)
-    if i==0, fprintf('Waiting for lock: %s\n', vcPath); end
+    if i==0, fprintf('Waiting for lock: %s\n', vcFile_lock); end
     if toc(t1) > lock_timeout
-        fprintf(2, 'Timeout (%0.1f s) for lock: %s\n', lock_timeout, vcPath);
+        fprintf(2, 'Timeout (%0.1f s) for lock: %s\n', lock_timeout, vcFile_lock);
         break; 
     else        
         pause(check_period);
@@ -918,7 +921,7 @@ if isempty(vcFile_firings_mda)
     struct_save_(S_score, vcFile_score, 1);
 else
     vcFile_score = fullfile(fileparts(vcFile_firings_mda), 'score_irc.mat');
-    waitfor_lock_(vcFile_score, 3600);
+    waitfor_lock_(vcFile_score);
     if exist_file_(vcFile_score)
         S_score = load(vcFile_score);
     else
@@ -1721,53 +1724,12 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function S0 = load0_(vcFile_prm, fLoad_bin)
-
-error('obsolete');
-
-if nargin<2, fLoad_bin = 1; end
-
-fprintf('Loading %s... ', vcFile_prm); t_fun = tic;
-% set(0, 'UserData', []);
-vcFile_mat = strrep(vcFile_prm, '.prm', '_irc.mat');
-vcFile_clu_mat = strrep(vcFile_prm, '.prm', '_clu_irc.mat');
-vcFile_auto_mat = strrep(vcFile_prm, '.prm', '_auto_irc.mat');
-% vcFile_knn = strrep(vcFile_prm, '.prm', '_knn.irc');
-if ~exist_file_(vcFile_mat)
-    S0.P = file2struct_(vcFile_prm);
-    return;
-end
-S0 = load(vcFile_mat);
-if isfield(S0, 'S_var') && fLoad_bin
-    S0 = struct_load_bin_(S0.S_var, S0);
-end
-
-S0.S_clu = get_(S0, 'S_clu');
-if isempty(S0.S_clu)
-    if exist_file_(vcFile_clu_mat)
-        S0.S_clu = load(vcFile_clu_mat);
-    end
-    if isfield(S0.S_clu, 'S_var') && fLoad_bin
-        S0.S_clu = struct_load_bin_(S0.S_clu.S_var, S0.S_clu);
-    end
-end
-
-S0.S_auto = get_(S0, 'S_auto');
-if isempty(S0.S_auto)
-    if exist_file_(vcFile_auto_mat)
-        S0.S_auto = load(vcFile_auto_mat);
-    end
-    if isfield(S0.S_auto, 'S_var') && fLoad_bin
-        S0.S_auto = struct_load_bin_(S0.S_auto.S_var, S0.S_auto);
-    end
-end
-
-% if isempty(get_(S0.S_clu, 'miKnn'))
-%     if exist_file_(vcFile_knn)
-%         S0.S_clu.miKnn = load_bin_(vcFile_knn, S0.S_clu.type_knn, S0.S_clu.dimm_knn);
-%     end
-% end
-% set(0, 'UserData', S0);
+function S0 = load0_(vcFile_prm)
+t_fun=tic;
+P = file2struct_(vcFile_prm);
+S0 = detect_cache_(P);
+S0.S_clu = sort_cache_(S0, P);
+S0.S_auto = auto_cache_(S0, P);
 fprintf('took %0.1fs\n', toc(t_fun));
 end %func
 
@@ -4079,8 +4041,11 @@ if strcmp(vcFile_, 'sort')
     vcFile_prm_ = fullfile(dir_up_(vcFile_prm, 1), 'detect');
 elseif strcmp(vcFile_, 'auto')
     vcFile_prm_ = fullfile(dir_up_(vcFile_prm, 2), 'detect');
-else
+elseif strcmpi(vcFile_, 'detect')
     vcFile_prm_ = strrep(vcFile_prm, '.prm', '');
+else
+    vcHash = get_hash_(vcFile_prm, 'detect'); %todo: cache
+    vcFile_prm_ = fullfile(fileparts(vcFile_prm), ['detect_', vcHash], 'detect');
 end
 bytes_per_spk = bytesPerSample_(type_fet) * dimm_fet(1) * dimm_fet(2);
 fh_sum = @(x,y)sum(cellfun(@numel, x(1:y-1)));
@@ -4130,12 +4095,11 @@ for iLoad = 1:nLoads
     end
     if isempty(viSpk1), continue; end    
     dimm_fet1 = [dimm_fet(1), dimm_fet(2), vnSpk_load(iLoad)];
-%     [fid1, fCached1] = fid_fet_cache_(vcFile_prm, iLoad, iFet);
+    
     fid1 = fopen(csFiles_fet{iLoad},'r'); 
     fseek(fid1, vnBytes_offset_load(iLoad), 'bof'); 
     trPc_load1 = fread_(fid1, dimm_fet1, type_fet);
     fclose(fid1);
-%     if ~fCached1, fclose(fid1); end % inside of parfor, close
     
     if ~isempty(mlPc)
         if fLoad_all
@@ -6941,7 +6905,7 @@ function struct_save_(S, vcFile, fVerbose)
 nRetry = 3;
 if nargin<3, fVerbose = 0; end
 if fVerbose
-    fprintf('Saving a struct to %s...\n', vcFile); t1=tic;
+    fprintf('Saving a struct to %s\n', vcFile); t1=tic;
 end
 if version_matlab_() >= 2017
     for iRetry=1:nRetry
@@ -8372,23 +8336,6 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function vcCmd1 = param2cmd_(csName_prm1)
-
-S_cfg = read_cfg_();
-[csParam_sort, csParam_auto] = get_(S_cfg, 'csParam_sort', 'csParam_auto');
-cs_overlap_ = @(x,y)any(cellfun(@(x1)any(ismember(x1,y)), x));
-
-if cs_overlap_(csName_prm1, csParam_sort)
-    vcCmd1 = 'sort';
-elseif cs_overlap_(csName_prm1, csParam_auto)
-    vcCmd1 = 'auto';
-else
-    vcCmd1 = 'spikesort';
-end
-end %func
-
-
-%--------------------------------------------------------------------------
 function vi_out = ind2sub_(siz,ndx)
 
 vi_out = zeros(size(siz));
@@ -8591,7 +8538,9 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function optimize_status_(vcDir_rec, vcFile_prmset)
+function optimize_status_(vcDir_rec, vcFile_prmset, hAx)
+if nargin<3, hAx=[]; end
+
 % usage
 % optimize_status_(vcFile_list, vcFile_prmset)
 % optimize_status_(vcDir_rec, vcFile_prmset)
@@ -8634,13 +8583,18 @@ try
     
     % plot
     if isempty(vrDatenum_file), return; end
-    figure('Color','w','Name', [vcDir_rec, ' - ', vcFile_prmset]);
-    plot((vrDatenum_file - vrDatenum_file(end))*24*60, nOutput_total - (1:nOutput), '.-'); 
+    if isempty(hAx)
+        hFig = figure('Color','w','Name', [vcDir_rec, ' - ', vcFile_prmset]);
+        hAx = axes(hFig);
+    end
+    cla(hAx);
+    plot(hAx, (vrDatenum_file - vrDatenum_file(end))*24*60, nOutput_total - (1:nOutput), '.-'); 
     vcTitle = sprintf('%d/%d (%0.1f%%) completed (%0.1f min passed, %0.1f min remaining)', ...
         nOutput, nOutput_total, nOutput/nOutput_total*100, t_passed, t_left);
     xylabel_(gca, 'Time (minutes)', '# param left', vcTitle); 
     grid on; axis tight;
     ylim([0, nOutput_total]);
+    set(hAx, 'ButtonDownFcn', @(h,e)optimize_status_(vcDir_rec, vcFile_prmset, h));
 catch
     fprintf(2, '%s\n', lasterr());
 end
@@ -9241,7 +9195,7 @@ try
     end
 catch ME
     fprintf(2, 'call_irc_: %s\n', ME.message);
-    rethrow ME;
+    rethrow(ME);
 end
 end %func
 
