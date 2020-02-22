@@ -8658,7 +8658,7 @@ end
 assert(exist_file_(vcFile_prmset) && exist_dir_(vcDir_rec), 'file or dir does not exist');
 
 vcSorter = lower(strrep(vcFile_prmset, '.prmset', ''));
-vS_dir = cellfun_(@(x)dir(fullfile(x, vcSorter, '**', 'firings_p*')), csDir_rec);
+vS_dir = cellfun_(@(x)dir(fullfile(x, vcSorter, 'firings_p*')), csDir_rec);
 vS_dir = cat(1, vS_dir{:}); 
   
 csFiles_remove = arrayfun_(@(x)fullfile(x.folder, x.name), vS_dir);

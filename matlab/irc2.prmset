@@ -1,5 +1,5 @@
 % filter (slow parameters to test)
-freqLim = {[300,inf], [300,6000]};
+freqLim = {[300,inf]};
 qqFactor = {4};
 fMatchedFilter_detect = {1};
 spkLim_ms = {[-.5, 1], [-.25, .75]};
