@@ -7833,7 +7833,7 @@ try
         S_score1 = load(vcFile_score1);
     else
         S_score1 = compare_mda_(vcFile_true_mda, vcFile_out1);
-        struct_save_(S_score1, vcFile_score1);
+        struct_save_(S_score1, vcFile_score1, 1);
     end
 catch ME
     S_score1 = [];
