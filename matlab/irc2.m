@@ -6906,7 +6906,7 @@ function struct_save_(S, vcFile, fVerbose)
 nRetry = 3;
 if nargin<3, fVerbose = 0; end
 if fVerbose
-    fprintf('Saving a struct to %s\n', vcFile); t1=tic;
+    fprintf('Saving a struct to %s: ', vcFile); t1=tic;
 end
 if version_matlab_() >= 2017
     for iRetry=1:nRetry
@@ -6930,7 +6930,7 @@ else
     end    
 end
 if fVerbose
-    fprintf('\ttook %0.1fs.\n', toc(t1));
+    fprintf('took %0.1fs.\n', toc(t1));
 end
 end %func
 
@@ -7804,6 +7804,12 @@ vcDir_tmp = [];
 pause(rand()); % create phase delay
 try    
     vcFile_out1 = fullfile(vcDir_out, sprintf('firings_p%d.mda', iPrmset));
+    vcFile_score1 = strrep(vcFile_out1, '.mda', '_score.mat');
+    if exist_file_(vcFile_score1) && fUse_cache   
+        S_score1 = load(vcFile_score1);
+        fprintf('Loaded from cache: %s\n', vcFile_score1);
+        return;
+    end    
     if exist_file_(vcFile_out1) && fUse_cache
         fprintf('Loaded from cache: %s\n', vcFile_out1);
     else
@@ -7828,13 +7834,8 @@ try
         delete_(vcDir_tmp);
         fprintf('Wrote to %s (took %0.1fs)\n', vcFile_out1, toc(t_fun));
     end
-    vcFile_score1 = strrep(vcFile_out1, '.mda', '_score.mat');
-    if exist_file_(vcFile_score1)
-        S_score1 = load(vcFile_score1);
-    else
-        S_score1 = compare_mda_(vcFile_true_mda, vcFile_out1);
-        struct_save_(S_score1, vcFile_score1, 1);
-    end
+    S_score1 = compare_mda_(vcFile_true_mda, vcFile_out1);
+    struct_save_(S_score1, vcFile_score1, 1);
 catch ME
     S_score1 = [];
     fprintf(2, '%s: paramset#%d failed:\n\t%s\n', vcDir_in, iPrmset, ME.message());
