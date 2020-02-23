@@ -7774,7 +7774,7 @@ end %func
 
 %--------------------------------------------------------------------------
 % 2020/jan/23, run parameter optimizer for ironclust
-function optimize_prmset_(vcDir_rec, vcFile_prmset, vcFile_out)
+function optimize_prmset_(vcDir_rec, vcFile_prmset, fPreview)
 % usage
 % -----
 % optimize_prmset_(vcFile_list)
@@ -7785,6 +7785,9 @@ function optimize_prmset_(vcDir_rec, vcFile_prmset, vcFile_out)
 fParfor = 1;
 fParfor_rec = 0; % disable parfor on individual recording
 
+if nargin<3, fPreview=0; end
+fPreview = logical_(fPreview);
+
 % if fDebug, fParfor = 0; end
 S_cfg = read_cfg_();
 fUse_cache = get_set_(S_cfg, 'fUse_cache_optimize', 0);
@@ -7793,8 +7796,9 @@ P_prmset = makeStruct_(fUse_cache, csSorter_gpu);
 P_prmset.fParfor = fParfor_rec;
 
 if nargin<2, vcFile_prmset=''; end
-if nargin<3, vcFile_out = ''; end
+vcFile_out = ''; 
 if isempty(vcFile_prmset), vcFile_prmset = S_cfg.ironclust_prmset; end
+assert(exist_file_(vcFile_prmset), '.prmset file must exist');
 
 [~,vcPostfix_] = fileparts(vcFile_prmset); 
 vcSorter = infer_sorter_(vcPostfix_);
@@ -7845,14 +7849,16 @@ if isempty(S_prmset_rec)
             ccScore_prmset_rec1 = cell(size(viRun1));
             nRuns_loaded = nRuns - numel(viRun1);
             fprintf(2, 'Loaded %d/%d (%0.1f%%) from cache\n', nRuns_loaded, nRuns, nRuns_loaded/nRuns*100);
-            parfor iRun1 = 1:numel(viRun1)
-                [iRec, iPrmset] = ind2sub([nRec,nPrmset], viRun1(iRun1));
-                cVal_prm1 = permute_prm_(cVal_prm, iPrmset);
-                ccScore_prmset_rec1{iRun1} = score_prmset_(...
-                    vcSorter, csDir_rec{iRec}, csName_prm, cVal_prm1, P_prmset, iPrmset);
-            end      
-            ccScore_prmset_rec(viRun1) = ccScore_prmset_rec1;
-            ccScore_prmset_rec1 = {}; % clear
+            if ~fPreview
+                parfor iRun1 = 1:numel(viRun1)
+                    [iRec, iPrmset] = ind2sub([nRec,nPrmset], viRun1(iRun1));
+                    cVal_prm1 = permute_prm_(cVal_prm, iPrmset);
+                    ccScore_prmset_rec1{iRun1} = score_prmset_(...
+                        vcSorter, csDir_rec{iRec}, csName_prm, cVal_prm1, P_prmset, iPrmset);
+                end      
+                ccScore_prmset_rec(viRun1) = ccScore_prmset_rec1;
+                ccScore_prmset_rec1 = {}; % clear
+            end
         catch
             fParfor = 0;
         end
