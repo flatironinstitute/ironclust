@@ -8860,7 +8860,7 @@ catch
     end    
 end
   
-delete_();
+delete_(vcFile_mat);
 disp(csFiles_remove(:));
 fprintf(2, 'Deleted %d previous outputs\n', numel(csFiles_remove));
 end %func
