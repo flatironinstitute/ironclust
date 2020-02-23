@@ -1844,13 +1844,31 @@ end %func
 
 %--------------------------------------------------------------------------
 function rmdir_(csDir)
-if ischar(csDir), csDir = {csDir}; end
-for iDir = 1:numel(csDir)
-    vcDir1 = csDir{iDir};
-    if exist_dir_(vcDir1)
+if ischar(csDir)
+    if exist_dir_(csDir)
         try
-            rmdir(vcDir1, 's');
+            rmdir(csDir, 's');
         catch        
+        end
+    end
+else
+    try
+        parfor iDir = 1:numel(csDir)
+            if exist_dir_(csDir{iDir})
+                try
+                    rmdir(csDir{iDir}, 's');
+                catch        
+                end
+            end
+        end
+    catch
+        for iDir = 1:numel(csDir)
+            if exist_dir_(csDir{iDir})
+                try
+                    rmdir(csDir{iDir}, 's');
+                catch        
+                end
+            end
         end
     end
 end
