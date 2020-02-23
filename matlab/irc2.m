@@ -4932,6 +4932,7 @@ nPc_spk = get_set_(P, 'nPc_spk', 9); % # components to compress spike waveforms
 switch get_set_(P, 'prinvec_mode', 1)
     case 1, mr1 = gather_(reshape(tr, size(tr,1), []));
     case 2, mr1 = gather_(reshape(tr(:,1,:), size(tr,1), []));
+    otherwise, error('get_prinvec_: unsupported');
 end
 switch 3
     case 1
@@ -7779,8 +7780,8 @@ if isempty(vcFile_prmset), vcFile_prmset = S_cfg.ironclust_prmset; end
 
 [~,vcPostfix_] = fileparts(vcFile_prmset); 
 vcSorter = infer_sorter_(vcPostfix_);
-vcPostfix_out = vcSorter;
-if exist_file_(vcDir_rec)    
+if exist_file_(vcDir_rec)   
+    vcFile_out = strrep(vcDir_rec, '.txt', sprintf('_scores_prmset_%s.mat', vcPostfix_));
     csDir_rec = load_batch_(vcDir_rec);
     vcDir_rec = fileparts(vcDir_rec);
 elseif exist_dir_(vcDir_rec)
