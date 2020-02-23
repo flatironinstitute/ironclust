@@ -8835,7 +8835,9 @@ function optimize_clear_(vcDir_rec, vcFile_prmset)
 if nargin<2, vcFile_prmset=[]; end
 if isempty(vcFile_prmset), vcFile_prmset = read_cfg_('ironclust_prmset'); end
 
+vcSorter = lower(strrep(vcFile_prmset, '.prmset', ''));
 if exist_file_(vcDir_rec)
+    vcFile_mat = strrep(vcDir_rec, '.txt', sprintf('scores_prmset_%s.mat', vcSorter));
     csDir_rec = load_batch_(vcDir_rec);
     vcDir_rec=fileparts(vcDir_rec); 
 elseif exist_dir_(vcDir_rec)
@@ -8843,7 +8845,6 @@ elseif exist_dir_(vcDir_rec)
 end
 assert(exist_file_(vcFile_prmset) && exist_dir_(vcDir_rec), 'file or dir does not exist');
 
-vcSorter = lower(strrep(vcFile_prmset, '.prmset', ''));
 vS_dir = cellfun_(@(x)dir(fullfile(x, vcSorter, 'firings_p*')), csDir_rec);
 vS_dir = cat(1, vS_dir{:}); 
 csFiles_remove = arrayfun_(@(x)fullfile(x.folder, x.name), vS_dir);
