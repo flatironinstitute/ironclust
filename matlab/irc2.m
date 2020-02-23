@@ -8837,11 +8837,12 @@ if isempty(vcFile_prmset), vcFile_prmset = read_cfg_('ironclust_prmset'); end
 
 vcSorter = lower(strrep(vcFile_prmset, '.prmset', ''));
 if exist_file_(vcDir_rec)
-    vcFile_mat = strrep(vcDir_rec, '.txt', sprintf('scores_prmset_%s.mat', vcSorter));
+    vcFile_mat = strrep(vcDir_rec, '.txt', sprintf('_scores_prmset_%s.mat', vcSorter));
     csDir_rec = load_batch_(vcDir_rec);
     vcDir_rec=fileparts(vcDir_rec); 
 elseif exist_dir_(vcDir_rec)
     csDir_rec = {vcDir_rec};
+    vcFile_mat = fullfile(vcDir_rec, sprintf('scores_prmset_%s.mat', vcSorter));
 end
 assert(exist_file_(vcFile_prmset) && exist_dir_(vcDir_rec), 'file or dir does not exist');
 
@@ -8859,7 +8860,7 @@ catch
     end    
 end
   
-delete_(vcFile_mat);
+delete_();
 disp(csFiles_remove(:));
 fprintf(2, 'Deleted %d previous outputs\n', numel(csFiles_remove));
 end %func
