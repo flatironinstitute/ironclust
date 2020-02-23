@@ -7983,6 +7983,81 @@ end %func
 
 
 %--------------------------------------------------------------------------
+function cvr_out = cell_struct_join_(cc, vcName, iDimm)
+% cc: cell, fh: function handle, vcName: name of the field
+cc_out = cell(size(cc));
+for ic=1:numel(cc)
+    S1 = cc{ic};
+    if isfield(S1, vcName)
+        cc_out{ic} = S1.(vcName);
+    end
+end
+if iDimm==2, cc_out=cc_out'; end
+cvr_out = cell(1, size(cc_out,2));
+for iCol=1:size(cc_out,2)
+    cc1 = cc_out(:,iCol);
+    cvr_out{iCol} = cvr2vr_(cc1);
+end
+if iDimm==2, cvr_out = cvr_out'; end
+end %func
+
+
+%--------------------------------------------------------------------------
+% join cell, return column vector
+function vr_column = cvr2vr_(cvr1)
+vr_column=[]; 
+if isempty(cvr1), return; end
+vnRow1 = cellfun(@(x)size(x,1), cvr1);
+vnCol1 = cellfun(@(x)size(x,2), cvr1);
+if max(vnRow1)==1
+    vr_column = cat(2, cvr1{:})';
+elseif max(vnCol1)==1
+    vr_column = cat(1, cvr1{:});
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+function plot_prmset_analysis_(vr_prmset, csName_prm, cVal_prm)
+% nVal_prm = cellfun(@numel,cVal_prm)';
+% viPrm1 = find(nVal_prm>1);
+% csName_prm1 = csName_prm(viPrm1);
+% nPrm1 = numel(viPrm1);
+% [nVal_prm1, csName_prm1] = deal(nVal_prm(viPrm1), csName_prm(viPrm1));
+
+vnType_prm = cellfun(@numel, cVal_prm);
+[nPrmset, nPrm] = deal(numel(vr_prmset), numel(cVal_prm));
+miPrm_prmset = zeros(nPrm, nPrmset);
+for iPrmset = 1:nPrmset
+    [~, miPrm_prmset(:,iPrmset)] = permute_prm_(cVal_prm, iPrmset);
+end
+
+cScores_prm = cell(nPrm,1);
+for iPrm = 1:nPrm
+    nType1 = vnType_prm(iPrm);
+    if nType1>1
+        vr1 = zeros(nType1, 1);
+        for iType1 = 1:vnType_prm(iPrm)
+            vr_ = vr_prmset(miPrm_prmset(iPrm, :) == iType1);
+            vr1(iType1) = nanmean(vr_);
+        end
+        cScores_prm{iPrm} = vr1;
+    end
+end
+
+for iPrm = 1:nPrm
+    vr1 = cScores_prm{iPrm};
+    if isempty(vr1), continue; end
+    disp(csName_prm{iPrm});
+    cVal_prm1 = cVal_prm{iPrm};
+    for iType1 = 1:vnType_prm(iPrm)
+        fprintf('\t%s: %f\n', num2str(cVal_prm1{iType1}), vr1(iType1));
+    end
+end
+end %func    
+    
+    
+%--------------------------------------------------------------------------
 function [csDesc, S_best_score] = optimize_param_show_(S_prmset)
 
 S_cfg = read_cfg_();
@@ -8007,25 +8082,31 @@ try
     vrSnr_gt = cellfun(@(S)S.(vcSnr_mode), cS_gt);
     [vrSnr_gt_srt, viSnr_gt_srt] = sort(vrSnr_gt);
 catch  % SNR not saved
-    % hybrid
     csScore = {'vrF1_gt', 'vrAccuracy_gt', 'vrPrecision_gt', 'vrRecall_gt'};
     switch lower(S_cfg.vcMode_optimize)
         case 'mean'
-            mr_func_ = @(x)cell_struct_fun_(ccScore_prmset_rec, @(y)mean(y), x);
+            mr_func_ = @(x)cell_struct_fun_(ccScore_prmset_rec, @(y)nanmean(y), x);
             vcScore = 'mean';
         case 'median'
-            mr_func_ = @(x)cell_struct_fun_(ccScore_prmset_rec, @(y)median(y), x);
+            mr_func_ = @(x)cell_struct_fun_(ccScore_prmset_rec, @(y)nanmedian(y), x);
             vcScore = 'median';            
         case 'count'
             mr_func_ = @(x)cell_struct_fun_(ccScore_prmset_rec, @(y)sum(y>=THRESH_SCORE), x);
-%             mr_func_ = @(x)cellfun(@(S)sum(S.(x)>=THRESH_SCORE), ccScore_prmset_rec);
             vcScore = sprintf('count|x>%0.1f', THRESH_SCORE);
+        case {'mean_pooled'}
+            mr_func_ = @(x)cellfun(@(y)nanmean(y), cell_struct_join_(ccScore_prmset_rec, x, 1));
+            vcScore = 'mean_pooled';
+        case {'count_pooled'}
+            mr_func_ = @(x)cellfun(@(y)sum(y>=THRESH_SCORE), cell_struct_join_(ccScore_prmset_rec, x, 1));
+            vcScore = 'count_pooled';            
         otherwise, error('optimize_param_show_: unsupported `vcMode_optimize`');
     end
     cmrScore_prmset_gt = cellfun_(@(x)mr_func_(x), csScore);
-    [vrF1_prmset, vrAccuracy_prmset, vrPrecision_prmset, vrRecall_prmset] = ...
-        multifun_(@(x)nanmean(cmrScore_prmset_gt{x},1), 1, 2, 3, 4);
-    [~, viPrmset_srt] = sort(vrAccuracy_prmset, 'descend', 'MissingPlacement', 'last');
+    [vrAccuracy_prmset, vrAccuracy_prmset, vrPrecision_prmset, vrRecall_prmset] = ...
+        multifun_(@(x)nanmean(cmrScore_prmset_gt{x},1), 1, 2, 3, 4);    
+    plot_prmset_analysis_(vrAccuracy_prmset, csName_prm, cVal_prm);
+    vrAccuracy_prmset(isnan(vrAccuracy_prmset)) = 0;
+    [~, viPrmset_srt] = sort(vrAccuracy_prmset, 'descend');
     csDesc = {};
     for iiPrmset = 1:numel(viPrmset_srt)
         iPrmset = viPrmset_srt(iiPrmset);
@@ -8033,12 +8114,12 @@ catch  % SNR not saved
         csDesc{end+1} = '----------';
         csDesc{end+1} = sprintf('Prmset-rank %d (p#%d):', iiPrmset, iPrmset);        
         csDesc{end+1} = sprintf('  (%s) Accuracy:%0.1f, F1:%0.1f, Precision:%0.1f, Recall:%0.1f', ...
-            vcScore, vrAccuracy_prmset(iPrmset), vrF1_prmset(iPrmset), vrPrecision_prmset(iPrmset), vrRecall_prmset(iPrmset));
+            vcScore, vrAccuracy_prmset(iPrmset), vrAccuracy_prmset(iPrmset), vrPrecision_prmset(iPrmset), vrRecall_prmset(iPrmset));
         for iPrm = 1:numel(cVal_prm)
             csDesc{end+1} = sprintf('  %s: %s', csName_prm{iPrm}, numstr_(cVal_prm1{iPrm}));
         end
     end
-    disp_cs_(csDesc);
+%     disp_cs_(csDesc);
     S_best_score = [];
     return;
 end
@@ -8162,7 +8243,7 @@ for iiPrmset = 1:nPrmset_show
 end
 
 csDesc{end+1} = sprintf('');    
-disp_cs_(csDesc);
+% disp_cs_(csDesc);
 
 % fprintf(2, '@TODO: show # units above accuracy 80\n');
 end %func
