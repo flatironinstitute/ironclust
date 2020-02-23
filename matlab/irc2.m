@@ -8025,7 +8025,7 @@ catch  % SNR not saved
     cmrScore_prmset_gt = cellfun_(@(x)mr_func_(x), csScore);
     [vrF1_prmset, vrAccuracy_prmset, vrPrecision_prmset, vrRecall_prmset] = ...
         multifun_(@(x)nanmean(cmrScore_prmset_gt{x},1), 1, 2, 3, 4);
-    [~, viPrmset_srt] = sort(vrAccuracy_prmset, 'descend');
+    [~, viPrmset_srt] = sort(vrAccuracy_prmset, 'descend', 'MissingPlacement', 'last');
     csDesc = {};
     for iiPrmset = 1:numel(viPrmset_srt)
         iPrmset = viPrmset_srt(iiPrmset);
