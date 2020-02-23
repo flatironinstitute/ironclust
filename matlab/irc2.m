@@ -211,19 +211,28 @@ if isempty(P)
 end
 vcFile_prm_ = P.vcFile_prm;
 
+% detect
 [S0, fCached_detect] = detect_cache_(P, logical_(fDetect));
+
+% sort
 try
     [S0.S_clu, fCached_sort] = sort_cache_(S0, P, logical_(fSort));
 catch % remove cache
     if fCached_detect
+        fprintf(2, 'sort failed, retrying detect\n');
+        pause(rand());
         S0 = detect_cache_(P, 1);
         S0.S_clu = sort_cache_(S0, P, 1);
     end
 end
+
+% auto
 try
     [S0.S_auto, fCached_auto] = auto_cache_(S0, P, logical_(fAuto));
 catch % remove cache
     if fCached_sort
+        fprintf(2, 'auto failed, retrying sort\n');
+        pause(rand());
         S0.S_clu = sort_cache_(S0, P, 1);
         S0.S_auto = auto_cache_(S0, P, 1);
     end
@@ -332,6 +341,7 @@ if exist_file_(vcFile_sort) && ~fForce_sort
         S_clu = load(vcFile_sort);
         S_clu = struct_load_bin_(S_clu.S_var, S_clu);
         fprintf('Loaded from cache: %s\n', vcFile_sort);
+        fCached = 1;
     catch
     end
 end
@@ -346,7 +356,7 @@ if isempty(S_clu)
         unlock_dir_(vcDir_sort);
     catch ME
         unlock_dir_(vcDir_sort);
-        disp(ME.message());
+%         disp(ME.message());
         rethrow(ME);
     end        
 end
@@ -396,7 +406,7 @@ if isempty(S_auto)
         struct_save_(S_, vcFile_auto, 1);  
 %         unlock_dir_(vcDir_auto);
     catch ME
-        disp(ME.message());
+%         disp(ME.message());
 %         unlock_dir_(vcDir_auto);
         rethrow(ME);
     end
@@ -466,17 +476,17 @@ try
     parfor iDir=1:numel(csDir_rec)
         vS_dir = dir(fullfile(csDir_rec{iDir}, '**', '.*.lock'));
         csFiles_lock1 = arrayfun_(@(x)fullfile(fullfile(x.folder, x.name)), vS_dir);
-        csFiles_locked1 = cellfun_(@(x)strrep(x(2:end), '.lock', ''), csFiles_lock1);
+        csDir_locked1 = cellfun_(@(x)strrep(x(2:end), '.lock', ''), csFiles_lock1);
         delete_(csFiles_lock1);
-        delete_(csFiles_locked1);
+        rmdir_(csDir_locked1);
     end
 catch
     for iDir=1:numel(csDir_rec)
         vS_dir = dir(fullfile(csDir_rec{iDir}, '**', '.*.lock'));
         csFiles_lock1 = arrayfun_(@(x)fullfile(fullfile(x.folder, x.name)), vS_dir);
-        csFiles_locked1 = cellfun_(@(x)strrep(x(2:end), '.lock', ''), csFiles_lock1);
+        csDir_locked1 = cellfun_(@(x)strrep(x(2:end), '.lock', ''), csFiles_lock1);
         delete_(csFiles_lock1);
-        delete_(csFiles_locked1);
+        rmdir_(csDir_locked1);
     end
 end
 fprintf('Removed locks from %d recordings.\n', numel(csDir_rec));
@@ -1833,13 +1843,15 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function fSuccess = rmdir_(vcDir)
-flag = false;
-if exist_dir_(vcDir)
-    try
-        rmdir(vcDir, 's');
-        flag = true;
-    catch        
+function rmdir_(csDir)
+if ischar(csDir), csDir = {csDir}; end
+for iDir = 1:numel(csDir)
+    vcDir1 = csDir{iDir};
+    if exist_dir_(vcDir1)
+        try
+            rmdir(vcDir1, 's');
+        catch        
+        end
     end
 end
 end %func
@@ -7752,7 +7764,7 @@ function optimize_prmset_(vcDir_rec, vcFile_prmset, vcFile_out)
 % optimize_prmset_(..., vcFile_prmset, vcFile_out)
 
 fParfor = 1;
-fParfor_rec = 1; % disable parfor on individual recording
+fParfor_rec = 0; % disable parfor on individual recording
 
 % if fDebug, fParfor = 0; end
 S_cfg = read_cfg_();
