@@ -2,11 +2,11 @@
 freqLim = {[300,inf]};
 qqFactor = {4};
 fMatchedFilter_detect = {1};
-spkLim_ms = {[-.25, .75], [-.25, 1]};
+spkLim_ms = {[-.25, .75]};
 
 % detect
 prinvec_mode = {2};
-nPc_spk = {6, 9};
+nPc_spk = {6};
 
 % cluster
 step_sec_drift = {20};
@@ -14,4 +14,4 @@ batch_sec_drift = {600};
 
 % merge (fast parameters to test by using cache)
 maxWavCor = num2cell([.975:.005:1]);
-merge_thresh_cc = num2cell([.9:.1:1]);
+merge_thresh_cc = num2cell([.5:.1:1]);
