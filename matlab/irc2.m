@@ -5531,7 +5531,7 @@ switch vcRecordingType
         % load json file
         S_json = loadjson_(fullfile(vcDir_in, 'params.json'));
         P.sRateHz = get_set_(S_json, 'samplerate', P.sRateHz);
-        P.fInverse_file = get_set_(S_json, 'spike_sign', -1) == -1;
+        P.fInverse_file = get_set_(S_json, 'spike_sign', -1) > 0;
     case {'spikeglx', 'rhd', 'neuroscope'}
         P.probe_file = vcFile_prb;
         switch vcRecordingType
