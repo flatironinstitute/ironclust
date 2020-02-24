@@ -7,7 +7,7 @@ spkLim_ms = {[-.25, .75]};
 % detect
 prinvec_mode = {2};
 nPc_spk = {6};
-maxDist_site_spk_um = {75};
+maxDist_site_spk_um = {100};
 
 % cluster
 step_sec_drift = {20};
@@ -16,4 +16,4 @@ batch_sec_drift = {600};
 % merge (fast parameters to test by using cache)
 maxWavCor = num2cell([.965:.005:.985]);
 merge_thresh_cc = num2cell([1]);
-fUseSecondSite_merge = {0,1};
+fUseSecondSite_merge = {0};

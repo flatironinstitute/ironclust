@@ -8,7 +8,7 @@ nThreads_delta = 512;        % number of threads in GPU
 % [Detect stage: filter and detect spikes]
 vcFilter = 'bandpass';
 freqLim = [300, 8000];
-maxDist_site_spk_um = 75;   % Event extraction radius
+maxDist_site_spk_um = 100;  % Event extraction radius
 maxDist_site_um = 50;       % Event merge radius
 vcCommonRef = 'trimmean';   % Common reference mode {'none', 'mean', 'median', 'trimmean'}    
 trimmean_pct = 20;          % Exclude a specified percentage of outlier channels when subtacting the mean
@@ -34,7 +34,7 @@ knn = 30;                   % K-nearest neighbors
 nTime_max_drift = 256;		% (do not change), max number of time batches per load
 
 % [Auto-merge stage: automatically merge similar clusters based on KNN-graph and waveform similarity]
-maxWavCor = .975;           % Automated merge thresohld based on waveform correlation
+maxWavCor = .985;           % Automated merge thresohld based on waveform correlation
 merge_thresh_cc = 1;        % merge based on cross-correlation thresold
 spkJitter_ms_cc = 1;        % merge jitter timing
 t_burst_ms = 20;            % burst ISI for waveform separation

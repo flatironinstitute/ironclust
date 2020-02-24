@@ -91,7 +91,7 @@ switch lower(vcCmd)
     case 'optimize-status', optimize_status_(vcArg1, vcArg2); return;
     case {'optimize', 'optimize-param', 'optimize-prmset', 'optimize-prm'}
         optimize_prmset_(vcArg1, vcArg2, vcArg3); return;
-        
+    case 'optimize-preview', optimize_prmset_(vcArg1, vcArg2, 1); return;
     case {'readme', 'edit-readme'}, edit_readme_(); return;
     % spikeforest2 interface
     case 'clear-jobs', clear_jobs_(vcArg1); return;
@@ -8789,7 +8789,7 @@ try
     nOutput_total = nRec * nPrmset;   
     t_left = t_passed * nOutput_total / nOutput - t_passed;
     
-    cellfun(@(x)fprintf('\t%s\n',x), csPath_file(vlSelect));
+%     cellfun(@(x)fprintf('\t%s\n',x), csPath_file(vlSelect));
 
     fprintf('%s on %s:\n\t%d recordings, %d parameters\n\t%d/%d (%0.1f%%) completed (%0.1f min passed, %0.1f min remaining)\n', ...
         vcDir_rec, vcFile_prmset, nRec, nPrmset, nOutput, nOutput_total, nOutput/nOutput_total*100, t_passed, t_left);
