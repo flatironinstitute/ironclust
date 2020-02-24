@@ -7541,7 +7541,9 @@ end %func
 
 %--------------------------------------------------------------------------
 function x = logical_(x)
-if ischar(x)
+if isempty(x)
+    x = false;
+elseif ischar(x)
     if strcmpi(x, 'true') || strcmpi(x, '1')
         x = true;
     elseif strcmpi(x, 'false') || strcmpi(x, '0')
@@ -7549,8 +7551,6 @@ if ischar(x)
     else
         error('logical_: undefined: %s', x);
     end
-elseif isempty(x)
-    x = false;
 else
     x = logical(x);
 end
