@@ -2597,10 +2597,11 @@ end %func
 %--------------------------------------------------------------------------
 function [cviClu_clu, vlExist_clu] = wave_similarity_site_(iSite1, S_auto)
 % free of KNN
-fUseSecondSite = 0;
 
 % Load KNN and identify neighbors per cluster
 csVar_imported = import_struct_(S_auto);
+
+fUseSecondSite = get_set_(P, 'fUseSecondSite_merge', 1);
 nDrift = size(mlDrift, 1);
 viSpk1 = get_viSpk_site_(S_auto, 1, iSite1);
 cvii1_drift = vi2cell_(discretize(viSpk1, viLim_drift), nDrift);

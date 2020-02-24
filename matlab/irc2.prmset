@@ -16,3 +16,4 @@ batch_sec_drift = {600};
 % merge (fast parameters to test by using cache)
 maxWavCor = num2cell([.975]);
 merge_thresh_cc = num2cell([1]);
+fUseSecondSite_merge = {0,1};
