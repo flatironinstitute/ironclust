@@ -2597,7 +2597,7 @@ end %func
 %--------------------------------------------------------------------------
 function [cviClu_clu, vlExist_clu] = wave_similarity_site_(iSite1, S_auto)
 % free of KNN
-fUseSecondSite = 1;
+fUseSecondSite = 0;
 
 % Load KNN and identify neighbors per cluster
 csVar_imported = import_struct_(S_auto);
@@ -2612,6 +2612,8 @@ mrPv_peak = mrPv(iT_peak,:);
 nSamples_burst = round(get_set_(P, 't_burst_ms', 20) * P.sRateHz / 1000);
 if fUseSecondSite
     viSpk2 = get_viSpk_site_(S_auto, 2, iSite1);    
+else
+    viSpk2 = [];
 end
 fSecondSite = ~isempty(viSpk2);
 if fSecondSite   
