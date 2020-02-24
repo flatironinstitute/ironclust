@@ -34,7 +34,7 @@ knn = 30;                   % K-nearest neighbors
 nTime_max_drift = 256;		% (do not change), max number of time batches per load
 
 % [Auto-merge stage: automatically merge similar clusters based on KNN-graph and waveform similarity]
-maxWavCor = .99;            % Automated merge thresohld based on waveform correlation
+maxWavCor = .975;            % Automated merge thresohld based on waveform correlation
 merge_thresh_cc = 1;       % merge based on cross-correlation thresold
 spkJitter_ms_cc = 1;        % merge jitter timing
 t_burst_ms = 20;            % burst ISI for waveform separation
