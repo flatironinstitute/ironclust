@@ -8106,12 +8106,18 @@ catch  % SNR not saved
         case {'mean_pooled'}
             mr_func_ = @(x)cellfun(@(y)nanmean(y), cell_struct_join_(ccScore_prmset_rec, x, 1));
             vcScore = 'mean_pooled';
+        case {'mean_pooled_clu'}
+            mr_func_ = @(x)cellfun(@(y)nanmean(y), cell_struct_join_(ccScore_prmset_rec, strrep(x,'_gt','_clu'), 1));
+            vcScore = 'mean_pooled';            
         case {'median_pooled'}
             mr_func_ = @(x)cellfun(@(y)nanmedian(y), cell_struct_join_(ccScore_prmset_rec, x, 1));
             vcScore = 'median_pooled';            
         case {'count_pooled'}
             mr_func_ = @(x)cellfun(@(y)sum(y>=THRESH_SCORE), cell_struct_join_(ccScore_prmset_rec, x, 1));
             vcScore = 'count_pooled';            
+        case {'count_pooled_clu'}
+            mr_func_ = @(x)cellfun(@(y)sum(y>=THRESH_SCORE), cell_struct_join_(ccScore_prmset_rec, strrep(x,'_gt','_clu'), 1));
+            vcScore = 'count_pooled_clu';                        
         otherwise, error('optimize_param_show_: unsupported `vcMode_optimize`');
     end
     cmrScore_prmset_gt = cellfun_(@(x)mr_func_(x), csScore);
