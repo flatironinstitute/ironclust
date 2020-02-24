@@ -7923,7 +7923,7 @@ try
                 makeParam_(vcDir_in, vcFile_prm, S_prm, fParfor);
                 vcFile_firings = irc2(vcFile_prm); 
                 vcFile_score = strrep(vcFile_firings, '.mda', '_score.mat');
-                if exist_file(vcFile_score)
+                if exist_file_(vcFile_score)
                     S_score1 = load(vcFile_score);
                 else
                     S_score1 = compare_mda_(vcFile_true_mda, vcFile_firings);
