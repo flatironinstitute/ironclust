@@ -1960,7 +1960,7 @@ try
     csDesc{end+1} = sprintf('Events');
     csDesc{end+1} = sprintf('    #Spikes:                %d', nSpk);
     csDesc{end+1} = sprintf('    Feature extracted:      %s', P.vcFet);    
-    csDesc{end+1} = sprintf('    #Sites/event:           %d', nSites_spk);
+    csDesc{end+1} = sprintf('    #Sites/event:           %d', nSites_spkv);
     csDesc{end+1} = sprintf('    maxDist_site_um:        %0.0f', P.maxDist_site_um);    
     csDesc{end+1} = sprintf('    maxDist_site_spk_um:    %0.0f', P.maxDist_site_spk_um);
     csDesc{end+1} = sprintf('    spkLim_ms:              [%0.3f, %0.3f]', P.spkLim_ms);
