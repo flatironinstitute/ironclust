@@ -1,17 +1,18 @@
 % filter (slow parameters to test)
 freqLim = {[300,8000]};
-qqFactor = {4};
-fMatchedFilter_detect = {1};
+qqFactor = {3.5};
+fMatchedFilter_detect = {0};
 spkLim_ms = {[-.25, .75]};
 
 % detect
 prinvec_mode = {2};
 nPc_spk = {6};
+maxDist_site_spk_um = {100, 75};
 
 % cluster
 step_sec_drift = {20};
 batch_sec_drift = {600};
 
 % merge (fast parameters to test by using cache)
-maxWavCor = num2cell([.975:.005:1]);
+maxWavCor = num2cell([.975]);
 merge_thresh_cc = num2cell([1]);
