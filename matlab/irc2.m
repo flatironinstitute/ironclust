@@ -7813,80 +7813,67 @@ if isempty(vcFile_out)
     vcFile_out = fullfile(vcDir_rec, sprintf('scores_prmset_%s.mat', vcPostfix_));
 end
 
-S_prmset_rec = [];
-if exist_file_(vcFile_out) && fUse_cache
-    try
-        S_prmset_rec = load(vcFile_out);
-        S_prmset_rec.vcFile_out = vcFile_out;
-        fprintf(2, 'Results loaded from cache: %s\n', vcFile_out);
-    catch
-    end
-end
+
 if ~fUse_cache, optimize_clear_(vcDir_rec,vcFile_prmset); end
-if isempty(S_prmset_rec)
-    t_fun = tic;
-    if isempty(csDir_rec)
-        csDir_rec = sub_dir_(vcDir_rec, 1);
-    end
-    nRec = numel(csDir_rec);
-    S_prmset = file2struct_ordered_(vcFile_prmset);
-    [csName_prm, cVal_prm] = deal(fieldnames(S_prmset), struct2cell(S_prmset));
-    nPrmset = prod(cellfun(@numel, cVal_prm));
-    ccScore_prmset_rec = cell(nRec*nPrmset, 1);
-    % remove lock files
-    remove_lock_(csDir_rec);
-    nRuns = numel(ccScore_prmset_rec);
-    if fParfor
-        try
-            parfor iRun = 1:nRuns
-                [iRec, iPrmset] = ind2sub([nRec,nPrmset], iRun);
-                cVal_prm1 = permute_prm_(cVal_prm, iPrmset);
-                ccScore_prmset_rec{iRun} = load_score_prmset_(...
-                    vcSorter, csDir_rec{iRec}, csName_prm, cVal_prm1, P_prmset, iPrmset);
-            end
-            % rebalance the parfor loop            
-            viRun1 = find(cellfun(@(x)isempty(x), ccScore_prmset_rec));
-            ccScore_prmset_rec1 = cell(size(viRun1));
-            nRuns_loaded = nRuns - numel(viRun1);
-            fprintf(2, 'Loaded %d/%d (%0.1f%%) from cache\n', nRuns_loaded, nRuns, nRuns_loaded/nRuns*100);
-            if ~fPreview
-                parfor iRun1 = 1:numel(viRun1)
-                    [iRec, iPrmset] = ind2sub([nRec,nPrmset], viRun1(iRun1));
-                    cVal_prm1 = permute_prm_(cVal_prm, iPrmset);
-                    ccScore_prmset_rec1{iRun1} = score_prmset_(...
-                        vcSorter, csDir_rec{iRec}, csName_prm, cVal_prm1, P_prmset, iPrmset);
-                end      
-                ccScore_prmset_rec(viRun1) = ccScore_prmset_rec1;
-                ccScore_prmset_rec1 = {}; % clear
-            end
-        catch
-            fParfor = 0;
-        end
-    end
-    if ~fParfor
-        for iRun = 1:nRuns
+t_fun = tic;
+if isempty(csDir_rec)
+    csDir_rec = sub_dir_(vcDir_rec, 1);
+end
+nRec = numel(csDir_rec);
+S_prmset = file2struct_ordered_(vcFile_prmset);
+[csName_prm, cVal_prm] = deal(fieldnames(S_prmset), struct2cell(S_prmset));
+nPrmset = prod(cellfun(@numel, cVal_prm));
+ccScore_prmset_rec = cell(nRec*nPrmset, 1);
+% remove lock files
+remove_lock_(csDir_rec);
+nRuns = numel(ccScore_prmset_rec);
+if fParfor
+    try
+        parfor iRun = 1:nRuns
             [iRec, iPrmset] = ind2sub([nRec,nPrmset], iRun);
             cVal_prm1 = permute_prm_(cVal_prm, iPrmset);
-            ccScore_prmset_rec{iRun} = score_prmset_(...
+            ccScore_prmset_rec{iRun} = load_score_prmset_(...
                 vcSorter, csDir_rec{iRec}, csName_prm, cVal_prm1, P_prmset, iPrmset);
         end
+        % rebalance the parfor loop            
+        viRun1 = find(cellfun(@(x)isempty(x), ccScore_prmset_rec));
+        ccScore_prmset_rec1 = cell(size(viRun1));
+        nRuns_loaded = nRuns - numel(viRun1);
+        fprintf(2, 'Loaded %d/%d (%0.1f%%) from cache\n', nRuns_loaded, nRuns, nRuns_loaded/nRuns*100);
+        if ~fPreview
+            parfor iRun1 = 1:numel(viRun1)
+                [iRec, iPrmset] = ind2sub([nRec,nPrmset], viRun1(iRun1));
+                cVal_prm1 = permute_prm_(cVal_prm, iPrmset);
+                ccScore_prmset_rec1{iRun1} = score_prmset_(...
+                    vcSorter, csDir_rec{iRec}, csName_prm, cVal_prm1, P_prmset, iPrmset);
+            end      
+            ccScore_prmset_rec(viRun1) = ccScore_prmset_rec1;
+            ccScore_prmset_rec1 = {}; % clear
+        end
+    catch
+        fParfor = 0;
     end
-    ccScore_prmset_rec = reshape(ccScore_prmset_rec, [nRec,nPrmset]);
-    t_fun = toc(t_fun);
-    fprintf('took %0.1fs\n', t_fun);
-    % display
-    S_prmset_rec = makeStruct_(S_prmset, ccScore_prmset_rec, vcFile_prmset, ...
-        csDir_rec, cVal_prm, csName_prm, t_fun, vcDir_rec, vcFile_out);
-    fSave = 1;    
-else
-    fSave = 0;
 end
+if ~fParfor
+    for iRun = 1:nRuns
+        [iRec, iPrmset] = ind2sub([nRec,nPrmset], iRun);
+        cVal_prm1 = permute_prm_(cVal_prm, iPrmset);
+        ccScore_prmset_rec{iRun} = score_prmset_(...
+            vcSorter, csDir_rec{iRec}, csName_prm, cVal_prm1, P_prmset, iPrmset);
+    end
+end
+ccScore_prmset_rec = reshape(ccScore_prmset_rec, [nRec,nPrmset]);
+t_fun = toc(t_fun);
+fprintf('took %0.1fs\n', t_fun);
+% display
+S_prmset_rec = makeStruct_(S_prmset, ccScore_prmset_rec, vcFile_prmset, ...
+    csDir_rec, cVal_prm, csName_prm, t_fun, vcDir_rec, vcFile_out);
 
 [csDesc, S_best_score] = optimize_param_show_(S_prmset_rec);
 assignWorkspace_(S_prmset_rec, S_best_score);
 cellstr2file_(strrep(vcFile_out, '.mat', '.txt'), csDesc, 1);
 edit(strrep(vcFile_out, '.mat', '.txt'));
-if fSave, struct_save_(S_prmset_rec, vcFile_out, 1); end
+% if fSave, struct_save_(S_prmset_rec, vcFile_out, 1); end
 end %func
 
 
