@@ -7,7 +7,7 @@ nThreads_delta = 512;        % number of threads in GPU
 
 % [Detect stage: filter and detect spikes]
 vcFilter = 'bandpass';
-freqLim = [300, inf];
+freqLim = [300, 8000];
 maxDist_site_spk_um = 100;  % Event extraction radius
 maxDist_site_um = 50;       % Event merge radius
 vcCommonRef = 'trimmean';   % Common reference mode {'none', 'mean', 'median', 'trimmean'}    
