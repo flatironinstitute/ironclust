@@ -7904,6 +7904,7 @@ fParfor = get_set_(P_prmset, 'fParfor', 0);
 vcFile_true_mda = fullfile(vcDir_in, 'firings_true.mda');
 vcDir_tmp = [];
 pause(rand()); % create phase delay
+S_score1 = [];
 try    
     vcFile_out1 = fullfile(vcDir_out, sprintf('firings_p%d.mda', iPrmset));
     vcFile_score1 = strrep(vcFile_out1, '.mda', '_score.mat');
@@ -7920,7 +7921,14 @@ try
             case 'irc2' % reuse last shared parameter output
                 vcFile_prm = fullfile(vcDir_out, sprintf('raw_geom_p%d.prm', iPrmset));
                 makeParam_(vcDir_in, vcFile_prm, S_prm, fParfor);
-                vcFile_firings = irc2(vcFile_prm);    
+                vcFile_firings = irc2(vcFile_prm); 
+                vcFile_score = strrep(vcFile_firings, '.mda', '_score.mat');
+                if exist_file_(vcFile_score)
+                    S_score1 = load(vcFile_score);
+                else
+                    S_score1 = compare_mda_(vcFile_true_mda, vcFile_firings);
+                    struct_save_(S_score1, vcFile_score);
+                end
             case 'kilosort2'
                 vcDir_tmp = fullfile(vcDir_out, sprintf('p%d', iPrmset));
                 kilosort2_(vcDir_in, vcDir_tmp, S_prm);   
@@ -7936,7 +7944,9 @@ try
         delete_(vcDir_tmp);
         fprintf('Wrote to %s (took %0.1fs)\n', vcFile_out1, toc(t_fun));
     end
-    S_score1 = compare_mda_(vcFile_true_mda, vcFile_out1);
+    if isempty(S_score1)
+        S_score1 = compare_mda_(vcFile_true_mda, vcFile_out1);
+    end
     struct_save_(S_score1, vcFile_score1, 1);
 catch ME
     S_score1 = [];
@@ -8096,9 +8106,18 @@ catch  % SNR not saved
         case {'mean_pooled'}
             mr_func_ = @(x)cellfun(@(y)nanmean(y), cell_struct_join_(ccScore_prmset_rec, x, 1));
             vcScore = 'mean_pooled';
+        case {'mean_pooled_clu'}
+            mr_func_ = @(x)cellfun(@(y)nanmean(y), cell_struct_join_(ccScore_prmset_rec, strrep(x,'_gt','_clu'), 1));
+            vcScore = 'mean_pooled';            
+        case {'median_pooled'}
+            mr_func_ = @(x)cellfun(@(y)nanmedian(y), cell_struct_join_(ccScore_prmset_rec, x, 1));
+            vcScore = 'median_pooled';            
         case {'count_pooled'}
             mr_func_ = @(x)cellfun(@(y)sum(y>=THRESH_SCORE), cell_struct_join_(ccScore_prmset_rec, x, 1));
             vcScore = 'count_pooled';            
+        case {'count_pooled_clu'}
+            mr_func_ = @(x)cellfun(@(y)sum(y>=THRESH_SCORE), cell_struct_join_(ccScore_prmset_rec, strrep(x,'_gt','_clu'), 1));
+            vcScore = 'count_pooled_clu';                        
         otherwise, error('optimize_param_show_: unsupported `vcMode_optimize`');
     end
     cmrScore_prmset_gt = cellfun_(@(x)mr_func_(x), csScore);
