@@ -29,7 +29,7 @@ prinvec_mode = 2;           % use 1 for all sites, 2 for center only
 % [Cluster stage: apply drift-detection and KNN-graph density-peak clustering]
 nPcPerChan = 0;             % #PC/chan. Set to `0` to use a variable # as a function of distance from the center
 step_sec_drift = 20;        % Ave. duration of time batch in sec
-batch_sec_drift = 600;      % Total ave. duration of time batch group in sec
+batch_sec_drift = 300;      % Total ave. duration of time batch group in sec
 knn = 30;                   % K-nearest neighbors
 nTime_max_drift = 256;		% (do not change), max number of time batches per load
 
