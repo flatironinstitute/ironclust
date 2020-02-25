@@ -163,6 +163,7 @@ switch lower(vcCmd)
         end
         return;
     case 'plot-drift', plot0_('drift', vcFile_prm, vcArg2); return;
+    case 'plot-driftcorr', plot0_('driftcorr', vcFile_prm, vcArg2); return;
     case 'clear', clear_(vcArg1); vcFile_prm_=[]; return;
     case {'test-mcc', 'test_mcc', 'testmcc'}, test_mcc_(vcArg1); return;
     case 'test'
@@ -6537,7 +6538,7 @@ else
     end
     if read_cfg_('fPlot_drift')
         figure; imagesc(mrDist_drift); set(gcf,'Name', P.vcFile_prm);
-        figure; imagesc(mrSort_drift); set(gcf,'Name', P.vcFile_prm);
+%         figure; imagesc(mrSort_drift); set(gcf,'Name', P.vcFile_prm);
         hold on; plot([0, size(mrSort_drift,1)], repmat(nTime_batch,1,2), 'r-');
     end    
 end
@@ -8667,21 +8668,24 @@ mrY_clu_drift = mrY_clu_drift-vrY_drift.*vrGain_clu;
 mrPos_clu = [nanmedian(mrX_clu_drift,2), nanmedian(mrY_clu_drift,2)];
 S_pos_clu = makeStruct_(mrPos_clu, mrX_clu_drift, mrY_clu_drift, mrY0_clu_drift, vrY_drift, vrGain_clu);
 if fPlot
-    plot_ = @(x,y,c)plot(x,y,'.-','color',c,'MarkerSize',5);
+    viClu_plot = find(~any(isnan(mrY0_clu_drift),2));
+    viClu_plot = viClu_plot(:)';
+    plot_ = @(x,y,c)plot(x,y,'.','color',c,'MarkerSize',5);
     figure('Color','w'); ax=[]; 
     rand('seed',0); mrColor_clu = rand(nClu,3);
     for iMode=1:3
         ax(end+1) = subplot(1,3,iMode);
         hold on; grid on;
-        for iClu=1:nClu
+        for iClu=viClu_plot
             vrColor1 = mrColor_clu(iClu,:);
             switch iMode
-                case 1
+                case 3
                     plot_(mrX_clu_drift(iClu,:), mrY_clu_drift(iClu,:), vrColor1); 
                     plot(mrPos_clu(iClu,1), mrPos_clu(iClu,2), 'k*');
-                    title('xy');                    
-                case 3, plot_(1:nDrift, mrY0_clu_drift(iClu,:), vrColor1); title('original');
-                case 2, plot_(1:nDrift, mrY_clu_drift(iClu,:), vrColor1); title('compensated');
+%                     text(mrPos_clu(iClu,1), mrPos_clu(iClu,2), sprintf('%d', iClu));
+                    title('xy (corrected)');                    
+                case 1, plot_(1:nDrift, mrY0_clu_drift(iClu,:), vrColor1); title('original');
+                case 2, plot_(1:nDrift, mrY_clu_drift(iClu,:), vrColor1); title('corrected');
             end
         end
     end
@@ -8699,9 +8703,6 @@ S_auto = S0.S_auto;
 S_drift = S0.S_clu.S_drift;
 
 % [mrX_clu_drift, mrY_clu_drift] = position_clu_drift_(S0);
-S_pos_clu = static_position_clu_(S0, 1);
-
-
 
 % viClu_use = find(~isnan(vrJitter_clu));
 % figure; plot(mrY_clu_drift(viClu_use,:)');
@@ -8732,7 +8733,15 @@ switch lower(vcMode)
         end
         xylabel_([], 'x pos (um)', 'y pos (um)', P.vcFile); grid on;
         
+    case 'driftcorr', S_pos_clu = static_position_clu_(S0, 1);
+
     case 'drift'
+        S_pos_clu = static_position_clu_(S0, 1);
+        % plot high-occupancy clusters only
+        viClu_plot = find(sum(isnan(S_pos_clu.mrY0_clu_drift),2) == 0);
+        vl_spk = ismember(S_auto.viClu, viClu_plot);
+        viRand_clu = randperm(S_auto.nClu);
+        
         hFig = create_figure_([], [0 0 .5 1], P.vcFile, 1, 1);
         [vrX1, vrY1] = deal(double(S0.viTime_spk)/P.sRateHz, S0.mrPos_spk(:,2));
         if isempty(viClu_plot)
@@ -8743,10 +8752,10 @@ switch lower(vcMode)
             text_(mrXY_clu(:,1), mrXY_clu(:,2), arrayfun_(@num2str, 1:nClu), ...
                 'VerticalAlignment', 'bottom', 'HorizontalAlignment', 'left');
         else
-            plot(vrX1(~vl_spk), vrY1(~vl_spk), '.', 'MarkerSize', 1, 'Color', ones(1,3)*.75); hold on;
-            scatter(vrX1(vl_spk), vrY1(vl_spk), 1, S_auto.viClu(vl_spk));
-            text_(mrXY_clu(viClu_plot,1), mrXY_clu(viClu_plot,2), arrayfun_(@num2str, viClu_plot), ...
-                'VerticalAlignment', 'bottom', 'HorizontalAlignment', 'left');            
+%             plot(vrX1(~vl_spk), vrY1(~vl_spk), '.', 'MarkerSize', 1, 'Color', ones(1,3)*.75); hold on;
+            scatter(vrX1(vl_spk), vrY1(vl_spk), 1, viRand_clu(S_auto.viClu(vl_spk)));
+%             text_(mrXY_clu(viClu_plot,1), mrXY_clu(viClu_plot,2), arrayfun_(@num2str, viClu_plot), ...
+%                 'VerticalAlignment', 'bottom', 'HorizontalAlignment', 'left');            
         end
         xylabel_([], 'Time (s)', 'y pos (um)', P.vcFile); grid on;
         colormap jet;
