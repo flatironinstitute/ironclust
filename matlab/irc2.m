@@ -257,7 +257,7 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function [vcHash, csParam] = get_hash_(P_detect, vcMode)
+function [vcHash, csParam] = get_hash_(P, vcMode)
 % usage
 % -----
 % vcHash = get_hash_(P_detect, vcMode) : vcMode={'detect','sort','auto'}
@@ -271,16 +271,17 @@ csParam_sort = {'version', 'nPcPerChan', 'step_sec_drift', 'batch_sec_drift', ..
 csParam_auto = {'version', 'maxWavCor', 'merge_thresh_cc', 'spkJitter_ms_cc', ...
     't_burst_ms', 'min_snr_clu', 'spkRefrac_merge_ms', 'fUseSecondSite_merge'};
 
-if ischar(P_detect)
-    P_detect = file2struct_(P_detect);
+if ischar(P)
+    P = file2struct_(P);
 end
+P.version = version_();
 switch lower(vcMode)
     case 'detect', csParam = csParam_detect;
     case 'sort', csParam = csParam_sort;
     case 'auto', csParam = csParam_auto;
     otherwise, error('get_hash_: invalid mode'); 
 end
-vcHash = [vcMode, '_', struct2hash_(struct_copy_(P_detect, csParam))];
+vcHash = [vcMode, '_', struct2hash_(struct_copy_(P, csParam))];
 end %func
 
 
