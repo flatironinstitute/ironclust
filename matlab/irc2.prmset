@@ -1,20 +1,25 @@
-% filter (slow parameters to test)
-freqLim = {[300,8000]};
-qqFactor = {3.5};
-fMatchedFilter_detect = {0};
-spkLim_ms = {[-.25, .75]};
+%------------------------------------------
+% Explore
 
-% detect
-prinvec_mode = {2};
-nPc_spk = {6};
-maxDist_site_spk_um = {100};
+% detect and filter
+nPc_spk = {9};
 
 % cluster
-fMode_mlPc = {1,2}; % 1: taper down, 2: use full
 step_sec_drift = {20};
 batch_sec_drift = {300};
 
 % merge (fast parameters to test by using cache)
+merge_dist_thresh = {0,5};
 maxWavCor = num2cell([.96:.005:.99]);
 merge_thresh_cc = num2cell([.5:.1:1]);
+
+%------------------------------------------
+% established
 fUseSecondSite_merge = {0};
+freqLim = {[300,8000]};
+spkLim_ms = {[-.25, .75]};
+fMatchedFilter_detect = {0};
+prinvec_mode = {2};
+maxDist_site_spk_um = {100};
+qqFactor = {3.5};
+fMode_mlPc = {1}; % 1: taper down, 2: use full

@@ -269,7 +269,7 @@ csParam_detect = {'version', 'vcFilter', 'freqLim', 'maxDist_site_spk_um', 'maxD
 csParam_sort = {'version', 'nPcPerChan', 'step_sec_drift', 'batch_sec_drift', ...
     'knn', 'nTime_max_drift', 'fMode_mlPc'};
 csParam_auto = {'version', 'maxWavCor', 'merge_thresh_cc', 'spkJitter_ms_cc', ...
-    't_burst_ms', 'min_snr_clu', 'spkRefrac_merge_ms', 'fUseSecondSite_merge'};
+    't_burst_ms', 'min_snr_clu', 'spkRefrac_merge_ms', 'fUseSecondSite_merge', 'merge_dist_thresh'};
 
 if ischar(P)
     P = file2struct_(P);
@@ -1931,13 +1931,14 @@ else
 end
 nSites_spk = size(P.miSites,1);
 nSpk = S0.dimm_fet(3);
-try
-    nFeatures = S0.S_clu.nFeatures;
-    nPcPerChan = nFeatures / nSites_spk;
-catch
-    nFeatures = P.nSites_fet * P.nPcPerChan;
-    nPcPerChan = P.nPcPerChan;
-end
+nPcPerChan = S0.P.nPc_spk;
+% try
+%     nFeatures = S0.S_clu.nFeatures;
+%     nPcPerChan = nFeatures / nSites_spk;
+% catch
+%     nFeatures = P.nSites_fet * P.nPcPerChan;
+%     nPcPerChan = P.nPcPerChan;
+% end
 
 csDesc = {};
 try
@@ -1965,11 +1966,11 @@ try
     csDesc{end+1} = sprintf('Events');
     csDesc{end+1} = sprintf('    #Spikes:                %d', nSpk);
     csDesc{end+1} = sprintf('    Feature extracted:      %s', P.vcFet);    
-    csDesc{end+1} = sprintf('    #Sites/event:           %d', nSites_spkv);
+    csDesc{end+1} = sprintf('    #Sites/event:           %d', nSites_spk);
     csDesc{end+1} = sprintf('    maxDist_site_um:        %0.0f', P.maxDist_site_um);    
     csDesc{end+1} = sprintf('    maxDist_site_spk_um:    %0.0f', P.maxDist_site_spk_um);
     csDesc{end+1} = sprintf('    spkLim_ms:              [%0.3f, %0.3f]', P.spkLim_ms);
-    csDesc{end+1} = sprintf('    #Features/event:        %d', nFeatures);    
+%     csDesc{end+1} = sprintf('    #Features/event:        %d', nFeatures);    
     csDesc{end+1} = sprintf('    #PC/chan:               %d', nPcPerChan);
 catch
 end
@@ -2084,7 +2085,7 @@ end %func
 % auto merge
 function S_auto = auto_(S0, P)
 
-nRepeat = 1;
+nRepeat = 2;
 
 fprintf('\nauto-merging...\n'); runtime_automerge = tic;
 
@@ -2532,6 +2533,15 @@ S_param = makeStruct_(nClu, nSites, knn, vcFile_prm, nSpk_min, ...
     vrRho, viClu, viTime_spk, viLim_drift, ccviSpk_site_load, ccviSpk_site2_load, ...
     type_fet, dimm_fet, mrPv, vrThresh_site, viShift, mlDrift, maxWavCor, P);
 
+% drift compensation
+if get_(P, 'merge_dist_thresh') > 0
+    S_pos_clu = static_position_clu_(setfield(S0, 'S_auto', S_auto));
+    S_param.S_pos_clu = S_pos_clu;    
+    S_param.merge_dist_thresh = get_(P, 'merge_dist_thresh');
+else
+    S_param.S_pos_clu = [];
+end
+
 % compute pairwise distance in parallel by sites
 [cviClu_clu_site, cvlExist_site] = deal(cell(nSites, 1));
 fParfor = get_set_(P, 'fParfor', 1) && nSites > 1;
@@ -2718,9 +2728,10 @@ vlExist_clu([cviClu_drift{:}]) = true;
 cviClu_clu = arrayfun_(@(x)x, (1:nClu)'); %start with self-containing cell
 norm_mr_ = @(mr)mr ./ sqrt(sum(mr.^2,1)); 
 tr2mr_pv_norm_ = @(tr,mr)norm_mr_(reshape(mr*reshape(tr,size(tr,1),[]),[],size(tr,3))); 
+
 for iDrift = 1:nDrift
     viDrift1 = find(mlDrift(:,iDrift));
-    viClu1 = cviClu_drift{iDrift};
+    viClu1 = cviClu_drift{iDrift};    
     if isempty(viClu1), continue; end
     trPc_clu1 = cat(3, ctrPc_drift{iDrift});
     if isempty(trPc_clu1), continue; end
@@ -2728,12 +2739,22 @@ for iDrift = 1:nDrift
     trPc_clu2  = cat(3, ctrPc_drift{viDrift1});
     if isempty(trPc_clu2), continue; end
     mrWav_clu2 = tr2mr_pv_norm_(trPc_clu2, mrPv);
+    if ~isempty(S_pos_clu)
+%         mrPos_clu_drift1 = S_pos_clu.mrPos_clu;
+        mrPos_clu_drift1 = [nanmedian(S_pos_clu.mrX_clu_drift(:,viDrift1),2), ...
+            nanmedian(S_pos_clu.mrY0_clu_drift(:,viDrift1),2)]; 
+    end
     for iiClu1 = 1:numel(viClu1)
         iClu1 = viClu1(iiClu1);
         mrWav11 = pc2wav_shift_(trPc_clu1(:,:,iiClu1), mrPv, viShift);
         viClu2_ = viClu2(max(mrWav11' * mrWav_clu2, [], 1) >= maxWavCor);
         if isempty(viClu2_), continue; end
         viClu2_ = unique(viClu2_(:));
+        if ~isempty(S_pos_clu) && numel(viClu2_)>1
+            vrDist2_ = pdist2_(mrPos_clu_drift1(iClu1,:), mrPos_clu_drift1(viClu2_,:));
+            viClu2_(vrDist2_ > merge_dist_thresh) = [];
+        end        
+        if isempty(viClu2_), continue; end
         cviClu_clu{iClu1} = [cviClu_clu{iClu1}; viClu2_];
     end
 end  
@@ -8602,6 +8623,74 @@ end
 
 
 %--------------------------------------------------------------------------
+function [mrX_clu_drift, mrY_clu_drift] = position_clu_drift_(S0)
+
+S_auto = S0.S_auto;
+S_drift = S0.S_clu.S_drift;
+min_spk = S0.P.knn/2;
+
+switch 2
+    case 1, fh = @(x)trimmean(x,20);
+    case 2, fh = @(x)median(x);
+end
+
+[viLim_drift, nDrift] = get_(S_drift, 'viLim_drift', 'nTime_drift');
+[mrX_clu_drift, mrY_clu_drift] = deal(nan(S_auto.nClu, nDrift));
+get_lim_ = @(x,i)find(x>=viLim_drift(i) & x<viLim_drift(i+1));
+for iClu=1:S_auto.nClu
+    viSpk1 = S_auto.cviSpk_clu{iClu};
+    [vrX1,vrY1] = deal(S0.mrPos_spk(viSpk1,1), S0.mrPos_spk(viSpk1,2));
+    for iDrift = 1:nDrift
+        vi_ = get_lim_(viSpk1,iDrift);
+        if numel(vi_) >= min_spk
+            mrX_clu_drift(iClu, iDrift) = fh(vrX1(vi_));
+            mrY_clu_drift(iClu, iDrift) = fh(vrY1(vi_));
+        end
+    end
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+function S_pos_clu = static_position_clu_(S0, fPlot)
+if nargin<2, fPlot=[]; end
+[mrX_clu_drift, mrY_clu_drift] = position_clu_drift_(S0);
+
+% select most smooth transitions
+mrDY_clu_drift = mrY_clu_drift(:,2:end)-mrY_clu_drift(:,1:end-1);
+vrDY_drift = trimmean(mrDY_clu_drift, 20);
+vrGain_clu = nanmedian(abs(mrDY_clu_drift ./ vrDY_drift),2);
+vrY_drift = cumsum([0, vrDY_drift]);
+[nClu, nDrift] = size(mrY_clu_drift);
+mrY0_clu_drift = mrY_clu_drift;
+mrY_clu_drift = mrY_clu_drift-vrY_drift.*vrGain_clu;
+mrPos_clu = [nanmedian(mrX_clu_drift,2), nanmedian(mrY_clu_drift,2)];
+S_pos_clu = makeStruct_(mrPos_clu, mrX_clu_drift, mrY_clu_drift, mrY0_clu_drift, vrY_drift, vrGain_clu);
+if fPlot
+    plot_ = @(x,y,c)plot(x,y,'.-','color',c,'MarkerSize',5);
+    figure('Color','w'); ax=[]; 
+    rand('seed',0); mrColor_clu = rand(nClu,3);
+    for iMode=1:3
+        ax(end+1) = subplot(1,3,iMode);
+        hold on; grid on;
+        for iClu=1:nClu
+            vrColor1 = mrColor_clu(iClu,:);
+            switch iMode
+                case 1
+                    plot_(mrX_clu_drift(iClu,:), mrY_clu_drift(iClu,:), vrColor1); 
+                    plot(mrPos_clu(iClu,1), mrPos_clu(iClu,2), 'k*');
+                    title('xy');                    
+                case 3, plot_(1:nDrift, mrY0_clu_drift(iClu,:), vrColor1); title('original');
+                case 2, plot_(1:nDrift, mrY_clu_drift(iClu,:), vrColor1); title('compensated');
+            end
+        end
+    end
+    linkaxes(ax,'y');
+end
+end %func
+
+
+%--------------------------------------------------------------------------
 function plot0_(vcMode, vcFile_prm, vcArg1)
 
 S0 = load0_(vcFile_prm);
@@ -8609,28 +8698,13 @@ P = S0.P;
 S_auto = S0.S_auto;
 S_drift = S0.S_clu.S_drift;
 
-[viLim_drift, nDrift] = get_(S_drift, 'viLim_drift', 'nTime_drift');
-mrY_clu_drift = nan(S_auto.nClu, nDrift);
-vrY_spk = S0.mrPos_spk(:,2);
-get_lim_ = @(x,i)(x>=viLim_drift(i) & x<viLim_drift(i+1));
-for iClu=1:S_auto.nClu
-    viSpk1 = S_auto.cviSpk_clu{iClu};
-    viY1 = vrY_spk(viSpk1);
-    for iDrift = 1:nDrift
-        vr_ = viY1(get_lim_(viSpk1,iDrift));
-        if numel(vr_)>30
-            mrY_clu_drift(iClu, iDrift) = trimmean(vr_,20);
-        end
-    end
-end
+% [mrX_clu_drift, mrY_clu_drift] = position_clu_drift_(S0);
+S_pos_clu = static_position_clu_(S0, 1);
 
-% select most smooth transitions
-mrJitter_clu = mrY_clu_drift(:,2:end)-mrY_clu_drift(:,1:end-1);
-vrDY_time = trimmean(mrJitter_clu,20);
-vrY_time = cumsum([0, trimmean(mrJitter_clu,20)]);
 
-viClu_use = find(~isnan(vrJitter_clu));
-figure; plot(mrY_clu_drift(viClu_use,:)');
+
+% viClu_use = find(~isnan(vrJitter_clu));
+% figure; plot(mrY_clu_drift(viClu_use,:)');
 
 nClu = max(S_auto.viClu);
 cviSpk_clu = arrayfun_(@(x)find(S_auto.viClu==x), (1:nClu)');
