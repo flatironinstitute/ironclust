@@ -162,7 +162,7 @@ switch lower(vcCmd)
         else, varargout{1} = benchmark_(vcArg1, vcArg2, vcArg3); 
         end
         return;
-    case 'plot-drift', plot0_('drift', vcArg1, vcArg2); return;
+    case 'plot-drift', plot0_('drift', vcFile_prm, vcArg2); return;
     case 'clear', clear_(vcArg1); vcFile_prm_=[]; return;
     case {'test-mcc', 'test_mcc', 'testmcc'}, test_mcc_(vcArg1); return;
     case 'test'
@@ -681,7 +681,10 @@ switch lower(vcExt1)
         if numel(S_prm) == 1
             vcFile_prm = fullfile(S_prm.folder, S_prm.name);
         else
-            vcFile_prm = '';
+            vcFile_prm = fullfile(vcDir_out, 'raw_geom.prm');
+            if ~exist_file_(vcFile_prm)
+                vcFile_prm = '';
+            end
         end
     otherwise
         vcFile_prm = vcDir_in;
@@ -3352,7 +3355,7 @@ nPc_max = P.nC_max;
 if isempty(nPcPerChan), nPcPerChan = 0; end
 if numel(nPcPerChan) == 1
     if nPcPerChan == 0   
-        switch 2
+        switch get_set_(P, 'fMode_mlPc', 2)
             case 1, vnPc_site = nPc_spk:-1:1;
             case 2, vnPc_site = nPc_spk * ones(1, nSites_spk);
             case 3, vnPc_site = nPc_spk * ones(1, P.nSites_fet);
@@ -8603,6 +8606,29 @@ S0 = load0_(vcFile_prm);
 P = S0.P;
 S_auto = S0.S_auto;
 S_drift = S0.S_clu.S_drift;
+
+[viLim_drift, nDrift] = get_(S_drift, 'viLim_drift', 'nTime_drift');
+mrY_clu_drift = nan(S_auto.nClu, nDrift);
+vrY_spk = S0.mrPos_spk(:,2);
+get_lim_ = @(x,i)(x>=viLim_drift(i) & x<viLim_drift(i+1));
+for iClu=1:S_auto.nClu
+    viSpk1 = S_auto.cviSpk_clu{iClu};
+    viY1 = vrY_spk(viSpk1);
+    for iDrift = 1:nDrift
+        vr_ = viY1(get_lim_(viSpk1,iDrift));
+        if numel(vr_)>30
+            mrY_clu_drift(iClu, iDrift) = trimmean(vr_,20);
+        end
+    end
+end
+
+% select most smooth transitions
+mrJitter_clu = mrY_clu_drift(:,2:end)-mrY_clu_drift(:,1:end-1);
+vrDY_time = trimmean(mrJitter_clu,20);
+vrY_time = cumsum([0, trimmean(mrJitter_clu,20)]);
+
+viClu_use = find(~isnan(vrJitter_clu));
+figure; plot(mrY_clu_drift(viClu_use,:)');
 
 nClu = max(S_auto.viClu);
 cviSpk_clu = arrayfun_(@(x)find(S_auto.viClu==x), (1:nClu)');

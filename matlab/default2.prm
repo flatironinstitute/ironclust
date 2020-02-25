@@ -27,6 +27,7 @@ fMatchedFilter_detect = 0;  % Use matched filter during detection using PC1
 prinvec_mode = 2;           % use 1 for all sites, 2 for center only
 
 % [Cluster stage: apply drift-detection and KNN-graph density-peak clustering]
+fMode_mlPc = 1;             % 1: tapering down starting at nPc_spk, 2: remove only if nC_max (in default.cfg)
 nPcPerChan = 0;             % #PC/chan. Set to `0` to use a variable # as a function of distance from the center
 step_sec_drift = 20;        % Ave. duration of time batch in sec
 batch_sec_drift = 300;      % Total ave. duration of time batch group in sec

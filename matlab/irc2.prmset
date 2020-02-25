@@ -10,6 +10,7 @@ nPc_spk = {6};
 maxDist_site_spk_um = {100};
 
 % cluster
+fMode_mlPc = {1,2}; % 1: taper down, 2: use full
 step_sec_drift = {20};
 batch_sec_drift = {300};
 
