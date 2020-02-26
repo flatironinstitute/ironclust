@@ -2630,7 +2630,7 @@ cvii1_drift = vi2cell_(discretize(viSpk1, viLim_drift), nDrift);
 thresh1 = -abs(vrThresh_site(iSite1)); % negative detection
 min_snr_clu = get_(P, 'min_snr_clu');
 if min_snr_clu>0
-    thresh1 = thresh1 * min_snr_clu / P.Factor;
+    thresh1 = thresh1 * min_snr_clu / P.qqFactor;
 end
 
 iT_peak = 1 - P.spkLim(1);
