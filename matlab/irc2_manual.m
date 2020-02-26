@@ -4,10 +4,6 @@
 function irc2_manual(P)
 % global fDebug_ui
 
-% if ~is_sorted_(P)
-%     fprintf(2, 'File must to be sorted first (run "irc spikesort %s")\n', P.vcFile_prm); 
-%     return; 
-% end
 S0 = load0_(P.vcFile_prm);
 
 % S_manual
