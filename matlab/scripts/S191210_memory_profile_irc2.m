@@ -9,7 +9,7 @@
 %% 1. Define functions and data
 
 vcDir_from_original = '~/ceph/groundtruth/hybrid_synth/static_siprobe/rec_64c_1200s_11';
-vcDir_to_original = '~/raid/groundtruth/hybrid_synth/static_siprobe_bench/rec_64c_1200s';
+vcDir_to_original = '~/ceph/groundtruth/hybrid_synth/static_siprobe_bench/rec_64c_1200s';
 if ~exist(vcDir_to_original, 'dir')
     system(sprintf('mkdir -p %s', vcDir_to_original));
     vcCmd = sprintf('cp %s %s', fullfile(vcDir_from_original, '*.*'), vcDir_to_original);
@@ -103,7 +103,7 @@ for iChan_pow = viChan_pow
     end
 end
 
-
+%%
 
 % 3. loop over the files, exract values
 % setting: Oct 3 2019
@@ -112,8 +112,11 @@ end
 % irc2 mcc
 % irc2 compile
 %
-switch 2
-    case 1, vnChans_uniq = 64 * 2.^[-3:2]; vrDuration_uniq = 1200 * 2.^[-2:2];
+
+pause(3600);
+
+switch 1
+    case 1, vnChans_uniq = 64 * 2.^[-3:4]; vrDuration_uniq = 1200 * 2.^[-2:4];
     case 2, vnChans_uniq = 64 * 2.^[-3:-2]; vrDuration_uniq = 1200 * 2.^[-2:8];
 end
 
