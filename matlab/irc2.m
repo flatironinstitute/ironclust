@@ -65,11 +65,18 @@ end
 vcFile_prm = dir2prm_(vcArg1);
 if isempty(vcFile_prm)
     vcFile_prm = vcFile_prm_;
-else
+elseif exist_file_(vcFile_prm)
     vcFile_prm_ = vcFile_prm;
 end
 switch lower(vcCmd)     
     % probe reader
+    case {'resort', 'reclust', 'redo', 'rerun', 'rerun-validate'}
+        S0 = rerun_(vcArg1, vcArg2, vcArg3, vcArg4, vcFile_prm_); 
+        if strcmpi(vcCmd, 'rerun-validate')            
+            vcFile_firings_mda = get_(S0.S_auto, 'vcFile_firings_mda');
+            validate_(S0.P, vcFile_firings_mda);
+        end
+        return;
     case 'probe-image', probe_image_(vcArg1, vcArg2, vcArg3); return;
     
     % ui
@@ -115,7 +122,13 @@ switch lower(vcCmd)
     case 'describe-mda', describe_mda_(vcArg1, vcArg2); return;
     case 'compare-mda', compare_mda_(vcArg1, vcArg2); return;
     case 'export-mda', save_firings_mda_(vcFile_prm); return;
-    case {'which', 'select'}, fprintf('Selected %s\n', vcFile_prm); return;
+    case {'which', 'select', 'set'}
+        if exist_file_(vcFile_prm)
+            fprintf('Selected %s\n', vcFile_prm); 
+        else
+            fprintf(2, 'None selected\n');
+        end
+        return;
     case {'export-sf2', 'export-spikeforest2', 'export2spikeforest2'}, export_sf2_(); return;
     case {'export-ws', 'export-workspace', 'export'}, export_workspace_(vcArg1); return;
     case 'compile-deploy', compile_cuda_(vcArg1, '0'); return
@@ -991,14 +1004,15 @@ else
         struct_save_(S_score, vcFile_score, 1);
     end
 end
-S_score_plot_(S_score, S_cfg);
+hFig = S_score_plot_(S_score, S_cfg);
+set(hFig, 'UserData', makeStruct_(P, S_cfg, vcFile_firings_mda, S_score));
 
-fprintf('validate_ took %0.1fs\n', toc(t_fun));
+fprintf('validate_: took %0.1fs\n', toc(t_fun));
 end %func
 
 
 %--------------------------------------------------------------------------
-function S_score_plot_(S_score, S_cfg)
+function hFig = S_score_plot_(S_score, S_cfg)
 
 if nargin<2, S_cfg=[]; end
 if isempty(S_cfg)
@@ -1064,7 +1078,7 @@ plot_clu_ = @(x){...
     plot(vrSnr_clu, S_score.(x), 'k.', vrSnr_clu(vlClu), S_score.(x)(vlClu), 'b.'), ...
     xylabel_([], vcX_clu, x, title_str_(S_score.(x)(vlClu)),1), text_clu_(x)};
 
-figure('Color','w', 'Name', ...
+hFig = figure('Color','w', 'Name', ...
     sprintf('Groundtruth: %s, Sorted: %s', ...
         S_score.vcFile_gt_mda, S_score.vcFile_clu_mda));     
 AX=[];
@@ -1798,6 +1812,41 @@ end %func
 
 
 %--------------------------------------------------------------------------
+function S0 = rerun_(vcArg1, vcArg2, vcArg3, vcArg4, vcFile_prm)
+% usage
+% rerun_(vcFile_prm, param1, param2, param3
+% rerun_(vcArg1, vcArg2, vcArg3, vcArg4, vcFile_prm)
+
+if nargin<5, vcFile_prm=''; end
+S0=[];
+    
+% determine vcFile_prm
+vcFile_prm1 = dir2prm_(vcArg1);
+if exist_file_(vcArg1)
+    vcFile_prm = vcFile_prm1;
+    csParam = {vcArg2, vcArg3, vcArg4};
+else
+    fprintf('Using %s\n', vcFile_prm); 
+    csParam = {vcArg1, vcArg2, vcArg3, vcArg4};
+end
+if ~exist_file_(vcFile_prm)
+    fprintf(2, 'Specify a parameter file\n');
+    return;
+end
+
+% update param
+P = file2struct_(vcFile_prm);
+P = struct_merge_(P, cs2struct_(csParam));
+P.vcFile_prm = vcFile_prm;
+edit_prm_file_(P, P.vcFile_prm);
+S0 = detect_cache_(P);
+S0.S_clu = sort_cache_(S0, P);
+S0.S_auto = auto_cache_(S0, P);
+describe_(vcFile_prm);
+end %func
+
+
+%--------------------------------------------------------------------------
 % negative index means from the end, 0 index means end index
 function vc1 = strsplit_get_(vc,delim,idx)
 cs = strsplit(vc, delim);
@@ -1896,17 +1945,12 @@ csFields_auto = {'runtime_automerge', 'memory_auto', 'nSpk_unique', 'nClu'};
 
 if ischar(S0)
     vcFile_prm = S0;
-    vcFile_mat = strrep(vcFile_prm, '.prm', '_irc.mat');
-    vcFile_clu_mat = strrep(vcFile_prm, '.prm', '_clu_irc.mat');
-    vcFile_auto_mat = strrep(vcFile_prm, '.prm', '_auto_irc.mat');
-    if exist_file_(vcFile_mat)
-        S0 = load(vcFile_mat, csFields{:});
+    if exist_file_(vcFile_prm)
+        S0 = load0_(vcFile_prm);
     else
         fprintf(2, 'File does not exist: %s\n\tSort the file first.\n', vcFile_mat);
         return;
     end
-    S0.S_clu = load_(vcFile_clu_mat, csFields_clu);
-    S0.S_auto = load_(vcFile_auto_mat, csFields_auto);    
 end
 P=S0.P;
 
@@ -1935,13 +1979,6 @@ end
 nSites_spk = size(P.miSites,1);
 nSpk = S0.dimm_fet(3);
 nPcPerChan = S0.P.nPc_spk;
-% try
-%     nFeatures = S0.S_clu.nFeatures;
-%     nPcPerChan = nFeatures / nSites_spk;
-% catch
-%     nFeatures = P.nSites_fet * P.nPcPerChan;
-%     nPcPerChan = P.nPcPerChan;
-% end
 
 csDesc = {};
 try
@@ -1983,17 +2020,15 @@ try
     csDesc{end+1} = sprintf('Cluster');       
     csDesc{end+1} = sprintf('    #Clusters:              %d', get_(S_auto, 'nClu'));
     csDesc{end+1} = sprintf('    #Unique events:         %d', get_(S_auto, 'nSpk_unique'));
-    csDesc{end+1} = sprintf('    min. spk/clu:           %d', P.min_count);
-    csDesc{end+1} = sprintf('    Cluster method:         %s', P.vcCluster);
-    csDesc{end+1} = sprintf('    knn:                    %d', P.knn);
-    csDesc{end+1} = sprintf('    step_sec_drift:         %0.1fs', P.step_sec_drift);
-    csDesc{end+1} = sprintf('    batch_sec_drift:        %0.1fs', P.batch_sec_drift);
-%     csDesc{end+1} = sprintf('    nTime_drift:            %d', P.nTime_drift);
-%     csDesc{end+1} = sprintf('    nTime_batch:            %d', P.nTime_batch);
+    csDesc{end+1} = sprintf('    min. spk/clu:           %d', S_auto.P.min_count);
+    csDesc{end+1} = sprintf('    Cluster method:         %s', S_auto.P.vcCluster);
+    csDesc{end+1} = sprintf('    knn:                    %d', S_auto.P.knn);
+    csDesc{end+1} = sprintf('    step_sec_drift:         %0.1fs', S_auto.P.step_sec_drift);
+    csDesc{end+1} = sprintf('    batch_sec_drift:        %0.1fs', S_auto.P.batch_sec_drift);
     csDesc{end+1} = sprintf('Auto-merge');   
-    csDesc{end+1} = sprintf('    delta_cut:              %0.3f', get_set_(P, 'delta_cut', 1));
-    csDesc{end+1} = sprintf('    maxWavCor:              %0.3f', get_(P, 'maxWavCor'));
-    csDesc{end+1} = sprintf('    merge_thresh_cc:        %0.3f', get_(P, 'merge_thresh_cc'));
+    csDesc{end+1} = sprintf('    delta_cut:              %0.3f', get_set_(S_auto.P, 'delta_cut', 1));
+    csDesc{end+1} = sprintf('    maxWavCor:              %0.3f', get_(S_auto.P, 'maxWavCor'));
+    csDesc{end+1} = sprintf('    merge_thresh_cc:        %0.3f', get_(S_auto.P, 'merge_thresh_cc'));
 catch
 end
 try
@@ -8354,6 +8389,16 @@ if ~exist_file_(vcFile_file2struct), return; end
     
 % load text file. trim and line break. remove comments.  replace 
 csLines = file2lines_(vcFile_file2struct);
+P = cs2struct_(csLines);
+end %func
+
+
+%--------------------------------------------------------------------------
+function P = cs2struct_(csLines)
+% cell stringt o struct
+% csLines = {'name1=value1', 'name2=value2', ...}
+
+P = [];    
 csLines = strip_comments_(csLines);
 if isempty(csLines), return; end
 
@@ -8361,7 +8406,9 @@ P = struct();
 for iLine = 1:numel(csLines)
     try
         vcLine1 = strtrim(csLines{iLine});
-        eval(sprintf('P.%s;', vcLine1));
+        if ~isempty(vcLine1)
+            eval(sprintf('P.%s;', vcLine1));
+        end
     catch
         fprintf(2, '%s\n', lasterr());
     end
