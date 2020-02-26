@@ -271,7 +271,8 @@ csParam_detect = {'version', 'vcFilter', 'freqLim', 'maxDist_site_spk_um', 'maxD
 csParam_sort = {'version', 'nPcPerChan', 'step_sec_drift', 'batch_sec_drift', ...
     'knn', 'nTime_max_drift', 'fMode_mlPc'};
 csParam_auto = {'version', 'maxWavCor', 'merge_thresh_cc', 'spkJitter_ms_cc', ...
-    't_burst_ms', 'min_snr_clu', 'spkRefrac_merge_ms', 'fUseSecondSite_merge', 'merge_dist_thresh'};
+    't_burst_ms', 'min_snr_clu', 'spkRefrac_merge_ms', 'fUseSecondSite_merge', ...
+    'merge_dist_thresh', 'nRepeat_merge'};
 
 if ischar(P)
     P = file2struct_(P);
@@ -2087,7 +2088,7 @@ end %func
 % auto merge
 function S_auto = auto_(S0, P)
 
-nRepeat = 2;
+nRepeat = get_set_('nRepeat_merge', 2);
 
 fprintf('\nauto-merging...\n'); runtime_automerge = tic;
 
@@ -2101,6 +2102,7 @@ for iRepeat=1:nRepeat
     S_auto = wave_similarity_merge_(S0, S_auto, P);
     if nClu_prev==S_auto.nClu, break; end
 end
+
 
 S_auto = S_auto_refrac_(S_auto, P, S0.viTime_spk); % refractory violation removal
 S_auto = S_auto_refresh_(S_auto, 1, S0.viSite_spk);
@@ -5422,9 +5424,9 @@ if nargin<1, vcMode = 'static'; end
 switch vcMode
     case 'drift', vcDir_in = 'groundtruth/hybrid_synth/drift_siprobe/rec_64c_1200s_11'; 
     case 'static', vcDir_in = 'groundtruth/hybrid_synth/static_siprobe/rec_64c_1200s_11'; 
-    case 'tetrode1', vcDir_in = 'groundtruth/hybrid_synth/static_tetrode/rec_4c_1200s_11'; 
-    case 'tetrode2', vcDir_in = 'groundtruth/hybrid_synth/static_tetrode/rec_4c_1200s_21'; 
-    case 'tetrode3', vcDir_in = 'groundtruth/hybrid_synth/static_tetrode/rec_4c_1200s_31'; 
+    case 'tetrode', vcDir_in = 'groundtruth/hybrid_synth/static_tetrode/rec_4c_1200s_11'; 
+    case 'tetrode1', vcDir_in = 'groundtruth/hybrid_synth/static_tetrode/rec_4c_1200s_21'; 
+    case 'tetrode2', vcDir_in = 'groundtruth/hybrid_synth/static_tetrode/rec_4c_1200s_31'; 
     case 'bionet', vcDir_in = 'groundtruth/bionet/bionet_static/static_8x_A_2A';
     case 'bionet1', vcDir_in = 'groundtruth/bionet/bionet_drift/drift_8x_A_2A';     
     case 'monotrode', vcDir_in = 'groundtruth/waveclus_synth/quiroga_difficult1/C_Difficult1_noise005';
@@ -8130,7 +8132,7 @@ try
     vrSnr_gt = cellfun(@(S)S.(vcSnr_mode), cS_gt);
     [vrSnr_gt_srt, viSnr_gt_srt] = sort(vrSnr_gt);
 catch  % SNR not saved
-    csScore = {'vrF1_gt', 'vrAccuracy_gt', 'vrPrecision_gt', 'vrRecall_gt'};
+    csScore = {'vrAccuracy_gt', 'vrF1_gt', 'vrPrecision_gt', 'vrRecall_gt'};
     switch lower(S_cfg.vcMode_optimize)
         case 'mean'
             mr_func_ = @(x)cell_struct_fun_(ccScore_prmset_rec, @(y)nanmean(y), x);
@@ -8159,7 +8161,7 @@ catch  % SNR not saved
         otherwise, error('optimize_param_show_: unsupported `vcMode_optimize`');
     end
     cmrScore_prmset_gt = cellfun_(@(x)mr_func_(x), csScore);
-    [vrAccuracy_prmset, vrAccuracy_prmset, vrPrecision_prmset, vrRecall_prmset] = ...
+    [vrAccuracy_prmset, vrF1_prmset, vrPrecision_prmset, vrRecall_prmset] = ...
         multifun_(@(x)nanmean(cmrScore_prmset_gt{x},1), 1, 2, 3, 4);    
     plot_prmset_analysis_(vrAccuracy_prmset, csName_prm, cVal_prm);
     vrAccuracy_prmset(isnan(vrAccuracy_prmset)) = 0;
@@ -8171,7 +8173,7 @@ catch  % SNR not saved
         csDesc{end+1} = '----------';
         csDesc{end+1} = sprintf('Prmset-rank %d (p#%d):', iiPrmset, iPrmset);        
         csDesc{end+1} = sprintf('  (%s) Accuracy:%0.1f, F1:%0.1f, Precision:%0.1f, Recall:%0.1f', ...
-            vcScore, vrAccuracy_prmset(iPrmset), vrAccuracy_prmset(iPrmset), vrPrecision_prmset(iPrmset), vrRecall_prmset(iPrmset));
+            vcScore, vrAccuracy_prmset(iPrmset), vrF1_prmset(iPrmset), vrPrecision_prmset(iPrmset), vrRecall_prmset(iPrmset));
         for iPrm = 1:numel(cVal_prm)
             csDesc{end+1} = sprintf('  %s: %s', csName_prm{iPrm}, numstr_(cVal_prm1{iPrm}));
         end
