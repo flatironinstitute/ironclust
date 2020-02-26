@@ -14,7 +14,7 @@ IronClust tracks the probe drift by computing the anatomical similarity between 
 - (Optional) CUDA Toolkit (for GPU processing for significant speed-up)
 - For terabyte-scale recording: At least 128GB RAM
 
-### Installing
+### Installation
 - Clone from Github
 ```
 git clone https://github.com/flatironinstitute/ironclust
@@ -40,6 +40,23 @@ irc2 [path_to_my_recording.dat] [myprobe.prb] (output_dir)  # for Intan (require
 * `output_dir` (optional): default output location is `irc2` under the recording directory or `myprobe` if the probe file is specified
 * `myprobe.prb`: required for Intan and Neuroscope formats. SpikeGLX does not require it if [Neuropixels probe](https://www.neuropixels.org/) is used.
 
+IronClust caches the `path_to_prm_file` for subsequent commands. To display the currently selected parameter file, run
+```
+irc2 which
+```
+
+To select a parameter file (or a recording file):
+```
+irc2 select [path_to_my_param.prm]
+irc2 select [path_to_my_recording]
+```
+
+Rerun using new parameters (up to four parameters can be specified, no spaces between name=value pairs):
+```
+irc2 rerun [path_to_my_param.prm] [name1=val1] [name2=val2] [name3=val3]
+irc2 rerun [name1=val1] [name2=val2] [name3=val3] [name4=val4]  # uses a cached parameter file
+```
+
 To visualize the raw or filtered traces and see clustered spikes on the traces, run (press 'h' in the UI for further help)
 ```
 irc2 traces [path_to_my_recording] 
@@ -55,11 +72,6 @@ irc2 manual [path_to_my_param.prm]
 This command shows the parameter file (`.prm` extension) used for sorting
 ```
 irc2 edit `path_to_recording_file`
-```
-
-IronClust caches the `path_to_prm_file` for subsequent commands. To display the currently selected parameter file, run
-```
-irc2 which
 ```
 
 To select a new parameter file, run
