@@ -2088,7 +2088,7 @@ end %func
 % auto merge
 function S_auto = auto_(S0, P)
 
-nRepeat = get_set_('nRepeat_merge', 2);
+nRepeat = get_set_(P, 'nRepeat_merge', 2);
 
 fprintf('\nauto-merging...\n'); runtime_automerge = tic;
 
@@ -2628,6 +2628,11 @@ cvii1_drift = vi2cell_(discretize(viSpk1, viLim_drift), nDrift);
 [vrRho1, viClu1, viTime1] = deal(S_auto.vrRho(viSpk1), viClu(viSpk1), viTime_spk(viSpk1));
 
 thresh1 = -abs(vrThresh_site(iSite1)); % negative detection
+min_snr_clu = get_(P, 'min_snr_clu');
+if min_snr_clu>0
+    thresh1 = thresh1 * min_snr_clu / P.Factor;
+end
+
 iT_peak = 1 - P.spkLim(1);
 mrPv_peak = mrPv(iT_peak,:);
 nSamples_burst = round(get_set_(P, 't_burst_ms', 20) * P.sRateHz / 1000);
