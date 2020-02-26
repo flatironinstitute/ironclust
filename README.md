@@ -1,5 +1,5 @@
 # IronClust
-![IronClust logo](img\ironclust_logo.png)
+![IronClust logo](img/ironclust_logo.png)
 Terabyte-scale, drift-resistant spike sorter for multi-day recordings from [high-channel-count probes](https://www.nature.com/articles/nature24636)
 
 ## Getting Started
