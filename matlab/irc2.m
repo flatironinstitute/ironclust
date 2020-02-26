@@ -166,8 +166,9 @@ switch lower(vcCmd)
     case 'plot-driftcorr', plot0_('driftcorr', vcFile_prm, vcArg2); return;
     case 'clear', clear_(vcArg1); vcFile_prm_=[]; return;
     case {'test-mcc', 'test_mcc', 'testmcc'}, test_mcc_(vcArg1); return;
-    case 'test'
+    case {'test', 'test-clear'}
         vcDir_in = get_test_data_(vcArg1);
+        if strcmpi(vcCmd, 'test-clear'), clear_(vcDir_in); end
         remove_lock_(vcDir_in);
         vcDir_out = '';
         fValidate = 1;
@@ -2535,12 +2536,13 @@ S_param = makeStruct_(nClu, nSites, knn, vcFile_prm, nSpk_min, ...
     type_fet, dimm_fet, mrPv, vrThresh_site, viShift, mlDrift, maxWavCor, P);
 
 % drift compensation
+S_param.S_pos_clu = [];
 if get_(P, 'merge_dist_thresh') > 0
-    S_pos_clu = static_position_clu_(setfield(S0, 'S_auto', S_auto));
-    S_param.S_pos_clu = S_pos_clu;    
-    S_param.merge_dist_thresh = get_(P, 'merge_dist_thresh');
-else
-    S_param.S_pos_clu = [];
+    try
+        S_param.S_pos_clu = static_position_clu_(setfield(S0, 'S_auto', S_auto));
+        S_param.merge_dist_thresh = get_(P, 'merge_dist_thresh');
+    catch
+    end
 end
 
 % compute pairwise distance in parallel by sites
@@ -2751,9 +2753,11 @@ for iDrift = 1:nDrift
         viClu2_ = viClu2(max(mrWav11' * mrWav_clu2, [], 1) >= maxWavCor);
         if isempty(viClu2_), continue; end
         viClu2_ = unique(viClu2_(:));
-        if ~isempty(S_pos_clu) && numel(viClu2_)>1
-            vrDist2_ = pdist2_(mrPos_clu_drift1(iClu1,:), mrPos_clu_drift1(viClu2_,:));
-            viClu2_(vrDist2_ > merge_dist_thresh) = [];
+        if ~isempty(S_pos_clu)
+            if numel(viClu2_)>1
+                vrDist2_ = pdist2_(mrPos_clu_drift1(iClu1,:), mrPos_clu_drift1(viClu2_,:));
+                viClu2_(vrDist2_ > merge_dist_thresh) = [];
+            end
         end        
         if isempty(viClu2_), continue; end
         cviClu_clu{iClu1} = [cviClu_clu{iClu1}; viClu2_];
@@ -5418,7 +5422,7 @@ if nargin<1, vcMode = 'static'; end
 switch vcMode
     case 'drift', vcDir_in = 'groundtruth/hybrid_synth/drift_siprobe/rec_64c_1200s_11'; 
     case 'static', vcDir_in = 'groundtruth/hybrid_synth/static_siprobe/rec_64c_1200s_11'; 
-    case 'tetrode', vcDir_in = 'groundtruth/hybrid_synth/static_tetrode/rec_4c_1200s_11'; 
+    case 'tetrode1', vcDir_in = 'groundtruth/hybrid_synth/static_tetrode/rec_4c_1200s_11'; 
     case 'tetrode2', vcDir_in = 'groundtruth/hybrid_synth/static_tetrode/rec_4c_1200s_21'; 
     case 'tetrode3', vcDir_in = 'groundtruth/hybrid_synth/static_tetrode/rec_4c_1200s_31'; 
     case 'bionet', vcDir_in = 'groundtruth/bionet/bionet_static/static_8x_A_2A';
@@ -6029,18 +6033,25 @@ else
 end
 step_sec_drift = get_set_(P, 'step_sec_drift', 20);
 batch_sec_drift = get_set_(P, 'batch_sec_drift', 300);
-if isempty(get_(P, 'nTime_batch'))
+if step_sec_drift>0 && batch_sec_drift>0
     P.nTime_batch = max(round(batch_sec_drift / step_sec_drift), 1);
-    fprintf('\tnTime_batch = %d (batch_sec_drift = %0.1f s)\n', P.nTime_batch, batch_sec_drift);
+    P.nTime_drift = max(round(recording_duration_(P) / step_sec_drift), 1);
+else
+    P.nTime_batch = 1;
+    P.nTime_drift = 1;
 end
-if isempty(get_(P, 'nTime_drift'))
-    try
-        P.nTime_drift = max(round(recording_duration_(P) / step_sec_drift), 1);
-        fprintf('\tnTime_drift = %d (step_sec_drift = %0.1f s)\n', P.nTime_drift, step_sec_drift);
-    catch
-        P.nTime_drift = 64;
-    end
-end
+% if isempty(get_(P, 'nTime_batch'))
+%     P.nTime_batch = max(round(batch_sec_drift / step_sec_drift), 1);
+%     fprintf('\tnTime_batch = %d (batch_sec_drift = %0.1f s)\n', P.nTime_batch, batch_sec_drift);
+% end
+% if isempty(get_(P, 'nTime_drift'))
+%     try
+%         P.nTime_drift = max(round(recording_duration_(P) / step_sec_drift), 1);
+%         fprintf('\tnTime_drift = %d (step_sec_drift = %0.1f s)\n', P.nTime_drift, step_sec_drift);
+%     catch
+%         P.nTime_drift = 64;
+%     end
+% end
 
 P.bytesPerSample = bytesPerSample_(P.vcDataType);
 P = struct_default_(P, 'vcFile_prm', subsFileExt_(P.vcFile, '.prm'));
@@ -6748,7 +6759,7 @@ if false
     viSpk_peak(vrDelta(viSpk_peak) > 1e10) = []; % remove super high 
 end
 [vrRho_peak, ix_] = sort(vrRho_spk(viSpk_peak), 'descend'); viSpk_peak = viSpk_peak(ix_);
-miKnn_peak = load_miKnn_spk_(P, viSite_spk, viSpk_peak);   
+miKnn_peak = load_miKnn_spk_(P, viSite_spk, viSpk_peak);
 
 % check for knn overlap    
 cvi_peak = cell(numel(viSpk_peak), 1);  
