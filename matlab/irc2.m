@@ -240,7 +240,7 @@ catch % remove cache
         fprintf(2, 'sort failed, retrying detect\n');
         pause(rand());
         S0 = detect_cache_(P, 1);
-        S0.S_clu = sort_cache_(S0, P, 1);
+        [S0.S_clu, fCached_sort] = sort_cache_(S0, P, 1);
     end
 end
 
