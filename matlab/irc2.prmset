@@ -7,7 +7,7 @@
 
 % merge
 merge_overlap_thresh = {.95, 1};
-maxWavCor = {.98};
+maxWavCor = num2cell(.96:.005:.99);
 
 %------------------------------------------
 % established

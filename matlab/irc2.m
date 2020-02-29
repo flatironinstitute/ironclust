@@ -288,7 +288,7 @@ csParam_sort = {'version', 'nPcPerChan', 'step_sec_drift', 'batch_sec_drift', ..
     'knn', 'nTime_max_drift', 'fMode_mlPc'};
 csParam_auto = {'version', 'maxWavCor', 'merge_thresh_cc', 'spkJitter_ms_cc', ...
     't_burst_ms', 'min_snr_clu', 'spkRefrac_merge_ms', 'fUseSecondSite_merge', ...
-    'merge_dist_thresh', 'nRepeat_merge'};
+    'merge_dist_thresh', 'nRepeat_merge', 'merge_overlap_thresh'};
 
 if ischar(P)
     P = file2struct_(P);
