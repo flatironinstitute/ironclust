@@ -80,6 +80,7 @@ switch lower(vcCmd)
     case 'probe-image', probe_image_(vcArg1, vcArg2, vcArg3); return;
     
     % ui
+    case {'remove-lock', 'unlock'}, remove_lock_(vcArg1); return;
     case 'export-prb', export_prb_json_(vcArg1, vcArg2); return;
     case 'probe', irc('probe', vcArg1); return;
     case 'traces', irc2_traces(vcArg1); return;
@@ -170,6 +171,7 @@ switch lower(vcCmd)
             case {'manual', 'ui'}, irc2_manual(P); return;
         end
         fValidate = contains(vcCmd, {'auto-verify', 'sort-verify', 'spikesort-verify', 'all'});
+        vcDir_out = '';
     case 'benchmark'
         if nargout==0, benchmark_(vcArg1, vcArg2, vcArg3); 
         else, varargout{1} = benchmark_(vcArg1, vcArg2, vcArg3); 
@@ -215,6 +217,7 @@ switch lower(vcCmd)
             P = file2struct_(vcDir_in);
             P.vcFile_prm = vcDir_in;
         end
+        remove_lock_(vcDir_in);
         vcCmd=''; 
         fValidate = exist_file_(fullfile(vcDir_in, 'firings_true.mda')) && nargout==0;
 end
@@ -267,7 +270,7 @@ S0.P=P;
 describe_(S0);
 
 % Validate
-if fValidate, validate_(P, vcFile_firings_mda); end
+if fValidate, validate_(P, vcFile_firings_mda, S0.S_auto); end
 end %func
 
 
@@ -489,12 +492,23 @@ function remove_lock_(csDir_rec)
 % recursively remove locks
 % delete files associated with locks (they are incomplete)
 
-if ischar(csDir_rec), csDir_rec={csDir_rec}; end
+if ischar(csDir_rec)
+    if exist_dir_(csDir_rec)
+        csDir_rec={csDir_rec}; 
+    elseif exist_file_(csDir_rec)
+        csDir_rec={fileparts(csDir_rec)};
+    else
+        fprintf(2, 'Does not exist: %s\n', csDir_rec);
+        return;
+    end
+end
 try
+    vnDelete = zeros(size(csDir_rec));
     parfor iDir=1:numel(csDir_rec)
         vS_dir = dir(fullfile(csDir_rec{iDir}, '**', '.*.lock'));
         csFiles_lock1 = arrayfun_(@(x)fullfile(fullfile(x.folder, x.name)), vS_dir);
         csDir_locked1 = cellfun_(@(x)strrep(x(2:end), '.lock', ''), csFiles_lock1);
+        vnDelete(iDir) = numel(csDir_locked1);
         delete_(csFiles_lock1);
         rmdir_(csDir_locked1);
     end
@@ -503,11 +517,12 @@ catch
         vS_dir = dir(fullfile(csDir_rec{iDir}, '**', '.*.lock'));
         csFiles_lock1 = arrayfun_(@(x)fullfile(fullfile(x.folder, x.name)), vS_dir);
         csDir_locked1 = cellfun_(@(x)strrep(x(2:end), '.lock', ''), csFiles_lock1);
+        vnDelete(iDir) = numel(csDir_locked1);
         delete_(csFiles_lock1);
         rmdir_(csDir_locked1);
     end
 end
-fprintf('Removed locks from %d recordings.\n', numel(csDir_rec));
+fprintf('Removed %d lock(s).\n', sum(vnDelete));
 end %func
 
 
@@ -977,10 +992,11 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function [vcFile_score, S_score] = validate_(P, vcFile_firings_mda)
+function [vcFile_score, S_score] = validate_(P, vcFile_firings_mda, S_auto)
 
 t_fun=tic;
 if nargin<2, vcFile_firings_mda=[]; end
+if nargin<3, S_auto=[]; end
 
 S_cfg = read_cfg_();
 P.jitter = round(get_set_(S_cfg, 'spkJitter_ms_gt', 1) * P.sRateHz / 1000);
@@ -1004,6 +1020,11 @@ else
         struct_save_(S_score, vcFile_score, 1);
     end
 end
+if false
+    S0 = load0_(P.vcFile_prm);
+    S_score.vrSnr_clu = (S0.S_auto.vrScore_clu) * 20;
+    S_score.vrSnr_gt = S_score.vrSnr_clu(S_score.viClu_gt);
+end
 hFig = S_score_plot_(S_score, S_cfg);
 set(hFig, 'UserData', makeStruct_(P, S_cfg, vcFile_firings_mda, S_score));
 
@@ -1015,6 +1036,7 @@ end %func
 function hFig = S_score_plot_(S_score, S_cfg)
 
 if nargin<2, S_cfg=[]; end
+
 if isempty(S_cfg)
     S_cfg = get_(S_score, 'S_cfg');
 end
@@ -1033,8 +1055,9 @@ else
     vcX_gt = 'viGt_ordered';
     snr_max_plot = 0;
 end
+
 vrSnr_clu = get_(S_score, 'vrSnr_clu');
-if ~isempty(vrSnr_clu)
+if ~isempty(vrSnr_clu)    
     vcSnr_clu = sprintf(' >= SNR%0.1f', S_cfg.snr_thresh_clu);
     vlClu = vrSnr_clu>=S_cfg.snr_thresh_clu;
     vcX_clu = 'vrSnr_clu';
@@ -1835,6 +1858,7 @@ if ~exist_file_(vcFile_prm)
 end
 
 % update param
+remove_lock_(fileparts(vcFile_prm));
 P = file2struct_(vcFile_prm);
 P = struct_merge_(P, cs2struct_(csParam));
 P.vcFile_prm = vcFile_prm;
@@ -2120,6 +2144,23 @@ end %func
             
 
 %--------------------------------------------------------------------------
+% merge mutual neighbors
+function S_auto = knn_overlap_merge_(S_auto, miKnn_spk, thresh)
+nClu_pre = S_auto.nClu;
+
+[vrScore_clu, viClu_nn_clu] = isolation_score_(S_auto, miKnn_spk);
+viClu_merge = find((1:S_auto.nClu)' == viClu_nn_clu(viClu_nn_clu) & vrScore_clu<thresh);
+viMap_clu = 1:S_auto.nClu;
+viMap_clu(viClu_merge) = min(viMap_clu(viClu_merge), viClu_nn_clu(viClu_merge)');
+vlPos = S_auto.viClu > 0;
+S_auto.viClu(vlPos) = viMap_clu(S_auto.viClu(vlPos)); %translate cluster number
+S_auto = S_auto_refresh_(S_auto, 1, []);
+
+fprintf('\tknn_overlap_merge_: %d->%d units\n', nClu_pre, S_auto.nClu);
+end %func
+
+
+%--------------------------------------------------------------------------
 % auto merge
 function S_auto = auto_(S0, P)
 
@@ -2130,14 +2171,23 @@ fprintf('\nauto-merging...\n'); runtime_automerge = tic;
 % Merge based on KNN-graph
 S_auto = postCluster_(S0.S_clu, P, S0.viSite_spk); % peak merging
 
-% Merge based on waveform similarity
-for iRepeat=1:nRepeat
-    nClu_prev = S_auto.nClu;
-    S_auto = wave_ccm_merge_(S0, S_auto, P);
-    S_auto = wave_similarity_merge_(S0, S_auto, P);
-    if nClu_prev==S_auto.nClu, break; end
+% Merge based on knn overlap
+merge_overlap_thresh = get_set_(P, 'merge_overlap_thresh', 1);
+try
+    if merge_overlap_thresh>0 && merge_overlap_thresh<1
+        miKnn_spk = load_miKnn_spk_(P, S0.viSite_spk);
+        for iRepeat = 1:3
+            S_auto = knn_overlap_merge_(S_auto, miKnn_spk, merge_overlap_thresh);
+        end
+    end
+catch    
 end
 
+% merge based on cross-correlogram
+S_auto = wave_ccm_merge_(S0, S_auto, P);
+
+% merge based on waveform similarity
+S_auto = wave_similarity_merge_(S0, S_auto, P);
 
 S_auto = S_auto_refrac_(S_auto, P, S0.viTime_spk); % refractory violation removal
 S_auto = S_auto_refresh_(S_auto, 1, S0.viSite_spk);
@@ -2146,6 +2196,12 @@ S_auto.memory_auto = memory_matlab_();
 S_auto.runtime_automerge = toc(runtime_automerge);
 fprintf('\tauto-merging took %0.1fs (fGpu=%d, fParfor=%d)\n', ...
     S_auto.runtime_automerge, P.fGpu, P.fParfor);
+
+% compute quality metrics
+if true
+    if isempty(miKnn_spk), miKnn_spk = load_miKnn_spk_(P, S0.viSite_spk); end
+    S_auto.vrScore_clu = isolation_score_(S_auto, miKnn_spk);
+end
 end %func
 
 
@@ -2621,6 +2677,7 @@ else
     S_auto = S_auto0;
     fprintf('\tNo waveforms were merged\n');
 end
+S_auto.P=P;
 end %func
 
 
@@ -2770,7 +2827,7 @@ end
 % distance calculation
 vlExist_clu = false(1, nClu);
 vlExist_clu([cviClu_drift{:}]) = true;
-cviClu_clu = arrayfun_(@(x)x, (1:nClu)'); %start with self-containing cell
+cviClu_clu = num2cell((1:nClu)');
 norm_mr_ = @(mr)mr ./ sqrt(sum(mr.^2,1)); 
 tr2mr_pv_norm_ = @(tr,mr)norm_mr_(reshape(mr*reshape(tr,size(tr,1),[]),[],size(tr,3))); 
 
@@ -2794,221 +2851,14 @@ for iDrift = 1:nDrift
         mrWav11 = pc2wav_shift_(trPc_clu1(:,:,iiClu1), mrPv, viShift);
         viClu2_ = viClu2(max(mrWav11' * mrWav_clu2, [], 1) >= maxWavCor);
         if isempty(viClu2_), continue; end
-        viClu2_ = unique(viClu2_(:));
+        viClu2_ = setdiff(viClu2_, iClu1);
+        if isempty(viClu2_), continue; end
         if ~isempty(S_pos_clu)
-            if numel(viClu2_)>1
-                vrDist2_ = pdist2_(mrPos_clu_drift1(iClu1,:), mrPos_clu_drift1(viClu2_,:));
-                viClu2_(vrDist2_ > merge_dist_thresh) = [];
-            end
+            vrDist2_ = pdist2_(mrPos_clu_drift1(iClu1,:), mrPos_clu_drift1(viClu2_,:));
+            viClu2_(vrDist2_ > merge_dist_thresh) = [];
         end        
         if isempty(viClu2_), continue; end
-        cviClu_clu{iClu1} = [cviClu_clu{iClu1}; viClu2_];
-    end
-end  
-fprintf('.');
-end %func
-
-
-%--------------------------------------------------------------------------
-function [cviClu_clu, vlExist_clu] = wave_similarity_site__(iSite1, S_auto)
-
-fUseSecondSite = 1;
-
-% Load KNN and identify neighbors per cluster
-csVar_imported = import_struct_(S_auto);
-NUM_KNN = get_set_(P, 'knn_expand_merge', 30);
-nDrift = size(mlDrift, 1);
-% fprintf('\twave_similarity_site_pre_: Site%d... ', iSite1); t_fun=tic;
-miKnn1 = load_miKnn_site_(S_auto, iSite1);
-miKnn1 = miKnn1(1:min(NUM_KNN, size(miKnn1,1)), :);
-viSpk1 = get_viSpk_site_(S_auto, 1, iSite1);
-cvii1_drift = vi2cell_(discretize(viSpk1, viLim_drift), nDrift);
-[vrRho1, viClu1, viTime1] = deal(S_auto.vrRho(viSpk1), viClu(viSpk1), viTime_spk(viSpk1));
-
-thresh1 = -abs(vrThresh_site(iSite1)); % negative detection
-iT_peak = 1 - P.spkLim(1);
-mrPv_peak = mrPv(iT_peak,:);
-nSamples_burst = round(get_set_(P, 't_burst_ms', 20) * P.sRateHz / 1000);
-vrRho_1 = copy_mask_(S_auto.vrRho, viSpk1);
-[~, miiKnn1] = ismember(miKnn1, viSpk1);
-if fUseSecondSite
-    viSpk2 = get_viSpk_site_(S_auto, 2, iSite1);    
-end
-fSecondSite = ~isempty(viSpk2);
-if fSecondSite   
-    vrRho_2 = copy_mask_(S_auto.vrRho, viSpk2);
-    [~, miiKnn2] = ismember(miKnn1, viSpk2);
-    viTime2 = viTime_spk(viSpk2);
-    cvii2_drift = vi2cell_(discretize(viSpk2, viLim_drift), nDrift);
-end
-[cviClu1_drift, cviClu2_drift, ccviSpk1_drift, ccviSpk2_drift] = deal(cell(nDrift,1));
-for iDrift = 1:nDrift   
-    switch 2
-        case 1, vii1 = cvii1_drift{iDrift};
-        case 2
-            vii1 = cat(1,cvii1_drift{mlDrift(:,iDrift)});
-            if fSecondSite
-                vii2 = cat(1,cvii2_drift{mlDrift(:,iDrift)});
-            end
-    end
-    if numel(vii1) < nSpk_min, continue; end
-    [vrRho11, viClu11, miKnn11, miiKnn11] = ...
-        deal(vrRho1(vii1), viClu1(vii1), miKnn1(:,vii1), miiKnn1(:,vii1));
-    [cviiSpk_clu_, ~, viClu_uniq] = vi2cell_(viClu11, nClu);
-    if fSecondSite
-%         vii2 = cvii2_drift{iDrift};
-        miiKnn21 = miiKnn2(:,vii1); 
-    end
-    nClu1 = numel(viClu_uniq);
-    [viClu1_drift1, viClu2_drift1] = deal(nan(1,nClu1));
-    [cviSpk1_drift1, cviSpk2_drift1] = deal(cell(1,nClu1));
-    for iiClu1 = 1:nClu1
-        iClu1 = viClu_uniq(iiClu1);
-        vii_ = cviiSpk_clu_{iClu1};   
-        vii2_ = [];
-        switch 6 
-            case 1
-                [miKnn11_, miiKnn11_, vrRho11_T] = ...
-                    deal(miKnn11(:,vii_), miiKnn11(:,vii_), vrRho11(vii_)');
-                vii1_ = miiKnn11_(vrRho_1(miKnn11_) >= vrRho11_T); 
-                if fSecondSite
-                    miiKnn21_ = miiKnn21(:,vii_);
-                    vii2_ = miiKnn21_(vrRho_2(miKnn11_) >= vrRho11_T);
-                end                  
-            case 2
-                [miKnn11_, miiKnn11_, vrRho11_T] = ...
-                    deal(miKnn11(:,vii_), miiKnn11(:,vii_), vrRho11(vii_)');
-                vrRho11_T = median(vrRho11_T);
-                vii1_ = miiKnn11_(vrRho_1(miKnn11_) >= vrRho11_T);
-                if fSecondSite
-                    miiKnn21_ = miiKnn21(:,vii_);
-                    vii2_ = miiKnn21_(vrRho_2(miKnn11_) >= vrRho11_T);
-                end                  
-            case 3 % use the top half of the density
-                vrRho11_T = vrRho11(vii_)';
-                vii_ = vii_(vrRho11_T>=median(vrRho11_T));
-                vii1_ = miiKnn11(:,vii_); vii1_ = vii1_(vii1_>0);
-                if fSecondSite
-                    vii2_ = miiKnn21(:,vii_); vii2_ = vii2_(vii2_>0);
-                end
-            case 4
-                vrRho11_T = vrRho11(vii_)';
-                vii_ = vii_(vrRho11_T>=median(vrRho11_T));
-                
-                [miKnn11_, miiKnn11_, vrRho11_T] = ...
-                    deal(miKnn11(:,vii_), miiKnn11(:,vii_), vrRho11(vii_)');
-                vii1_ = unique_(miiKnn11_(vrRho_1(miKnn11_) >= vrRho11_T)); 
-                if fSecondSite
-                    miiKnn21_ = miiKnn21(:,vii_);
-                    vii2_ = unique_(miiKnn21_(vrRho_2(miKnn11_) >= vrRho11_T));
-                end
-            case 5
-                vrRho11_T = vrRho11(vii_)';
-                med_rho11 = median(vrRho11_T);
-                vii_ = vii_(vrRho11_T>=med_rho11);                
-                [miKnn11_, miiKnn11_] = deal(miKnn11(:,vii_), miiKnn11(:,vii_));
-                vii1_ = unique_(miiKnn11_(vrRho_1(miKnn11_) >= med_rho11)); 
-                if fSecondSite
-                    miiKnn21_ = miiKnn21(:,vii_);
-                    vii2_ = unique_(miiKnn21_(vrRho_2(miKnn11_) >= med_rho11));
-                end  
-            case 6
-                vrRho11_ = vrRho11(vii_);
-                vii1_ = vii1(vii_(vrRho11_>=median(vrRho11_)));
-                vii2_ = vii2(vii_(vrRho11_T>=med_rho11));
-        end
-        if numel(vii1_) >= nSpk_min
-            cviSpk1_drift1{iiClu1} = vii1_;
-            viClu1_drift1(iiClu1) = iClu1;
-        end    
-        if numel(vii2_) >= nSpk_min
-            cviSpk2_drift1{iiClu1} = vii2_;    
-            viClu2_drift1(iiClu1) = iClu1;
-        end       
-    end
-    vi1_keep = find(~isnan(viClu1_drift1));    
-    cviClu1_drift{iDrift} = viClu1_drift1(vi1_keep);
-    ccviSpk1_drift{iDrift} = cviSpk1_drift1(vi1_keep);    
-    vi2_keep = find(~isnan(viClu2_drift1));
-    cviClu2_drift{iDrift} = viClu2_drift1(vi2_keep);        
-    ccviSpk2_drift{iDrift} = cviSpk2_drift1(vi2_keep);
-end
-[miKnn1, miiKnn1, miiKnn2] = deal([]); % clear memory
-
-% load trPc1 and trPc2
-[cviClu_drift, ctrPc_drift] = deal(cell(nDrift,1));
-for iFet = 1:2
-    if iFet==2 && ~fSecondSite, break; end    
-    trPc = load_fet_site_(S_auto, iFet, iSite1);
-    if iFet==1
-        viTime = viTime1;
-    else
-        viTime = viTime2;
-    end
-    for iDrift = 1:nDrift
-        [viClu_drift2, cmrPc_drift2] = deal([], {});
-        if iFet==1
-            viClu_drift1 = cviClu1_drift{iDrift};
-            cviSpk_drift1 = ccviSpk1_drift{iDrift};
-        else
-            viClu_drift1 = cviClu2_drift{iDrift};
-            cviSpk_drift1 = ccviSpk2_drift{iDrift};
-        end        
-        for ic = 1:numel(cviSpk_drift1)
-            [iClu1, vii1] = deal(viClu_drift1(ic), cviSpk_drift1{ic}); 
-            cvii1 = separate_burst_(vii1, viTime, nSamples_burst);
-            for iBurst=1:numel(cvii1)
-                if numel(cvii1{iBurst}) < nSpk_min, continue; end
-                tr_ = trPc(:,:,cvii1{iBurst});
-                switch 2
-                    case 1, mrPc1 = mean(tr_,3);
-                    case 2, mrPc1 = median(tr_,3);
-                end
-                if mrPv_peak*mrPc1(:,1) <= thresh1 % && peak_amp1 <= min(min(mrPv * mrPc1))/2
-                    viClu_drift2(end+1) = iClu1;
-                    switch 1
-                        case 1, cmrPc_drift2{end+1} = mrPc1;
-                        case 2, cmrPc_drift2{end+1} = mrPc1 ./ std(tr_,1,3);
-                    end
-                end
-            end
-        end
-        if ~isempty(viClu_drift2)
-            if iFet==1
-                cviClu_drift{iDrift} = viClu_drift2;
-                ctrPc_drift{iDrift} = cat(3, cmrPc_drift2{:});
-            else
-                cviClu_drift{iDrift} = [cviClu_drift{iDrift}, viClu_drift2];
-                ctrPc_drift{iDrift} = cat(3, ctrPc_drift{iDrift}, cmrPc_drift2{:});
-            end
-        end
-    end
-    trPc = [];
-end
-
-% distance calculation
-vlExist_clu = false(1, nClu);
-vlExist_clu([cviClu_drift{:}]) = true;
-cviClu_clu = arrayfun_(@(x)x, (1:nClu)'); %start with self-containing cell
-norm_mr_ = @(mr)mr ./ sqrt(sum(mr.^2,1)); 
-tr2mr_pv_norm_ = @(tr,mr)norm_mr_(reshape(mr*reshape(tr,size(tr,1),[]),[],size(tr,3))); 
-for iDrift = 1:nDrift
-    viDrift1 = find(mlDrift(:,iDrift));
-    viClu1 = cviClu_drift{iDrift};
-    if isempty(viClu1), continue; end
-    trPc_clu1 = cat(3, ctrPc_drift{iDrift});
-    if isempty(trPc_clu1), continue; end
-    viClu2 = [cviClu_drift{viDrift1}];
-    trPc_clu2  = cat(3, ctrPc_drift{viDrift1});
-    if isempty(trPc_clu2), continue; end
-    mrWav_clu2 = tr2mr_pv_norm_(trPc_clu2, mrPv);
-    for iiClu1 = 1:numel(viClu1)
-        iClu1 = viClu1(iiClu1);
-        mrWav11 = pc2wav_shift_(trPc_clu1(:,:,iiClu1), mrPv, viShift);
-        viClu2_ = viClu2(max(mrWav11' * mrWav_clu2, [], 1) >= maxWavCor);
-        if isempty(viClu2_), continue; end
-        viClu2_ = unique(viClu2_(:));
-        cviClu_clu{iClu1} = [cviClu_clu{iClu1}; viClu2_];
+        cviClu_clu{iClu1} = [cviClu_clu{iClu1}; viClu2_(:)];
     end
 end  
 fprintf('.');
@@ -5462,45 +5312,37 @@ end %func
 function vcDir_in = get_test_data_(vcMode)
 if nargin<1, vcMode = 'static'; end
 switch vcMode
-    case 'drift', vcDir_in = 'groundtruth/hybrid_synth/drift_siprobe/rec_64c_1200s_11'; 
-    case 'static', vcDir_in = 'groundtruth/hybrid_synth/static_siprobe/rec_64c_1200s_11'; 
-    case 'tetrode', vcDir_in = 'groundtruth/hybrid_synth/static_tetrode/rec_4c_1200s_11'; 
-    case 'tetrode1', vcDir_in = 'groundtruth/hybrid_synth/static_tetrode/rec_4c_1200s_21'; 
-    case 'tetrode2', vcDir_in = 'groundtruth/hybrid_synth/static_tetrode/rec_4c_1200s_31'; 
-    case 'bionet', vcDir_in = 'groundtruth/bionet/bionet_static/static_8x_A_2A';
-    case 'bionet1', vcDir_in = 'groundtruth/bionet/bionet_drift/drift_8x_A_2A';     
-    case 'monotrode', vcDir_in = 'groundtruth/waveclus_synth/quiroga_difficult1/C_Difficult1_noise005';
-    case 'monotrode1', vcDir_in = 'groundtruth/waveclus_synth/quiroga_difficult1/C_Difficult1_noise01';
-    case 'monotrode2', vcDir_in = 'groundtruth/waveclus_synth/quiroga_difficult1/C_Difficult1_noise02';
-    case 'boyden', vcDir_in = 'groundtruth/paired_recordings/boyden32c/419_1_7';
-    case 'boyden1', vcDir_in = 'groundtruth/paired_recordings/boyden32c/419_1_8';
-    case 'boyden2', vcDir_in = 'groundtruth/paired_recordings/boyden32c/915_8_1';
-    case 'boyden3', vcDir_in = 'groundtruth/paired_recordings/boyden32c/915_10_1';
-    case 'boyden4', vcDir_in = 'groundtruth/paired_recordings/boyden32c/915_18_1';
+    case 'drift', vcDir_in = 'hybrid_synth/drift_siprobe/rec_64c_1200s_11'; 
+    case 'static', vcDir_in = 'hybrid_synth/static_siprobe/rec_64c_1200s_11'; 
+    case 'tetrode', vcDir_in = 'hybrid_synth/static_tetrode/rec_4c_1200s_11'; 
+    case 'tetrode1', vcDir_in = 'hybrid_synth/static_tetrode/rec_4c_1200s_21'; 
+    case 'tetrode2', vcDir_in = 'hybrid_synth/static_tetrode/rec_4c_1200s_31'; 
+    case 'bionet', vcDir_in = 'bionet/bionet_static/static_8x_A_2A';
+    case 'bionet1', vcDir_in = 'bionet/bionet_drift/drift_8x_A_2A';     
+    case 'monotrode', vcDir_in = 'waveclus_synth/quiroga_difficult1/C_Difficult1_noise005';
+    case 'monotrode1', vcDir_in = 'waveclus_synth/quiroga_difficult1/C_Difficult1_noise01';
+    case 'monotrode2', vcDir_in = 'waveclus_synth/quiroga_difficult1/C_Difficult1_noise02';
+    case 'boyden', vcDir_in = 'paired_recordings/boyden32c/419_1_7';
+    case 'boyden1', vcDir_in = 'paired_recordings/boyden32c/419_1_8';
+    case 'boyden2', vcDir_in = 'paired_recordings/boyden32c/915_8_1';
+    case 'boyden3', vcDir_in = 'paired_recordings/boyden32c/915_10_1';
+    case 'boyden4', vcDir_in = 'paired_recordings/boyden32c/915_18_1';
     case 'neuropix', vcDir_in = read_cfg_('path_neuropix_sample');
-    case 'kampff', vcDir_in = 'groundtruth/paired_recordings/kampff/2015_09_03_Pair_9_0A';
-    case 'kampff1', vcDir_in = 'groundtruth/paired_recordings/kampff/2015_09_03_Pair_9_0B';
-    case 'kampff2', vcDir_in = 'groundtruth/paired_recordings/kampff/c28';
-    case 'kampff3', vcDir_in = 'groundtruth/paired_recordings/kampff/c45';
-    case 'kampff4', vcDir_in = 'groundtruth/paired_recordings/kampff/c46';
-    case 'english', vcDir_in = 'DanEnglish/juxta_cell_curated/m139_200114_230220';
-    case 'english1', vcDir_in = 'DanEnglish/juxta_cell_curated/m139_200114_222743';
-    case 'english2', vcDir_in = 'DanEnglish/juxta_cell_curated/m113_191125_213423';
-    case 'english3', vcDir_in = 'DanEnglish/juxta_cell_curated/m14_190326_160710_cell1';
-    case 'english4', vcDir_in = 'DanEnglish/juxta_cell_curated/m15_190315_152315_cell1';        
+    case 'kampff', vcDir_in = 'paired_recordings/kampff/2015_09_03_Pair_9_0A';
+    case 'kampff1', vcDir_in = 'paired_recordings/kampff/2015_09_03_Pair_9_0B';
+    case 'kampff2', vcDir_in = 'paired_recordings/kampff/c28';
+    case 'kampff3', vcDir_in = 'paired_recordings/kampff/c45';
+    case 'kampff4', vcDir_in = 'paired_recordings/kampff/c46';
+    case 'english', vcDir_in = '../DanEnglish/juxta_cell_curated/m139_200114_230220';
+    case 'english1', vcDir_in = '../DanEnglish/juxta_cell_curated/m139_200114_222743';
+    case 'english2', vcDir_in = '../DanEnglish/juxta_cell_curated/m113_191125_213423';
+    case 'english3', vcDir_in = '../DanEnglish/juxta_cell_curated/m14_190326_160710_cell1';
+    case 'english4', vcDir_in = '../DanEnglish/juxta_cell_curated/m15_190315_152315_cell1';        
     otherwise, error('unsupported test mode');
 end
-if ~exist_dir_(vcDir_in) && ~exist_file_(vcDir_in)
-    if ispc()
-        vcDir_in = strrep(vcDir_in, '/', '\');    
-        vcDir_in = fullfile('D:\Globus', vcDir_in); % RAID5
-    elseif isunix()
-        vcDir_in = fullfile('/mnt/ceph/users/jjun', vcDir_in);
-    elseif ismac()
-        vcDir_in = fullfile('~/ceph', vcDir_in);
-    else
-        error('get_test_data_: unsupported OS');
-    end
+vcDir_in = fullfile(read_cfg_('path_groundtruth'), vcDir_in);
+if ispc()
+    vcDir_in = strrep(vcDir_in, '/', '\');    
 end
 end %func
 
@@ -6844,6 +6686,43 @@ end %func
 
 
 %--------------------------------------------------------------------------
+% compute cluster isolation distance
+function [vrScore_clu, viClu_nn_clu] = isolation_score_(S_auto, miKnn_spk)
+% usage
+% [vrScore_clu, viClu_nn_clu] = isolation_score_(S_auto, viSite_spk, miKnn_spk)
+% [vrScore_clu, viClu_nn_clu] = isolation_score_(S_auto, viSite_spk, miKnn_spk)
+
+t_fun=tic;
+
+[viClu_spk, P] = get_(S_auto, 'viClu', 'P');
+try
+   [cviSpk_clu, nClu] = deal(S_auto.cviSpk_clu, S_auto.nClu);
+catch
+    [cviSpk_clu, nClu] = vi2cell_(viClu_spk);
+end
+[vrScore_clu, viClu_nn_clu] = deal(nan(nClu,1));
+try
+    get_miClu_ = @(x)viClu_spk(miKnn_spk(:,cviSpk_clu{x}));
+    for iClu1 = 1:nClu
+        miClu1 = get_miClu_(iClu1);
+        n11 = sum(miClu1(:) == iClu1);    
+        iClu2 = mode(miClu1(miClu1~=iClu1 & miClu1>0));
+        n12 = sum(miClu1(:) == iClu2);
+        if isempty(iClu2) % no matching cluster found
+            vrScore_clu(iClu1) = 1;
+        else
+            vrScore_clu(iClu1) = (n11) / (n11+n12);
+            viClu_nn_clu(iClu1) = iClu2;
+        end
+    end
+    fprintf('\tisolation_score_: took %0.1fs\n', toc(t_fun));
+catch
+    fprintf(2, 'isolation_score_: failed\n');
+end
+end %func
+
+
+%--------------------------------------------------------------------------
 function [viClu_new, icl_new] = dpclus_remove_count_(viClu, icl, min_count)
 nClu = numel(icl);
 viMap = zeros(nClu,1);
@@ -8001,7 +7880,7 @@ try
             case 'irc2' % reuse last shared parameter output
                 vcFile_prm = fullfile(vcDir_out, sprintf('raw_geom_p%d.prm', iPrmset));
                 makeParam_(vcDir_in, vcFile_prm, S_prm, fParfor);
-                vcFile_firings = irc2(vcFile_prm); 
+                vcFile_firings = irc2('spikesort', vcFile_prm); 
                 vcFile_score = strrep(vcFile_firings, '.mda', '_score.mat');
                 if exist_file_(vcFile_score)
                     S_score1 = load(vcFile_score);
