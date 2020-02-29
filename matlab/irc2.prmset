@@ -6,27 +6,29 @@
 % cluster
 
 % merge
-maxWavCor = num2cell([.95:.005:1]);
-
+merge_overlap_thresh = {.95, 1};
+maxWavCor = {.98};
 
 %------------------------------------------
 % established
 
 % detect
 qqFactor = {3.5};
-nPc_spk = {9};
+spkLim_ms = {[-.25, .75]};
 maxDist_site_spk_um = {100};
+nPc_spk = {9};
 prinvec_mode = {2};
 freqLim = {[300,8000]};
-spkLim_ms = {[-.25, .75]};
 fMatchedFilter_detect = {0};
 
 % cluster
-step_sec_drift = {20};
 batch_sec_drift = {300};
+step_sec_drift = {20};
 
 % merge
+min_snr_clu = {4.5};
+nRepeat_merge = {3};
 fMode_mlPc = {1}; % 1: taper down, 2: use full
 merge_thresh_cc = num2cell(1);
+merge_dist_thresh = num2cell([5]);
 fUseSecondSite_merge = {0};
-merge_dist_thresh = {5};

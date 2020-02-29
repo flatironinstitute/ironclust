@@ -2164,7 +2164,7 @@ end %func
 % auto merge
 function S_auto = auto_(S0, P)
 
-nRepeat = get_set_(P, 'nRepeat_merge', 2);
+nRepeat_merge = get_set_(P, 'nRepeat_merge', 3);
 
 fprintf('\nauto-merging...\n'); runtime_automerge = tic;
 
@@ -2176,7 +2176,7 @@ merge_overlap_thresh = get_set_(P, 'merge_overlap_thresh', 1);
 try
     if merge_overlap_thresh>0 && merge_overlap_thresh<1
         miKnn_spk = load_miKnn_spk_(P, S0.viSite_spk);
-        for iRepeat = 1:3
+        for iRepeat = 1:nRepeat_merge
             S_auto = knn_overlap_merge_(S_auto, miKnn_spk, merge_overlap_thresh);
         end
     end

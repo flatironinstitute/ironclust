@@ -44,7 +44,7 @@ t_burst_ms = 20;            % burst ISI for waveform separation
 min_snr_clu = 4.5;          % Automatically remove clusters below this SNR threshold, set to `[]` to disable
 spkRefrac_merge_ms = .25;   % Remove spikes violating this refractory period in msec when merged 
 fUseSecondSite_merge = 0;   % Use second site during merging
-nRepeat_merge = 2;          % Repeat automerge twice
+nRepeat_merge = 3;          % Repeat automerge for merge_overlap_thresh
 
 % [Manual stage: dispplay marameters]
 maxAmp = 250;               % Amplitude range in uV (initial setting, changeable in UI) (*)
