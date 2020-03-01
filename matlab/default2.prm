@@ -36,7 +36,7 @@ nTime_max_drift = 256;		% (do not change), max number of time batches per load
 
 % [Auto-merge stage: automatically merge similar clusters based on KNN-graph and waveform similarity]
 merge_overlap_thresh = .95; % knn-overlap merge threshold
-maxWavCor = 0.98;           % Sweap values for max isolation score. Automated merge thresohld based on waveform correlation
+maxWavCor = 0.985;          % Sweap values for max isolation score. Automated merge thresohld based on waveform correlation
 merge_dist_thresh = 5;      % Do not merge if distance between cluster is greater than x, set to 0 to disable
 merge_thresh_cc = 1;        % merge based on cross-correlation thresold
 spkJitter_ms_cc = 1;        % merge jitter timing
