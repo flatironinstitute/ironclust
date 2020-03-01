@@ -7750,7 +7750,7 @@ function optimize_prmset_(vcDir_rec, vcFile_prmset, fPreview)
 % optimize_prmset_(..., vcFile_prmset)
 % optimize_prmset_(..., vcFile_prmset, vcFile_out)
 
-fParfor_rec = 1; % disable parfor on individual recording
+fParfor_rec = 0; % disable parfor on individual recording
 
 if nargin<3, fPreview=0; end
 fPreview = logical_(fPreview);
@@ -7807,7 +7807,7 @@ nRuns_loaded = nRuns - numel(viRun1);
 fprintf(2, 'Loaded %d/%d (%0.1f%%) from cache\n', nRuns_loaded, nRuns, nRuns_loaded/nRuns*100);
 if ~fPreview
     remove_lock_(csDir_rec);
-    for iRun1 = 1:numel(viRun1)
+    parfor iRun1 = 1:numel(viRun1)
         [iRec, iPrmset] = ind2sub([nRec,nPrmset], viRun1(iRun1));
         cVal_prm1 = permute_prm_(cVal_prm, iPrmset);
         ccScore_prmset_rec1{iRun1} = score_prmset_(...
