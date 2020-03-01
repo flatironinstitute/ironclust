@@ -152,7 +152,7 @@ switch lower(vcCmd)
         return;
     case 'scoreboard', irc2_scoreboard(); return;
     case {'all', 'spikesort', 'detectsort', 'detect-sort', 'sort', 'auto', ...
-            'describe', 'manual', 'validate', 'verify', ...
+            'describe', 'manual', 'validate', 'verify', 'spikesort-cache', ...
             'auto-verify', 'sort-verify', 'spikesort-verify', 'detectsort-verify', ...
             'auto-validate', 'sort-validate', 'spikesort-validate', 'detectsort-validate'}
 
@@ -163,6 +163,7 @@ switch lower(vcCmd)
         end
         P = file2struct_(vcFile_prm);        
         switch lower(vcCmd)
+            case {'spikesort-cache'}, clear_(); fDetect = 0; fSort = 0; fAuto=0;
             case {'detect-sort', 'spikesort', 'spikesort-verify', 'all'}, clear_(); fDetect = 1; fSort = 1; fAuto=1;
             case {'sort', 'sort-verify'}, fDetect = 0; fSort = 1; fAuto=1;   
             case {'auto', 'auto-verify'}, fDetect = 0; fSort = 0; fAuto=1;
@@ -7738,7 +7739,7 @@ function optimize_prmset_(vcDir_rec, vcFile_prmset, fPreview)
 % optimize_prmset_(..., vcFile_prmset)
 % optimize_prmset_(..., vcFile_prmset, vcFile_out)
 
-fParfor_rec = 0; % disable parfor on individual recording
+fParfor_rec = 1; % disable parfor on individual recording
 
 if nargin<3, fPreview=0; end
 fPreview = logical_(fPreview);
@@ -7782,7 +7783,7 @@ ccScore_prmset_rec = cell(nRec*nPrmset, 1);
 % remove lock files
 
 nRuns = numel(ccScore_prmset_rec);
-parfor iRun = 1:nRuns
+for iRun = 1:nRuns
     [iRec, iPrmset] = ind2sub([nRec,nPrmset], iRun);
     cVal_prm1 = permute_prm_(cVal_prm, iPrmset);
     ccScore_prmset_rec{iRun} = load_score_prmset_(...
@@ -7795,7 +7796,7 @@ nRuns_loaded = nRuns - numel(viRun1);
 fprintf(2, 'Loaded %d/%d (%0.1f%%) from cache\n', nRuns_loaded, nRuns, nRuns_loaded/nRuns*100);
 if ~fPreview
     remove_lock_(csDir_rec);
-    parfor iRun1 = 1:numel(viRun1)
+    for iRun1 = 1:numel(viRun1)
         [iRec, iPrmset] = ind2sub([nRec,nPrmset], viRun1(iRun1));
         cVal_prm1 = permute_prm_(cVal_prm, iPrmset);
         ccScore_prmset_rec1{iRun1} = score_prmset_(...
@@ -7874,7 +7875,7 @@ try
             case 'irc2' % reuse last shared parameter output
                 vcFile_prm = fullfile(vcDir_out, sprintf('raw_geom_p%d.prm', iPrmset));
                 makeParam_(vcDir_in, vcFile_prm, S_prm, fParfor);
-                vcFile_firings = irc2('spikesort', vcFile_prm); 
+                vcFile_firings = irc2('spikesort-cache', vcFile_prm); 
                 vcFile_score = strrep(vcFile_firings, '.mda', '_score.mat');
                 if exist_file_(vcFile_score)
                     S_score1 = load(vcFile_score);
