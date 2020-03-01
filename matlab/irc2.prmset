@@ -6,7 +6,7 @@
 % cluster
 
 % merge
-merge_overlap_thresh = {.95, 1};
+merge_overlap_thresh = {.95};
 maxWavCor = num2cell(.96:.005:.99);
 
 %------------------------------------------
