@@ -2046,6 +2046,8 @@ try
     csDesc{end+1} = sprintf('    delta_cut:              %0.3f', get_set_(S_auto.P, 'delta_cut', 1));
     csDesc{end+1} = sprintf('    maxWavCor:              %0.3f', get_(S_auto.P, 'maxWavCor'));
     csDesc{end+1} = sprintf('    merge_thresh_cc:        %0.3f', get_(S_auto.P, 'merge_thresh_cc'));
+    
+    merge_overlap_thresh
 catch
 end
 try
