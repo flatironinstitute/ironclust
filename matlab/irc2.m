@@ -2043,11 +2043,10 @@ try
     csDesc{end+1} = sprintf('    step_sec_drift:         %0.1fs', S_auto.P.step_sec_drift);
     csDesc{end+1} = sprintf('    batch_sec_drift:        %0.1fs', S_auto.P.batch_sec_drift);
     csDesc{end+1} = sprintf('Auto-merge');   
+    csDesc{end+1} = sprintf('    merge_overlap_thresh:   %0.3f', get_(S_auto.P, 'merge_overlap_thresh'));    
     csDesc{end+1} = sprintf('    delta_cut:              %0.3f', get_set_(S_auto.P, 'delta_cut', 1));
-    csDesc{end+1} = sprintf('    maxWavCor:              %0.3f', get_(S_auto.P, 'maxWavCor'));
     csDesc{end+1} = sprintf('    merge_thresh_cc:        %0.3f', get_(S_auto.P, 'merge_thresh_cc'));
-    
-    merge_overlap_thresh
+    csDesc{end+1} = sprintf('    maxWavCor:              %0.3f', get_(S_auto.P, 'maxWavCor'));
 catch
 end
 try
@@ -2159,7 +2158,7 @@ end %func
 % auto merge
 function S_auto = auto_(S0, P)
 
-nRepeat_merge = get_set_(P, 'nRepeat_merge', 3);
+nRepeat_merge = get_set_(P, 'nRepeat_merge', 5);
 
 fprintf('\nauto-merging...\n'); runtime_automerge = tic;
 
@@ -2173,7 +2172,9 @@ try
     if merge_overlap_thresh>0 && merge_overlap_thresh<1
         miKnn_spk = load_miKnn_spk_(P, S0.viSite_spk);
         for iRepeat = 1:nRepeat_merge
+            nClu_pre = S_auto.nClu;
             S_auto = knn_overlap_merge_(S_auto, miKnn_spk, merge_overlap_thresh);
+            if S_auto.nClu == nClu_pre, break; end
         end
     end
 catch    
