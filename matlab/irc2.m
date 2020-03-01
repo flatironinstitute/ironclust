@@ -235,24 +235,28 @@ vcFile_prm_ = P.vcFile_prm;
 % sort
 try
     [S0.S_clu, fCached_sort] = sort_cache_(S0, P, logical_(fSort));
-catch % remove cache
+catch ME % remove cache
     if fCached_detect
         fprintf(2, 'sort failed, retrying detect\n');
         pause(rand());
         S0 = detect_cache_(P, 1);
         [S0.S_clu, fCached_sort] = sort_cache_(S0, P, 1);
+    else
+        rethrow(ME);
     end
 end
 
 % auto
 try
     [S0.S_auto, fCached_auto] = auto_cache_(S0, P, logical_(fAuto));
-catch % remove cache
+catch ME % remove cache
     if fCached_sort
         fprintf(2, 'auto failed, retrying sort\n');
         pause(rand());
         S0.S_clu = sort_cache_(S0, P, 1);
         S0.S_auto = auto_cache_(S0, P, 1);
+    else
+        rethrow(ME);
     end
 end
 
@@ -2173,6 +2177,7 @@ S_auto = postCluster_(S0.S_clu, P, S0.viSite_spk); % peak merging
 
 % Merge based on knn overlap
 merge_overlap_thresh = get_set_(P, 'merge_overlap_thresh', 1);
+miKnn_spk=[];
 try
     if merge_overlap_thresh>0 && merge_overlap_thresh<1
         miKnn_spk = load_miKnn_spk_(P, S0.viSite_spk);
@@ -7745,7 +7750,7 @@ function optimize_prmset_(vcDir_rec, vcFile_prmset, fPreview)
 % optimize_prmset_(..., vcFile_prmset)
 % optimize_prmset_(..., vcFile_prmset, vcFile_out)
 
-fParfor_rec = 0; % disable parfor on individual recording
+fParfor_rec = 1; % disable parfor on individual recording
 
 if nargin<3, fPreview=0; end
 fPreview = logical_(fPreview);
@@ -7802,7 +7807,7 @@ nRuns_loaded = nRuns - numel(viRun1);
 fprintf(2, 'Loaded %d/%d (%0.1f%%) from cache\n', nRuns_loaded, nRuns, nRuns_loaded/nRuns*100);
 if ~fPreview
     remove_lock_(csDir_rec);
-    parfor iRun1 = 1:numel(viRun1)
+    for iRun1 = 1:numel(viRun1)
         [iRec, iPrmset] = ind2sub([nRec,nPrmset], viRun1(iRun1));
         cVal_prm1 = permute_prm_(cVal_prm, iPrmset);
         ccScore_prmset_rec1{iRun1} = score_prmset_(...
