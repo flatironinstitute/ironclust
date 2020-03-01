@@ -506,25 +506,13 @@ if ischar(csDir_rec)
         return;
     end
 end
-try
-    vnDelete = zeros(size(csDir_rec));
-    parfor iDir=1:numel(csDir_rec)
-        vS_dir = dir(fullfile(csDir_rec{iDir}, '**', '.*.lock'));
-        csFiles_lock1 = arrayfun_(@(x)fullfile(fullfile(x.folder, x.name)), vS_dir);
-        csDir_locked1 = cellfun_(@(x)strrep(x(2:end), '.lock', ''), csFiles_lock1);
-        vnDelete(iDir) = numel(csDir_locked1);
-        delete_(csFiles_lock1);
-        rmdir_(csDir_locked1);
-    end
-catch
-    for iDir=1:numel(csDir_rec)
-        vS_dir = dir(fullfile(csDir_rec{iDir}, '**', '.*.lock'));
-        csFiles_lock1 = arrayfun_(@(x)fullfile(fullfile(x.folder, x.name)), vS_dir);
-        csDir_locked1 = cellfun_(@(x)strrep(x(2:end), '.lock', ''), csFiles_lock1);
-        vnDelete(iDir) = numel(csDir_locked1);
-        delete_(csFiles_lock1);
-        rmdir_(csDir_locked1);
-    end
+for iDir=1:numel(csDir_rec)
+    vS_dir = dir(fullfile(csDir_rec{iDir}, '**', '.*.lock'));
+    csFiles_lock1 = arrayfun_(@(x)fullfile(fullfile(x.folder, x.name)), vS_dir);
+    csDir_locked1 = cellfun_(@(x)strrep(x(2:end), '.lock', ''), csFiles_lock1);
+    vnDelete(iDir) = numel(csDir_locked1);
+    delete_(csFiles_lock1);
+    rmdir_(csDir_locked1);
 end
 fprintf('Removed %d lock(s).\n', sum(vnDelete));
 end %func
