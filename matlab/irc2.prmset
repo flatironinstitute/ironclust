@@ -6,9 +6,8 @@
 % cluster
 
 % merge
-merge_overlap_thresh = {.95, .97};
-maxWavCor = {.97, .985};
-nRepeat_merge = {3,4}; %4 is a little better 
+merge_overlap_thresh = num2cell(0.95:.01:1);
+maxWavCor = num2cell(0.975);
 
 %------------------------------------------
 % established
@@ -32,4 +31,5 @@ fMode_mlPc = {1}; % 1: taper down, 2: use full
 merge_thresh_cc = num2cell(1);
 fUseSecondSite_merge = {0};
 merge_dist_thresh = {5};
+nRepeat_merge = num2cell(3);
 

@@ -493,9 +493,10 @@ end %func
 
 
 %--------------------------------------------------------------------------
-function remove_lock_(csDir_rec)
+function remove_lock_(csDir_rec, fParfor)
 % recursively remove locks
 % delete files associated with locks (they are incomplete)
+if nargin<2, fParfor=0; end
 
 if ischar(csDir_rec)
     if exist_dir_(csDir_rec)
@@ -507,13 +508,24 @@ if ischar(csDir_rec)
         return;
     end
 end
-for iDir=1:numel(csDir_rec)
-    vS_dir = dir(fullfile(csDir_rec{iDir}, '**', '.*.lock'));
-    csFiles_lock1 = arrayfun_(@(x)fullfile(fullfile(x.folder, x.name)), vS_dir);
-    csDir_locked1 = cellfun_(@(x)strrep(x(2:end), '.lock', ''), csFiles_lock1);
-    vnDelete(iDir) = numel(csDir_locked1);
-    delete_(csFiles_lock1);
-    rmdir_(csDir_locked1);
+if fParfor
+    parfor iDir=1:numel(csDir_rec)
+        vS_dir = dir(fullfile(csDir_rec{iDir}, '**', '.*.lock'));
+        csFiles_lock1 = arrayfun_(@(x)fullfile(fullfile(x.folder, x.name)), vS_dir);
+        csDir_locked1 = cellfun_(@(x)strrep(x(2:end), '.lock', ''), csFiles_lock1);
+        vnDelete(iDir) = numel(csDir_locked1);
+        delete_(csFiles_lock1);
+        rmdir_(csDir_locked1);
+    end
+else
+    for iDir=1:numel(csDir_rec)
+        vS_dir = dir(fullfile(csDir_rec{iDir}, '**', '.*.lock'));
+        csFiles_lock1 = arrayfun_(@(x)fullfile(fullfile(x.folder, x.name)), vS_dir);
+        csDir_locked1 = cellfun_(@(x)strrep(x(2:end), '.lock', ''), csFiles_lock1);
+        vnDelete(iDir) = numel(csDir_locked1);
+        delete_(csFiles_lock1);
+        rmdir_(csDir_locked1);
+    end
 end
 fprintf('Removed %d lock(s).\n', sum(vnDelete));
 end %func
@@ -7798,7 +7810,7 @@ ccScore_prmset_rec1 = cell(size(viRun1));
 nRuns_loaded = nRuns - numel(viRun1);
 fprintf(2, 'Loaded %d/%d (%0.1f%%) from cache\n', nRuns_loaded, nRuns, nRuns_loaded/nRuns*100);
 if ~fPreview
-    remove_lock_(csDir_rec);
+    remove_lock_(csDir_rec, 1);
     parfor iRun1 = 1:numel(viRun1)
         [iRec, iPrmset] = ind2sub([nRec,nPrmset], viRun1(iRun1));
         cVal_prm1 = permute_prm_(cVal_prm, iPrmset);
