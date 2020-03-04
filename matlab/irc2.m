@@ -80,7 +80,7 @@ switch lower(vcCmd)
     case 'probe-image', probe_image_(vcArg1, vcArg2, vcArg3); return;
     
     % ui
-    case {'remove-lock', 'unlock'}, remove_lock_(vcArg1); return;
+    case {'remove-lock', 'unlock'}, remove_lock_(vcFile_prm); return;
     case 'export-prb', export_prb_json_(vcArg1, vcArg2); return;
     case 'probe', irc('probe', vcArg1); return;
     case 'traces', irc2_traces(vcArg1); return;
@@ -293,7 +293,7 @@ csParam_sort = {'version', 'nPcPerChan', 'step_sec_drift', 'batch_sec_drift', ..
     'knn', 'nTime_max_drift', 'fMode_mlPc'};
 csParam_auto = {'version', 'maxWavCor', 'merge_thresh_cc', 'spkJitter_ms_cc', ...
     't_burst_ms', 'min_snr_clu', 'spkRefrac_merge_ms', 'fUseSecondSite_merge', ...
-    'merge_dist_thresh', 'nRepeat_merge', 'merge_overlap_thresh'};
+    'merge_dist_thresh', 'merge_overlap_thresh'};
 
 if ischar(P)
     P = file2struct_(P);
@@ -1017,13 +1017,13 @@ if isempty(vcFile_firings_mda)
     struct_save_(S_score, vcFile_score, 1);
 else
     vcFile_score = fullfile(fileparts(vcFile_firings_mda), 'score_irc.mat');
-    waitfor_lock_(vcFile_score);
-    if exist_file_(vcFile_score)
-        S_score = load(vcFile_score);
-    else
+%     waitfor_lock_(vcFile_score);
+%     if exist_file_(vcFile_score)
+%         S_score = load(vcFile_score);
+%     else
         S_score = compare_mda_(vcFile_gt_mda, vcFile_firings_mda, P);
         struct_save_(S_score, vcFile_score, 1);
-    end
+%     end
 end
 if false
     S0 = load0_(P.vcFile_prm);
@@ -2152,25 +2152,28 @@ end %func
 %--------------------------------------------------------------------------
 % merge mutual neighbors
 function S_auto = knn_overlap_merge_(S_auto, miKnn_spk, thresh)
+
 nClu_pre = S_auto.nClu;
-
 [vrScore_clu, viClu_nn_clu] = isolation_score_(S_auto, miKnn_spk);
-viClu_merge = find((1:S_auto.nClu)' == viClu_nn_clu(viClu_nn_clu) & vrScore_clu<thresh);
-viMap_clu = 1:S_auto.nClu;
-viMap_clu(viClu_merge) = min(viMap_clu(viClu_merge), viClu_nn_clu(viClu_merge)');
-vlPos = S_auto.viClu > 0;
-S_auto.viClu(vlPos) = viMap_clu(S_auto.viClu(vlPos)); %translate cluster number
-S_auto = S_auto_refresh_(S_auto, 1, []);
-
-fprintf('\tknn_overlap_merge_: %d->%d units\n', nClu_pre, S_auto.nClu);
+cviClu_clu = cell(nClu_pre,1);
+for iClu=1:nClu_pre
+    if vrScore_clu(iClu) < thresh
+        cviClu_clu{iClu} = [iClu; viClu_nn_clu(iClu)];
+    else
+        cviClu_clu{iClu} = iClu;
+    end
+end
+viMapClu_new = cell2map_(cviClu_clu);
+vlUpdate = S_auto.viClu > 0;
+S_auto.viClu(vlUpdate) = viMapClu_new(S_auto.viClu(vlUpdate));
+nClu = max(viMapClu_new);
+fprintf('\tknn_overlap_merge_: %d->%d units\n', nClu_pre, nClu);
 end %func
 
 
 %--------------------------------------------------------------------------
 % auto merge
 function S_auto = auto_(S0, P)
-
-nRepeat_merge = get_set_(P, 'nRepeat_merge', 5);
 
 fprintf('\nauto-merging...\n'); runtime_automerge = tic;
 
@@ -2183,19 +2186,14 @@ miKnn_spk=[];
 try
     if merge_overlap_thresh>0 && merge_overlap_thresh<1
         miKnn_spk = load_miKnn_spk_(P, S0.viSite_spk);
-        for iRepeat = 1:nRepeat_merge
-            nClu_pre = S_auto.nClu;
-            S_auto = knn_overlap_merge_(S_auto, miKnn_spk, merge_overlap_thresh);
-            if S_auto.nClu == nClu_pre, break; end
-        end
+        S_auto = knn_overlap_merge_(S_auto, miKnn_spk, merge_overlap_thresh);
+        S_auto = S_auto_refrac_(S_auto, P, S0.viTime_spk); % refractory violation removal
+        S_auto = S_auto_refresh_(S_auto, 1, S0.viSite_spk);
     end
 catch    
 end
 
-% merge based on cross-correlogram
 S_auto = wave_ccm_merge_(S0, S_auto, P);
-
-% merge based on waveform similarity
 S_auto = wave_similarity_merge_(S0, S_auto, P);
 
 S_auto = S_auto_refrac_(S_auto, P, S0.viTime_spk); % refractory violation removal
@@ -2207,8 +2205,7 @@ fprintf('\tauto-merging took %0.1fs (fGpu=%d, fParfor=%d)\n', ...
     S_auto.runtime_automerge, P.fGpu, P.fParfor);
 
 % compute quality metrics
-if true
-    if isempty(miKnn_spk), miKnn_spk = load_miKnn_spk_(P, S0.viSite_spk); end
+if ~isempty(miKnn_spk)
     S_auto.vrScore_clu = isolation_score_(S_auto, miKnn_spk);
 end
 end %func
@@ -5895,7 +5892,7 @@ P = struct_copyas_(P, S_txt, {'filter_type', 'feature_type'}, {'vcFilter', 'vcFe
 P = struct_copyas_(P, S_txt, ...
     {'knn', 'batch_sec_drift', 'step_sec_drift', 'min_count', 'nSites_whiten', ...
     'fft_thresh', 'delta_cut', 'fft_thresh_low', 'post_merge_mode', 'sort_mode', ...
-    'merge_thresh_cc', 'merge_overlap_thresh', 'nRepeat_merge'});
+    'merge_thresh_cc', 'merge_overlap_thresh'});
 
 % set boolean
 P = set_bool_(P, 'fGpu', S_txt);
@@ -6997,7 +6994,11 @@ end %func
 %--------------------------------------------------------------------------
 % 01/08/2020 JJJ: compile, mcc, and copy to the container locatino
 function export_sf2_()
-irc2('compile');
+try
+    irc2('compile');
+catch
+    fprintf(2, 'CUDA compilation failed\n');
+end
 irc2('mcc');
 S_cfg = read_cfg_();
 [sf2_path, sf2_test_path, sf2_python_path, sf2_test_script, sf2_docker_name] = ...

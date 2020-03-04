@@ -31,5 +31,5 @@ fMode_mlPc = {1}; % 1: taper down, 2: use full
 merge_thresh_cc = num2cell(1);
 fUseSecondSite_merge = {0};
 merge_dist_thresh = {5};
-nRepeat_merge = num2cell(3);
+nRepeat_merge = num2cell(1);
 
