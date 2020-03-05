@@ -66,7 +66,7 @@ plot(mrPos_e(:,1), mrPos_e(:,2), 'mo');
 hAx = gca;
 h_e1 = [];
 uiwait(msgbox('press OK to start movie'));
-v = VideoWriter('elec_2d_drift.mp4'); open(v);
+v = VideoWriter('elec_2d_drift.avi'); open(v);
 for it=1:P_drift.nt
     mrPos_e1 = get_pos_(P.r_e, P.n_e, P.phi_e+vrPhase_t(it));
     if ~isempty(h_e1)
@@ -106,7 +106,7 @@ hAx=gca;
 h_e1 = [];
 uiwait(msgbox('press OK to start movie'));
 F(P_drift.nt) = struct('cdata',[],'colormap',[]);
-v = VideoWriter('test1.mp4'); open(v);
+v = VideoWriter('test1.avi'); open(v);
 for it=1:P_drift.nt
     mrPos_e1 = get_pos_(P.r_e, P.n_e, P.phi_e+vrPhase_t(it));
     if ~isempty(h_e1)
@@ -122,5 +122,8 @@ end
 close(v);
 
 
-%% action potential of the nerve
- 
+%% action potential of the nerve, make it travel at different rate
+% discretize the space
+
+x = linspace(
+
