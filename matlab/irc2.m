@@ -145,6 +145,7 @@ switch lower(vcCmd)
         [S0, P] = import_clip_(vcArg1); 
     case 'edit', edit_(vcFile_prm); return;
     case 'juxta', convert_mda_ui('english'); return;
+    case 'emouse2mda', convert_mda('emouse', vcArg1, vcArg2); return;
     case 'version'
         if nargout==0, version_(); 
         else, varargout{1} = version_(); 

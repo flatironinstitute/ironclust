@@ -18,7 +18,7 @@ switch vcMode
     case 'manual', convert_mda_manual_(varargin{:});
     case 'boyden', convert_mda_boyden_(varargin{:});
     case 'mearec100', convert_mda_mearec100_(varargin{:});
-    case 'int16', convert_mda_int16_(varargin{:});
+    case 'emouse', convert_mda_emouse_(varargin{:});
 end %switch
 end %func
 
@@ -799,15 +799,84 @@ end %for iFile
 end %func
 
 
+%--------------------------------------------------------------------------
+function convert_mda_emouse_(vcDir_in, vcDir_out)
+
+if nargin<1, vcDir_in=''; end
+if nargin<2, vcDir_out=''; end
+if isempty(vcDir_in), vcDir_in='/mnt/ceph/users/jjun/groundtruth/hybrid_synth/linear_drift/'; end
+if isempty(vcDir_out), vcDir_out=vcDir_in; end
+
+% make directory
+mkdir_(vcDir_out);
+
+% write geom.csv
+S_prb = load(fullfile(vcDir_in, 'chanMap_3B_64sites.mat'));
+vcFile_geom = fullfile(vcDir_out, 'geom.csv');
+csvwrite(vcFile_geom, [S_prb.xcoords(:), S_prb.ycoords(:)]);
+fprintf('Wrote to %s\n', vcFile_geom);
+nChans = numel(S_prb.xcoords);
+sRateHz = S_prb.fs;
+
+% write raw.mda
+vcFile_bin = fullfile(vcDir_in, 'sim_binary.imec.ap.bin');
+if ~exist_file_(vcFile_bin)
+    vcFile_raw = fullfile(vcDir_out, 'raw.mda');
+    append_bin2mda_({vcFile_bin}, vcFile_raw, nChans, 'int16');
+    fprintf('Wrote to %s\n', vcFile_raw);
+end
+
+% Write to params.json
+vcFile_json = fullfile(vcDir_out, 'params.json');
+struct2json_(struct('spike_sign', -1, 'samplerate', sRateHz), vcFile_json);
+fprintf('Wrote to %s\n', vcFile_json);
+
+% write firings_true.mda
+vcFile_true = fullfile(vcDir_out, 'firings_true.mda');
+S_gt = load(fullfile(vcDir_in, 'eMouseGroundTruth.mat'));
+mrGt = zeros(numel(S_gt.gtRes), 3);
+mrGt(:,2) = S_gt.gtRes(:);
+mrGt(:,3) = S_gt.gtClu(:);
+writemda_(vcFile_true, mrGt);
+fprintf('Wrote to %s\n', vcFile_true);
+end %func
+
+
+%--------------------------------------------------------------------------
+% Call from irc.m
+function cout = call_irc2_(dbstack1, cell_input, nargout)
+vcFunc = dbstack1(1).name;
+try
+    switch nargout
+        case 0, cout{1} = []; irc2('call', vcFunc, cell_input);
+        case 1, cout{1} = irc2('call', vcFunc, cell_input);
+        case 2, [cout{1}, cout{2}] = irc2('call', vcFunc, cell_input);
+        case 3, [cout{1}, cout{2}, cout{3}] = irc2('call', vcFunc, cell_input);
+        case 4, [cout{1}, cout{2}, cout{3}, cout{4}] = irc2('call', vcFunc, cell_input);
+        otherwise, error('call_irc2_: undefined func: %s', vcFunc);
+    end
+catch ME
+    fprintf(2, 'call_irc_: %s\n', ME.message);
+    rethrow ME;
+end
+end %func
+
+
+%--------------------------------------------------------------------------
+% irc2.m
+function varargout = export_spikeforest_(varargin), cell_out = call_irc2_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = write_bin_(varargin), cell_out = call_irc2_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = append_bin2mda_(varargin), cell_out = call_irc2_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = writemda_(varargin), cell_out = call_irc2_(dbstack(), varargin, nargout); varargout = cell_out; end
+
 %==========================================================================
 % call irc.m
 
 %--------------------------------------------------------------------------
 % 0 output
-function writemda_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
 function prb2geom_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
 function struct2json_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
-function export_spikeforest_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
+% function export_spikeforest_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
 function disperr_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
 function convert_mda_kampff_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
 function mkdir_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end

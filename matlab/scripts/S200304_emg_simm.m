@@ -147,7 +147,7 @@ mrWav_s = mrWav_clu(:, viClu_sort(viClu_s));
 figure; plot(mrWav_s); title('Selected waveforms')
 
 %% plot travelling wave, speed of pix/step
-dx = .5;
+dx = 1/8;
 P_wav = struct('nt', 1000, 'nx', 1000, 'x1_s', -10, 'x2_s', 10, 'x_p', dx/2, 'x_n', -dx/2, 'dy', .1, 'icell', 1);
 
 % figure;
@@ -177,7 +177,7 @@ for it = 1:P_wav.nt
     vrVn(it) = calc_Ve_(vrVx, vrR_n);
     vrVe(it) = vrVp(it) - vrVn(it);
 end
-%
+%%
 figure_('nerve conduction');  uiwait(msgbox('press OK to start movie'));
 ax=[];
 ax(1) = subplot(3,1,1); h_Vx = plot(vrVx,'k'); hold on; plot(500+dx/2*100,0,'ro'); plot(500-dx/2*100,0,'bo'); xlabel('x pos'); grid on; hold on; ylabel('V');
@@ -199,10 +199,19 @@ close(v); disp(['wrote to: ', v.Filename]);
 % plot narrowed waveform
 norm_ = @(x)x/max(abs(x));
 % figure; imagesc(mrVxt_s); xlabel('time'); ylabel('space');
-figure; hold on; plot(norm_(vrVp)); plot(norm_(vrVn)); plot(norm_(vrVe)); ylabel('Electrode');
+figure_(''); hold on; plot(norm_(vrVp),'r'); plot(norm_(vrVn),'b'); plot(norm_(vrVe),'g'); ylabel('V(t)'); xlabel('time');
 width_ = @(vl)abs(find(vl,1,'last') - find(vl,1,'first'));
 fwhm_ = @(x)width_(abs(x)>max(abs(x))/2);
-title(sprintf('dx=%0.3f, fwhm: %d, amp: %0.3f', dx, fwhm_(vrVe), min(vrVe)/min(vrVp)));
+title(sprintf('dx=%0.3f, FWHM: %d, amp: %0.3f', dx, fwhm_(vrVe), min(vrVe)/min(vrVp)));
+xlim([0 700]); grid on;
 
-%% simulate waveform using poisson rate
+%% plot overlapping spikes
+n_overlap = 70;
+plot_ = @(x,c,n)plot(x, c,'LineWidth', n);
+[vrV1, vrV2, vrV3] = deal(norm_(vrVe));
+vrV2(n_overlap:end) = vrV2(1:end-n_overlap+1);
+vrV3(1:end-n_overlap+1) = vrV3(n_overlap:end);
+figure_(sprintf('dx=%0.2f',dx)); hold on; 
+plot_(vrV2+vrV3,'k-',2); %plot_(vrV2,'r-',1); plot_(vrV3, 'b-',1);  
+xlim([0 700]); grid on;
 
