@@ -146,6 +146,7 @@ switch lower(vcCmd)
     case 'edit', edit_(vcFile_prm); return;
     case 'juxta', convert_mda_ui('english'); return;
     case 'emouse2mda', convert_mda('emouse', vcArg1, vcArg2); return;
+    case {'extract-mda', 'crop-mda'}, convert_mda('extract-mda', vcArg1, vcArg2, vcArg3, vcArg4); return;
     case 'version'
         if nargout==0, version_(); 
         else, varargout{1} = version_(); 
@@ -9764,6 +9765,15 @@ end %for
 end %func
 
 
+%--------------------------------------------------------------------------
+function S_txt = loadjson_(vcArg_txt)
+S_txt=[]; 
+if ~exist_file_(vcArg_txt), return; end
+addpath_('jsonlab-1.5/');
+S_txt = loadjson(vcArg_txt);
+end %func
+
+
 function varargout = git_pull_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = frewind_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = disperr_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
@@ -9779,7 +9789,7 @@ function varargout = list_files_(varargin), cell_out = call_irc_(dbstack(), vara
 function varargout = struct_merge_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 % function varargout = read_cfg_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = file2struct_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
-function varargout = loadjson_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
+% function varargout = loadjson_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = filesize_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = car_reject_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 % function varargout = struct_copy_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
@@ -9805,3 +9815,4 @@ function varargout = fopen_mda_(varargin), cell_out = call_irc_(dbstack(), varar
 function varargout = fopen_nsx_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = plot_probe_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
 function varargout = struct2file_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = addpath_(varargin), cell_out = call_irc_(dbstack(), varargin, nargout); varargout = cell_out; end

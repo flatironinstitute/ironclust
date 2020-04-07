@@ -18,7 +18,9 @@ switch vcMode
     case 'manual', convert_mda_manual_(varargin{:});
     case 'boyden', convert_mda_boyden_(varargin{:});
     case 'mearec100', convert_mda_mearec100_(varargin{:});
+        
     case 'emouse', convert_mda_emouse_(varargin{:});
+    case 'extract-mda', extract_mda_(varargin{:});
 end %switch
 end %func
 
@@ -837,7 +839,62 @@ S_gt = load(fullfile(vcDir_in, 'eMouseGroundTruth.mat'));
 mrGt = zeros(numel(S_gt.gtRes), 3);
 mrGt(:,2) = S_gt.gtRes(:);
 mrGt(:,3) = S_gt.gtClu(:);
-writemda_(vcFile_true, mrGt);
+writemda_(vcFile_true, mrGt');
+fprintf('Wrote to %s\n', vcFile_true);
+end %func
+
+
+%--------------------------------------------------------------------------
+function extract_mda_(vcDir_in, vcDir_out, viSite, tLim)
+
+fOverwrite = 0;
+
+if nargin<1, vcDir_in=''; end
+if nargin<2, vcDir_out=''; end
+if isempty(vcDir_in), vcDir_in='/mnt/ceph/users/jjun/groundtruth/hybrid_synth/linear_drift/'; end
+if isempty(vcDir_out), vcDir_out=vcDir_in; end
+if ischar(viSite), viSite = str2num(viSite); end
+if ischar(tLim), tLim=str2num(tLim); end
+
+% make directory
+mkdir_(vcDir_out);
+
+% write geom.csv
+mrSiteXY = csvread(fullfile(vcDir_in, 'geom.csv'));
+vcFile_geom = fullfile(vcDir_out, 'geom.csv');
+csvwrite(vcFile_geom, mrSiteXY(viSite,:));
+fprintf('Wrote to %s\n', vcFile_geom);
+
+% write raw.mda
+vcFile_raw = fullfile(vcDir_out, 'raw.mda');
+if ~exist_file_(vcFile_raw) || fOverwrite
+    [S_mda, fid_r] = readmda_header_(fullfile(vcDir_in, 'raw.mda'));
+    [vcDataType, dimm] = get_(S_mda, 'vcDataType', 'dimm');
+    nChans = dimm(1);
+    nBytes_skip = (round(tLim(1)*dimm(2))-1) * bytesPerSample_(vcDataType) * nChans;
+    if nBytes_skip>0, fseek(fid_r, nBytes_skip, 'cof'); end
+    nSamples_copy = round(diff(tLim)*dimm(2));
+    mr_ = fread_(fid_r, [nChans, nSamples_copy], vcDataType);
+    fclose(fid_r);
+    writemda_(vcFile_raw, mr_(viSite,:));
+    fprintf('Wrote to %s\n', vcFile_raw);
+else
+    S_mda = readmda_header_(fullfile(vcDir_in, 'raw.mda'));
+end
+nLim = round(S_mda.dimm(2) * tLim);
+if nLim(1)<1, nLim(1)=1; end
+
+% Write to params.json
+vcFile_json = fullfile(vcDir_out, 'params.json');
+copyfile(fullfile(vcDir_in, 'params.json'), vcFile_json, 'f');
+fprintf('Wrote to %s\n', vcFile_json);
+
+% write firings_true.mda
+vcFile_true = fullfile(vcDir_out, 'firings_true.mda');
+mrGt = readmda_(fullfile(vcDir_in, 'firings_true.mda'));
+mrGt = mrGt(mrGt(:,2) >= nLim(1) & mrGt(:,2) <= nLim(2), :);
+mrGt(:,2) = mrGt(:,2) - nLim(1) + 1;
+writemda_(vcFile_true, mrGt');
 fprintf('Wrote to %s\n', vcFile_true);
 end %func
 
@@ -861,52 +918,6 @@ catch ME
 end
 end %func
 
-
-%--------------------------------------------------------------------------
-% irc2.m
-function varargout = export_spikeforest_(varargin), cell_out = call_irc2_(dbstack(), varargin, nargout); varargout = cell_out; end
-function varargout = write_bin_(varargin), cell_out = call_irc2_(dbstack(), varargin, nargout); varargout = cell_out; end
-function varargout = append_bin2mda_(varargin), cell_out = call_irc2_(dbstack(), varargin, nargout); varargout = cell_out; end
-function varargout = writemda_(varargin), cell_out = call_irc2_(dbstack(), varargin, nargout); varargout = cell_out; end
-
-%==========================================================================
-% call irc.m
-
-%--------------------------------------------------------------------------
-% 0 output
-function prb2geom_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
-function struct2json_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
-% function export_spikeforest_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
-function disperr_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
-function convert_mda_kampff_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
-function mkdir_(varargin), fn=dbstack(); irc('call', fn(1).name, varargin); end
-
-%--------------------------------------------------------------------------
-% 1 output
-function out1 = exist_file_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
-function out1 = loadjson_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
-function out1 = mr2tr3_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
-function out1 = chan2site_prb_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
-function out1 = load_bin_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
-function out1 = file_dimm_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
-function out1 = gt2mda_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
-function out1 = ifeq_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
-function out1 = loadParam_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
-function out1 = load_batch_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
-function out1 = load_gt_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
-function out1 = str2num_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
-function out1 = bytesPerSample_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
-function out1 = readmda_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
-function out1 = meta2struct_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
-function out1 = struct_set_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
-
-%--------------------------------------------------------------------------
-% 2 outputs
-function [out1, out2] = dir_set_(varargin), fn=dbstack(); [out1, out2] = irc('call', fn(1).name, varargin); end
-function [out1, out2] = dir_(varargin), fn=dbstack(); [out1, out2] = irc('call', fn(1).name, varargin); end
-
-%--------------------------------------------------------------------------
-% varargout
 
 %--------------------------------------------------------------------------
 % 1/31/2019 JJJ: get the field(s) of a struct or index of an array or cell
@@ -943,3 +954,39 @@ else
     end
 end
 end %func
+
+
+%--------------------------------------------------------------------------
+% irc2.m
+function varargout = export_spikeforest_(varargin), cell_out = call_irc2_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = write_bin_(varargin), cell_out = call_irc2_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = append_bin2mda_(varargin), cell_out = call_irc2_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = writemda_(varargin), cell_out = call_irc2_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = loadjson_(varargin), cell_out = call_irc2_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = struct2json_(varargin), cell_out = call_irc2_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = mkdir_(varargin), cell_out = call_irc2_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = exist_file_(varargin), cell_out = call_irc2_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = ifeq_(varargin), cell_out = call_irc2_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = str2num_(varargin), cell_out = call_irc2_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = readmda_(varargin), cell_out = call_irc2_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = dir_set_(varargin), cell_out = call_irc2_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = dir_(varargin), cell_out = call_irc2_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = prb2geom_(varargin), cell_out = call_irc2_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = disperr_(varargin), cell_out = call_irc2_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = convert_mda_kampff_(varargin), cell_out = call_irc2_(dbstack(), varargin, nargout); varargout = cell_out; end
+
+function varargout = mr2tr3_(varargin), cell_out = call_irc2_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = chan2site_prb_(varargin), cell_out = call_irc2_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = load_bin_(varargin), cell_out = call_irc2_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = file_dimm_(varargin), cell_out = call_irc2_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = gt2mda_(varargin), cell_out = call_irc2_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = loadParam_(varargin), cell_out = call_irc2_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = load_batch_(varargin), cell_out = call_irc2_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = load_gt_(varargin), cell_out = call_irc2_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = bytesPerSample_(varargin), cell_out = call_irc2_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = meta2struct_(varargin), cell_out = call_irc2_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = struct_set_(varargin), cell_out = call_irc2_(dbstack(), varargin, nargout); varargout = cell_out; end
+
+function varargout = readmda_header_(varargin), cell_out = call_irc2_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = trim_wav_(varargin), cell_out = call_irc2_(dbstack(), varargin, nargout); varargout = cell_out; end
+function varargout = fread_(varargin), cell_out = call_irc2_(dbstack(), varargin, nargout); varargout = cell_out; end
