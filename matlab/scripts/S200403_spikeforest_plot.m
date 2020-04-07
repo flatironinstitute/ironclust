@@ -1,7 +1,12 @@
 addpath jsonlab-1.5
-vcDir = '/mnt/home/jjun/src/spikeforest2/working/runs/';
-%vcFile1 = 'average_runtime_2019-1015.csv';
-vcFile_json = '2020_03_31a/output.json';
+switch 2
+    case 1
+        vcDir = '/mnt/home/jjun/src/spikeforest2/working/runs/';
+        vcFile_json = '2020_03_31a/output.json';
+    case 2
+        vcDir = '/home/jjun/src/ironclust/matlab/scripts/';
+        vcFile_json = 'spikeforest2_output.json';
+end
 %mr1 = readmatrix(fullfile(vcDir, vcFile1), 'NumHeaderLines', 1);
 %tbl1 = readtable(fullfile(vcDir, vcFile1));
 % csStudy1 = tbl1.study;
@@ -18,39 +23,44 @@ title_ = @(x)title(x,'Interpreter','none');
 figure_ = @()figure('Color','w');
 
 %% create a struct
+
+P = struct('snr_thresh', 8, 'accuracy_thresh', .8);
+
 vS_sar = cell2mat(S_json.StudyAnalysisResults);
 csStudySetName = unique({vS_sar.studySetName});
 csStudySetName_sar = {vS_sar.studySetName};
 csStudyName_sar = {vS_sar.studyName};
 S_result = struct();
+csFieldName = {'accuracies', 'precisions', 'recalls', 'cpuTimesSec'};
 for iStudySet = 1:numel(csStudySetName)
     vcStudySetName = csStudySetName{iStudySet};
     S_studyset1 = struct();
     vi_sar1 = find(strcmpi(csStudySetName_sar, vcStudySetName));
     for iStudy = 1:numel(vi_sar1)
         S_sar1 = vS_sar(vi_sar1(iStudy));
-        cS_sorter1 = S_sar1.sortingResults;   
+        cS_sorter1 = S_sar1.sortingResults;
+        vrSnr = S_sar1.trueSnrs;
+        if isempty(vrSnr), continue; end
         S_study1 = struct();
         for iSorter = 1:numel(cS_sorter1)
-            S_sorter1 = cS_sorter1{iSorter};
-            vcSorterName = S_sorter1.sorterName;
-            S_study1.(vcSorterName) = S_sorter1;
+            try
+                S_ = cS_sorter1{iSorter};
+                S1 = struct();
+                vrAccuracy1 = S_.accuracies;
+                S1.accuracy_mean = nanmean(vrAccuracy1(vrSnr >= P.snr_thresh));
+                S1.count_accuracy = sum(vrAccuracy1 >= P.accuracy_thresh);
+                S1.cpuTimesSec_mean = nanmean(S_.cpuTimesSec);
+                S_study1.(S_.sorterName) = S1;
+            catch
+                S_study1.(S_.sorterName) = [];
+            end
         end
-        S_studyset1.(vcStudyName1) = S_sar1;
+        vcStudyName = [vcStudySetName, '_', S_sar1.studyName];
+        S_studyset1.(vcStudyName) = S_study1;
     end
     S_result.(vcStudySetName) = S_studyset1;
 end
 
-vcStudySetName = 
-
-%% compare runtime
-vcStudySetName = 'LONG_DRIFT';
-% vcStudyName1 = 'LONG_DRIFT';
-% vcStudyName1 = 'hybrid_static_siprobe';
-% vcStudyName1 = 'hybrid_drift_siprobe';
-% vcStudyName1 = 'hybrid_static_tetrode';
-% vcStudyName1 = 'hybrid_drift_tetrode';
-% vcStudyName1 = {'paired_boyden32c', 'paired_crcns', 'paired_mea64c', 'paired_kampff'};
 
 %% create
 vS_sar = cell2mat(S_json.StudyAnalysisResults);
