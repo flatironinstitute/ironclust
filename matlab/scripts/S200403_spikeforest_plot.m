@@ -1,10 +1,13 @@
 addpath jsonlab-1.5
-switch 2
+switch 3
     case 1
         vcDir = '/mnt/home/jjun/src/spikeforest2/working/runs/';
         vcFile_json = '2020_03_31a/output.json';
     case 2
         vcDir = '/home/jjun/src/ironclust/matlab/scripts/';
+        vcFile_json = 'spikeforest2_output.json';
+    case 3
+        vcDir = '/Users/jamesjun/src/ironclust/matlab/scripts/';
         vcFile_json = 'spikeforest2_output.json';
 end
 %mr1 = readmatrix(fullfile(vcDir, vcFile1), 'NumHeaderLines', 1);
@@ -61,87 +64,48 @@ for iStudySet = 1:numel(csStudySetName)
     S_result.(vcStudySetName) = S_studyset1;
 end
 
+%% select study and plot accuracy vs length
 
-%% create
-vS_sar = cell2mat(S_json.StudyAnalysisResults);
-if ischar(vcStudyName1)
-    vi_sar1 = strcmpi({vS_sar.studySetName}, vcStudySetName);
-else
-    vi_sar1 = ismember({vS_sar.studySetName}, vcStudySetName);
-end
-S_sar1 = vS_sar(vi_sar1);
+vcStudySetName = 'LONG_DRIFT';
+iMetric = 3;
 
-% selected study 1
-csRecording1 = cellfun(@(x)char(x), [S_sar1.recordingNames], 'UniformOutput',0);
-vS_sr1 = cell2mat([S_sar1.sortingResults]);
-csSorter = {vS_sr1.sorterName};
-vrSnr_unit1 = S_sar1.trueSnrs;
-viRecording_unit1 = S_sar1.trueRecordingIndices;
-n_unit = numel(viRecording_unit1);
-n_sorter = numel(csSorter);
-n_recording = numel(csRecording1);
-cvrAcc_sorter1 = {vS_sr1.accuracies};
-cvrPrc_sorter1 = {vS_sr1.precisions};
-cvrRcl_sorter1 = {vS_sr1.recalls};
-getnum_ = @(x)str2num(x(x>='0' & x<='9'));
-
-try
-    vnChans_recording1 = cellfun(@(x)str2num(x(5:6)), csRecording1);
-    vrDuration_recording1 = cellfun(@(x)getnum_(cell2mat(regexp(x,'c_\d+s_','match'))), csRecording1);
-catch
-    vnChans_recording1 = [];
-    vrDuration_recording1 = [];
-end
-% collect runtime
-switch 1 
-    case 1
-        cvr_recording_sorter1 = {vS_sr1.cpuTimesSec};
-        mrRun_recording_sorter1 = nan(n_recording, n_sorter);
-        for iSorter = 1:numel(cvr_recording_sorter1)
-            vr1 = cvr_recording_sorter1{iSorter};
-            if ~isempty(vr1)
-                mrRun_recording_sorter1(:,iSorter) = vr1;
+vrTimeDur = [300, 600, 1200, 2400, 4800];
+vrChan = [8,16];
+csSorterName = {'HerdingSpikes2', 'IronClust', 'JRClust', 'KiloSort', 'KiloSort2', 'Klusta', 'MountainSort4', 'SpykingCircus', 'Tridesclous', 'Waveclus'};
+csMetric = {'accuracy_mean', 'count_accuracy', 'cpuTimesSec_mean'};
+study_name_ = @(t,c)sprintf('LONG_DRIFT_%ds_%dc', t, c);
+tr_time_chan_sorter = nan(numel(vrTimeDur), numel(vrChan), numel(csSorterName));
+for iTimeDur = 1:numel(vrTimeDur)
+    timeDur = vrTimeDur(iTimeDur);
+    for iChan = 1:numel(vrChan)
+        nChan = vrChan(iChan);
+        S_study = S_result.(vcStudySetName).(study_name_(timeDur, nChan));
+        for iSorter = 1:numel(csSorterName)
+            try
+                val = S_study.(csSorterName{iSorter}).(csMetric{iMetric});
+                tr_time_chan_sorter(iTimeDur, iChan, iSorter) = val;
+            catch
+                ; 
             end
         end
-    case 2 % get it from /SortingResults
-        mrRun_recording_sorter1 = zeros(n_recording, n_sorter);
-        for iSorter = 1:numel(cvrRun_sorter1)
-            vcSorter2 = csSorter{iSorter};
-            vl2 = cellfun(@(x)strcmpi(x.sorterName, vcSorter2) & strcmpi(x.studyName, vcStudyName1), S_json.SortingResults);
-            if any(vl2)
-                vS_sr2 = cell2mat(S_json.SortingResults(vl2));                  
-%                 [vl12, vi12] = ismember(csRecordingName1, {vS_sr2.recordingName});            
-                mrRun_recording_sorter1(:,iSorter) = [vS_sr2.cpuTimeSec];
-            end
-        end
+    end
 end
-mrRecSnr_unit1 = [viRecording_unit1(:), vrSnr_unit1(:)];
 
-%
-SNR_THRESH = 8;
-toVec_ = @(x)x(:);
-cell2vec_ = @(x,i)toVec_(x{i});
-cmr_AccPrcRcl_unit_sorter1 = cell(size(csSorter));
-mr_AccPrcRcl_unit_sorter0 = nan(n_unit, 3);
-[mrAcc_recording_sorter1, mrPrc_recording_sorter1, mrRcl_recording_sorter1] = deal(nan(n_recording, n_sorter));
-for iSorter = 1:numel(csSorter)
-    [c1,c2,c3] = deal(cell2vec_(cvrAcc_sorter1, iSorter), cell2vec_(cvrPrc_sorter1, iSorter), cell2vec_(cvrRcl_sorter1, iSorter));
-    if iscell(c1)
-        cmr_AccPrcRcl_unit_sorter1{iSorter} = mr_AccPrcRcl_unit_sorter0;
-    else
-        vl1 = vrSnr_unit1 > SNR_THRESH;
-        cmr_AccPrcRcl_unit_sorter1{iSorter} = [c1,c2,c3];
-        mrAcc_recording_sorter1(:,iSorter) = grpstats(c1(vl1), viRecording_unit1(vl1));
-        mrPrc_recording_sorter1(:,iSorter) = grpstats(c2(vl1), viRecording_unit1(vl1));
-        mrRcl_recording_sorter1(:,iSorter) = grpstats(c3(vl1), viRecording_unit1(vl1));
-    end       
-end %for
+% plot
+mr_dur_sorter = squeeze(tr_time_chan_sorter(:,2,:));
+mr_dur_sorter(isnan(mr_dur_sorter)) = nan;
+[~, viSorter] = sort(nanmean(mr_dur_sorter), 'ascend');
 
-% table output
-disp(['acc_', vcStudyName1]); disp(array2table(mrAcc_recording_sorter1, 'RowNames', csRecording1, 'VariableNames', csSorter));
-disp(['prc_', vcStudyName1]); disp(array2table(mrPrc_recording_sorter1, 'RowNames', csRecording1, 'VariableNames', csSorter));
-disp(['rcl_', vcStudyName1]); disp(array2table(mrRcl_recording_sorter1, 'RowNames', csRecording1, 'VariableNames', csSorter));
-disp(['run_', vcStudyName1]); disp(array2table(mrRun_recording_sorter1, 'RowNames', csRecording1, 'VariableNames', csSorter));
+figure('color','w'); bar(mr_dur_sorter(:,viSorter),1);
+%set(gca,'XTickLabel', csSorterName); xtickangle(gca, 45);
+set(gca, 'XTickLabel', vrTimeDur); xlabel('Duration (sec)');
+ylabel(gca, csMetric{iMetric}, 'Interpreter', 'none');
+legend(csSorterName(viSorter));
+grid on; 
+
+%%
+figure; plot(mr_dur_sorter); legend(csSorterName);
+
 
 %% plot by SNR
 % figure; hold on; 
