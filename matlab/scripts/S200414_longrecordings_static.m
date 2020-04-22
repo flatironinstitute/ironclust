@@ -25,8 +25,8 @@ for nChans_out = vnChans_out
         vcDir0 = sprintf('%ds_%dc', round(t_dur_sec/nT_seg), nChans_out);
         for iRec = 1:nRecordings
             chanLim1 = [0, nChans_out-1] + viChanA(iRec);
-            vcDir1 = fullfile(vcDir_out, vcDir0, sprintf('%03d_synth', iRec));
-            vcArg1 = sprintf('%s %s %d:%d [0,1/%d]', vcDir_ksort, vcDir1, chanLim1(1), chanLim1(2), nT_seg);
+            vcDir_out1 = fullfile(vcDir_out, vcDir0, sprintf('%03d_synth', iRec));
+            vcArg1 = sprintf('%s %s %d:%d [0,1/%d]', vcDir_ksort, vcDir_out1, chanLim1(1), chanLim1(2), nT_seg);
             vcCmd1 = sprintf('irc2 extract-mda %s', vcArg1);
             fprintf(vcCmd1);
             fprintf('\n');
