@@ -850,7 +850,7 @@ end %func
 %--------------------------------------------------------------------------
 function extract_mda_(vcDir_in, vcDir_out, viSite, tLim)
 
-fOverwrite = 0;
+fOverwrite = 1;
 
 if nargin<1, vcDir_in=''; end
 if nargin<2, vcDir_out=''; end
