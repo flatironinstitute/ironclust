@@ -851,7 +851,7 @@ fOverwrite = 0;
 
 if nargin<1, vcDir_in=''; end
 if nargin<2, vcDir_out=''; end
-if isempty(vcDir_in), vcDir_in='/mnt/ceph/users/jjun/groundtruth/hybrid_synth/linear_drift/'; end
+assert(~isempty(vcDir_in), 'convert_mda: extract_mda_: `vcDir_in` must be provided');
 if isempty(vcDir_out), vcDir_out=vcDir_in; end
 if ischar(viSite), viSite = str2num(viSite); end
 if ischar(tLim), tLim=str2num(tLim); end
@@ -891,7 +891,7 @@ fprintf('Wrote to %s\n', vcFile_json);
 
 % write firings_true.mda
 vcFile_true = fullfile(vcDir_out, 'firings_true.mda');
-mrGt = readmda_(fullfile(vcDir_in, 'firings_true.mda'));
+mrGt = readmda_(fullfile(vcDir_in, 'firings_true.mda'))';
 mrGt = mrGt(mrGt(:,2) >= nLim(1) & mrGt(:,2) <= nLim(2), :);
 mrGt(:,2) = mrGt(:,2) - nLim(1) + 1;
 writemda_(vcFile_true, mrGt');
