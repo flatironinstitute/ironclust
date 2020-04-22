@@ -5,6 +5,7 @@
 
 
 %% 2. convert the output of eMouse simulation to mda format
+% /mnt/ceph/users/jjun/groundtruth/hybrid_synth/linear_drift
 vcDir_ksort = '/mnt/ceph/users/jjun/groundtruth/hybrid_synth/linear_static/';
 irc2('emouse2mda', vcDir_ksort); 
 

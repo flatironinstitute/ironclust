@@ -806,7 +806,8 @@ function convert_mda_emouse_(vcDir_in, vcDir_out)
 
 if nargin<1, vcDir_in=''; end
 if nargin<2, vcDir_out=''; end
-if isempty(vcDir_in), vcDir_in='/mnt/ceph/users/jjun/groundtruth/hybrid_synth/linear_drift/'; end
+assert(~isempty(vcDir_in), 'convert_mda: convert_mda_emouse_: `vcDir_in` must be provided');
+% if isempty(vcDir_in), vcDir_in='/mnt/ceph/users/jjun/groundtruth/hybrid_synth/linear_drift/'; end
 if isempty(vcDir_out), vcDir_out=vcDir_in; end
 
 % make directory
@@ -822,16 +823,18 @@ sRateHz = S_prb.fs;
 
 % write raw.mda
 vcFile_bin = fullfile(vcDir_in, 'sim_binary.imec.ap.bin');
-if ~exist_file_(vcFile_bin)
+if exist_file_(vcFile_bin)
     vcFile_raw = fullfile(vcDir_out, 'raw.mda');
     append_bin2mda_({vcFile_bin}, vcFile_raw, nChans, 'int16');
     fprintf('Wrote to %s\n', vcFile_raw);
+else
+    fprintf(2, '%s does not exist\n', vcFile_bin);
 end
 
 % Write to params.json
 vcFile_json = fullfile(vcDir_out, 'params.json');
 struct2json_(struct('spike_sign', -1, 'samplerate', sRateHz), vcFile_json);
-fprintf('Wrote to %s\n', vcFile_json);
+% fprintf('Wrote to %s\n', vcFile_json);
 
 % write firings_true.mda
 vcFile_true = fullfile(vcDir_out, 'firings_true.mda');
