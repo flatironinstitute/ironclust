@@ -738,8 +738,8 @@ end %func
 %--------------------------------------------------------------------------
 function S_fig = figures_manual_(P)
 % 'iFig', [], 'name', '', 'pos', [], 'fToolbar', 0, 'fMenubar', 0);
-create_figure_('FigPos', [0 0 .15 .5], ['Unit position; ', P.vcFile_prm], 1, 0);
-create_figure_('FigMap', [0 .5 .15 .5], ['Probe map; ', P.vcFile_prm], 1, 0);  
+create_figure_('FigMap', [0 .25 .15 .75], ['Probe map; ', P.vcFile_prm], 1, 0);  
+create_figure_('FigInfo', [0 0 .15 .25], ['Unit info; ', P.vcFile_prm], 1, 0);
 
 create_figure_('FigWav', [.15 .25 .35 .75],['Averaged waveform: ', P.vcFile_prm], 0, 1);
 create_figure_('FigTime', [.15 0 .7 .25], ['Time vs. Amplitude; (Sft)[Up/Down] channel; [h]elp; [a]uto scale; ', P.vcFile]);
@@ -753,7 +753,7 @@ create_figure_('FigCorr', [.85 .25 .15 .25], ['Time correlation: ', P.vcFile_prm
 create_figure_('FigRD', [.85 0 .15 .25], ['Cluster rho-delta: ', P.vcFile_prm]);
 
 % drawnow_();
-csFig = {'FigPos', 'FigMap', 'FigTime', 'FigWav', 'FigWavCor', 'FigProj', 'FigRD', 'FigCorr', 'FigIsi', 'FigHist'};
+csFig = {'FigMap', 'FigInfo', 'FigTime', 'FigWav', 'FigWavCor', 'FigProj', 'FigRD', 'FigCorr', 'FigIsi', 'FigHist'};
 cvrFigPos0 = cellfun(@(vc)get(get_fig_(vc), 'OuterPosition'), csFig, 'UniformOutput', 0);
 S_fig = cell2struct(cvrFigPos0, csFig, 2);
 end %func

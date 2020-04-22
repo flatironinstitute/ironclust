@@ -1252,7 +1252,7 @@ try
     hImg5 = overlay_image_(hAx5, S_gt1.trWav_clu, mrSiteXY, xlim5, ylim5, hLine5);        
     title(hAx5, 'Filtered waveforms (color: |V|)');
     text_(hAx5, xlim5, ylim5, [vcRec, '-filtered']);
-    set_userdata_(hAx5, 'name', [vcRec, '-raw']);
+    set_userdata_(hAx5, 'name', [vcRec, '-filtered']);
 catch
     disp(lasterr());
 end
