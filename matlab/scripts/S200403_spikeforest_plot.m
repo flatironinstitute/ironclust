@@ -1,12 +1,12 @@
 addpath jsonlab-1.5
-switch 3
-    case 1
+switch 2
+    case 1 % Flatiron
         vcDir = '/mnt/home/jjun/src/spikeforest2/working/runs/';
-        vcFile_json = '2020_03_31a/output.json';
-    case 2
+        vcFile_json = '2020_04_14a/output.json';
+    case 2 % linux
         vcDir = '/home/jjun/src/ironclust/matlab/scripts/';
         vcFile_json = 'spikeforest2_output.json';
-    case 3
+    case 3 % MAC
         vcDir = '/Users/jamesjun/src/ironclust/matlab/scripts/';
         vcFile_json = 'spikeforest2_output.json';
 end
@@ -57,15 +57,16 @@ for iStudySet = 1:numel(csStudySetName)
                 S_study1.(S_.sorterName) = [];
             end
         end
-        vcStudyName = [vcStudySetName, '_', S_sar1.studyName];
-        S_studyset1.(vcStudyName) = S_study1;
+        S_studyset1.(S_sar1.studyName) = S_study1;
     end
     S_result.(vcStudySetName) = S_studyset1;
 end
 
 %% select study and plot accuracy vs length
 
+% vcStudySetName = 'LONG_STATIC';
 vcStudySetName = 'LONG_DRIFT';
+
 vcMetric = 'accuracy'; % select from {'accuracy', 'count', 'cpuTimesSec'}
 P = struct('snr_thresh', 8, 'accuracy_thresh', .8);
 
@@ -74,7 +75,7 @@ vrChan = [8,16];
 csSorterName = {'HerdingSpikes2', 'IronClust', 'JRClust', 'KiloSort', 'KiloSort2', 'Klusta', 'MountainSort4', 'SpykingCircus', 'Tridesclous'};
 csMetric = {'accuracy_mean', 'count_accuracy', 'cpuTimesSec_mean'};
 
-study_name_ = @(t,c)sprintf('LONG_DRIFT_%ds_%dc', t, c);
+study_name_ = @(t,c)sprintf('%s_%ds_%dc', vcStudySetName, t, c);
 [trMean_time_chan_sorter, trSEM_time_chan_sorter] = ...
     deal(nan(numel(vrTimeDur), numel(vrChan), numel(csSorterName)));
 nansem_ = @(x)nanstd(x)/sqrt(numel(x));
@@ -92,7 +93,7 @@ for iTimeDur = 1:numel(vrTimeDur)
                         viRec_(S_.vrSnr<P.snr_thresh) = nan;
                         means_ = grpstats(S_.accuracies, viRec_);
                         mean_ = nanmean(means_);
-                        sem_ = nanstd(means_);
+                        sem_ = nansem_(means_);
                     case 'count'
                         viRec_(S_.accuracies<P.accuracy_thresh) = nan;
                         mean_ = grpstats(S_.accuracies, viRec_, {'count'});
@@ -100,7 +101,7 @@ for iTimeDur = 1:numel(vrTimeDur)
                     case 'cpuTimesSec'
                         means_ = grpstats(S_.cpuTimesSec, viRec_);
                         mean_ = nanmean(means_);
-                        sem_ = nanstd(means_);
+                        sem_ = nansem_(means_);
                     otherwise
                         error('invalid metric');
                 end
@@ -113,12 +114,13 @@ for iTimeDur = 1:numel(vrTimeDur)
     end
 end
 
-%% plot
-figure('color','w'); 
+% plot
 nTime = size(trMean_time_chan_sorter,1);
 mrColor = flipud([1,1,1] .* linspace(.25,.75,nTime)');
-for iPlot=2:-1:1
+for iPlot=1:2
     iChan = iPlot;
+    figure('Color','w');
+    title(sprintf('%s-%dch', vcStudySetName, vrChan(iChan)),'Interpreter','none');    
     mrMean_dur_sorter = squeeze(trMean_time_chan_sorter(:,iChan,:));
     mrSEM_dur_sorter = squeeze(trSEM_time_chan_sorter(:,iChan,:));
     if false
@@ -137,16 +139,16 @@ for iPlot=2:-1:1
     mrZero_dur_sorter = zeros(size(mrMean_dur_sorter));
     errorbar_ = @(c,yd,yu)errorbar(mrErrX, mrMean_dur_sorter(:,viSorter)', yd, yu, ...
         'LineStyle','none','Color',c,'CapSize',0,'LineWidth',1);
-    switch iPlot
-        case 1
-            arrayfun(@(x)set(x,'FaceColor','none','EdgeColor','k','LineWidth',1), vhBar);
-            errorbar_('k', mrSEM_dur_sorter(:,viSorter)', mrZero_dur_sorter');
-        case 2
+%     switch iPlot
+%         case 1
+%             arrayfun(@(x)set(x,'FaceColor','none','EdgeColor','k','LineWidth',1), vhBar);
+%             errorbar_('k', mrSEM_dur_sorter(:,viSorter)', mrZero_dur_sorter');
+%         case 2
             arrayfun(@(x,y)set(x,'EdgeColor','none', 'FaceColor', mrColor(y,:)), vhBar, 1:nTime);
-            errorbar_('r', mrZero_dur_sorter', mrSEM_dur_sorter(:,viSorter)');
-    end
+            errorbar_('k', mrZero_dur_sorter', mrSEM_dur_sorter(:,viSorter)');
+%     end
     legend(arrayfun(@(x)sprintf('%dmin',x), vrTimeDur/60, 'UniformOutput',0));
-    set(gca,'YTick',0:.2:1,'YGrid','on');
-    axis([.5, 10.5 0 1.1]);
+    set(gca,'YTick',0:.1:1,'YGrid','on');
+    axis([.5, 10.5 0 1]);
 end
 
