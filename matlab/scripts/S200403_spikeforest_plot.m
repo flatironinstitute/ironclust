@@ -1,5 +1,5 @@
 addpath jsonlab-1.5
-switch 2
+switch 3
     case 1 % Flatiron
         vcDir = '/mnt/home/jjun/src/spikeforest2/working/runs/';
         vcFile_json = '2020_04_14a/output.json';
@@ -64,8 +64,8 @@ end
 
 %% select study and plot accuracy vs length
 
-% vcStudySetName = 'LONG_STATIC';
-vcStudySetName = 'LONG_DRIFT';
+vcStudySetName = 'LONG_STATIC';
+%vcStudySetName = 'LONG_DRIFT';
 
 vcMetric = 'accuracy'; % select from {'accuracy', 'count', 'cpuTimesSec'}
 P = struct('snr_thresh', 8, 'accuracy_thresh', .8);
@@ -117,7 +117,7 @@ end
 % plot
 nTime = size(trMean_time_chan_sorter,1);
 mrColor = flipud([1,1,1] .* linspace(.25,.75,nTime)');
-for iPlot=1:2
+for iPlot=2
     iChan = iPlot;
     figure('Color','w');
     title(sprintf('%s-%dch', vcStudySetName, vrChan(iChan)),'Interpreter','none');    
@@ -149,6 +149,6 @@ for iPlot=1:2
 %     end
     legend(arrayfun(@(x)sprintf('%dmin',x), vrTimeDur/60, 'UniformOutput',0));
     set(gca,'YTick',0:.1:1,'YGrid','on');
-    axis([.5, 10.5 0 1]);
+    axis([.5, 11 0 1]);
 end
 
