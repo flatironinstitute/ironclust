@@ -1,0 +1,255 @@
+<deployment-project plugin="plugin.ezdeploy" plugin-version="1.0">
+  <configuration build-checksum="1665175933" file="/media/sf_vmshared/ironclust/matlab/irc2_compiler.prj" location="/media/sf_vmshared/ironclust/matlab" name="irc2_compiler" preferred-package-location="/media/sf_vmshared/ironclust/matlab/irc2_compiler/for_redistribution" preferred-package-type="package.type.install" target="target.ezdeploy.standalone" target-name="Application Compiler">
+    <param.appname>irc2</param.appname>
+    <param.icon />
+    <param.icons />
+    <param.version>1.0</param.version>
+    <param.authnamewatermark />
+    <param.email />
+    <param.company />
+    <param.summary />
+    <param.description />
+    <param.screenshot />
+    <param.guid />
+    <param.installpath.string>/irc2/</param.installpath.string>
+    <param.installpath.combo>option.installpath.userlocal</param.installpath.combo>
+    <param.logo />
+    <param.install.notes />
+    <param.target.install.notes>In the following directions, replace MR/v911 by the directory on the target machine where MATLAB is installed, or MR by the directory where the MATLAB Runtime is installed.
+
+(1) Set the environment variable XAPPLRESDIR to this value:
+
+MR/v911/X11/app-defaults
+
+
+(2) If the environment variable LD_LIBRARY_PATH is undefined, set it to the following:
+
+MR/v911/runtime/glnxa64:MR/v911/bin/glnxa64:MR/v911/sys/os/glnxa64:MR/v911/sys/opengl/lib/glnxa64
+
+If it is defined, set it to the following:
+
+${LD_LIBRARY_PATH}:MR/v911/runtime/glnxa64:MR/v911/bin/glnxa64:MR/v911/sys/os/glnxa64:MR/v911/sys/opengl/lib/glnxa64</param.target.install.notes>
+    <param.intermediate>${PROJECT_ROOT}/irc2_compiler/for_testing</param.intermediate>
+    <param.files.only>${PROJECT_ROOT}/irc2_compiler/for_redistribution_files_only</param.files.only>
+    <param.output>${PROJECT_ROOT}/irc2_compiler/for_redistribution</param.output>
+    <param.logdir>${PROJECT_ROOT}/irc2_compiler</param.logdir>
+    <param.enable.clean.build>false</param.enable.clean.build>
+    <param.user.defined.mcr.options />
+    <param.target.type>subtarget.standalone</param.target.type>
+    <param.support.packages />
+    <param.web.mcr>true</param.web.mcr>
+    <param.package.mcr>false</param.package.mcr>
+    <param.no.mcr>false</param.no.mcr>
+    <param.web.mcr.name>MyAppInstaller_web</param.web.mcr.name>
+    <param.package.mcr.name>MyAppInstaller_mcr</param.package.mcr.name>
+    <param.no.mcr.name>MyAppInstaller_app</param.no.mcr.name>
+    <param.windows.command.prompt>false</param.windows.command.prompt>
+    <param.create.log>false</param.create.log>
+    <param.log.file />
+    <param.native.matlab>false</param.native.matlab>
+    <param.checkbox>false</param.checkbox>
+    <param.example />
+    <param.help.text>Syntax 
+	 irc2 -? 
+	 irc2 vcDir_in vcDir_out vcFile_arg vcArg3 vcArg4 
+ Input Arguments 
+	 -?  print help on how to use the application 
+	 vcDir_in vcDir_out vcFile_arg vcArg3 vcArg4  input arguments</param.help.text>
+    <unset>
+      <param.icon />
+      <param.icons />
+      <param.version />
+      <param.authnamewatermark />
+      <param.email />
+      <param.company />
+      <param.summary />
+      <param.description />
+      <param.screenshot />
+      <param.guid />
+      <param.installpath.string />
+      <param.logo />
+      <param.install.notes />
+      <param.intermediate />
+      <param.files.only />
+      <param.output />
+      <param.logdir />
+      <param.enable.clean.build />
+      <param.user.defined.mcr.options />
+      <param.target.type />
+      <param.support.packages />
+      <param.web.mcr />
+      <param.package.mcr />
+      <param.no.mcr />
+      <param.web.mcr.name />
+      <param.package.mcr.name />
+      <param.no.mcr.name />
+      <param.windows.command.prompt />
+      <param.create.log />
+      <param.log.file />
+      <param.native.matlab />
+      <param.checkbox />
+      <param.example />
+    </unset>
+    <fileset.main>
+      <file>${PROJECT_ROOT}/irc2.m</file>
+    </fileset.main>
+    <fileset.resources>
+      <file>${PROJECT_ROOT}/IronClust manual.pdf</file>
+      <file>${PROJECT_ROOT}/accuracy_snr_drift.pdf</file>
+      <file>${PROJECT_ROOT}/average_accuracy.txt</file>
+      <file>${PROJECT_ROOT}/change_log.txt</file>
+      <file>${PROJECT_ROOT}/changelog.md</file>
+      <file>${PROJECT_ROOT}/cuda_delta_drift.ptx</file>
+      <file>${PROJECT_ROOT}/cuda_delta_knn.cu</file>
+      <file>${PROJECT_ROOT}/cuda_delta_knn.ptx</file>
+      <file>${PROJECT_ROOT}/cuda_knn.cu</file>
+      <file>${PROJECT_ROOT}/cuda_knn.ptx</file>
+      <file>${PROJECT_ROOT}/cuda_knn_drift.ptx</file>
+      <file>${PROJECT_ROOT}/cuda_knn_full.cu</file>
+      <file>${PROJECT_ROOT}/cuda_knn_full.ptx</file>
+      <file>${PROJECT_ROOT}/cuda_knn_ib.cu</file>
+      <file>${PROJECT_ROOT}/cuda_knn_ib.ptx</file>
+      <file>${PROJECT_ROOT}/cuda_knn_index.cu</file>
+      <file>${PROJECT_ROOT}/cuda_knn_index.ptx</file>
+      <file>${PROJECT_ROOT}/cuda_min_drift.ptx</file>
+      <file>${PROJECT_ROOT}/dan_english.cfg</file>
+      <file>${PROJECT_ROOT}/default.cfg</file>
+      <file>${PROJECT_ROOT}/default.prm</file>
+      <file>${PROJECT_ROOT}/default1.cfg</file>
+      <file>${PROJECT_ROOT}/default2.prm</file>
+      <file>${PROJECT_ROOT}/drift2_template.prm</file>
+      <file>${PROJECT_ROOT}/drift_template.prm</file>
+      <file>${PROJECT_ROOT}/f191016_accuracy_comparison_siprobe.eps</file>
+      <file>${PROJECT_ROOT}/f191016_accuracy_comparison_siprobe.fig</file>
+      <file>${PROJECT_ROOT}/f191016_accuracy_comparison_siprobe.png</file>
+      <file>${PROJECT_ROOT}/f191016_accuracy_comparison_siprobe.svg</file>
+      <file>${PROJECT_ROOT}/f191016_accuracy_comparison_tetrode.eps</file>
+      <file>${PROJECT_ROOT}/f191016_accuracy_comparison_tetrode.fig</file>
+      <file>${PROJECT_ROOT}/f191016_accuracy_comparison_tetrode.png</file>
+      <file>${PROJECT_ROOT}/f191016_accuracy_comparison_tetrode.svg</file>
+      <file>${PROJECT_ROOT}/f191016_runtime_comparison_channel.eps</file>
+      <file>${PROJECT_ROOT}/f191016_runtime_comparison_channel.fig</file>
+      <file>${PROJECT_ROOT}/f191016_runtime_comparison_channel.png</file>
+      <file>${PROJECT_ROOT}/f191016_runtime_comparison_channel.svg</file>
+      <file>${PROJECT_ROOT}/f191016_runtime_comparison_duration.eps</file>
+      <file>${PROJECT_ROOT}/f191016_runtime_comparison_duration.fig</file>
+      <file>${PROJECT_ROOT}/f191016_runtime_comparison_duration.png</file>
+      <file>${PROJECT_ROOT}/f191016_runtime_comparison_duration.svg</file>
+      <file>${PROJECT_ROOT}/f191104_burst_ksort2_vs_irc_snr8.fig</file>
+      <file>${PROJECT_ROOT}/f191104_burst_ksort2_vs_irc_snr8.pdf</file>
+      <file>${PROJECT_ROOT}/f191104_overlap_ksort2_vs_irc_snr4.fig</file>
+      <file>${PROJECT_ROOT}/install.txt</file>
+      <file>${PROJECT_ROOT}/irc2.prmset</file>
+      <file>${PROJECT_ROOT}/irc_cuda_delta.cu</file>
+      <file>${PROJECT_ROOT}/irc_cuda_delta.ptx</file>
+      <file>${PROJECT_ROOT}/irc_cuda_delta_drift.cu</file>
+      <file>${PROJECT_ROOT}/irc_cuda_delta_drift.ptx</file>
+      <file>${PROJECT_ROOT}/irc_cuda_rho.cu</file>
+      <file>${PROJECT_ROOT}/irc_cuda_rho.ptx</file>
+      <file>${PROJECT_ROOT}/irc_cuda_rho_drift.cu</file>
+      <file>${PROJECT_ROOT}/irc_cuda_rho_drift.ptx</file>
+      <file>${PROJECT_ROOT}/ironclust_1.prmset</file>
+      <file>${PROJECT_ROOT}/kampff-npx_template.prm</file>
+      <file>${PROJECT_ROOT}/ksort2.txt</file>
+      <file>${PROJECT_ROOT}/maximalCliques_cvi.m</file>
+      <file>${PROJECT_ROOT}/mountainsort4.prmset</file>
+      <file>${PROJECT_ROOT}/param1.prm</file>
+      <file>${PROJECT_ROOT}/param2.prm</file>
+      <file>${PROJECT_ROOT}/param3.prm</file>
+      <file>${PROJECT_ROOT}/param4.prm</file>
+      <file>${PROJECT_ROOT}/prb</file>
+      <file>${PROJECT_ROOT}/prb_json</file>
+      <file>${PROJECT_ROOT}/real_template.prm</file>
+      <file>${PROJECT_ROOT}/rhs32_template.prm</file>
+      <file>${PROJECT_ROOT}/rhs_template.prm</file>
+      <file>${PROJECT_ROOT}/sample.meta</file>
+      <file>${PROJECT_ROOT}/sample3.meta</file>
+      <file>${PROJECT_ROOT}/sample_list.txt</file>
+      <file>${PROJECT_ROOT}/sample_sample_merge.prm</file>
+      <file>${PROJECT_ROOT}/search_delta_drift.cu</file>
+      <file>${PROJECT_ROOT}/search_delta_drift.ptx</file>
+      <file>${PROJECT_ROOT}/search_min_drift.cu</file>
+      <file>${PROJECT_ROOT}/search_min_drift.ptx</file>
+      <file>${PROJECT_ROOT}/settings.scoreboard</file>
+      <file>${PROJECT_ROOT}/settings2.scoreboard</file>
+      <file>${PROJECT_ROOT}/spykingcircus.prmset</file>
+      <file>${PROJECT_ROOT}/static_diff_template.prm</file>
+      <file>${PROJECT_ROOT}/static_template.prm</file>
+      <file>${PROJECT_ROOT}/tbl_acc_prc_rcl0.txt</file>
+      <file>${PROJECT_ROOT}/tetrode_template.prm</file>
+      <file>${PROJECT_ROOT}/version.txt</file>
+    </fileset.resources>
+    <fileset.package />
+    <fileset.depfun>
+      <file>${PROJECT_ROOT}/DataHash.m</file>
+      <file>${PROJECT_ROOT}/calc_dist_drift.m</file>
+      <file>${PROJECT_ROOT}/calc_dist_knn_clu.m</file>
+      <file>${PROJECT_ROOT}/clu_wave_similarity_paged.m</file>
+      <file>${PROJECT_ROOT}/clusterVerify.m</file>
+      <file>${PROJECT_ROOT}/convert_mda.m</file>
+      <file>${PROJECT_ROOT}/convert_mda_ui.m</file>
+      <file>${PROJECT_ROOT}/fastplot.m</file>
+      <file>${PROJECT_ROOT}/fft_filter.m</file>
+      <file>${PROJECT_ROOT}/fft_filter_transpose.m</file>
+      <file>${PROJECT_ROOT}/file2struct.m</file>
+      <file>${PROJECT_ROOT}/findjobj.m</file>
+      <file>${PROJECT_ROOT}/fir1_octave.m</file>
+      <file>${PROJECT_ROOT}/get0.m</file>
+      <file>${PROJECT_ROOT}/import_rhd.m</file>
+      <file>${PROJECT_ROOT}/import_rhs.m</file>
+      <file>${PROJECT_ROOT}/irc.m</file>
+      <file>${PROJECT_ROOT}/irc2_manual.m</file>
+      <file>${PROJECT_ROOT}/irc2_scoreboard.m</file>
+      <file>${PROJECT_ROOT}/irc2_traces.m</file>
+      <file>${PROJECT_ROOT}/irc2klusters.m</file>
+      <file>${PROJECT_ROOT}/irc2klusters_v2.m</file>
+      <file>${PROJECT_ROOT}/irc2phy.m</file>
+      <file>${PROJECT_ROOT}/irc_gui.m</file>
+      <file>${PROJECT_ROOT}/irc_scoreboard.m</file>
+      <file>${PROJECT_ROOT}/kilosort.m</file>
+      <file>${PROJECT_ROOT}/localize_moment.m</file>
+      <file>${PROJECT_ROOT}/localize_monopole_diff.m</file>
+      <file>${PROJECT_ROOT}/maximalCliques.m</file>
+      <file>${PROJECT_ROOT}/mouse_figure.m</file>
+      <file>${PROJECT_ROOT}/multiplot.m</file>
+      <file>${PROJECT_ROOT}/openNSx_jjj.m</file>
+      <file>${PROJECT_ROOT}/plotSpikeRaster.m</file>
+      <file>${PROJECT_ROOT}/post_merge_knn1.m</file>
+      <file>${PROJECT_ROOT}/post_merge_knnwav.m</file>
+      <file>${PROJECT_ROOT}/run_ksort2.m</file>
+      <file>${PROJECT_ROOT}/search_monopole.m</file>
+      <file>${PROJECT_ROOT}/show_drift_view.m</file>
+      <file>${PROJECT_ROOT}/spatial_whiten.m</file>
+      <file>${PROJECT_ROOT}/writemda_fid.m</file>
+      <file>${PROJECT_ROOT}/xml2struct.m</file>
+      <file>${MATLAB_ROOT}/toolbox/local/restoredefaultpath.m</file>
+      <file>${MATLAB_ROOT}/toolbox/local/userpath.m</file>
+    </fileset.depfun>
+    <build-deliverables>
+      <file location="${PROJECT_ROOT}/irc2_compiler/for_testing" name="run_irc2.sh" optional="false">/media/sf_vmshared/ironclust/matlab/irc2_compiler/for_testing/run_irc2.sh</file>
+      <file location="${PROJECT_ROOT}/irc2_compiler/for_testing" name="readme.txt" optional="true">/media/sf_vmshared/ironclust/matlab/irc2_compiler/for_testing/readme.txt</file>
+      <file location="${PROJECT_ROOT}/irc2_compiler/for_testing" name="irc2" optional="false">/media/sf_vmshared/ironclust/matlab/irc2_compiler/for_testing/irc2</file>
+      <file location="${PROJECT_ROOT}/irc2_compiler/for_testing" name="splash.png" optional="false">/media/sf_vmshared/ironclust/matlab/irc2_compiler/for_testing/splash.png</file>
+    </build-deliverables>
+    <workflow />
+    <matlab>
+      <root>/usr/local/MATLAB/R2021b</root>
+      <toolboxes />
+    </matlab>
+    <platform>
+      <unix>true</unix>
+      <mac>false</mac>
+      <windows>false</windows>
+      <win2k>false</win2k>
+      <winxp>false</winxp>
+      <vista>false</vista>
+      <linux>true</linux>
+      <solaris>false</solaris>
+      <osver>5.11.0-46-generic</osver>
+      <os32>false</os32>
+      <os64>true</os64>
+      <arch>glnxa64</arch>
+      <matlab>true</matlab>
+    </platform>
+  </configuration>
+</deployment-project>
