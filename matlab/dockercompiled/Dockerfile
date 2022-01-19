@@ -1,6 +1,6 @@
-FROM matlabruntime/r2021b/release/update2/c0130000000000000
+FROM matlab/ironclust
 
-COPY p_ironclust /usr/bin/
+ENV PATH="/usr/bin/mlrtapp:${PATH}"
 
 RUN apt-get update -y
 RUN apt-get install software-properties-common -y
