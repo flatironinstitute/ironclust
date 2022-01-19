@@ -234,10 +234,10 @@ ${LD_LIBRARY_PATH}:MR/v911/runtime/glnxa64:MR/v911/bin/glnxa64:MR/v911/sys/os/gl
       <file>${MATLAB_ROOT}/toolbox/local/userpath.m</file>
     </fileset.depfun>
     <build-deliverables>
-      <file location="${PROJECT_ROOT}/p_ironclust_compiler/for_testing" name="p_ironclust" optional="false">/media/sf_CatalystNeuro/ironclust/matlab/p_ironclust_compiler/for_testing/p_ironclust</file>
-      <file location="${PROJECT_ROOT}/p_ironclust_compiler/for_testing" name="run_p_ironclust.sh" optional="false">/media/sf_CatalystNeuro/ironclust/matlab/p_ironclust_compiler/for_testing/run_p_ironclust.sh</file>
-      <file location="${PROJECT_ROOT}/p_ironclust_compiler/for_testing" name="splash.png" optional="false">/media/sf_CatalystNeuro/ironclust/matlab/p_ironclust_compiler/for_testing/splash.png</file>
-      <file location="${PROJECT_ROOT}/p_ironclust_compiler/for_testing" name="readme.txt" optional="true">/media/sf_CatalystNeuro/ironclust/matlab/p_ironclust_compiler/for_testing/readme.txt</file>
+      <file location="${PROJECT_ROOT}/p_ironclust_compiler/for_testing" name="p_ironclust" optional="false">p_ironclust_compiler/for_testing/p_ironclust</file>
+      <file location="${PROJECT_ROOT}/p_ironclust_compiler/for_testing" name="run_p_ironclust.sh" optional="false">p_ironclust_compiler/for_testing/run_p_ironclust.sh</file>
+      <file location="${PROJECT_ROOT}/p_ironclust_compiler/for_testing" name="splash.png" optional="false">p_ironclust_compiler/for_testing/splash.png</file>
+      <file location="${PROJECT_ROOT}/p_ironclust_compiler/for_testing" name="readme.txt" optional="true">p_ironclust_compiler/for_testing/readme.txt</file>
     </build-deliverables>
     <workflow />
     <matlab>
@@ -261,3 +261,4 @@ ${LD_LIBRARY_PATH}:MR/v911/runtime/glnxa64:MR/v911/bin/glnxa64:MR/v911/sys/os/gl
     </platform>
   </configuration>
 </deployment-project>
+
