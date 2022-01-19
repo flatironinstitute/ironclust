@@ -20,10 +20,10 @@ Creating a base image to run ironclust
 - Set Matlab's workspace folder to: `ironclust/matlab`
 - Open Matlab's `Application Compiler`
 - Click `Open Project`
-- Select `p_ironclust.prj` file
-- Click on `Package` button
-- The compiled ironclust folder is: `ironclust/matlab/p_ironclust_compiler`
-- In matlab console run: ```compiler.package.docker('p_ironclust_compiler/for_testing/p_ironclust', 'p_ironclust_compiler/for_testing/requiredMCRProducts.txt', 'ImageName', 'matlab/ironclust')```
+- Select `p_ironclust.prj` and click `Open`
+- Click on `Package` button and wait the packaging process to finish
+- Close `Package` and `Application Compiler` windows
+- In matlab console run: ```compiler.package.docker('p_ironclust_compiler/for_testing/p_ironclust', 'p_ironclust_compiler/for_testing/requiredMCRProducts.txt', 'ImageName', 'ironclust-base')```
 
 ## Building the image
 

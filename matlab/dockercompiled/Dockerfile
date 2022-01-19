@@ -1,4 +1,4 @@
-FROM matlab/ironclust
+FROM ironclust-base
 
 ENV PATH="/usr/bin/mlrtapp:${PATH}"
 
