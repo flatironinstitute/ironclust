@@ -1,5 +1,5 @@
 <deployment-project plugin="plugin.ezdeploy" plugin-version="1.0">
-  <configuration build-checksum="1144526242" file="/media/sf_CatalystNeuro/ironclust/matlab/irc2_compiler.prj" location="/media/sf_CatalystNeuro/ironclust/matlab" name="irc2_compiler" preferred-package-location="/media/sf_CatalystNeuro/ironclust/matlab/p_ironclust_compiler/for_redistribution" preferred-package-type="package.type.install" target="target.ezdeploy.standalone" target-name="Application Compiler">
+  <configuration build-checksum="812658921" file="/media/sf_CatalystNeuro/ironclust/matlab/p_ironclust.prj" location="/media/sf_CatalystNeuro/ironclust/matlab" name="p_ironclust" preferred-package-location="/media/sf_CatalystNeuro/ironclust/matlab/p_ironclust_compiler/for_redistribution" preferred-package-type="package.type.install" target="target.ezdeploy.standalone" target-name="Application Compiler">
     <param.appname>p_ironclust</param.appname>
     <param.icon />
     <param.icons />
@@ -177,6 +177,17 @@ ${LD_LIBRARY_PATH}:MR/v911/runtime/glnxa64:MR/v911/bin/glnxa64:MR/v911/sys/os/gl
     </fileset.resources>
     <fileset.package />
     <fileset.depfun>
+      <file>/home/yu/MATLAB Add-Ons/Collections/JSONLab_ a toolbox to encode_decode JSON files/jsonlab-2.0/base64decode.m</file>
+      <file>/home/yu/MATLAB Add-Ons/Collections/JSONLab_ a toolbox to encode_decode JSON files/jsonlab-2.0/encodevarname.m</file>
+      <file>/home/yu/MATLAB Add-Ons/Collections/JSONLab_ a toolbox to encode_decode JSON files/jsonlab-2.0/fast_match_bracket.m</file>
+      <file>/home/yu/MATLAB Add-Ons/Collections/JSONLab_ a toolbox to encode_decode JSON files/jsonlab-2.0/isoctavemesh.m</file>
+      <file>/home/yu/MATLAB Add-Ons/Collections/JSONLab_ a toolbox to encode_decode JSON files/jsonlab-2.0/jdatadecode.m</file>
+      <file>/home/yu/MATLAB Add-Ons/Collections/JSONLab_ a toolbox to encode_decode JSON files/jsonlab-2.0/jsonopt.m</file>
+      <file>/home/yu/MATLAB Add-Ons/Collections/JSONLab_ a toolbox to encode_decode JSON files/jsonlab-2.0/loadjson.m</file>
+      <file>/home/yu/MATLAB Add-Ons/Collections/JSONLab_ a toolbox to encode_decode JSON files/jsonlab-2.0/match_bracket.m</file>
+      <file>/home/yu/MATLAB Add-Ons/Collections/JSONLab_ a toolbox to encode_decode JSON files/jsonlab-2.0/mergestruct.m</file>
+      <file>/home/yu/MATLAB Add-Ons/Collections/JSONLab_ a toolbox to encode_decode JSON files/jsonlab-2.0/nestbracket2dim.m</file>
+      <file>/home/yu/MATLAB Add-Ons/Collections/JSONLab_ a toolbox to encode_decode JSON files/jsonlab-2.0/varargin2struct.m</file>
       <file>${PROJECT_ROOT}/DataHash.m</file>
       <file>${PROJECT_ROOT}/calc_dist_drift.m</file>
       <file>${PROJECT_ROOT}/calc_dist_knn_clu.m</file>
