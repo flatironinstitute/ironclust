@@ -15,13 +15,15 @@ No action is required in this section, the only purpose is to show how the p\_ir
 
 ### Steps to generate the p\_ironclust compiled file
 - Open Matlab 
-- Set Matlab's workspace folder to be in the following folder: `ironclust/matlab`
+- Set Matlab's workspace folder to: `ironclust/matlab`
 - Open Matlab's `Application Compiler`
 - Click `Open Project`
 - Select `p_ironclust.prj` file
 - Click on `Package` button
-- The full path for compiled ironclust file is: `ironclust/matlab/p_ironclust_compiler/for_redistribution_files_only/p_ironclust2`
+- The compiled ironclust folder is: `ironclust/matlab/p_ironclust_compiler`
+- Change Matlab's workspace folder to: `ironclust/matlab/p_ironclust_compiler/for_testing`
 - In matlab console run: `compiler.package.docker('p_ironclust', 'requiredMCRProducts.txt', 'ImageName', 'p_ironclust')`
+- The above command will generate a `p_ironclustdocker` folder where the base Dockerfile is created
 
 
 ## Files
