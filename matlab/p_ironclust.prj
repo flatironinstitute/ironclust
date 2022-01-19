@@ -1,5 +1,5 @@
 <deployment-project plugin="plugin.ezdeploy" plugin-version="1.0">
-  <configuration build-checksum="812658921" file="/media/sf_CatalystNeuro/ironclust/matlab/p_ironclust.prj" location="/media/sf_CatalystNeuro/ironclust/matlab" name="p_ironclust" preferred-package-location="/media/sf_CatalystNeuro/ironclust/matlab/p_ironclust_compiler/for_redistribution" preferred-package-type="package.type.install" target="target.ezdeploy.standalone" target-name="Application Compiler">
+  <configuration build-checksum="812658921" file="./ironclust/matlab/p_ironclust.prj" location="./ironclust/matlab" name="p_ironclust" preferred-package-location="./ironclust/matlab/p_ironclust_compiler/for_redistribution" preferred-package-type="package.type.install" target="target.ezdeploy.standalone" target-name="Application Compiler">
     <param.appname>p_ironclust</param.appname>
     <param.icon />
     <param.icons />
