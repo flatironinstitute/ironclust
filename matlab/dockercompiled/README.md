@@ -13,14 +13,14 @@ No action is required in this section, the only purpose is to show how the p\_ir
 - Signal Processing Toolbox
 - Image Processing Toolbox
 
-### Steps to generate the irc2 compiled file
+### Steps to generate the p\_ironclust compiled file
 - Open Matlab 
 - Set Matlab's workspace folder to be in the following folder: `ironclust/matlab`
 - Open Matlab's `Application Compiler`
 - Click `Open Project`
 - Select `p_ironclust.prj` file
 - Click on `Package` button
-- The full path for compiled ironclust file is: `ironclust/matlab/irc2\_compiler/for\_redistribution\_files\_only/irc2`
+- The full path for compiled ironclust file is: `ironclust/matlab/p_ironclust_compiler/for_redistribution_files_only/p_ironclust2`
 - In matlab console run: `compiler.package.docker('p_ironclust', 'requiredMCRProducts.txt', 'ImageName', 'p_ironclust')`
 
 
@@ -43,7 +43,7 @@ PS: The Docker Image starts from `matlabruntime/r2021b/release/update2/c01300000
 
 ## Pull the image
 
-Currently the image is pushed in `chyumin` dockerhub profile, it'll be changed to spikeinterface in the future
+Currently the image is pushed in `chyumin` dockerhub profile, it'll be changed to `spikeinterface` in the future
 
 ```
 docker pull chyumin/ironclust
