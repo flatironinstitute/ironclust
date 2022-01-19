@@ -7,6 +7,7 @@ This folder contains files to build a Docker Image that runs matlab implemented 
 No action is required in this section, the only purpose is to show how the p\_ironclust file (used by Dockerfile) was generated.
 
 ### Matlab Requirements
+- JSONLab toolbox
 - MATLAB Compiler
 - Statistics and Machine Learning Toolbox
 - Signal Processing Toolbox
