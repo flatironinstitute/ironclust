@@ -1,6 +1,6 @@
 <deployment-project plugin="plugin.ezdeploy" plugin-version="1.0">
-  <configuration build-checksum="1665175933" file="/media/sf_vmshared/ironclust/matlab/irc2_compiler.prj" location="/media/sf_vmshared/ironclust/matlab" name="irc2_compiler" preferred-package-location="/media/sf_vmshared/ironclust/matlab/irc2_compiler/for_redistribution" preferred-package-type="package.type.install" target="target.ezdeploy.standalone" target-name="Application Compiler">
-    <param.appname>irc2</param.appname>
+  <configuration build-checksum="1144526242" file="/media/sf_CatalystNeuro/ironclust/matlab/irc2_compiler.prj" location="/media/sf_CatalystNeuro/ironclust/matlab" name="irc2_compiler" preferred-package-location="/media/sf_CatalystNeuro/ironclust/matlab/p_ironclust_compiler/for_redistribution" preferred-package-type="package.type.install" target="target.ezdeploy.standalone" target-name="Application Compiler">
+    <param.appname>p_ironclust</param.appname>
     <param.icon />
     <param.icons />
     <param.version>1.0</param.version>
@@ -11,7 +11,7 @@
     <param.description />
     <param.screenshot />
     <param.guid />
-    <param.installpath.string>/irc2/</param.installpath.string>
+    <param.installpath.string>/p_ironclust/</param.installpath.string>
     <param.installpath.combo>option.installpath.userlocal</param.installpath.combo>
     <param.logo />
     <param.install.notes />
@@ -29,10 +29,10 @@ MR/v911/runtime/glnxa64:MR/v911/bin/glnxa64:MR/v911/sys/os/glnxa64:MR/v911/sys/o
 If it is defined, set it to the following:
 
 ${LD_LIBRARY_PATH}:MR/v911/runtime/glnxa64:MR/v911/bin/glnxa64:MR/v911/sys/os/glnxa64:MR/v911/sys/opengl/lib/glnxa64</param.target.install.notes>
-    <param.intermediate>${PROJECT_ROOT}/irc2_compiler/for_testing</param.intermediate>
-    <param.files.only>${PROJECT_ROOT}/irc2_compiler/for_redistribution_files_only</param.files.only>
-    <param.output>${PROJECT_ROOT}/irc2_compiler/for_redistribution</param.output>
-    <param.logdir>${PROJECT_ROOT}/irc2_compiler</param.logdir>
+    <param.intermediate>${PROJECT_ROOT}/p_ironclust_compiler/for_testing</param.intermediate>
+    <param.files.only>${PROJECT_ROOT}/p_ironclust_compiler/for_redistribution_files_only</param.files.only>
+    <param.output>${PROJECT_ROOT}/p_ironclust_compiler/for_redistribution</param.output>
+    <param.logdir>${PROJECT_ROOT}/p_ironclust_compiler</param.logdir>
     <param.enable.clean.build>false</param.enable.clean.build>
     <param.user.defined.mcr.options />
     <param.target.type>subtarget.standalone</param.target.type>
@@ -50,11 +50,11 @@ ${LD_LIBRARY_PATH}:MR/v911/runtime/glnxa64:MR/v911/bin/glnxa64:MR/v911/sys/os/gl
     <param.checkbox>false</param.checkbox>
     <param.example />
     <param.help.text>Syntax 
-	 irc2 -? 
-	 irc2 vcDir_in vcDir_out vcFile_arg vcArg3 vcArg4 
+	 p_ironclust -? 
+	 p_ironclust temp_path raw_fname geom_fname prm_fname vcFile_gt_mda firings_out_fname arg_fname 
  Input Arguments 
 	 -?  print help on how to use the application 
-	 vcDir_in vcDir_out vcFile_arg vcArg3 vcArg4  input arguments</param.help.text>
+	 temp_path raw_fname geom_fname prm_fname vcFile_gt_mda firings_out_fname arg_fname  input arguments</param.help.text>
     <unset>
       <param.icon />
       <param.icons />
@@ -69,10 +69,6 @@ ${LD_LIBRARY_PATH}:MR/v911/runtime/glnxa64:MR/v911/bin/glnxa64:MR/v911/sys/os/gl
       <param.installpath.string />
       <param.logo />
       <param.install.notes />
-      <param.intermediate />
-      <param.files.only />
-      <param.output />
-      <param.logdir />
       <param.enable.clean.build />
       <param.user.defined.mcr.options />
       <param.target.type />
@@ -91,7 +87,7 @@ ${LD_LIBRARY_PATH}:MR/v911/runtime/glnxa64:MR/v911/bin/glnxa64:MR/v911/sys/os/gl
       <param.example />
     </unset>
     <fileset.main>
-      <file>${PROJECT_ROOT}/irc2.m</file>
+      <file>${PROJECT_ROOT}/p_ironclust.m</file>
     </fileset.main>
     <fileset.resources>
       <file>${PROJECT_ROOT}/IronClust manual.pdf</file>
@@ -198,6 +194,7 @@ ${LD_LIBRARY_PATH}:MR/v911/runtime/glnxa64:MR/v911/bin/glnxa64:MR/v911/sys/os/gl
       <file>${PROJECT_ROOT}/import_rhd.m</file>
       <file>${PROJECT_ROOT}/import_rhs.m</file>
       <file>${PROJECT_ROOT}/irc.m</file>
+      <file>${PROJECT_ROOT}/irc2.m</file>
       <file>${PROJECT_ROOT}/irc2_manual.m</file>
       <file>${PROJECT_ROOT}/irc2_scoreboard.m</file>
       <file>${PROJECT_ROOT}/irc2_traces.m</file>
@@ -226,10 +223,10 @@ ${LD_LIBRARY_PATH}:MR/v911/runtime/glnxa64:MR/v911/bin/glnxa64:MR/v911/sys/os/gl
       <file>${MATLAB_ROOT}/toolbox/local/userpath.m</file>
     </fileset.depfun>
     <build-deliverables>
-      <file location="${PROJECT_ROOT}/irc2_compiler/for_testing" name="run_irc2.sh" optional="false">/media/sf_vmshared/ironclust/matlab/irc2_compiler/for_testing/run_irc2.sh</file>
-      <file location="${PROJECT_ROOT}/irc2_compiler/for_testing" name="readme.txt" optional="true">/media/sf_vmshared/ironclust/matlab/irc2_compiler/for_testing/readme.txt</file>
-      <file location="${PROJECT_ROOT}/irc2_compiler/for_testing" name="irc2" optional="false">/media/sf_vmshared/ironclust/matlab/irc2_compiler/for_testing/irc2</file>
-      <file location="${PROJECT_ROOT}/irc2_compiler/for_testing" name="splash.png" optional="false">/media/sf_vmshared/ironclust/matlab/irc2_compiler/for_testing/splash.png</file>
+      <file location="${PROJECT_ROOT}/p_ironclust_compiler/for_testing" name="p_ironclust" optional="false">/media/sf_CatalystNeuro/ironclust/matlab/p_ironclust_compiler/for_testing/p_ironclust</file>
+      <file location="${PROJECT_ROOT}/p_ironclust_compiler/for_testing" name="run_p_ironclust.sh" optional="false">/media/sf_CatalystNeuro/ironclust/matlab/p_ironclust_compiler/for_testing/run_p_ironclust.sh</file>
+      <file location="${PROJECT_ROOT}/p_ironclust_compiler/for_testing" name="splash.png" optional="false">/media/sf_CatalystNeuro/ironclust/matlab/p_ironclust_compiler/for_testing/splash.png</file>
+      <file location="${PROJECT_ROOT}/p_ironclust_compiler/for_testing" name="readme.txt" optional="true">/media/sf_CatalystNeuro/ironclust/matlab/p_ironclust_compiler/for_testing/readme.txt</file>
     </build-deliverables>
     <workflow />
     <matlab>
