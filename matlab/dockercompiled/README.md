@@ -13,7 +13,7 @@ No action is required in this section, the only purpose is to show how the p\_ir
 - Signal Processing Toolbox
 - Image Processing Toolbox
 
-### Steps to generate the p\_ironclust compiled file
+### Steps to compile p\_ironclust and the base Dockerfile
 - Open Matlab 
 - Set Matlab's workspace folder to: `ironclust/matlab`
 - Open Matlab's `Application Compiler`
