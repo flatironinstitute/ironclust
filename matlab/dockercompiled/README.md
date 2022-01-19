@@ -1,7 +1,10 @@
 # Ironclust Docker
 
-This folder contains files to build a Docker Image that runs matlab implemented ironclust sorter
+This folder contains a Dockerfile along with instructions on how to build a Docker Image that runs matlab implemented ironclust sorter
 
+1. Compile `p_ironclust.m` script
+2. Pack the compiled project into a base image
+3. Extend from the base to run ironclust
 
 ## Pre steps
 
@@ -15,7 +18,7 @@ Creating a base image to run ironclust
 - Signal Processing Toolbox
 - Image Processing Toolbox
 
-### Steps to compile p\_ironclust and the base Dockerfile
+### Steps to compile p\_ironclust and create the base image
 - Open Matlab 
 - Set Matlab's workspace folder to: `ironclust/matlab`
 - Open Matlab's `Application Compiler`
@@ -27,7 +30,7 @@ Creating a base image to run ironclust
 
 ## Building the image
 
-The `Dockerfile` in this folder extends the automatically generated image (matlab/ironclust) described in previous section. This is needed in order to properly run ironclust sorter.
+The `Dockerfile` in this folder extends the generated image in previous section (ironclust-base). This is needed in order to properly run ironclust sorter.
 
 To build the image run:
 
