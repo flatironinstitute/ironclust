@@ -498,7 +498,6 @@ function out1 = filt_car_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name
 function out1 = ifeq_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = mr2tr_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = fclose_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
-% function out1 = meanSubt_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = zscore_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = gpuArray_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
 function out1 = gather_(varargin), fn=dbstack(); out1 = irc('call', fn(1).name, varargin); end
